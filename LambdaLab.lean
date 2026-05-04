@@ -1,0 +1,22 @@
+-- This module serves as the root of the `LambdaLab` library.
+-- Import modules here that should be built as part of the library.
+import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.Stlc.DeBruijn.Typing
+import LambdaLab.Stlc.DeBruijn.Step
+import LambdaLab.Stlc.DeBruijn.MStep
+import LambdaLab.Stlc.DeBruijn.Eval
+import LambdaLab.Stlc.DeBruijn.Substitution
+import LambdaLab.Stlc.DeBruijn.ParSubst
+import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Stlc.DeBruijn.Properties
+import LambdaLab.Stlc.DeBruijn.Preservation
+import LambdaLab.Stlc.DeBruijn.Confluence
+import LambdaLab.Stlc.Named.Basic
+import LambdaLab.Stlc.Named.Step
+import LambdaLab.Stlc.Named.MStep
+import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Properties
+import LambdaLab.Stlc.Named.Translation
+import LambdaLab.Stlc.Named.Confluence
+import LambdaLab.Stlc.Named.Preservation
+import LambdaLab.Stlc.Named.Normalization

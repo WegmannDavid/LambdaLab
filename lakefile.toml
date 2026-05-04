@@ -1,0 +1,10 @@
+name = "LambdaLab"
+version = "0.1.0"
+defaultTargets = ["lambdalab"]
+
+[[lean_lib]]
+name = "LambdaLab"
+
+[[lean_exe]]
+name = "lambdalab"
+root = "Main"
