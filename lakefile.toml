@@ -8,3 +8,7 @@ name = "LambdaLab"
 [[lean_exe]]
 name = "lambdalab"
 root = "Main"
+
+[[lean_exe]]
+name = "lambdalab-stlc"
+root = "MainStlc"

@@ -1,0 +1,3 @@
+def good : ι := x ;
+this_chunk_lacks_def_keyword ;
+def also_good : ι := y ;

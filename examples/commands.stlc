@@ -1,0 +1,9 @@
+def id : ι → ι := λ x : ι . x ;
+
+eval id ;
+
+check λ x : ι . x ;
+
+def k : ι → ι → ι := λ x : ι . λ y : ι . x ;
+
+eval k ;

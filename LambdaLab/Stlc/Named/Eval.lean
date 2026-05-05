@@ -1,9 +1,7 @@
-import LambdaLab.Stlc.DeBruijn.Basic
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Stlc.Named.Normalization
 
 /-!
-# Total normalizer (de Bruijn variant)
+# Total normalizer (named variant)
 
 `Term.eval e h` returns the normal form of `e`, given a strong-normalization
 proof. `HasType.eval ht` is the convenience wrapper that supplies the SN
@@ -12,20 +10,23 @@ proof via `HasType.sn`.
 The recursion is on the term: `findReductStep` picks a leftmost-outermost
 redex (structural recursion on `Term`); the outer loop iterates that
 until the term is in normal form. Termination of the loop is certified
-by `SN`, packaged into a `WellFoundedRelation` on `SNTerm`.
+by `SN`, packaged into a `WellFoundedRelation` on `SNTerm` so Lean
+compiles via `WellFounded.fix`.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Stlc.Named
 
-/-- Computable redex picker: leftmost-outermost. -/
+/-- Computable redex picker: leftmost-outermost. Returns `some ⟨e', s⟩`
+where `s : Step e e'` if `e` has any redex; `none` if `e` is in
+β-normal form. -/
 def Term.findReductStep : (e : Term) → Option ((e' : Term) ×' Step e e')
   | .var _                  => none
-  | .lam τ body             =>
+  | .lam x τ body           =>
       match body.findReductStep with
-      | some ⟨body', s⟩ => some ⟨.lam τ body', Step.lam s⟩
+      | some ⟨body', s⟩ => some ⟨.lam x τ body', Step.lam s⟩
       | none            => none
-  | .app (.lam _ body) v    =>
-      some ⟨body.subst 0 v, Step.beta⟩
+  | .app (.lam x _ body) v  =>
+      some ⟨body.subst x v, Step.beta⟩
   | .app f a                =>
       match f.findReductStep with
       | some ⟨f', s⟩ => some ⟨.app f' a, Step.appL s⟩
@@ -34,6 +35,9 @@ def Term.findReductStep : (e : Term) → Option ((e' : Term) ×' Step e e')
           | some ⟨a', s⟩ => some ⟨.app f a', Step.appR s⟩
           | none         => none
 
+/-- An SN-witnessed term. The Subtype packages the `SN` proof so we can
+attach a `WellFoundedRelation` whose underlying relation is `Step` on
+the term components. -/
 abbrev SNTerm := { e : Term // SN e }
 
 instance : WellFoundedRelation SNTerm where
@@ -56,4 +60,4 @@ termination_by (⟨e, h⟩ : SNTerm)
 def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty} (ht : HasType Γ e τ) : Term :=
   Term.eval e (HasType.sn ht)
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Stlc.Named

@@ -15,8 +15,17 @@ import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step
 import LambdaLab.Stlc.Named.MStep
 import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Check
 import LambdaLab.Stlc.Named.Properties
 import LambdaLab.Stlc.Named.Translation
 import LambdaLab.Stlc.Named.Confluence
 import LambdaLab.Stlc.Named.Preservation
 import LambdaLab.Stlc.Named.Normalization
+import LambdaLab.Stlc.Named.Eval
+import LambdaLab.Parser.Mixfix.Basic
+import LambdaLab.Parser.Mixfix.Parser
+import LambdaLab.Stlc.Named.Parser
+import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Language.Basic
+import LambdaLab.Language.Parser
+import LambdaLab.Language.Check
