@@ -1,9 +1,6 @@
 import LambdaLab.Unification2.Basic
 
-/-! # Soundness of `unify` (Fin-form Term)
-
-When the algorithm succeeds, the returned unifier actually unifies
-every equation. Same proof structure as the typeclass version. -/
+/-! # Soundness of `unify` (Fin-form Term) -/
 
 namespace LambdaLab.Unification2
 
@@ -15,17 +12,21 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
   | case1 => intro u _ p hp; cases hp
   | case2 x y eqs' m hxv hyv ih =>
       intro u hu p hp
-      have hu : unify eqs' = some u := by grind [unify]
+      rw [unify_cons_delete x y eqs' hxv hyv] at hu
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         have hx := Term.var_of_isVar x m hxv
         have hy := Term.var_of_isVar y m hyv
         simp [hx, hy]
       · exact ih u hu p hp
-  | case3 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case3 x y eqs' m hxv hyv hocc =>
+      intro u hu _ _
+      rw [unify_cons_occurs_l x y eqs' hxv hyv hocc] at hu
+      cases hu
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu p hp
-      have hueq : (m, y) :: rest = u := by grind [unify]
+      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at hu
+      have hueq : (m, y) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
@@ -43,11 +44,18 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
         apply ih rest hrest
         simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
         exact ⟨p, hp, rfl⟩
-  | case5 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
-  | case6 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case5 x y eqs' m hxv hyv hocc hnone _ =>
+      intro u hu _ _
+      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone] at hu
+      cases hu
+  | case6 x y eqs' hxv m hyv hocc =>
+      intro u hu _ _
+      rw [unify_cons_occurs_r x y eqs' hxv hyv hocc] at hu
+      cases hu
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu p hp
-      have hueq : (m, x) :: rest = u := by grind [unify]
+      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at hu
+      have hueq : (m, x) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
@@ -65,16 +73,22 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
         apply ih rest hrest
         simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
         exact ⟨p, hp, rfl⟩
-  | case8 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case8 x y eqs' hxv m hyv hocc hnone _ =>
+      intro u hu _ _
+      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone] at hu
+      cases hu
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu p hp
-      have hu : unify (xs ++ eqs') = some u := by grind [unify]
+      rw [unify_cons_decomp x y eqs' hxv hyv hdec] at hu
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         apply Unifier.decomp_apply_sound u x y xs hdec
         intro q hq
         exact ih u hu q (List.mem_append_left _ hq)
       · exact ih u hu p (List.mem_append_right _ hp)
-  | case10 _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case10 x y eqs' hxv hyv hdec =>
+      intro u hu _ _
+      rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
+      cases hu
 
 end LambdaLab.Unification2

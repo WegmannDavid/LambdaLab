@@ -163,4 +163,71 @@ decreasing_by
         Equations.size eqs' + Term.size x + Term.size y
       omega
 
+/-! ## Step lemmas: one-shot unfold for each branch of `unify` on cons. -/
+
+variable {C : Type} [DecidableEq C]
+
+theorem unify_cons_delete (x y : Term C) (eqs' : Equations C) {n : Nat}
+    (hxv : Term.isVar x = some n) (hyv : Term.isVar y = some n) :
+    unify ((x, y) :: eqs') = unify eqs' := by
+  rw [unify, hxv]; simp [hyv]
+
+theorem unify_cons_occurs_l (x y : Term C) (eqs' : Equations C) {n : Nat}
+    (hxv : Term.isVar x = some n) (hyv : ¬ Term.isVar y = some n)
+    (hocc : Term.occurs n y = true) :
+    unify ((x, y) :: eqs') = none := by
+  rw [unify, hxv]; simp [hyv, hocc]
+
+theorem unify_cons_elim_l_some (x y : Term C) (eqs' : Equations C) {n : Nat}
+    {rest : Unifier C}
+    (hxv : Term.isVar x = some n) (hyv : ¬ Term.isVar y = some n)
+    (hocc : ¬ Term.occurs n y = true)
+    (hrest : unify (eqs'.map (fun p => (Term.single p.1 n y, Term.single p.2 n y)))
+             = some rest) :
+    unify ((x, y) :: eqs') = some ((n, y) :: rest) := by
+  rw [unify, hxv]; simp [hyv, hocc, hrest]
+
+theorem unify_cons_elim_l_none (x y : Term C) (eqs' : Equations C) {n : Nat}
+    (hxv : Term.isVar x = some n) (hyv : ¬ Term.isVar y = some n)
+    (hocc : ¬ Term.occurs n y = true)
+    (hnone : unify (eqs'.map (fun p => (Term.single p.1 n y, Term.single p.2 n y)))
+             = none) :
+    unify ((x, y) :: eqs') = none := by
+  rw [unify, hxv]; simp [hyv, hocc, hnone]
+
+theorem unify_cons_occurs_r (x y : Term C) (eqs' : Equations C) {m : Nat}
+    (hxv : Term.isVar x = none) (hyv : Term.isVar y = some m)
+    (hocc : Term.occurs m x = true) :
+    unify ((x, y) :: eqs') = none := by
+  rw [unify, hxv, hyv]; simp [hocc]
+
+theorem unify_cons_elim_r_some (x y : Term C) (eqs' : Equations C) {m : Nat}
+    {rest : Unifier C}
+    (hxv : Term.isVar x = none) (hyv : Term.isVar y = some m)
+    (hocc : ¬ Term.occurs m x = true)
+    (hrest : unify (eqs'.map (fun p => (Term.single p.1 m x, Term.single p.2 m x)))
+             = some rest) :
+    unify ((x, y) :: eqs') = some ((m, x) :: rest) := by
+  rw [unify, hxv, hyv]; simp [hocc, hrest]
+
+theorem unify_cons_elim_r_none (x y : Term C) (eqs' : Equations C) {m : Nat}
+    (hxv : Term.isVar x = none) (hyv : Term.isVar y = some m)
+    (hocc : ¬ Term.occurs m x = true)
+    (hnone : unify (eqs'.map (fun p => (Term.single p.1 m x, Term.single p.2 m x)))
+             = none) :
+    unify ((x, y) :: eqs') = none := by
+  rw [unify, hxv, hyv]; simp [hocc, hnone]
+
+theorem unify_cons_decomp (x y : Term C) (eqs' : Equations C) {xs : Equations C}
+    (hxv : Term.isVar x = none) (hyv : Term.isVar y = none)
+    (hd : Term.decomp x y = some xs) :
+    unify ((x, y) :: eqs') = unify (xs ++ eqs') := by
+  rw [unify, hxv, hyv, hd]
+
+theorem unify_cons_clash (x y : Term C) (eqs' : Equations C)
+    (hxv : Term.isVar x = none) (hyv : Term.isVar y = none)
+    (hd : Term.decomp x y = none) :
+    unify ((x, y) :: eqs') = none := by
+  rw [unify, hxv, hyv, hd]
+
 end LambdaLab.Unification2
