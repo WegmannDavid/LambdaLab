@@ -16,6 +16,13 @@ and vernacular layer, and first-order unification.
   commits without explicit approval.
 - Branch names should be descriptive of the work, not generic.
 
+## Review scratchpad
+
+`/Review.lean` is an untracked scratchpad at the project root (matched
+by `.gitignore`). Drop exploratory code there when you want the user
+to look at it before it lands in a committed file. Never commit it
+and never bypass the ignore rule.
+
 ## Build
 
 `lake build` from the project root builds the whole library. Individual
