@@ -1,0 +1,107 @@
+import Std.Data.HashMap
+import Std.Data.HashSet
+
+-- naming convention
+-- Nat variables
+-- 𝕋 terms with variables
+-- 𝕊 things that are substituted for variables
+
+
+class HasVars (𝕋 : Type) where
+  isFree : 𝕋 → Nat → Prop
+  fresh : 𝕋 → Nat
+
+  fresh_gt_free : ∀ x n, isFree x n → n < fresh x
+
+abbrev Subst (𝕊 : Type) := Std.HashMap Nat 𝕊
+
+class HasSubst (𝕋 : Type) (𝕊 : outParam Type) extends HasVars 𝕋 where
+  pSubst : 𝕋 → Subst 𝕊 → 𝕋
+
+/-- Apply the singleton substitution `[n ↦ s]` to `t`. -/
+def HasSubst.single [HasSubst 𝕋 𝕊] (t : 𝕋) (n : Nat) (s : 𝕊) : 𝕋 :=
+  HasSubst.pSubst t (((∅ : Subst 𝕊).insert n s))
+
+/-- For an arbitrary `f : α → Nat`, the foldr of `max` over a list bounds
+`f a` from above whenever `a` is in the list. Used to prove
+`fresh_gt_free` for substitution-shaped instances. -/
+theorem List.foldr_max_of_mem (f : α → Nat) :
+    ∀ (l : List α) (a : α), a ∈ l →
+    f a ≤ l.foldr (fun x acc => max acc (f x)) 0 := by
+  intro l
+  induction l with
+  | nil => intro a h; cases h
+  | cons x xs ih =>
+      intro a h
+      simp only [List.foldr]
+      rcases List.mem_cons.mp h with rfl | h'
+      · exact Nat.le_max_right _ _
+      · exact Nat.le_trans (ih a h') (Nat.le_max_left _ _)
+
+/-! ## Generic instances -/
+
+/-- Componentwise substitution on pairs. Free vars and `fresh` use the
+union/max of both components. -/
+instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] :
+    HasSubst (α × α') β where
+  pSubst p s := (HasSubst.pSubst p.1 s, HasSubst.pSubst p.2 s)
+  isFree p n := HasVars.isFree p.1 n ∨ HasVars.isFree p.2 n
+  fresh p := max (HasVars.fresh p.1) (HasVars.fresh p.2)
+  fresh_gt_free := by
+    intro p n h
+    rcases h with h₁ | h₂
+    · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h₁) (Nat.le_max_left _ _)
+    · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h₂) (Nat.le_max_right _ _)
+
+/-- Pointwise substitution on lists. `isFree` is "free in some element";
+`fresh` is the foldr of `max` over the per-element fresh values. -/
+instance {α β : Type} [HasSubst α β] : HasSubst (List α) β where
+  pSubst xs s := xs.map (fun x => HasSubst.pSubst x s)
+  isFree xs n := ∃ x ∈ xs, HasVars.isFree x n
+  fresh xs := xs.foldr (fun x acc => max acc (HasVars.fresh x)) 0
+  fresh_gt_free := by
+    intro xs n h
+    obtain ⟨x, hx, hf⟩ := h
+    have key := List.foldr_max_of_mem (fun y : α => HasVars.fresh y) xs x hx
+    exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ hf) key
+
+/-! ## A `Nat` is its own variable
+
+For a bare `Nat`, the only "free variable" is the number itself, and a
+fresh `Nat` is just the successor. -/
+
+instance : HasVars Nat where
+  isFree n m := n = m
+  fresh n := n + 1
+  fresh_gt_free := by intro n m h; subst h; exact Nat.lt_succ_self _
+
+/-! ## Substitution-into-`HashMap` instance
+
+Generalises the substitution-into-substitution case: any `HashMap K V`
+with variable-bearing keys and substitutable values is itself
+substitutable. The key contribution to support uses `HasVars K`, so the
+nominal-set support semantics still falls out for `Subst 𝕊 = HashMap Nat
+𝕊` — keys appear in `isFree` because `HasVars Nat` makes a key its own
+variable. -/
+
+/-- Per-entry contribution of a `(key, value)` pair to the support of a
+hashmap: above every free var in either component. -/
+private def pairFresh {K V : Type} [HasVars K] [HasVars V] (p : K × V) : Nat :=
+  max (HasVars.fresh p.1) (HasVars.fresh p.2)
+
+instance {K V β : Type} [BEq K] [Hashable K] [HasVars K] [HasSubst V β] :
+    HasSubst (Std.HashMap K V) β where
+  pSubst m s := m.map (fun _ v => HasSubst.pSubst v s)
+  isFree m n := ∃ p ∈ m.toList, HasVars.isFree p.1 n ∨ HasVars.isFree p.2 n
+  fresh m := m.toList.foldr (fun p acc => max acc (pairFresh p)) 0
+  fresh_gt_free := by
+    intro m n h
+    obtain ⟨p, hp, hor⟩ := h
+    have key := List.foldr_max_of_mem pairFresh m.toList p hp
+    rcases hor with hk | hv
+    · have h₁ : n < HasVars.fresh p.1 := HasVars.fresh_gt_free _ _ hk
+      have h₂ : HasVars.fresh p.1 ≤ pairFresh p := Nat.le_max_left _ _
+      exact Nat.lt_of_lt_of_le (Nat.lt_of_lt_of_le h₁ h₂) key
+    · have h₁ : n < HasVars.fresh p.2 := HasVars.fresh_gt_free _ _ hv
+      have h₂ : HasVars.fresh p.2 ≤ pairFresh p := Nat.le_max_right _ _
+      exact Nat.lt_of_lt_of_le (Nat.lt_of_lt_of_le h₁ h₂) key
