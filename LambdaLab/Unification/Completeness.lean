@@ -3,38 +3,32 @@ import LambdaLab.Unification.Basic
 /-! # Completeness of `unify`
 
 If any unifier exists, the algorithm succeeds. Carries over from the
-fat-typeclass version on `archive/fat-unification`; the proof structure
-is the same, only the names of the bridge lemmas change. -/
+fat-typeclass version on `archive/fat-unification`. -/
 
 /-- **Completeness of `unify`.** If any unifier exists for `eqs`, then
 `unify eqs` succeeds. Equivalently — and more usefully in this
 contrapositive form — if `unify eqs = none`, no unifier exists. Proved by
 induction on `unify.induct`: success branches close trivially; failure
 branches each contradict the unifier-exists hypothesis using one of
-`occurs_no_unifier`, `decomp_none_no_unifier`, or `unifier_absorb`. -/
+`occurs_no_unifier`, `decomp_none_no_unifier`, or `unifier_absorb`. The
+mechanical `unify` case-split is dispatched by `grind [unify]`. -/
 theorem unify_complete {α : Type} [Signature α] :
     ∀ (eqs : Equations α) (σ : Unifier α),
       σ.Unifies eqs → unify eqs ≠ none := by
   intro eqs
   induction eqs using unify.induct with
-  | case1 =>
-      intro σ _ heq
-      rw [unify] at heq
-      cases heq
+  | case1 => intro σ _ heq; rw [unify] at heq; cases heq
   | case2 x y eqs' m hxv hyv ih =>
-      intro σ hσ
-      rw [unify_cons_delete x y eqs' hxv hyv]
-      exact ih σ (fun p hp => hσ p (List.mem_cons_of_mem _ hp))
+      intro σ hσ heq
+      have heq : unify eqs' = none := by grind [unify]
+      exact ih σ (fun p hp => hσ p (List.mem_cons_of_mem _ hp)) heq
   | case3 x y eqs' m hxv hyv hocc =>
       intro σ hσ _
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
       have hxeq : x = Signature.var m := Signature.var_of_isVar x m hxv
       rw [hxeq] at hxy
       exact Signature.occurs_no_unifier y m σ hocc hyv hxy
-  | case4 x y eqs' m hxv hyv hocc rest hrest _ =>
-      intro _ _ heq
-      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at heq
-      cases heq
+  | case4 _ _ _ _ _ _ _ _ _ _ => intro _ _ heq; grind [unify]
   | case5 x y eqs' m hxv hyv hocc hnone ih =>
       intro σ hσ _
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
@@ -57,10 +51,7 @@ theorem unify_complete {α : Type} [Signature α] :
       rw [hyeq] at hxy
       have hxv' : Signature.isVar x ≠ some m := by rw [hxv]; intro h; cases h
       exact Signature.occurs_no_unifier x m σ hocc hxv' hxy.symm
-  | case7 x y eqs' hxv m hyv hocc rest hrest _ =>
-      intro _ _ heq
-      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at heq
-      cases heq
+  | case7 _ _ _ _ _ _ _ _ _ _ => intro _ _ heq; grind [unify]
   | case8 x y eqs' hxv m hyv hocc hnone ih =>
       intro σ hσ _
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
@@ -78,15 +69,15 @@ theorem unify_complete {α : Type} [Signature α] :
         exact hq_unif
       exact ih σ hσ_sub hnone
   | case9 x y eqs' hxv hyv xs hdec ih =>
-      intro σ hσ
-      rw [unify_cons_decomp x y eqs' hxv hyv hdec]
+      intro σ hσ heq
+      have heq : unify (xs ++ eqs') = none := by grind [unify]
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
       have hσ' : σ.Unifies (xs ++ eqs') := by
         intro p hp
         rcases List.mem_append.mp hp with hp_xs | hp_eqs'
         · exact Signature.decomp_unifier_sound x y xs σ hdec hxy p hp_xs
         · exact hσ p (List.mem_cons_of_mem _ hp_eqs')
-      exact ih σ hσ'
+      exact ih σ hσ' heq
   | case10 x y eqs' hxv hyv hdec =>
       intro σ hσ _
       have hxy : σ.apply x = σ.apply y := hσ.head_eq

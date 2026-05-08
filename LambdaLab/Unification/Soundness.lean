@@ -9,33 +9,27 @@ slim typeclass (see `Unification/Bridge.lean`). -/
 
 /-- **Soundness of `unify`.** When `unify eqs` returns `some u`, the
 unifier `u` actually unifies every equation in `eqs`. Proved by
-induction on `unify.induct`; failure branches dispatch by contradiction
-with the `some u` hypothesis. -/
+induction on `unify.induct`; failure branches close by contradiction
+via `grind`. -/
 theorem unify_unifies {α : Type} [Signature α] :
     ∀ (eqs : Equations α) (u : Unifier α),
       unify eqs = some u → u.Unifies eqs := by
   intro eqs
   induction eqs using unify.induct with
-  | case1 =>
-      intro u _ p hp
-      cases hp
+  | case1 => intro u _ p hp; cases hp
   | case2 x y eqs' m hxv hyv ih =>
       intro u hu p hp
-      rw [unify_cons_delete x y eqs' hxv hyv] at hu
+      have hu : unify eqs' = some u := by grind [unify]
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         have hx := Signature.var_of_isVar x m hxv
         have hy := Signature.var_of_isVar y m hyv
         simp [hx, hy]
       · exact ih u hu p hp
-  | case3 x y eqs' m hxv hyv hocc =>
-      intro u hu _ _
-      rw [unify_cons_occurs_l x y eqs' hxv hyv hocc] at hu
-      cases hu
+  | case3 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu p hp
-      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at hu
-      have hueq : (m, y) :: rest = u := Option.some.inj hu
+      have hueq : (m, y) :: rest = u := by grind [unify]
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
@@ -52,18 +46,11 @@ theorem unify_unifies {α : Type} [Signature α] :
           rw [Equations.single_eq]
           exact List.mem_map_of_mem hp
         exact ih rest hrest _ hpsub
-  | case5 x y eqs' m hxv hyv hocc hnone _ =>
-      intro u hu _ _
-      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone] at hu
-      cases hu
-  | case6 x y eqs' hxv m hyv hocc =>
-      intro u hu _ _
-      rw [unify_cons_occurs_r x y eqs' hxv hyv hocc] at hu
-      cases hu
+  | case5 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case6 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu p hp
-      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at hu
-      have hueq : (m, x) :: rest = u := Option.some.inj hu
+      have hueq : (m, x) :: rest = u := by grind [unify]
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
@@ -80,20 +67,14 @@ theorem unify_unifies {α : Type} [Signature α] :
           rw [Equations.single_eq]
           exact List.mem_map_of_mem hp
         exact ih rest hrest _ hpsub
-  | case8 x y eqs' hxv m hyv hocc hnone _ =>
-      intro u hu _ _
-      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone] at hu
-      cases hu
+  | case8 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu p hp
-      rw [unify_cons_decomp x y eqs' hxv hyv hdec] at hu
+      have hu : unify (xs ++ eqs') = some u := by grind [unify]
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         apply Signature.decomp_apply_sound u x y xs hdec
         intro q hq
         exact ih u hu q (List.mem_append_left _ hq)
       · exact ih u hu p (List.mem_append_right _ hp)
-  | case10 x y eqs' hxv hyv hdec =>
-      intro u hu _ _
-      rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
-      cases hu
+  | case10 _ _ _ _ _ _ => intro u hu _ _; grind [unify]
