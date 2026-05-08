@@ -25,7 +25,13 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
       cases hu
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu p hp
-      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at hu
+      have hrest' : unify (eqs'.map (fun p => (Term.single p.1 m y, Term.single p.2 m y))) =
+          some rest := by
+        have : eqs'.attach.map (fun (x : Subtype (Membership.mem eqs')) =>
+            (Term.single x.val.1 m y, Term.single x.val.2 m y)) =
+          eqs'.map (fun p => (Term.single p.1 m y, Term.single p.2 m y)) := by simp
+        rw [this] at hrest; exact hrest
+      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest'] at hu
       have hueq : (m, y) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
