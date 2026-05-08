@@ -222,6 +222,81 @@ theorem size_decomp [DecidableEq C] (x y : Term C) (xs : Equations C)
       simp only [List.foldr]
       omega
 
+/-! ## Misc lemmas -/
+
+theorem var_of_isVar (t : Term C) (n : Nat) : isVar t = some n → t = .var n := by
+  intro h
+  cases t with
+  | var m => simp [isVar] at h; rw [h]
+  | app _ _ _ => simp [isVar] at h
+
+theorem pSubst_var_eq (n : Nat) (s : Term C) :
+    pSubst ((∅ : Subst (Term C)).insert n s) (.var n) = s := by
+  rw [pSubst_var]
+  exact Std.HashMap.getD_insert_self
+
 end Term
+
+/-! ## Equations under `single` -/
+
+theorem Equations.single_eq {C : Type} (eqs : Equations C) (n : Nat) (s : Term C) :
+    eqs.map (fun p => (Term.single p.1 n s, Term.single p.2 n s)) =
+      eqs.map (fun p => (Term.single p.1 n s, Term.single p.2 n s)) := rfl
+
+/-! ## Unifier-level bridges -/
+
+namespace Unifier
+
+variable {C : Type}
+
+theorem apply_var_self (l : Unifier C) (n : Nat) (s : Term C)
+    (hns : l.apply (.var n) = l.apply s) :
+    l.apply (.var n) = l.apply s := hns
+
+/-- `Unifier.apply` distributes over `app`. -/
+theorem apply_app (l : Unifier C) (c : C) (k : Nat) (args : Fin k → Term C) :
+    l.apply (.app c k args) = .app c k (fun i => l.apply (args i)) := by
+  induction l generalizing args with
+  | nil => simp [apply_nil]
+  | cons p rest ih =>
+      obtain ⟨n, s⟩ := p
+      rw [apply_cons]
+      show apply rest (Term.pSubst _ (.app c k args)) = _
+      rw [Term.pSubst_app, ih]
+      apply congrArg
+      funext i
+      rfl
+
+/-- **Unifier absorption.** If `l.apply (var n) = l.apply s`, then
+prepending `[n ↦ s]` to any term `t` doesn't change `l`'s result. -/
+theorem absorb (l : Unifier C) (t : Term C) (n : Nat) (s : Term C)
+    (hns : l.apply (.var n) = l.apply s) :
+    l.apply (Term.single t n s) = l.apply t := by
+  induction t with
+  | var k =>
+      show l.apply (Term.pSubst _ (.var k)) = l.apply (.var k)
+      rw [Term.pSubst_var, Std.HashMap.getD_insert]
+      by_cases hnk : n = k
+      · subst hnk; simp; exact hns.symm
+      · have hbeq : (n == k) = false := by simp [hnk]
+        rw [hbeq]; simp [Std.HashMap.getD_empty]
+  | app c k args ih =>
+      show l.apply (Term.pSubst _ (.app c k args)) = l.apply (.app c k args)
+      rw [Term.pSubst_app, apply_app, apply_app]
+      congr; funext i; exact ih i
+
+/-- **Decomposition under unifier (forward).** If `l` unifies each pair
+in `xs` and `decomp x y = some xs`, then `l.apply x = l.apply y`. -/
+theorem decomp_apply_sound [DecidableEq C] (l : Unifier C) (x y : Term C)
+    (xs : Equations C) (hd : Term.decomp x y = some xs)
+    (hu : ∀ p ∈ xs, l.apply p.1 = l.apply p.2) :
+    l.apply x = l.apply y := by
+  obtain ⟨c, k, argsx, argsy, hxc, hyc, hxs⟩ := Term.decomp_eq_some hd
+  subst hxs hxc hyc
+  rw [apply_app, apply_app]
+  congr; funext i
+  exact hu (argsx i, argsy i) (List.mem_map.mpr ⟨i, List.mem_finRange i, rfl⟩)
+
+end Unifier
 
 end LambdaLab.Unification2
