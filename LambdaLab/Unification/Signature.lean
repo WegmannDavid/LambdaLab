@@ -12,25 +12,165 @@ the bottom of the file): all of `isFree`, `fresh`, and `pSubst` are
 forced by structural recursion on `deconstruct`, so the substitution
 semantics cannot disagree with the term structure. -/
 
+/-! ## Helper: curried n-ary function type and (un)application -/
+
+/-- `arityType α β n` is the type of curried n-ary functions
+`α → α → … → α → β`. -/
+abbrev arityType (α β : Type) : Nat → Type
+  | 0 => β
+  | n + 1 => α → arityType α β n
+
+/-- Apply a curried `arityType` function to a `Fin n`-indexed argument list. -/
+def applyArgs {α β : Type} : ∀ {n : Nat}, arityType α β n → (Fin n → α) → β
+  | 0,     x, _    => x
+  | _ + 1, f, args => applyArgs (f (args 0)) (fun i => args i.succ)
+
+/-- Prepend an element to a `Fin n → α` function, yielding `Fin (n+1) → α`. -/
+def consFn {α : Type} {n : Nat} (a : α) (rest : Fin n → α) : Fin (n + 1) → α
+  | ⟨0, _⟩       => a
+  | ⟨k + 1, h⟩   => rest ⟨k, Nat.lt_of_succ_lt_succ h⟩
+
+/-- Curry a function on `Fin n → α` into `arityType` form. -/
+def collectArgs {α β : Type} : ∀ {n : Nat}, ((Fin n → α) → β) → arityType α β n
+  | 0,     k => k Fin.elim0
+  | _ + 1, k => fun a => collectArgs (fun rest => k (consFn a rest))
+
 class Signature (α : Type) where
-  Constructor : Type
-  arity : Constructor → Nat
-  decEqConstructor : DecidableEq Constructor
-  construct : Nat ⊕ (Σ c : Constructor, Vector α (arity c)) → α
-  deconstruct : α → Nat ⊕ (Σ c : Constructor, Vector α (arity c))
+  var : Nat → α
+  NonVarConstructors : Type
+  arity : NonVarConstructors → Nat
+  decEqConstructor : DecidableEq NonVarConstructors
+  construct : (c : NonVarConstructors) → arityType α α (arity c)
+  elim : ∀ {β : Type}, α → (Nat → β) →
+    ((c : NonVarConstructors) → arityType α β (arity c)) → β
   size : α → Nat
 
-  construct_deconstruct : ∀ a, deconstruct (construct a) = a
-  deconstruct_construct : ∀ a, construct (deconstruct a) = a
-  size_construct_var : ∀ n, size (construct (Sum.inl n)) = 1
-  size_construct : ∀ c args,
-    size (construct (Sum.inr ⟨c, args⟩)) =
-      1 + (List.finRange (arity c)).foldr
-        (fun i acc => acc + size (args.get i)) 0
+  /-- `elim` β-reduces on a variable. -/
+  elim_var : ∀ {β : Type} (n : Nat) (fvar : Nat → β)
+      (fcons : (c : NonVarConstructors) → arityType α β (arity c)),
+    elim (var n) fvar fcons = fvar n
+
+  /-- `elim` β-reduces on a constructor application. -/
+  elim_construct : ∀ {β : Type} (c : NonVarConstructors)
+      (args : Fin (arity c) → α) (fvar : Nat → β)
+      (fcons : (c : NonVarConstructors) → arityType α β (arity c)),
+    elim (applyArgs (construct c) args) fvar fcons = applyArgs (fcons c) args
+
+  /-- Induction principle: every term is either a variable or a
+  constructor application. The analog of an inductive type's `.rec`. -/
+  recursor : ∀ {motive : α → Prop},
+    (∀ n, motive (var n)) →
+    (∀ (c : NonVarConstructors) (args : Fin (arity c) → α),
+      (∀ i, motive (args i)) → motive (applyArgs (construct c) args)) →
+    ∀ t, motive t
+
+  size_var : ∀ n, size (var n) = 1
+  size_construct : ∀ (c : NonVarConstructors) (args : Fin (arity c) → α),
+    size (applyArgs (construct c) args) =
+      1 + (List.finRange (arity c)).foldr (fun i acc => acc + size (args i)) 0
 
 attribute [reducible] Signature.decEqConstructor
 attribute [instance] Signature.decEqConstructor
-attribute [simp] Signature.construct_deconstruct Signature.deconstruct_construct
+
+/-! ## Backwards-compatible Vector API
+
+Provides the old class's `Constructor`, `construct` (Sum/Vector form),
+`deconstruct`, and bijection laws as derived definitions / theorems on
+top of the new fields, so the rest of the library (Bridge, Basic, …)
+keeps working unchanged. -/
+
+namespace Signature
+variable {α : Type} [Signature α]
+
+abbrev Constructor (α : Type) [Signature α] := NonVarConstructors α
+
+/-- Apply curried `construct c` to a `Fin (arity c)`-indexed arg list. -/
+def constructFin (c : NonVarConstructors α) (args : Fin (arity c) → α) : α :=
+  applyArgs (construct c) args
+
+/-- The unified Sum/Vector-form constructor. -/
+def construct_old : Nat ⊕ (Σ c : NonVarConstructors α, Vector α (arity c)) → α
+  | Sum.inl n         => var n
+  | Sum.inr ⟨c, vec⟩  => constructFin c vec.get
+
+/-- The unified Sum/Vector-form deconstructor. -/
+def deconstruct (t : α) : Nat ⊕ (Σ c : NonVarConstructors α, Vector α (arity c)) :=
+  elim t Sum.inl (fun c => collectArgs (fun args => Sum.inr ⟨c, Vector.ofFn args⟩))
+
+/-! ### Round-trip lemmas for `applyArgs` / `collectArgs` -/
+
+theorem applyArgs_collectArgs {β : Type} :
+    ∀ {n : Nat} (k : (Fin n → α) → β) (args : Fin n → α),
+      applyArgs (collectArgs k) args = k args
+  | 0, k, args => by
+      show k Fin.elim0 = k args
+      congr; funext i; exact i.elim0
+  | _ + 1, k, args => by
+      show applyArgs (collectArgs (fun rest => k (consFn (args 0) rest)))
+            (fun i => args i.succ) = k args
+      rw [applyArgs_collectArgs]
+      congr; funext i
+      match i with
+      | ⟨0, _⟩ => rfl
+      | ⟨k + 1, h⟩ => rfl
+
+/-! ### Bijection laws for the derived `construct_old` / `deconstruct` -/
+
+@[simp] theorem deconstruct_var (n : Nat) :
+    deconstruct (var n : α) = Sum.inl n := by
+  unfold deconstruct; rw [Signature.elim_var]
+
+@[simp] theorem deconstruct_constructFin (c : NonVarConstructors α)
+    (args : Fin (arity c) → α) :
+    deconstruct (constructFin c args) = Sum.inr ⟨c, Vector.ofFn args⟩ := by
+  unfold deconstruct constructFin
+  rw [Signature.elim_construct, applyArgs_collectArgs]
+
+@[simp] theorem construct_deconstruct :
+    ∀ (a : Nat ⊕ (Σ c : NonVarConstructors α, Vector α (arity c))),
+      deconstruct (construct_old a) = a
+  | Sum.inl n => deconstruct_var n
+  | Sum.inr ⟨c, vec⟩ => by
+      show deconstruct (constructFin c vec.get) = Sum.inr ⟨c, vec⟩
+      rw [deconstruct_constructFin]
+      have hvec : Vector.ofFn vec.get = vec := by
+        apply Vector.ext; intro i hi
+        show (Vector.ofFn vec.get)[i]'hi = vec[i]'hi
+        simp [Vector.get]
+      rw [hvec]
+
+@[simp] theorem deconstruct_construct (t : α) :
+    construct_old (deconstruct t) = t := by
+  refine Signature.recursor (motive := fun t => construct_old (deconstruct t) = t)
+    ?var ?cons t
+  · intro n
+    show construct_old (deconstruct (var n)) = var n
+    rw [deconstruct_var]; rfl
+  · intro c args _
+    show construct_old (deconstruct (applyArgs (construct c) args)) =
+      applyArgs (construct c) args
+    show construct_old (deconstruct (constructFin c args)) = constructFin c args
+    rw [deconstruct_constructFin]
+    show constructFin c (Vector.ofFn args).get = constructFin c args
+    congr; funext i
+    show (Vector.ofFn args)[i.val]'i.isLt = args i
+    simp
+
+/-! ### `size` rephrased on the derived `construct_old` -/
+
+theorem size_construct_var (n : Nat) :
+    size (construct_old (Sum.inl n) : α) = 1 :=
+  Signature.size_var n
+
+theorem size_construct_old (c : NonVarConstructors α) (vec : Vector α (arity c)) :
+    size (construct_old (Sum.inr ⟨c, vec⟩) : α) =
+      1 + (List.finRange (arity c)).foldr
+        (fun i acc => acc + size (vec.get i)) 0 := by
+  show size (constructFin c vec.get) = _
+  unfold constructFin
+  rw [Signature.size_construct]
+
+end Signature
 
 abbrev Equation (α : Type) := α × α
 abbrev Equations (α : Type) := List (Equation α)
@@ -59,11 +199,11 @@ theorem size_lt_of_get {t : α} {c : Constructor α}
     (h : Signature.deconstruct t = Sum.inr ⟨c, args⟩)
     (i : Fin (Signature.arity c)) :
     Signature.size (args.get i) < Signature.size t := by
-  have ht : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+  have ht : t = Signature.construct_old (Sum.inr ⟨c, args⟩) := by
     have := Signature.deconstruct_construct (α := α) t
     rw [h] at this
     exact this.symm
-  rw [ht, Signature.size_construct]
+  rw [ht, Signature.size_construct_old]
   have hmem : i ∈ List.finRange (Signature.arity c) := List.mem_finRange i
   have hbound := List.le_foldr_sumIdx (fun j : Fin (Signature.arity c) =>
               Signature.size (args.get j))
@@ -72,9 +212,6 @@ theorem size_lt_of_get {t : α} {c : Constructor α}
   omega
 
 /-! ## Derived operations -/
-
-/-- Build the term that is exactly variable `n`. -/
-@[inline] def var (n : Nat) : α := Signature.construct (Sum.inl n)
 
 /-- Detect whether a term is a variable, and if so which one. -/
 @[inline] def isVar (t : α) : Option Nat :=
@@ -116,7 +253,7 @@ def pSubst (t : α) (σ : Subst α) : α :=
   match h : Signature.deconstruct t with
   | Sum.inl n => σ.getD n t
   | Sum.inr ⟨c, args⟩ =>
-      Signature.construct (Sum.inr ⟨c, Vector.ofFn (fun (i : Fin (Signature.arity c)) =>
+      Signature.construct_old (Sum.inr ⟨c, Vector.ofFn (fun (i : Fin (Signature.arity c)) =>
         pSubst (args.get i) σ)⟩)
   termination_by Signature.size t
   decreasing_by
@@ -131,18 +268,18 @@ dependent matches by reducing the discriminant. -/
 
 theorem occurs_var (n m : Nat) :
     occurs (α := α) n (var m) = decide (m = n) := by
-  unfold occurs var
+  unfold occurs
   split
   · rename_i m' h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     cases h; rfl
   · rename_i c args h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     nomatch h
 
 theorem occurs_construct (n : Nat) (c : Constructor α)
     (args : Vector α (Signature.arity c)) :
-    occurs n (Signature.construct (Sum.inr ⟨c, args⟩)) =
+    occurs n (Signature.construct_old (Sum.inr ⟨c, args⟩)) =
       (List.finRange (Signature.arity c)).any (fun i => occurs n (args.get i)) := by
   rw [occurs.eq_def]
   split
@@ -154,17 +291,17 @@ theorem occurs_construct (n : Nat) (c : Constructor α)
     cases h; rfl
 
 theorem fresh_var (n : Nat) : fresh (var n : α) = n + 1 := by
-  unfold fresh var
+  unfold fresh
   split
   · rename_i m h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     cases h; rfl
   · rename_i c args h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     nomatch h
 
 theorem fresh_construct (c : Constructor α) (args : Vector α (Signature.arity c)) :
-    fresh (Signature.construct (Sum.inr ⟨c, args⟩)) =
+    fresh (Signature.construct_old (Sum.inr ⟨c, args⟩)) =
       (List.finRange (Signature.arity c)).foldr
         (fun i acc => max acc (fresh (args.get i))) 0 := by
   rw [fresh.eq_def]
@@ -178,19 +315,19 @@ theorem fresh_construct (c : Constructor α) (args : Vector α (Signature.arity 
 
 theorem pSubst_var (n : Nat) (σ : Subst α) :
     pSubst (var n) σ = σ.getD n (var n) := by
-  unfold pSubst var
+  unfold pSubst
   split
   · rename_i m h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     cases h; rfl
   · rename_i c args h
-    rw [Signature.construct_deconstruct] at h
+    rw [deconstruct_var] at h
     nomatch h
 
 theorem pSubst_construct (c : Constructor α)
     (args : Vector α (Signature.arity c)) (σ : Subst α) :
-    pSubst (Signature.construct (Sum.inr ⟨c, args⟩)) σ =
-      Signature.construct (Sum.inr ⟨c, Vector.ofFn (fun i => pSubst (args.get i) σ)⟩) := by
+    pSubst (Signature.construct_old (Sum.inr ⟨c, args⟩)) σ =
+      Signature.construct_old (Sum.inr ⟨c, Vector.ofFn (fun i => pSubst (args.get i) σ)⟩) := by
   rw [pSubst.eq_def]
   split
   · rename_i m h
@@ -220,7 +357,7 @@ theorem fresh_gt_occurs : ∀ (t : α) (n : Nat),
         rw [ht, fresh_var]
         omega
     | Sum.inr ⟨c, args⟩ =>
-        have ht : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+        have ht : t = Signature.construct_old (Sum.inr ⟨c, args⟩) := by
           have := Signature.deconstruct_construct (α := α) t
           rw [hd] at this
           exact this.symm
@@ -259,23 +396,19 @@ instance instHasSubst : HasSubst α α where
 /-! ## Basic lemmas about `var` / `isVar` / `size` -/
 
 theorem isVar_var (n : Nat) : isVar (var n : α) = some n := by
-  unfold isVar var
-  simp
+  unfold isVar
+  rw [deconstruct_var]
 
 theorem var_of_isVar (t : α) (n : Nat) : isVar t = some n → t = var n := by
-  unfold isVar var
+  unfold isVar
   intro h
   split at h
   · rename_i m hd
     cases h
-    have := Signature.deconstruct_construct (α := α) t
+    have := Signature.deconstruct_construct t
     rw [hd] at this
     exact this.symm
   · cases h
-
-theorem size_var (n : Nat) : Signature.size (var n : α) = 1 := by
-  unfold var
-  exact Signature.size_construct_var n
 
 theorem var_isFree (n m : Nat) : HasVars.isFree (var n : α) m ↔ m = n := by
   show occurs m (var n) = true ↔ m = n
@@ -301,11 +434,11 @@ def decomp (x y : α) : Option (Equations α) :=
   | _, _ => none
 
 theorem decomp_var_left (n : Nat) (y : α) : decomp (var n) y = none := by
-  unfold decomp var
+  unfold decomp
   simp
 
 theorem decomp_var_right (x : α) (n : Nat) : decomp x (var n) = none := by
-  unfold decomp var
+  unfold decomp
   split <;> simp_all
 
 end Signature

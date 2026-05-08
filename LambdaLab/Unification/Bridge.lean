@@ -23,7 +23,7 @@ theorem term_ind {motive : α → Prop}
     (var_case : ∀ n, motive (var n))
     (construct_case : ∀ (c : Constructor α) (args : Vector α (arity c)),
        (∀ i : Fin (arity c), motive (args.get i)) →
-       motive (construct (Sum.inr ⟨c, args⟩))) :
+       motive (construct_old (Sum.inr ⟨c, args⟩))) :
     ∀ t : α, motive t := by
   intro t
   induction hk : size t using Nat.strongRecOn generalizing t with
@@ -37,7 +37,7 @@ theorem term_ind {motive : α → Prop}
         rw [ht]
         exact var_case m
     | Sum.inr ⟨c, args⟩ =>
-        have ht : t = construct (Sum.inr ⟨c, args⟩) := by
+        have ht : t = construct_old (Sum.inr ⟨c, args⟩) := by
           have := deconstruct_construct (α := α) t
           rw [hd] at this
           exact this.symm
@@ -103,7 +103,7 @@ theorem single_off (t : α) (n : Nat) (s : α)
       apply ih i
       intro hfi
       apply hf
-      show occurs n (construct (Sum.inr ⟨c, args⟩)) = true
+      show occurs n (construct_old (Sum.inr ⟨c, args⟩)) = true
       rw [occurs_construct, List.any_eq_true]
       exact ⟨i, List.mem_finRange i, hfi⟩
 
@@ -114,8 +114,8 @@ theorem single_off (t : α) (n : Nat) (s : α)
 theorem decomp_eq_some {x y : α} {xs : Equations α}
     (hd : decomp x y = some xs) :
     ∃ (c : Constructor α) (ax ay : Vector α (arity c)),
-      x = construct (Sum.inr ⟨c, ax⟩) ∧
-      y = construct (Sum.inr ⟨c, ay⟩) ∧
+      x = construct_old (Sum.inr ⟨c, ax⟩) ∧
+      y = construct_old (Sum.inr ⟨c, ay⟩) ∧
       xs = (List.finRange (arity c)).map (fun i => (ax.get i, ay.get i)) := by
   unfold decomp at hd
   split at hd
@@ -140,7 +140,7 @@ theorem size_decomp (x y : α) (xs : Equations α) (hd : decomp x y = some xs) :
   obtain ⟨c, ax, ay, hxc, hyc, hxs⟩ := decomp_eq_some hd
   subst hxs
   rw [List.foldr_map]
-  rw [hxc, hyc, size_construct, size_construct]
+  rw [hxc, hyc, size_construct_old, size_construct_old]
   -- Uniform-ize the foldr by replacing the lambda over pairs with a lambda over indices.
   show List.foldr (fun i acc => acc + size (ax.get i) + size (ay.get i)) 0
         (List.finRange (arity c)) <
@@ -160,9 +160,9 @@ theorem isFree_var (n m : Nat) :
   var_isFree n m
 
 theorem isFree_construct (c : Constructor α) (args : Vector α (arity c)) (m : Nat) :
-    HasVars.isFree (construct (Sum.inr ⟨c, args⟩)) m ↔
+    HasVars.isFree (construct_old (Sum.inr ⟨c, args⟩)) m ↔
       ∃ i : Fin (arity c), HasVars.isFree (args.get i) m := by
-  show occurs m (construct (Sum.inr ⟨c, args⟩)) = true ↔ _
+  show occurs m (construct_old (Sum.inr ⟨c, args⟩)) = true ↔ _
   rw [occurs_construct, List.any_eq_true]
   constructor
   · rintro ⟨i, _, hi⟩; exact ⟨i, hi⟩
@@ -322,8 +322,8 @@ in hand, those bridges become structural inductions or constructor
 injectivity. -/
 theorem apply_construct (u : Unifier α) (c : Signature.Constructor α)
     (args : Vector α (Signature.arity c)) :
-    u.apply (Signature.construct (Sum.inr ⟨c, args⟩)) =
-      Signature.construct (Sum.inr ⟨c,
+    u.apply (Signature.construct_old (Sum.inr ⟨c, args⟩)) =
+      Signature.construct_old (Sum.inr ⟨c,
         Vector.ofFn (fun i => u.apply (args.get i))⟩) := by
   induction u generalizing args with
   | nil =>
@@ -337,7 +337,7 @@ theorem apply_construct (u : Unifier α) (c : Signature.Constructor α)
       obtain ⟨n, s⟩ := p
       rw [apply_cons]
       show Unifier.apply rest
-        (Signature.pSubst (Signature.construct (Sum.inr ⟨c, args⟩))
+        (Signature.pSubst (Signature.construct_old (Sum.inr ⟨c, args⟩))
           ((∅ : Subst α).insert n s)) = _
       rw [Signature.pSubst_construct, ih]
       congr 3
@@ -438,7 +438,7 @@ theorem Signature.decomp_unifier_sound {α : Type} [Signature α]
 private theorem isVar_none_construct {α : Type} [Signature α] {t : α}
     (h : Signature.isVar t = none) :
     ∃ (c : Signature.Constructor α) (args : Vector α (Signature.arity c)),
-      t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+      t = Signature.construct_old (Sum.inr ⟨c, args⟩) := by
   match hd : Signature.deconstruct t with
   | Sum.inl n =>
       exfalso
@@ -544,10 +544,10 @@ arguments. -/
 private theorem size_apply_construct {α : Type} [Signature α]
     (l : Unifier α) (c : Signature.Constructor α)
     (args : Vector α (Signature.arity c)) :
-    Signature.size (l.apply (Signature.construct (Sum.inr ⟨c, args⟩))) =
+    Signature.size (l.apply (Signature.construct_old (Sum.inr ⟨c, args⟩))) =
       1 + (List.finRange (Signature.arity c)).foldr
         (fun i acc => acc + Signature.size (l.apply (args.get i))) 0 := by
-  rw [Unifier.apply_construct, Signature.size_construct]
+  rw [Unifier.apply_construct, Signature.size_construct_old]
   congr 1
   generalize List.finRange (Signature.arity c) = L
   induction L with
@@ -605,7 +605,7 @@ theorem Signature.occurs_no_unifier {α : Type} [Signature α]
       subst hmn
       exact absurd hisv hnv
   | Sum.inr ⟨c, args⟩ =>
-      have htc : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+      have htc : t = Signature.construct_old (Sum.inr ⟨c, args⟩) := by
         have := Signature.deconstruct_construct (α := α) t
         rw [hd] at this
         exact this.symm
