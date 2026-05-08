@@ -38,32 +38,19 @@ theorem unify_mgu {α : Type} [Signature α] :
       exact ⟨σ, fun t => by simp [Unifier.apply]⟩
   | case2 x y eqs' m hxv hyv ih =>
       intro u hu σ hσ
-      have hbody : unify ((x, y) :: eqs') = unify eqs' := by
-        rw [unify, hxv]; simp [hyv]
-      rw [hbody] at hu
-      have hσ' : σ.Unifies eqs' := fun p hp =>
-        hσ p (List.mem_cons_of_mem _ hp)
-      exact ih u hu σ hσ'
+      rw [unify_cons_delete x y eqs' hxv hyv] at hu
+      exact ih u hu σ (fun p hp => hσ p (List.mem_cons_of_mem _ hp))
   | case3 x y eqs' m hxv hyv hocc =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv]; simp [hyv, hocc]
-      rw [hbody] at hu
+      rw [unify_cons_occurs_l x y eqs' hxv hyv hocc] at hu
       cases hu
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu σ hσ
-      have hbody : unify ((x, y) :: eqs') = some ((m, y) :: rest) := by
-        rw [unify, hxv]; simp [hyv, hocc, hrest]
-      rw [hbody] at hu
+      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at hu
       have hueq : (m, y) :: rest = u := Option.some.inj hu
       subst hueq
       have hxeq : x = Signature.var m := Signature.var_of_isVar x m hxv
-      have hxy : σ.apply (Signature.var m) = σ.apply y := by
-        have := hσ (x, y) List.mem_cons_self
-        simp at this
-        rw [hxeq] at this
-        exact this
+      have hxy : σ.apply (Signature.var m) = σ.apply y := hxeq ▸ hσ.head_eq
       have hσ_sub : σ.Unifies (HasSubst.single eqs' m y) := by
         intro p hp
         rw [Equations.single_eq] at hp
@@ -82,31 +69,19 @@ theorem unify_mgu {α : Type} [Signature α] :
       rw [← habs, hrec]
   | case5 x y eqs' m hxv hyv hocc hnone _ =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv]; simp [hyv, hocc, hnone]
-      rw [hbody] at hu
+      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone] at hu
       cases hu
   | case6 x y eqs' hxv m hyv hocc =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv]; simp [hocc]
-      rw [hbody] at hu
+      rw [unify_cons_occurs_r x y eqs' hxv hyv hocc] at hu
       cases hu
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu σ hσ
-      have hbody : unify ((x, y) :: eqs') = some ((m, x) :: rest) := by
-        rw [unify, hxv, hyv]; simp [hocc, hrest]
-      rw [hbody] at hu
+      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at hu
       have hueq : (m, x) :: rest = u := Option.some.inj hu
       subst hueq
       have hyeq : y = Signature.var m := Signature.var_of_isVar y m hyv
-      have hxy : σ.apply (Signature.var m) = σ.apply x := by
-        have := hσ (x, y) List.mem_cons_self
-        simp at this
-        rw [hyeq] at this
-        exact this.symm
+      have hxy : σ.apply (Signature.var m) = σ.apply x := (hyeq ▸ hσ.head_eq).symm
       have hσ_sub : σ.Unifies (HasSubst.single eqs' m x) := by
         intro p hp
         rw [Equations.single_eq] at hp
@@ -125,19 +100,12 @@ theorem unify_mgu {α : Type} [Signature α] :
       rw [← habs, hrec]
   | case8 x y eqs' hxv m hyv hocc hnone _ =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv]; simp [hocc, hnone]
-      rw [hbody] at hu
+      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone] at hu
       cases hu
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu σ hσ
-      have hbody : unify ((x, y) :: eqs') = unify (xs ++ eqs') := by
-        rw [unify, hxv, hyv, hdec]
-      rw [hbody] at hu
-      have hxy : σ.apply x = σ.apply y := by
-        have := hσ (x, y) List.mem_cons_self
-        simpa using this
+      rw [unify_cons_decomp x y eqs' hxv hyv hdec] at hu
+      have hxy : σ.apply x = σ.apply y := hσ.head_eq
       have hσ' : σ.Unifies (xs ++ eqs') := by
         intro p hp
         rcases List.mem_append.mp hp with hp_xs | hp_eqs'
@@ -146,8 +114,5 @@ theorem unify_mgu {α : Type} [Signature α] :
       exact ih u hu σ hσ'
   | case10 x y eqs' hxv hyv hdec =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv, hdec]
-      rw [hbody] at hu
+      rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
       cases hu

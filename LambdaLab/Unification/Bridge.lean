@@ -281,17 +281,12 @@ theorem decomp_single (x y : α) (xs : Equations α) (n : Nat) (s : α)
   rw [List.map_map]
   apply List.map_congr_left
   intro i _
-  -- Goal: ((Vector.ofFn _).get i, (Vector.ofFn _).get i) = ((fun p => ...) ∘ ...) i
-  -- The (Vector.ofFn _).get i unfolds to the function applied at i.
-  have hax : (Vector.ofFn (fun j : Fin (arity c) =>
-                pSubst (ax.get j) ((∅ : Subst α).insert n s))).get i =
-              pSubst (ax.get i) ((∅ : Subst α).insert n s) := by
+  have hget : ∀ a : Vector α (arity c),
+      (Vector.ofFn (fun j : Fin (arity c) =>
+          pSubst (a.get j) ((∅ : Subst α).insert n s))).get i =
+        pSubst (a.get i) ((∅ : Subst α).insert n s) := fun _ => by
     show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
-  have hay : (Vector.ofFn (fun j : Fin (arity c) =>
-                pSubst (ay.get j) ((∅ : Subst α).insert n s))).get i =
-              pSubst (ay.get i) ((∅ : Subst α).insert n s) := by
-    show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
-  rw [hax, hay]
+  rw [hget ax, hget ay]
   rfl
 
 end Signature

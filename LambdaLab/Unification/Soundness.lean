@@ -4,9 +4,8 @@ import LambdaLab.Unification.Basic
 
 When the algorithm succeeds, the returned unifier actually unifies every
 equation. Carries over from the fat-typeclass world: the proof structure
-is the same, but the bridge lemmas it appeals to (`decomp_apply_sound`,
-`single_off`, `pSubst_var_eq`) are now theorems on the slim typeclass —
-see `Unification/Bridge.lean`. -/
+is identical, but the bridge lemmas it appeals to are now theorems on the
+slim typeclass (see `Unification/Bridge.lean`). -/
 
 /-- **Soundness of `unify`.** When `unify eqs` returns `some u`, the
 unifier `u` actually unifies every equation in `eqs`. Proved by
@@ -22,9 +21,7 @@ theorem unify_unifies {α : Type} [Signature α] :
       cases hp
   | case2 x y eqs' m hxv hyv ih =>
       intro u hu p hp
-      have hbody : unify ((x, y) :: eqs') = unify eqs' := by
-        rw [unify, hxv]; simp [hyv]
-      rw [hbody] at hu
+      rw [unify_cons_delete x y eqs' hxv hyv] at hu
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         have hx := Signature.var_of_isVar x m hxv
@@ -33,16 +30,11 @@ theorem unify_unifies {α : Type} [Signature α] :
       · exact ih u hu p hp
   | case3 x y eqs' m hxv hyv hocc =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv]; simp [hyv, hocc]
-      rw [hbody] at hu
+      rw [unify_cons_occurs_l x y eqs' hxv hyv hocc] at hu
       cases hu
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu p hp
-      have hbody : unify ((x, y) :: eqs') = some ((m, y) :: rest) := by
-        rw [unify, hxv]; simp [hyv, hocc, hrest]
-      rw [hbody] at hu
+      rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest] at hu
       have hueq : (m, y) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
@@ -62,23 +54,15 @@ theorem unify_unifies {α : Type} [Signature α] :
         exact ih rest hrest _ hpsub
   | case5 x y eqs' m hxv hyv hocc hnone _ =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv]; simp [hyv, hocc, hnone]
-      rw [hbody] at hu
+      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone] at hu
       cases hu
   | case6 x y eqs' hxv m hyv hocc =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv]; simp [hocc]
-      rw [hbody] at hu
+      rw [unify_cons_occurs_r x y eqs' hxv hyv hocc] at hu
       cases hu
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu p hp
-      have hbody : unify ((x, y) :: eqs') = some ((m, x) :: rest) := by
-        rw [unify, hxv, hyv]; simp [hocc, hrest]
-      rw [hbody] at hu
+      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at hu
       have hueq : (m, x) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
@@ -98,16 +82,11 @@ theorem unify_unifies {α : Type} [Signature α] :
         exact ih rest hrest _ hpsub
   | case8 x y eqs' hxv m hyv hocc hnone _ =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv]; simp [hocc, hnone]
-      rw [hbody] at hu
+      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone] at hu
       cases hu
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu p hp
-      have hbody : unify ((x, y) :: eqs') = unify (xs ++ eqs') := by
-        rw [unify, hxv, hyv, hdec]
-      rw [hbody] at hu
+      rw [unify_cons_decomp x y eqs' hxv hyv hdec] at hu
       rcases List.mem_cons.mp hp with hp | hp
       · subst hp
         apply Signature.decomp_apply_sound u x y xs hdec
@@ -116,8 +95,5 @@ theorem unify_unifies {α : Type} [Signature α] :
       · exact ih u hu p (List.mem_append_right _ hp)
   | case10 x y eqs' hxv hyv hdec =>
       intro u hu _ _
-      exfalso
-      have hbody : unify ((x, y) :: eqs') = (none : Option (Unifier α)) := by
-        rw [unify, hxv, hyv, hdec]
-      rw [hbody] at hu
+      rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
       cases hu
