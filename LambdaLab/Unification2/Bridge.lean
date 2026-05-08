@@ -76,16 +76,13 @@ theorem single_off : ∀ (t : Term C) (n : Nat) (s : Term C),
       intro h
       show pSubst _ (.app c k args) = _
       rw [pSubst_app]
-      rw [occurs_app] at h
+      rw [occurs_app, List.any_eq_false] at h
       congr; funext i
       apply ih i
-      by_contra hocc
-      push_neg at hocc
-      rw [Bool.not_eq_false] at hocc
-      have : (List.finRange k).any (fun j => occurs n (args j)) = true :=
-        List.any_eq_true.mpr ⟨i, List.mem_finRange i, hocc⟩
-      rw [this] at h
-      cases h
+      have hni : ¬ occurs n (args i) = true := h i (List.mem_finRange i)
+      cases hb : occurs n (args i)
+      · rfl
+      · exact absurd hb hni
 
 /-! ## `decomp` shape -/
 
@@ -152,12 +149,11 @@ theorem single_isFree : ∀ (t : Term C) (n : Nat) (s : Term C) (m : Nat),
       rw [pSubst_var, Std.HashMap.getD_insert]
       by_cases hnk : n = k
       · subst hnk
-        simp only [BEq.rfl, ↓reduceIte]
-        rw [occurs_var]
+        simp only [BEq.rfl, ↓reduceIte, occurs_var]
         constructor
-        · intro hms; right; exact ⟨by simp [occurs_var], hms⟩
+        · intro hms; right; refine ⟨?_, hms⟩; simp
         · rintro (⟨hmn, hmk⟩ | ⟨_, hsm⟩)
-          · exfalso; rw [occurs_var, decide_eq_true_iff] at hmk; exact hmn hmk
+          · exfalso; rw [decide_eq_true_iff] at hmk; exact hmn hmk
           · exact hsm
       · have hbeq : (n == k) = false := by simp [hnk]
         rw [hbeq]
@@ -177,7 +173,7 @@ theorem single_isFree : ∀ (t : Term C) (n : Nat) (s : Term C) (m : Nat),
             exact hnk hkn
   | app c k args ih =>
       show occurs m (pSubst _ (.app c k args)) = true ↔ _
-      rw [pSubst_app, occurs_app, occurs_app, List.any_eq_true, List.any_eq_true]
+      simp only [pSubst_app, occurs_app, List.any_eq_true]
       constructor
       · rintro ⟨i, _, hi⟩
         rcases (ih i).mp hi with ⟨hmn, hm⟩ | ⟨hn, hms⟩
