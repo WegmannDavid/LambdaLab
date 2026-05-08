@@ -5,16 +5,19 @@ import LambdaLab.Unification.Signature
 The Martelli–Montanari algorithm terminates by a lexicographic
 `(mvarCount, size)` decrease. This module defines the measure and the
 monotonicity lemmas needed to discharge the four `decreasing_by` goals
-in `Unification.Basic`. -/
+in `Unification.Basic`.
 
-/-- Total syntactic size of an equation set: sum of the `Signature.size`
-of every term appearing on either side of every equation. -/
+In the slim-typeclass approach, `Signature.occurs n t = true ↔
+HasVars.isFree t n` is *definitional* (the derived `HasSubst α α`
+instance defines `isFree` as `occurs · = true`), so the bool/Prop
+bridge collapses to `Iff.rfl`. -/
+
+/-- Total syntactic size of an equation set. -/
 def Equations.size {α : Type} [Signature α] (eqs : Equations α) : Nat :=
   eqs.foldr (fun p acc => acc + Signature.size p.1 + Signature.size p.2) 0
 
 /-- Number of distinct metavariables appearing in an equation set,
-bounded above by `HasVars.fresh eqs` and detected by
-`Signature.occurs`. -/
+bounded above by `HasVars.fresh eqs` and detected by `Signature.occurs`. -/
 def Equations.mvarCount {α : Type} [Signature α] (eqs : Equations α) : Nat :=
   let bound := HasVars.fresh eqs
   (List.range bound).countP (fun n =>
@@ -23,33 +26,24 @@ def Equations.mvarCount {α : Type} [Signature α] (eqs : Equations α) : Nat :=
 namespace Equations
 variable {α : Type} [Signature α]
 
-/-- The boolean predicate inside `mvarCount` is exactly
-`HasVars.isFree`. Bridges the bool/Prop divide for measure reasoning. -/
+/-- The boolean predicate inside `mvarCount` is exactly `HasVars.isFree`.
+    Bridges the bool/Prop divide for measure reasoning — definitionally
+    in the slim-typeclass setup, but kept as a named lemma for clarity. -/
 theorem any_occurs_iff_isFree (eqs : Equations α) (n : Nat) :
     (eqs.any (fun p => Signature.occurs n p.1 || Signature.occurs n p.2) = true)
       ↔ HasVars.isFree eqs n := by
   simp only [List.any_eq_true, Bool.or_eq_true]
-  constructor
-  · rintro ⟨p, hp, hor⟩
-    refine ⟨p, hp, ?_⟩
-    rcases hor with h | h
-    · exact Or.inl ((Signature.occurs_iff_isFree n p.1).mp h)
-    · exact Or.inr ((Signature.occurs_iff_isFree n p.2).mp h)
-  · rintro ⟨p, hp, hor⟩
-    refine ⟨p, hp, ?_⟩
-    rcases hor with h | h
-    · exact Or.inl ((Signature.occurs_iff_isFree n p.1).mpr h)
-    · exact Or.inr ((Signature.occurs_iff_isFree n p.2).mpr h)
+  rfl
 
 /-- A variable at or above `fresh eqs` is never free in `eqs` — the
-contrapositive of `fresh_gt_free`. -/
+    contrapositive of `fresh_gt_free`. -/
 theorem not_isFree_of_fresh_le {eqs : Equations α} {n : Nat}
     (h : HasVars.fresh eqs ≤ n) : ¬ HasVars.isFree eqs n := by
   intro hfree
   exact Nat.lt_irrefl _ (Nat.lt_of_lt_of_le (HasVars.fresh_gt_free eqs n hfree) h)
 
 /-- Extending the range above `a` doesn't change `countP` if the predicate
-is false everywhere above `a`. -/
+    is false everywhere above `a`. -/
 theorem countP_range_eq_of_false_above {a M : Nat} {P : Nat → Bool}
     (hMa : a ≤ M) (h : ∀ n, a ≤ n → P n = false) :
     (List.range M).countP P = (List.range a).countP P := by
@@ -64,9 +58,7 @@ theorem countP_range_eq_of_false_above {a M : Nat} {P : Nat → Bool}
     cases hytrue
   omega
 
-/-- A strict-drop lemma for `countP`: if `P → Q` on every element of `l`,
-and there is some element of `l` where `P` is false but `Q` is true, then
-`countP P l < countP Q l`. -/
+/-- A strict-drop lemma for `countP`. -/
 theorem countP_lt_countP_of_strict_at {α} {P Q : α → Bool} {l : List α} {a : α}
     (hPQ : ∀ x ∈ l, P x = true → Q x = true)
     (ha : a ∈ l) (hPa : P a = false) (hQa : Q a = true) :
@@ -90,10 +82,7 @@ theorem countP_lt_countP_of_strict_at {α} {P Q : α → Bool} {l : List α} {a 
             · simp
         omega
 
-/-- If the free-variable set of `eqs₁` is contained in that of `eqs₂`,
-then `mvarCount eqs₁ ≤ mvarCount eqs₂`. The fresh-ordering hypothesis is
-unnecessary because vars above `fresh` are never free, so they contribute
-nothing to either count. -/
+/-- Containment of free-variable sets gives `mvarCount ≤`. -/
 theorem mvarCount_le_of_isFree_subset {eqs₁ eqs₂ : Equations α}
     (hvars : ∀ n, HasVars.isFree eqs₁ n → HasVars.isFree eqs₂ n) :
     eqs₁.mvarCount ≤ eqs₂.mvarCount := by
@@ -137,7 +126,7 @@ theorem mvarCount_cons_le (p : Equation α) (eqs : Equations α) :
   exact ⟨q, List.mem_cons_of_mem _ hq, hor⟩
 
 /-- Strict drop in `mvarCount` when a variable is in the larger set but
-not the smaller. -/
+    not the smaller. -/
 theorem mvarCount_lt_of_isFree_subset_strict {eqs₁ eqs₂ : Equations α} (n : Nat)
     (hvars : ∀ m, HasVars.isFree eqs₁ m → HasVars.isFree eqs₂ m)
     (hn₁ : ¬ HasVars.isFree eqs₁ n)

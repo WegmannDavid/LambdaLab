@@ -1,4 +1,4 @@
-import LambdaLab.Unification2.Signature
+import LambdaLab.Unification.Signature
 
 /-! # Bridge lemmas: structural results about substitution and decomposition.
 

@@ -31,8 +31,6 @@ import LambdaLab.Language.Parser
 import LambdaLab.Language.Check
 import LambdaLab.Unification.Substitution
 import LambdaLab.Unification.Signature
+import LambdaLab.Unification.Bridge
 import LambdaLab.Unification.Measure
 import LambdaLab.Unification.Basic
-import LambdaLab.Unification.Soundness
-import LambdaLab.Unification.MGU
-import LambdaLab.Unification.Completeness

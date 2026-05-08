@@ -1,130 +1,369 @@
 import LambdaLab.Unification.Substitution
 
-abbrev Equation α := (α × α)
-abbrev Equations α := List (Equation α)
+/-! # Slim first-order signature
 
-/-- A first-order signature, abstracted as a typeclass over a host type
-`α` of terms. Provides:
+`Signature α` declares that `α` is the free term algebra over `Nat`-many
+variables for the operation set `Constructor` (with arities given by
+`arity`). Variables and constructor applications are unified into a
+single bijection `Nat ⊕ (Σ c, Vector α (arity c)) ≃ α`.
 
-* an injection `var : Nat → α` and projection `isVar` for variables,
-* a `decomp` operation that does one step of constructor matching,
-* a decidable `occurs` check (must agree with `HasVars.isFree`),
-* a syntactic `size` that strictly drops under decomposition.
+`HasSubst α α` is **derived** from `Signature α` (see the instance at
+the bottom of the file): all of `isFree`, `fresh`, and `pSubst` are
+forced by structural recursion on `deconstruct`, so the substitution
+semantics cannot disagree with the term structure. -/
 
-Variables and constructors are required not to overlap (`decomp` does
-not fire on variables), and the variable injection/projection are
-inverse on the variable subset. -/
-class Signature (α : Type) extends HasSubst α α where
-  /-- Build a term that is exactly the variable with the given index. -/
-  var : Nat → α
-  /-- Detect whether a term is a variable, and if so which one. -/
-  isVar : α → Option Nat
-  /-- Decompose two non-variable terms into subgoals. `none` if their
-  outermost constructors don't match. -/
-  decomp : α → α → Option (Equations α)
-  /-- Decidable occurs check. -/
-  occurs : Nat → α → Bool
-  /-- Syntactic size. -/
+class Signature (α : Type) where
+  Constructor : Type
+  arity : Constructor → Nat
+  decEqConstructor : DecidableEq Constructor
+  construct : Nat ⊕ (Σ c : Constructor, Vector α (arity c)) → α
+  deconstruct : α → Nat ⊕ (Σ c : Constructor, Vector α (arity c))
   size : α → Nat
 
-  /-- `var n` is detected as variable `n`. -/
-  isVar_var : ∀ n, isVar (var n) = some n
-  /-- A variable-detected term is exactly `var n`. -/
-  var_of_isVar : ∀ a n, isVar a = some n → a = var n
-  /-- `decomp` does not fire when its left argument is a variable. -/
-  decomp_var_left : ∀ n y, decomp (var n) y = none
-  /-- `decomp` does not fire when its right argument is a variable. -/
-  decomp_var_right : ∀ x n, decomp x (var n) = none
+  construct_deconstruct : ∀ a, deconstruct (construct a) = a
+  deconstruct_construct : ∀ a, construct (deconstruct a) = a
+  size_construct_var : ∀ n, size (construct (Sum.inl n)) = 1
+  size_construct : ∀ c args,
+    size (construct (Sum.inr ⟨c, args⟩)) =
+      1 + (List.finRange (arity c)).foldr
+        (fun i acc => acc + size (args.get i)) 0
 
-  /-- The decidable occurs check matches `HasVars.isFree`. -/
-  occurs_iff_isFree : ∀ n a, occurs n a = true ↔ HasVars.isFree a n
-  /-- A variable has size one. -/
-  size_var : ∀ n, size (var n) = 1
-  /-- Decomposition strictly reduces total size. -/
-  size_decomp : ∀ x y eqs, decomp x y = some eqs →
-    eqs.foldr (fun p acc => acc + size p.1 + size p.2) 0 < size x + size y
+attribute [reducible] Signature.decEqConstructor
+attribute [instance] Signature.decEqConstructor
+attribute [simp] Signature.construct_deconstruct Signature.deconstruct_construct
 
-  /-- Variables are free at exactly themselves. -/
-  var_isFree : ∀ n m, HasVars.isFree (var n) m ↔ m = n
-  /-- Substituting a variable with a singleton binding for it yields the
-  binding's value. -/
-  pSubst_var_eq : ∀ n s,
-    HasSubst.pSubst (var n) ((∅ : Subst α).insert n s) = s
-  /-- A singleton substitution at an off-free-vars index is the
-  identity. -/
-  single_off : ∀ (t : α) (n : Nat) (s : α),
-    ¬ HasVars.isFree t n → HasSubst.single t n s = t
-  /-- Structural soundness of decomposition: if `decomp x y = some xs`
-  and every pair in `xs` is propositionally equal, then `x = y`. -/
-  decomp_struct_sound : ∀ x y xs,
-    decomp x y = some xs → (∀ p ∈ xs, p.1 = p.2) → x = y
-  /-- Decomposition commutes with single-binding substitution: if
-  `decomp x y = some xs` then substituting `[n ↦ s]` on both sides
-  decomposes the same way, with each pair in `xs` substituted. -/
-  decomp_single : ∀ x y xs n s,
-    decomp x y = some xs →
-    decomp (HasSubst.single x n s) (HasSubst.single y n s) =
-      some (xs.map (fun p => (HasSubst.single p.1 n s, HasSubst.single p.2 n s)))
-  /-- Free variables under single substitution: a variable `m` is free in
-  `single t n s` iff either it was already free in `t` at a position other
-  than `n`, or `n` was free in `t` and `m` is free in `s`. The standard
-  free-variables-after-substitution characterization. -/
-  single_isFree : ∀ (t : α) (n : Nat) (s : α) (m : Nat),
-    HasVars.isFree (HasSubst.single t n s) m ↔
-      (m ≠ n ∧ HasVars.isFree t m) ∨ (HasVars.isFree t n ∧ HasVars.isFree s m)
-  /-- Decomposition does not introduce free variables: if a variable is
-  free somewhere in the subgoals produced by `decomp x y`, it was already
-  free in `x` or in `y`. -/
-  decomp_isFree : ∀ x y xs n,
-    decomp x y = some xs → HasVars.isFree xs n →
-      HasVars.isFree x n ∨ HasVars.isFree y n
-  /-- Substituting a variable for itself is the identity. -/
-  single_var_self : ∀ (t : α) (n : Nat), HasSubst.single t n (var n) = t
-  /-- **Absorption.** If a sequence of single substitutions identifies
-  `var n` with `s`, then it absorbs an inner `single n s`: prepending
-  `single n s` doesn't change the result. The fundamental MGU lemma at
-  the iterated-single (i.e., `Unifier.apply`) level. -/
-  unifier_absorb : ∀ (l : List (Nat × α)) (t : α) (n : Nat) (s : α),
-    l.foldl (fun acc p => HasSubst.single acc p.1 p.2) (var n) =
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) s →
-    l.foldl (fun acc p => HasSubst.single acc p.1 p.2) (HasSubst.single t n s) =
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) t
-  /-- **Decomposition under unifier**: if a sequence of single
-  substitutions equates `x` and `y`, and `decomp x y = some xs`, then it
-  also equates each pair in `xs`. The reverse direction of
-  `decomp_apply_sound`. -/
-  decomp_unifier_sound : ∀ (x y : α) (xs : Equations α) (l : List (Nat × α)),
-    decomp x y = some xs →
-    l.foldl (fun acc p => HasSubst.single acc p.1 p.2) x =
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) y →
-    ∀ p ∈ xs,
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) p.1 =
-        l.foldl (fun acc p => HasSubst.single acc p.1 p.2) p.2
-  /-- **Occurs-check completeness.** If `t` mentions variable `n` but is
-  not just `var n`, no sequence of single substitutions can equate
-  `var n` with `t`. The structural fact behind the occurs check. -/
-  occurs_no_unifier : ∀ (t : α) (n : Nat) (l : List (Nat × α)),
-    HasVars.isFree t n → isVar t ≠ some n →
-    l.foldl (fun acc p => HasSubst.single acc p.1 p.2) (var n) ≠
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) t
-  /-- **Decomposition-failure completeness.** If `x` and `y` are both
-  non-variable and have mismatched outermost constructors (`decomp` is
-  `none`), no sequence of single substitutions can equate them. -/
-  decomp_none_no_unifier : ∀ (x y : α) (l : List (Nat × α)),
-    isVar x = none → isVar y = none → decomp x y = none →
-    l.foldl (fun acc p => HasSubst.single acc p.1 p.2) x ≠
-      l.foldl (fun acc p => HasSubst.single acc p.1 p.2) y
+abbrev Equation (α : Type) := α × α
+abbrev Equations (α : Type) := List (Equation α)
+
+/-- A bound index of a list contributes at most the running fold value
+when the running fold sums values produced by `f`. -/
+private theorem List.le_foldr_sumIdx {β : Type} (f : β → Nat) :
+    ∀ (l : List β) (a : β), a ∈ l →
+      f a ≤ l.foldr (fun i acc => acc + f i) 0 := by
+  intro l
+  induction l with
+  | nil => intro _ h; cases h
+  | cons x xs ih =>
+      intro a h
+      rcases List.mem_cons.mp h with rfl | hxs
+      · simp only [List.foldr]; omega
+      · have := ih a hxs
+        simp only [List.foldr]; omega
+
+namespace Signature
+variable {α : Type} [Signature α]
+
+/-- Each child has size strictly less than its parent. -/
+theorem size_lt_of_get {t : α} {c : Constructor α}
+    {args : Vector α (Signature.arity c)}
+    (h : Signature.deconstruct t = Sum.inr ⟨c, args⟩)
+    (i : Fin (Signature.arity c)) :
+    Signature.size (args.get i) < Signature.size t := by
+  have ht : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+    have := Signature.deconstruct_construct (α := α) t
+    rw [h] at this
+    exact this.symm
+  rw [ht, Signature.size_construct]
+  have hmem : i ∈ List.finRange (Signature.arity c) := List.mem_finRange i
+  have hbound := List.le_foldr_sumIdx (fun j : Fin (Signature.arity c) =>
+              Signature.size (args.get j))
+            (List.finRange (Signature.arity c)) i hmem
+  simp only at hbound
+  omega
+
+/-! ## Derived operations -/
+
+/-- Build the term that is exactly variable `n`. -/
+@[inline] def var (n : Nat) : α := Signature.construct (Sum.inl n)
+
+/-- Detect whether a term is a variable, and if so which one. -/
+@[inline] def isVar (t : α) : Option Nat :=
+  match Signature.deconstruct t with
+  | Sum.inl n => some n
+  | Sum.inr _ => none
+
+set_option linter.unusedVariables false in
+/-- Decidable occurs check. -/
+def occurs (n : Nat) (t : α) : Bool :=
+  match h : Signature.deconstruct t with
+  | Sum.inl m => decide (m = n)
+  | Sum.inr ⟨c, args⟩ =>
+      (List.finRange (Signature.arity c)).any (fun (i : Fin (Signature.arity c)) =>
+        occurs n (args.get i))
+  termination_by Signature.size t
+  decreasing_by
+    apply size_lt_of_get <;> assumption
+
+/-- Fresh variable index: 1 + max free-variable index in `t`,
+    or 0 if `t` has no free variables. -/
+def fresh (t : α) : Nat :=
+  match h : Signature.deconstruct t with
+  | Sum.inl n => n + 1
+  | Sum.inr ⟨c, args⟩ =>
+      (List.finRange (Signature.arity c)).foldr
+        (fun (i : Fin (Signature.arity c)) (acc : Nat) =>
+          max acc (fresh (args.get i)))
+        0
+  termination_by Signature.size t
+  decreasing_by
+    apply size_lt_of_get <;> assumption
+
+set_option linter.unusedVariables false in
+/-- Apply a parallel substitution. Variables look themselves up in the
+    substitution (default: keep the variable); constructors recurse
+    structurally. -/
+def pSubst (t : α) (σ : Subst α) : α :=
+  match h : Signature.deconstruct t with
+  | Sum.inl n => σ.getD n t
+  | Sum.inr ⟨c, args⟩ =>
+      Signature.construct (Sum.inr ⟨c, Vector.ofFn (fun (i : Fin (Signature.arity c)) =>
+        pSubst (args.get i) σ)⟩)
+  termination_by Signature.size t
+  decreasing_by
+    apply size_lt_of_get <;> assumption
+
+/-! ## Equational unfolding for the derived operations
+
+The recursive defs use `match h :` for termination, which makes plain
+`rw` choke on the dependent match. We unfold via `simp only` with the
+relevant `Signature` law as a rewrite rule — `simp` can rewrite under
+dependent matches by reducing the discriminant. -/
+
+theorem occurs_var (n m : Nat) :
+    occurs (α := α) n (var m) = decide (m = n) := by
+  unfold occurs var
+  split
+  · rename_i m' h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+  · rename_i c args h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+
+theorem occurs_construct (n : Nat) (c : Constructor α)
+    (args : Vector α (Signature.arity c)) :
+    occurs n (Signature.construct (Sum.inr ⟨c, args⟩)) =
+      (List.finRange (Signature.arity c)).any (fun i => occurs n (args.get i)) := by
+  rw [occurs.eq_def]
+  split
+  · rename_i m h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+  · rename_i c' args' h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+
+theorem fresh_var (n : Nat) : fresh (var n : α) = n + 1 := by
+  unfold fresh var
+  split
+  · rename_i m h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+  · rename_i c args h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+
+theorem fresh_construct (c : Constructor α) (args : Vector α (Signature.arity c)) :
+    fresh (Signature.construct (Sum.inr ⟨c, args⟩)) =
+      (List.finRange (Signature.arity c)).foldr
+        (fun i acc => max acc (fresh (args.get i))) 0 := by
+  rw [fresh.eq_def]
+  split
+  · rename_i n h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+  · rename_i c' args' h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+
+theorem pSubst_var (n : Nat) (σ : Subst α) :
+    pSubst (var n) σ = σ.getD n (var n) := by
+  unfold pSubst var
+  split
+  · rename_i m h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+  · rename_i c args h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+
+theorem pSubst_construct (c : Constructor α)
+    (args : Vector α (Signature.arity c)) (σ : Subst α) :
+    pSubst (Signature.construct (Sum.inr ⟨c, args⟩)) σ =
+      Signature.construct (Sum.inr ⟨c, Vector.ofFn (fun i => pSubst (args.get i) σ)⟩) := by
+  rw [pSubst.eq_def]
+  split
+  · rename_i m h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+  · rename_i c' args' h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+
+/-! ## `fresh` strictly dominates every free variable. -/
+
+theorem fresh_gt_occurs : ∀ (t : α) (n : Nat),
+    occurs n t = true → n < fresh t := by
+  intro t n
+  induction hk : Signature.size t using Nat.strongRecOn generalizing t with
+  | _ k ih =>
+    intro hocc
+    match hd : Signature.deconstruct t with
+    | Sum.inl m =>
+        have ht : t = var m := by
+          have := Signature.deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        rw [ht] at hocc
+        rw [occurs_var] at hocc
+        have hmn : m = n := of_decide_eq_true hocc
+        rw [ht, fresh_var]
+        omega
+    | Sum.inr ⟨c, args⟩ =>
+        have ht : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+          have := Signature.deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        rw [ht] at hocc
+        rw [occurs_construct] at hocc
+        rw [List.any_eq_true] at hocc
+        obtain ⟨i, _, hi⟩ := hocc
+        have hsz : Signature.size (args.get i) < Signature.size t :=
+          size_lt_of_get hd i
+        have hsz' : Signature.size (args.get i) < k := hk ▸ hsz
+        have ihi : n < fresh (args.get i) :=
+          ih (Signature.size (args.get i)) hsz' (args.get i) rfl hi
+        rw [ht, fresh_construct]
+        clear hsz hsz' ih hk
+        have hmem : i ∈ List.finRange (Signature.arity c) := List.mem_finRange i
+        revert hmem
+        induction List.finRange (Signature.arity c) with
+        | nil => intro h; cases h
+        | cons j js ihl =>
+            intro hmem
+            simp only [List.foldr]
+            rcases List.mem_cons.mp hmem with rfl | hj
+            · exact Nat.lt_of_lt_of_le ihi (Nat.le_max_right _ _)
+            · exact Nat.lt_of_lt_of_le (ihl hj) (Nat.le_max_left _ _)
+
+/-! ## Derived `HasSubst α α` instance -/
+
+instance instHasVars : HasVars α where
+  isFree t n := occurs n t = true
+  fresh := fresh
+  fresh_gt_free := fresh_gt_occurs
+
+instance instHasSubst : HasSubst α α where
+  pSubst := pSubst
+
+/-! ## Basic lemmas about `var` / `isVar` / `size` -/
+
+theorem isVar_var (n : Nat) : isVar (var n : α) = some n := by
+  unfold isVar var
+  simp
+
+theorem var_of_isVar (t : α) (n : Nat) : isVar t = some n → t = var n := by
+  unfold isVar var
+  intro h
+  split at h
+  · rename_i m hd
+    cases h
+    have := Signature.deconstruct_construct (α := α) t
+    rw [hd] at this
+    exact this.symm
+  · cases h
+
+theorem size_var (n : Nat) : Signature.size (var n : α) = 1 := by
+  unfold var
+  exact Signature.size_construct_var n
+
+theorem var_isFree (n m : Nat) : HasVars.isFree (var n : α) m ↔ m = n := by
+  show occurs m (var n) = true ↔ m = n
+  rw [occurs_var]
+  constructor
+  · intro h; exact (of_decide_eq_true h).symm
+  · intro h; subst h; simp
+
+/-! ## Decomposition
+
+`decomp x y` matches the outermost constructors of `x` and `y`. If they
+match, returns the per-argument subgoals; otherwise `none`. Does not
+fire on variables. -/
+
+/-- One step of constructor matching: pair up children when heads agree. -/
+def decomp (x y : α) : Option (Equations α) :=
+  match Signature.deconstruct x, Signature.deconstruct y with
+  | Sum.inr ⟨cx, argsx⟩, Sum.inr ⟨cy, argsy⟩ =>
+      if h : cx = cy then
+        some ((List.finRange (Signature.arity cx)).map
+          (fun i => (argsx.get i, argsy.get (h ▸ i))))
+      else none
+  | _, _ => none
+
+theorem decomp_var_left (n : Nat) (y : α) : decomp (var n) y = none := by
+  unfold decomp var
+  simp
+
+theorem decomp_var_right (x : α) (n : Nat) : decomp x (var n) = none := by
+  unfold decomp var
+  split <;> simp_all
+
+end Signature
+
+/-! ## Most-generality and the unifier API -/
 
 /-- `MoreGeneral σ σ'` says σ is at least as general as σ': there exists
 some τ such that, on every term, applying σ' is the same as applying σ
 then τ. Reflexive (witness τ = `∅`, modulo `pSubst t ∅ = t`); the name
-covers both strictly-more-general and equally-general cases.
-
-Stated extensionally over the action on terms of type α — this is the
-classical unification-theory definition and avoids committing to an
-algebraic notion of substitution composition. -/
-def MoreGeneral {α : Type} [HasSubst α α] (σ σ' : Subst α) : Prop :=
+covers both strictly-more-general and equally-general cases. -/
+def MoreGeneral {α : Type} [Signature α] (σ σ' : Subst α) : Prop :=
   ∃ τ : Subst α, ∀ t : α,
     HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
 
-abbrev Unifier α := List (Nat × α)
+/-- A unifier as an iterated single-binding sequence. The MGU computed
+by `unify` is returned in this form, with bindings applied left-to-right
+via `Unifier.apply`. -/
+abbrev Unifier (α : Type) := List (Nat × α)
+
+namespace Unifier
+
+/-- Apply a unifier to a term: each `(n, s)` binding is applied as a
+single substitution, in order from the head. -/
+def apply {α : Type} [Signature α] (u : Unifier α) (t : α) : α :=
+  u.foldl (fun acc p => HasSubst.single acc p.1 p.2) t
+
+@[simp] theorem apply_nil {α : Type} [Signature α] (t : α) :
+    apply [] t = t := rfl
+
+@[simp] theorem apply_cons {α : Type} [Signature α] (n : Nat) (s : α)
+    (rest : Unifier α) (t : α) :
+    apply ((n, s) :: rest) t = apply rest (HasSubst.single t n s) := rfl
+
+@[simp] theorem apply_append {α : Type} [Signature α]
+    (u₁ u₂ : Unifier α) (t : α) :
+    (u₁ ++ u₂).apply t = u₂.apply (u₁.apply t) := by
+  show List.foldl _ _ _ = _
+  rw [List.foldl_append]
+  rfl
+
+end Unifier
+
+/-- A unifier (in the algebraic sense) of an equation set: makes every
+equation true under `Unifier.apply`. -/
+abbrev Unifier.Unifies {α : Type} [Signature α]
+    (σ : Unifier α) (eqs : Equations α) : Prop :=
+  ∀ p ∈ eqs, σ.apply p.1 = σ.apply p.2
+
+/-! ## Trivial bridge lemmas about substitution-on-equations.
+
+The deeper bridge lemmas connecting `unify`-style unifiers to
+constructor decomposition (`unifier_absorb`, `decomp_unifier_sound`,
+`occurs_no_unifier`, …) are proved later as theorems about the slim
+`Signature` typeclass. -/
+
+/-- Substitution on an equation set is pointwise on each component. -/
+theorem Equations.single_eq {α : Type} [Signature α]
+    (eqs : Equations α) (n : Nat) (s : α) :
+    HasSubst.single eqs n s =
+      eqs.map (fun p => (HasSubst.single p.1 n s, HasSubst.single p.2 n s)) :=
+  rfl
