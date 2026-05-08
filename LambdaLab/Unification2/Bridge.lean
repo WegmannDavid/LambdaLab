@@ -237,6 +237,42 @@ theorem pSubst_var_eq (n : Nat) (s : Term C) :
 
 end Term
 
+/-! ## List.attach helper
+
+Lean's well-founded recursion produces hypotheses of the form
+`l.attach.map (fun x => F x.val)`; this conversion brings them back
+to the plain `l.map F` shape. -/
+
+theorem List.attach_map_val_eq {α β : Type} (l : List α) (F : α → β) :
+    l.attach.map (fun (x : Subtype (Membership.mem l)) => F x.val) = l.map F := by
+  induction l with
+  | nil => rfl
+  | cons a as _ =>
+      simp only [List.attach_cons, List.map_cons, List.map_map]
+      congr 1
+
+/-- Variant where the function uses match-destructuring. -/
+theorem List.attach_map_destruct_eq {α β : Type} (l : List α) (F : α → β) :
+    l.attach.map (fun (x : Subtype (Membership.mem l)) =>
+        match x with | ⟨p, _⟩ => F p) = l.map F := by
+  induction l with
+  | nil => rfl
+  | cons a as _ =>
+      simp only [List.attach_cons, List.map_cons, List.map_map]
+      congr 1
+
+/-- Specialized for the exact `(t.single n s, ..)` shape unify produces. -/
+theorem unify_attach_map_single_eq {C : Type} (eqs' : Equations C)
+    (n : Nat) (s : Term C) :
+    eqs'.attach.map (fun (x : Subtype (Membership.mem eqs')) =>
+        (Term.single x.val.1 n s, Term.single x.val.2 n s)) =
+    eqs'.map (fun p => (Term.single p.1 n s, Term.single p.2 n s)) := by
+  induction eqs' with
+  | nil => rfl
+  | cons _ _ _ =>
+      simp only [List.attach_cons, List.map_cons, List.map_map]
+      congr 1
+
 /-! ## Equations under `single` -/
 
 theorem Equations.single_eq {C : Type} (eqs : Equations C) (n : Nat) (s : Term C) :

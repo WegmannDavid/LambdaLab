@@ -27,10 +27,10 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
       intro u hu p hp
       have hrest' : unify (eqs'.map (fun p => (Term.single p.1 m y, Term.single p.2 m y))) =
           some rest := by
-        have : eqs'.attach.map (fun (x : Subtype (Membership.mem eqs')) =>
-            (Term.single x.val.1 m y, Term.single x.val.2 m y)) =
-          eqs'.map (fun p => (Term.single p.1 m y, Term.single p.2 m y)) := by simp
-        rw [this] at hrest; exact hrest
+        have h := hrest
+        simp only [List.attach_map_destruct_eq] at h
+        rw [unify_attach_map_single_eq] at h
+        exact h
       rw [unify_cons_elim_l_some x y eqs' hxv hyv hocc hrest'] at hu
       have hueq : (m, y) :: rest = u := Option.some.inj hu
       subst hueq
@@ -47,12 +47,19 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
             · exact absurd hb hocc)
         rw [hsx, hsy]
       · simp only [Unifier.apply_cons]
-        apply ih rest hrest
-        simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
-        exact ⟨p, hp, rfl⟩
+        have := ih rest hrest (Term.single p.1 _ _, Term.single p.2 _ _)
+          (by simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
+              exact ⟨p, hp, rfl⟩)
+        exact this
   | case5 x y eqs' m hxv hyv hocc hnone _ =>
       intro u hu _ _
-      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone] at hu
+      have hnone' : unify (eqs'.map (fun p => (Term.single p.1 m y, Term.single p.2 m y))) =
+          none := by
+        have h := hnone
+        simp only [List.attach_map_destruct_eq] at h
+        rw [unify_attach_map_single_eq] at h
+        exact h
+      rw [unify_cons_elim_l_none x y eqs' hxv hyv hocc hnone'] at hu
       cases hu
   | case6 x y eqs' hxv m hyv hocc =>
       intro u hu _ _
@@ -60,7 +67,13 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
       cases hu
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu p hp
-      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest] at hu
+      have hrest' : unify (eqs'.map (fun p => (Term.single p.1 m x, Term.single p.2 m x))) =
+          some rest := by
+        have h := hrest
+        simp only [List.attach_map_destruct_eq] at h
+        rw [unify_attach_map_single_eq] at h
+        exact h
+      rw [unify_cons_elim_r_some x y eqs' hxv hyv hocc hrest'] at hu
       have hueq : (m, x) :: rest = u := Option.some.inj hu
       subst hueq
       rcases List.mem_cons.mp hp with hp | hp
@@ -76,12 +89,19 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
           rw [hy]; exact Term.pSubst_var_eq m x
         rw [hsx, hsy]
       · simp only [Unifier.apply_cons]
-        apply ih rest hrest
-        simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
-        exact ⟨p, hp, rfl⟩
+        have := ih rest hrest (Term.single p.1 _ _, Term.single p.2 _ _)
+          (by simp only [List.mem_map, List.mem_attach, true_and, Subtype.exists]
+              exact ⟨p, hp, rfl⟩)
+        exact this
   | case8 x y eqs' hxv m hyv hocc hnone _ =>
       intro u hu _ _
-      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone] at hu
+      have hnone' : unify (eqs'.map (fun p => (Term.single p.1 m x, Term.single p.2 m x))) =
+          none := by
+        have h := hnone
+        simp only [List.attach_map_destruct_eq] at h
+        rw [unify_attach_map_single_eq] at h
+        exact h
+      rw [unify_cons_elim_r_none x y eqs' hxv hyv hocc hnone'] at hu
       cases hu
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu p hp
