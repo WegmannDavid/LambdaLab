@@ -362,6 +362,47 @@ theorem apply_construct (u : Unifier α) (c : Signature.Constructor α)
 
 end Unifier
 
+/-- **Decomposition under unifier (forward direction).** If
+`decomp x y = some xs` and a unifier `l` already unifies every pair in
+`xs`, then it also unifies `(x, y)`. Used in the soundness proof of
+`unify` for the decomposition case. The reverse direction is
+`decomp_unifier_sound`. -/
+theorem Signature.decomp_apply_sound {α : Type} [Signature α] :
+    ∀ (l : Unifier α) (x y : α) (xs : Equations α),
+      Signature.decomp x y = some xs →
+      (∀ p ∈ xs, l.apply p.1 = l.apply p.2) →
+      l.apply x = l.apply y := by
+  intro l
+  induction l with
+  | nil =>
+      intro x y xs hd hu
+      have heqs : ∀ p ∈ xs, p.1 = p.2 := by
+        intro p hp
+        have := hu p hp
+        simp [Unifier.apply_nil] at this
+        exact this
+      exact Signature.decomp_struct_sound x y xs hd heqs
+  | cons head rest ih =>
+      intro x y xs hd hu
+      obtain ⟨n, s⟩ := head
+      have hd' : Signature.decomp (HasSubst.single x n s) (HasSubst.single y n s) =
+          some (xs.map (fun p =>
+            (HasSubst.single p.1 n s, HasSubst.single p.2 n s))) :=
+        Signature.decomp_single x y xs n s hd
+      have hu' : ∀ q ∈ xs.map (fun p =>
+          (HasSubst.single p.1 n s, HasSubst.single p.2 n s)),
+          Unifier.apply rest q.1 = Unifier.apply rest q.2 := by
+        intro q hq
+        rw [List.mem_map] at hq
+        obtain ⟨p, hp, hpeq⟩ := hq
+        subst hpeq
+        have := hu p hp
+        simp [Unifier.apply_cons] at this
+        exact this
+      have h := ih _ _ _ hd' hu'
+      simp [Unifier.apply_cons]
+      exact h
+
 /-- **Decomposition under unifier.** If a unifier `l` equates `x` and `y`,
 and `decomp x y = some xs`, then `l` also equates each pair in `xs`.
 The reverse direction of `decomp_apply_sound`: in the fat typeclass this
