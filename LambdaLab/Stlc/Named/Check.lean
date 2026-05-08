@@ -29,6 +29,8 @@ def Term.infer (Γ : Ctx) : (e : Term) → CheckResult HasType Γ e
       match Term.infer Γ e₁ with
       | .error err   => .error err
       | .ok .base _  => .error (.notArrow .base)
+      | .ok .inf _   => .error (.notArrow .inf)
+      | .ok (.mvar n) _ => .error (.notArrow (.mvar n))
       | .ok (τ₁ ⇒ τ₂) hf =>
           match Term.infer Γ e₂ with
           | .error err => .error err

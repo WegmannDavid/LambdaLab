@@ -56,8 +56,10 @@ def Term.eval (e : Term) (h : SN e) : Term :=
   | some ⟨e', s⟩ => Term.eval e' (h.unfold s)
 termination_by (⟨e, h⟩ : SNTerm)
 
-/-- Any well-typed term has a normal form. -/
-def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty} (ht : HasType Γ e τ) : Term :=
-  Term.eval e (HasType.sn ht)
+/-- Any well-typed term has a normal form (given the bridge
+preconditions: ground context and ground annotations). -/
+def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty}
+    (hΓ : Γ.Ground) (hag : e.AnnotsGround) (ht : HasType Γ e τ) : Term :=
+  Term.eval e (HasType.sn hΓ hag ht)
 
 end LambdaLab.Stlc.Named
