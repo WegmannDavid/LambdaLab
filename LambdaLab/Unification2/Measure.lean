@@ -21,7 +21,7 @@ def fresh (eqs : Equations C) : Nat :=
 
 /-- `n` is free somewhere in the equation set. -/
 def isFree (eqs : Equations C) (n : Nat) : Prop :=
-  ∃ p ∈ eqs, Term.occurs n p.1 = true ∨ Term.occurs n p.2 = true
+  ∃ p, p ∈ eqs ∧ (Term.occurs n p.1 = true ∨ Term.occurs n p.2 = true)
 
 /-- Number of distinct metavariables appearing in `eqs`. -/
 def mvarCount (eqs : Equations C) : Nat :=
