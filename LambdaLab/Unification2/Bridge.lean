@@ -224,6 +224,99 @@ theorem size_decomp [DecidableEq C] (x y : Term C) (xs : Equations C)
   have h := sizeList_zip_le argsx argsy hlen
   omega
 
+/-! ## Free variables under `single` -/
+
+mutual
+  /-- `single t n s` is free in `m` iff either: `m ≠ n` and `t` is free in `m`,
+  or `t` is free in `n` and `s` is free in `m`. -/
+  theorem single_isFree : ∀ (t : Term C) (n : Nat) (s : Term C) (m : Nat),
+      occurs m (single t n s) = true ↔
+        (m ≠ n ∧ occurs m t = true) ∨ (occurs n t = true ∧ occurs m s = true)
+    | .var k, n, s, m => by
+        show occurs m (pSubst _ (.var k)) = true ↔ _
+        rw [pSubst_var, Std.HashMap.getD_insert]
+        rw [occurs_var]
+        by_cases hnk : n = k
+        · subst hnk
+          simp only [BEq.rfl, ↓reduceIte]
+          rw [occurs_var]
+          constructor
+          · intro hmsm; right; exact ⟨by simp, hmsm⟩
+          · rintro (⟨hmn, hmk⟩ | ⟨_, hsm⟩)
+            · exfalso; rw [decide_eq_true_iff] at hmk; exact hmn hmk
+            · exact hsm
+        · have hbeq : (n == k) = false := by simp [hnk]
+          rw [hbeq]
+          simp only [Bool.false_eq_true, ↓reduceIte, Std.HashMap.getD_empty]
+          rw [occurs_var]
+          constructor
+          · intro hmk
+            left
+            refine ⟨?_, hmk⟩
+            intro hmn
+            rw [decide_eq_true_iff] at hmk
+            subst hmn; exact hnk hmk
+          · rintro (⟨_, hmk⟩ | ⟨hkn, _⟩)
+            · exact hmk
+            · exfalso
+              rw [occurs_var, decide_eq_true_iff] at hkn
+              exact hnk hkn
+    | .app c args, n, s, m => by
+        show occurs m (pSubst _ (.app c args)) = true ↔ _
+        rw [pSubst_app, occurs_app, occurs_app]
+        exact singleList_isFree args n s m
+  theorem singleList_isFree : ∀ (ts : List (Term C)) (n : Nat) (s : Term C) (m : Nat),
+      occursList m (pSubstList ((∅ : Subst (Term C)).insert n s) ts) = true ↔
+        (m ≠ n ∧ occursList m ts = true) ∨ (occursList n ts = true ∧ occurs m s = true)
+    | [], n, s, m => by
+        simp [pSubstList, occursList]
+    | t :: ts, n, s, m => by
+        rw [pSubstList_cons, occursList_cons, occursList_cons, occursList_cons]
+        rw [Bool.or_eq_true, Bool.or_eq_true, Bool.or_eq_true]
+        have h1 : occurs m (pSubst ((∅ : Subst (Term C)).insert n s) t) = true ↔ _ :=
+          single_isFree t n s m
+        have h2 : occursList m (pSubstList ((∅ : Subst (Term C)).insert n s) ts) = true ↔ _ :=
+          singleList_isFree ts n s m
+        rw [h1, h2]
+        constructor
+        · rintro ((⟨hmn, hmt⟩ | ⟨htn, hms⟩) | (⟨hmn, hmts⟩ | ⟨htsn, hms⟩))
+          · exact Or.inl ⟨hmn, Or.inl hmt⟩
+          · exact Or.inr ⟨Or.inl htn, hms⟩
+          · exact Or.inl ⟨hmn, Or.inr hmts⟩
+          · exact Or.inr ⟨Or.inr htsn, hms⟩
+        · rintro (⟨hmn, hmt | hmts⟩ | ⟨htn | htsn, hms⟩)
+          · exact Or.inl (Or.inl ⟨hmn, hmt⟩)
+          · exact Or.inr (Or.inl ⟨hmn, hmts⟩)
+          · exact Or.inl (Or.inr ⟨htn, hms⟩)
+          · exact Or.inr (Or.inr ⟨htsn, hms⟩)
+end
+
+/-! ## Free variables under `decomp` and `single` -/
+
+/-- If `n` occurs in any element of `ts`, then `occursList n ts = true`. -/
+theorem occursList_of_mem : ∀ {ts : List (Term C)} {t : Term C} {n : Nat},
+    t ∈ ts → occurs n t = true → occursList n ts = true
+  | _ :: ts, t, n, ht, h => by
+      rcases List.mem_cons.mp ht with rfl | ht'
+      · simp [occursList, h]
+      · simp [occursList, occursList_of_mem ht' h]
+
+/-- If `decomp x y = some xs` and `n` is free in `xs`, then `n` is free
+in `x` or in `y`. -/
+theorem decomp_isFree [DecidableEq C] (x y : Term C) (xs : Equations C) (n : Nat)
+    (hd : decomp x y = some xs)
+    (hxs : ∃ p ∈ xs, occurs n p.1 = true ∨ occurs n p.2 = true) :
+    occurs n x = true ∨ occurs n y = true := by
+  obtain ⟨c, argsx, argsy, hxc, hyc, _hlen, hxsxs⟩ := decomp_eq_some hd
+  subst hxsxs hxc hyc
+  obtain ⟨p, hp, hor⟩ := hxs
+  -- p ∈ argsx.zip argsy ⟹ p.1 ∈ argsx, p.2 ∈ argsy
+  have hp1 : p.1 ∈ argsx := List.of_mem_zip hp |>.1
+  have hp2 : p.2 ∈ argsy := List.of_mem_zip hp |>.2
+  rcases hor with h1 | h2
+  · left; rw [occurs_app]; exact occursList_of_mem hp1 h1
+  · right; rw [occurs_app]; exact occursList_of_mem hp2 h2
+
 end Term
 
 end LambdaLab.Unification2
