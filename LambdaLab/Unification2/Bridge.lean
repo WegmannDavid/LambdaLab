@@ -16,6 +16,26 @@ namespace Term
 
 variable {C : Type}
 
+/-! ## Custom induction principle on `Term C`
+
+`Term.rec` takes motives over both `Term` and `List Term`. The
+combinator below sets `motive_2 := ∀ t ∈ ·, motive t`, giving a clean
+"each argument satisfies the motive" induction hypothesis at the `app`
+case. -/
+
+theorem ind {motive : Term C → Prop}
+    (var_case : ∀ n, motive (.var n))
+    (app_case : ∀ (c : C) (args : List (Term C)),
+      (∀ t ∈ args, motive t) → motive (.app c args))
+    : ∀ t, motive t := by
+  intro t
+  refine @Term.rec C motive (fun ts => ∀ t ∈ ts, motive t) var_case app_case
+    (fun _ h => by cases h)
+    (fun head tail ih_head ih_tail t ht => ?_) t
+  rcases List.mem_cons.mp ht with rfl | ht'
+  · exact ih_head
+  · exact ih_tail t ht'
+
 /-! ## `pSubst` β-laws (definitional) -/
 
 @[simp] theorem pSubst_var (n : Nat) (σ : Subst (Term C)) :
@@ -140,6 +160,42 @@ theorem decomp_eq_some [DecidableEq C] {x y : Term C} {xs : Equations C}
             refine ⟨cx, argsx, argsy, rfl, ?_, hcc.2, hxs.symm⟩
             rw [hcc.1]
           · cases hd
+
+/-! ## `fresh` strictly dominates every variable that occurs -/
+
+theorem freshList_le_of_mem : ∀ {ts : List (Term C)} {t : Term C}, t ∈ ts →
+    fresh t ≤ freshList ts
+  | _ :: ts, t, h => by
+      rcases List.mem_cons.mp h with rfl | hmem
+      · show fresh t ≤ max (fresh t) (freshList ts); exact Nat.le_max_left _ _
+      · have := freshList_le_of_mem (ts := ts) hmem
+        show fresh t ≤ max _ (freshList ts); omega
+
+theorem fresh_gt_occurs : ∀ (t : Term C) (n : Nat),
+    occurs n t = true → n < fresh t := by
+  intro t
+  refine ind (motive := fun t => ∀ n, occurs n t = true → n < fresh t)
+    ?var ?app t
+  · intro m n hocc
+    rw [occurs_var] at hocc
+    have hnm : n = m := of_decide_eq_true hocc
+    subst hnm
+    show n < n + 1; omega
+  · intro c args ih n hocc
+    rw [occurs_app] at hocc
+    show n < freshList args
+    -- find the arg where occurs n holds, use ih
+    induction args with
+    | nil => simp [occursList] at hocc
+    | cons a as iharg =>
+        simp [occursList, Bool.or_eq_true] at hocc
+        rcases hocc with h | h
+        · have := ih a List.mem_cons_self n h
+          simp [freshList]; omega
+        · have ihres := iharg
+            (fun t ht => ih t (List.mem_cons_of_mem _ ht))
+            h
+          simp [freshList]; omega
 
 /-! ## Size and decomp -/
 
