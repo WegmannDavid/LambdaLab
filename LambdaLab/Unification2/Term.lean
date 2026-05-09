@@ -94,4 +94,10 @@ end Unifier
 abbrev Unifier.Unifies {C : Type} (u : Unifier C) (eqs : Equations C) : Prop :=
   ∀ p ∈ eqs, u.apply p.1 = u.apply p.2
 
+/-- Pull the head equation out of a unifier of `(x, y) :: eqs'`. -/
+theorem Unifier.Unifies.head_eq {C : Type}
+    {u : Unifier C} {x y : Term C} {eqs' : Equations C}
+    (hu : u.Unifies ((x, y) :: eqs')) : u.apply x = u.apply y := by
+  simpa using hu (x, y) List.mem_cons_self
+
 end LambdaLab.Unification2

@@ -333,6 +333,125 @@ theorem decomp_apply_sound [DecidableEq C] (l : Unifier C) (x y : Term C)
   congr; funext i
   exact hu (argsx i, argsy i) (List.mem_map.mpr ⟨i, List.mem_finRange i, rfl⟩)
 
+/-- **Decomposition under unifier (reverse).** If `l.apply x = l.apply y`
+and `decomp x y = some xs`, then `l` unifies each pair in `xs`. -/
+theorem decomp_unifier_sound [DecidableEq C] (x y : Term C)
+    (xs : Equations C) (l : Unifier C)
+    (hd : Term.decomp x y = some xs)
+    (hxy : l.apply x = l.apply y) :
+    ∀ p ∈ xs, l.apply p.1 = l.apply p.2 := by
+  obtain ⟨c, k, argsx, argsy, hxc, hyc, hxs⟩ := Term.decomp_eq_some hd
+  subst hxs hxc hyc
+  rw [apply_app, apply_app] at hxy
+  -- Term.app injection: heads agree (same c, same k), args functions equal.
+  injection hxy with _ _ hfn
+  have hargs : ∀ i : Fin k, l.apply (argsx i) = l.apply (argsy i) := by
+    intro i
+    have := congrFun hfn i
+    exact this
+  intro p hp
+  rw [List.mem_map] at hp
+  obtain ⟨i, _, hpeq⟩ := hp
+  subst hpeq
+  exact hargs i
+
+/-! ### Size-monotonicity for `occurs_no_unifier` -/
+
+private theorem foldr_sum_ge {β : Type} (f : β → Nat) :
+    ∀ (l : List β) (a : β), a ∈ l →
+      f a ≤ l.foldr (fun i acc => acc + f i) 0 := by
+  intro l
+  induction l with
+  | nil => intro _ h; cases h
+  | cons x xs ih =>
+      intro a h
+      rcases List.mem_cons.mp h with rfl | hxs
+      · simp only [List.foldr]; omega
+      · have := ih a hxs
+        simp only [List.foldr]; omega
+
+/-- The size of `l.apply (.app c k args)` in terms of per-argument applied sizes. -/
+private theorem size_apply_app (l : Unifier C) (c : C) (k : Nat) (args : Fin k → Term C) :
+    Term.size (l.apply (.app c k args)) =
+      1 + (List.finRange k).foldr
+        (fun i acc => acc + Term.size (l.apply (args i))) 0 := by
+  rw [apply_app]
+  rfl
+
+/-- If `n` occurs in `t`, then under any unifier `l`, the size of
+`l.apply (var n)` is bounded by the size of `l.apply t`. -/
+private theorem size_apply_le_of_occurs (l : Unifier C) (t : Term C) (n : Nat)
+    (h : Term.occurs n t = true) :
+    Term.size (l.apply (.var n)) ≤ Term.size (l.apply t) := by
+  induction t with
+  | var m =>
+      rw [Term.occurs_var] at h
+      have hmn : n = m := of_decide_eq_true h
+      subst hmn
+      exact Nat.le_refl _
+  | app c k args ih =>
+      rw [Term.occurs_app, List.any_eq_true] at h
+      obtain ⟨i, _, hi⟩ := h
+      have ihi := ih i hi
+      rw [size_apply_app]
+      have hbound :=
+        foldr_sum_ge (fun j : Fin k => Term.size (l.apply (args j)))
+          (List.finRange k) i (List.mem_finRange i)
+      simp only at hbound
+      omega
+
+/-- **Occurs-check completeness.** If `t` mentions `var n` but `t` is
+not just `var n`, no unifier can equate `var n` with `t`. -/
+theorem occurs_no_unifier (t : Term C) (n : Nat) (l : Unifier C)
+    (hf : Term.occurs n t = true)
+    (hnv : Term.isVar t ≠ some n) :
+    l.apply (.var n) ≠ l.apply t := by
+  cases t with
+  | var m =>
+      rw [Term.occurs_var] at hf
+      have hmn : n = m := of_decide_eq_true hf
+      subst hmn
+      simp [Term.isVar] at hnv
+  | app c k args =>
+      rw [Term.occurs_app, List.any_eq_true] at hf
+      obtain ⟨i, _, hi⟩ := hf
+      have ihi := size_apply_le_of_occurs l (args i) n hi
+      have hbound :=
+        foldr_sum_ge (fun j : Fin k => Term.size (l.apply (args j)))
+          (List.finRange k) i (List.mem_finRange i)
+      simp only at hbound
+      have hstrict : Term.size (l.apply (.var n)) < Term.size (l.apply (.app c k args)) := by
+        rw [size_apply_app]; omega
+      intro heq
+      rw [heq] at hstrict
+      exact Nat.lt_irrefl _ hstrict
+
+/-- **Decomposition-failure completeness.** When `x` and `y` are both
+non-variables with mismatched outermost shape, no unifier can equate
+them. -/
+theorem decomp_none_no_unifier [DecidableEq C]
+    (x y : Term C) (l : Unifier C)
+    (hxv : Term.isVar x = none)
+    (hyv : Term.isVar y = none)
+    (hd : Term.decomp x y = none) :
+    l.apply x ≠ l.apply y := by
+  -- x, y are both `.app` (non-var); decomp = none means heads/arity disagree.
+  cases x with
+  | var _ => simp [Term.isVar] at hxv
+  | app cx kx argsx =>
+      cases y with
+      | var _ => simp [Term.isVar] at hyv
+      | app cy ky argsy =>
+          intro heq
+          rw [apply_app, apply_app] at heq
+          simp only [Term.decomp] at hd
+          split at hd
+          · cases hd
+          · rename_i hcc
+            apply hcc
+            injection heq with hc hk _
+            exact ⟨hc, hk⟩
+
 end Unifier
 
 end LambdaLab.Unification2
