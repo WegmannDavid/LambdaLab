@@ -1,11 +1,11 @@
-import LambdaLab.Unification.Bridge
+import LambdaLab.Substitution.Unification.Bridge
 
 /-! # Termination measure for `unify`
 
 The Martelli–Montanari algorithm terminates by lex `(mvarCount, size)`
 decrease. -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 namespace Equations
 
@@ -179,4 +179,4 @@ theorem _root_.Prod.Lex.ofNat_le_lt {a₁ a₂ b₁ b₂ : Nat}
 
 end Equations
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

@@ -1,10 +1,10 @@
-import LambdaLab.Unification.Basic
+import LambdaLab.Substitution.Unification.Basic
 
 /-! # Completeness of `unify` (Fin-form Term)
 
 If any unifier exists for `eqs`, then `unify eqs` succeeds. -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 theorem unify_complete {C : Type} [DecidableEq C] :
     ∀ (eqs : Equations C) (σ : Unifier C),
@@ -91,4 +91,4 @@ theorem unify_complete {C : Type} [DecidableEq C] :
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
       exact Unifier.decomp_none_no_unifier x y σ hxv hyv hdec hxy
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

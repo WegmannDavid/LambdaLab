@@ -1,11 +1,11 @@
-import LambdaLab.Unification.Basic
+import LambdaLab.Substitution.Unification.Basic
 
 /-! # Most-generality of `unify` (Fin-form Term)
 
 When `unify` succeeds, the returned unifier is at least as general as
 any other unifier of the same equation set. -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 namespace Unifier
 
@@ -132,4 +132,4 @@ theorem unify_mgu {C : Type} [DecidableEq C] :
       rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
       cases hu
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

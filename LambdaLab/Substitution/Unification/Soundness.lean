@@ -1,8 +1,8 @@
-import LambdaLab.Unification.Basic
+import LambdaLab.Substitution.Unification.Basic
 
 /-! # Soundness of `unify` (Fin-form Term) -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 theorem unify_unifies {C : Type} [DecidableEq C] :
     ∀ (eqs : Equations C) (u : Unifier C),
@@ -113,4 +113,4 @@ theorem unify_unifies {C : Type} [DecidableEq C] :
       rw [unify_cons_clash x y eqs' hxv hyv hdec] at hu
       cases hu
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

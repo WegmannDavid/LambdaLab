@@ -6,7 +6,7 @@ import LambdaLab.Substitution.Basic
 `Fin n → Term C`. The arity `n` is a separate constructor argument
 (not tied to `c`), so well-formedness is checked extrinsically. -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 inductive Term (C : Type) : Type where
   | var (n : Nat) : Term C
@@ -100,4 +100,4 @@ theorem Unifier.Unifies.head_eq {C : Type}
     (hu : u.Unifies ((x, y) :: eqs')) : u.apply x = u.apply y := by
   simpa using hu (x, y) List.mem_cons_self
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

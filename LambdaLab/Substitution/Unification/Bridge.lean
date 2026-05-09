@@ -1,8 +1,8 @@
-import LambdaLab.Unification.Term
+import LambdaLab.Substitution.Unification.Term
 
 /-! # Bridge lemmas for `Term C` (Fin-function args version) -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 namespace Term
 
@@ -454,4 +454,4 @@ theorem decomp_none_no_unifier [DecidableEq C]
 
 end Unifier
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification

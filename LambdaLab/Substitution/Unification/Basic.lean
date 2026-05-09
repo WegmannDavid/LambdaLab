@@ -1,8 +1,8 @@
-import LambdaLab.Unification.Measure
+import LambdaLab.Substitution.Unification.Measure
 
 /-! # The unification algorithm (Fin-function term form) -/
 
-namespace LambdaLab.Unification
+namespace LambdaLab.Substitution.Unification
 
 set_option linter.unusedVariables false in
 def unify {C : Type} [DecidableEq C] (eqs : Equations C) : Option (Unifier C) :=
@@ -225,4 +225,4 @@ theorem unify_cons_clash (x y : Term C) (eqs' : Equations C)
     unify ((x, y) :: eqs') = none := by
   rw [unify, hxv, hyv, hd]
 
-end LambdaLab.Unification
+end LambdaLab.Substitution.Unification
