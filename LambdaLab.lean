@@ -29,7 +29,7 @@ import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Language.Basic
 import LambdaLab.Language.Parser
 import LambdaLab.Language.Check
-import LambdaLab.Unification.Substitution
+import LambdaLab.Substitution.Basic
 import LambdaLab.Unification.Term
 import LambdaLab.Unification.Bridge
 import LambdaLab.Unification.Measure

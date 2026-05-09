@@ -1,4 +1,4 @@
-import LambdaLab.Unification.Substitution
+import LambdaLab.Substitution.Basic
 
 /-! # Generic free term algebra (Fin-function args, no typeclass)
 
