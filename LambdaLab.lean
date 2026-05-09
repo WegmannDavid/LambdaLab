@@ -30,7 +30,7 @@ import LambdaLab.Language.Basic
 import LambdaLab.Language.Parser
 import LambdaLab.Language.Check
 import LambdaLab.Unification.Substitution
-import LambdaLab.Unification.Signature
+import LambdaLab.Unification.Term
 import LambdaLab.Unification.Bridge
 import LambdaLab.Unification.Measure
 import LambdaLab.Unification.Basic

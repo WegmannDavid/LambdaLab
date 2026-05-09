@@ -1,49 +1,60 @@
-import LambdaLab.Unification.Signature
+import LambdaLab.Unification.Bridge
 
 /-! # Termination measure for `unify`
 
-The Martelli–Montanari algorithm terminates by a lexicographic
-`(mvarCount, size)` decrease. This module defines the measure and the
-monotonicity lemmas needed to discharge the four `decreasing_by` goals
-in `Unification.Basic`.
+The Martelli–Montanari algorithm terminates by lex `(mvarCount, size)`
+decrease. -/
 
-In the slim-typeclass approach, `Signature.occurs n t = true ↔
-HasVars.isFree t n` is *definitional* (the derived `HasSubst α α`
-instance defines `isFree` as `occurs · = true`), so the bool/Prop
-bridge collapses to `Iff.rfl`. -/
-
-/-- Total syntactic size of an equation set. -/
-def Equations.size {α : Type} [Signature α] (eqs : Equations α) : Nat :=
-  eqs.foldr (fun p acc => acc + Signature.size p.1 + Signature.size p.2) 0
-
-/-- Number of distinct metavariables appearing in an equation set,
-bounded above by `HasVars.fresh eqs` and detected by `Signature.occurs`. -/
-def Equations.mvarCount {α : Type} [Signature α] (eqs : Equations α) : Nat :=
-  let bound := HasVars.fresh eqs
-  (List.range bound).countP (fun n =>
-    eqs.any (fun p => Signature.occurs n p.1 || Signature.occurs n p.2))
+namespace LambdaLab.Unification
 
 namespace Equations
-variable {α : Type} [Signature α]
 
-/-- The boolean predicate inside `mvarCount` is exactly `HasVars.isFree`.
-    Bridges the bool/Prop divide for measure reasoning — definitionally
-    in the slim-typeclass setup, but kept as a named lemma for clarity. -/
-theorem any_occurs_iff_isFree (eqs : Equations α) (n : Nat) :
-    (eqs.any (fun p => Signature.occurs n p.1 || Signature.occurs n p.2) = true)
-      ↔ HasVars.isFree eqs n := by
+variable {C : Type}
+
+/-- Total syntactic size of an equation set. -/
+def size (eqs : Equations C) : Nat :=
+  eqs.foldr (fun p acc => acc + Term.size p.1 + Term.size p.2) 0
+
+/-- Maximum `fresh` over all terms in the equations. -/
+def fresh (eqs : Equations C) : Nat :=
+  eqs.foldr (fun p acc => max acc (max (Term.fresh p.1) (Term.fresh p.2))) 0
+
+/-- `n` is free somewhere in the equation set. -/
+def isFree (eqs : Equations C) (n : Nat) : Prop :=
+  ∃ p, p ∈ eqs ∧ (Term.occurs n p.1 = true ∨ Term.occurs n p.2 = true)
+
+/-- Number of distinct metavariables appearing in `eqs`. -/
+def mvarCount (eqs : Equations C) : Nat :=
+  let bound := fresh eqs
+  (List.range bound).countP (fun n =>
+    eqs.any (fun p => Term.occurs n p.1 || Term.occurs n p.2))
+
+/-- The boolean predicate inside `mvarCount` is exactly `isFree`. -/
+theorem any_occurs_iff_isFree (eqs : Equations C) (n : Nat) :
+    (eqs.any (fun p => Term.occurs n p.1 || Term.occurs n p.2) = true)
+      ↔ isFree eqs n := by
   simp only [List.any_eq_true, Bool.or_eq_true]
   rfl
 
-/-- A variable at or above `fresh eqs` is never free in `eqs` — the
-    contrapositive of `fresh_gt_free`. -/
-theorem not_isFree_of_fresh_le {eqs : Equations α} {n : Nat}
-    (h : HasVars.fresh eqs ≤ n) : ¬ HasVars.isFree eqs n := by
-  intro hfree
-  exact Nat.lt_irrefl _ (Nat.lt_of_lt_of_le (HasVars.fresh_gt_free eqs n hfree) h)
+/-- For any equation in `eqs`, its component freshes are ≤ `fresh eqs`. -/
+theorem fresh_ge_of_mem : ∀ {eqs : Equations C} {p : Equation C}, p ∈ eqs →
+    max (Term.fresh p.1) (Term.fresh p.2) ≤ fresh eqs
+  | _ :: qs, p, hp => by
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · show _ ≤ max (fresh qs) (max (Term.fresh p.1) (Term.fresh p.2))
+        exact Nat.le_max_right _ _
+      · have := fresh_ge_of_mem (eqs := qs) hp'
+        show _ ≤ max (fresh qs) _; omega
 
-/-- Extending the range above `a` doesn't change `countP` if the predicate
-    is false everywhere above `a`. -/
+/-- A variable at or above `fresh eqs` is never free in `eqs`. -/
+theorem not_isFree_of_fresh_le {eqs : Equations C} {n : Nat}
+    (hle : fresh eqs ≤ n) : ¬ isFree eqs n := by
+  intro ⟨p, hp, hor⟩
+  have hpfresh := fresh_ge_of_mem hp
+  rcases hor with h1 | h2
+  · have h := Term.fresh_gt_occurs p.1 n h1; omega
+  · have h := Term.fresh_gt_occurs p.2 n h2; omega
+
 theorem countP_range_eq_of_false_above {a M : Nat} {P : Nat → Bool}
     (hMa : a ≤ M) (h : ∀ n, a ≤ n → P n = false) :
     (List.range M).countP P = (List.range a).countP P := by
@@ -58,7 +69,6 @@ theorem countP_range_eq_of_false_above {a M : Nat} {P : Nat → Bool}
     cases hytrue
   omega
 
-/-- A strict-drop lemma for `countP`. -/
 theorem countP_lt_countP_of_strict_at {α} {P Q : α → Bool} {l : List α} {a : α}
     (hPQ : ∀ x ∈ l, P x = true → Q x = true)
     (ha : a ∈ l) (hPa : P a = false) (hQa : Q a = true) :
@@ -82,75 +92,61 @@ theorem countP_lt_countP_of_strict_at {α} {P Q : α → Bool} {l : List α} {a 
             · simp
         omega
 
-/-- Containment of free-variable sets gives `mvarCount ≤`. -/
-theorem mvarCount_le_of_isFree_subset {eqs₁ eqs₂ : Equations α}
-    (hvars : ∀ n, HasVars.isFree eqs₁ n → HasVars.isFree eqs₂ n) :
+theorem mvarCount_le_of_isFree_subset {eqs₁ eqs₂ : Equations C}
+    (hvars : ∀ n, isFree eqs₁ n → isFree eqs₂ n) :
     eqs₁.mvarCount ≤ eqs₂.mvarCount := by
-  let P : Equations α → Nat → Bool := fun eqs n =>
-    eqs.any (fun p => Signature.occurs n p.1 || Signature.occurs n p.2)
-  have hPfalse : ∀ (eqs : Equations α) n, HasVars.fresh eqs ≤ n → P eqs n = false := by
+  let P : Equations C → Nat → Bool := fun eqs n =>
+    eqs.any (fun p => Term.occurs n p.1 || Term.occurs n p.2)
+  have hPfalse : ∀ (eqs : Equations C) n, fresh eqs ≤ n → P eqs n = false := by
     intro eqs n hn
     cases hb : P eqs n
     · rfl
-    · exact absurd (not_isFree_of_fresh_le hn ((any_occurs_iff_isFree eqs n).mp hb)) (by
-        intro; contradiction)
-  let M := max (HasVars.fresh eqs₁) (HasVars.fresh eqs₂)
-  have heq₁ : (List.range M).countP (P eqs₁) = Equations.mvarCount eqs₁ :=
+    · exact absurd (not_isFree_of_fresh_le hn ((any_occurs_iff_isFree eqs n).mp hb))
+        (by intro; contradiction)
+  let M := max (fresh eqs₁) (fresh eqs₂)
+  have heq₁ : (List.range M).countP (P eqs₁) = mvarCount eqs₁ :=
     countP_range_eq_of_false_above (Nat.le_max_left _ _) (hPfalse eqs₁)
-  have heq₂ : (List.range M).countP (P eqs₂) = Equations.mvarCount eqs₂ :=
+  have heq₂ : (List.range M).countP (P eqs₂) = mvarCount eqs₂ :=
     countP_range_eq_of_false_above (Nat.le_max_right _ _) (hPfalse eqs₂)
   rw [← heq₁, ← heq₂]
   apply List.countP_mono_left
   intro n _ h
   exact (any_occurs_iff_isFree eqs₂ n).mpr (hvars n ((any_occurs_iff_isFree eqs₁ n).mp h))
 
-/-- Cons increases `fresh`. -/
-theorem fresh_cons_le (p : Equation α) (eqs : Equations α) :
-    HasVars.fresh eqs ≤ HasVars.fresh (p :: eqs) := by
-  show _ ≤ max (HasVars.fresh eqs) (HasVars.fresh p)
-  exact Nat.le_max_left _ _
-
-/-- Append on the left increases `fresh`. -/
-theorem fresh_append_right_le (xs eqs : Equations α) :
-    HasVars.fresh eqs ≤ HasVars.fresh (xs ++ eqs) := by
-  induction xs with
-  | nil => exact Nat.le_refl _
-  | cons p ps ih =>
-      exact Nat.le_trans ih (fresh_cons_le p (ps ++ eqs))
-
-/-- Cons-monotonicity of `mvarCount`. -/
-theorem mvarCount_cons_le (p : Equation α) (eqs : Equations α) :
-    Equations.mvarCount eqs ≤ Equations.mvarCount (p :: eqs) := by
+theorem mvarCount_cons_le (p : Equation C) (eqs : Equations C) :
+    mvarCount eqs ≤ mvarCount (p :: eqs) := by
   apply mvarCount_le_of_isFree_subset
   intro n ⟨q, hq, hor⟩
   exact ⟨q, List.mem_cons_of_mem _ hq, hor⟩
 
-/-- Strict drop in `mvarCount` when a variable is in the larger set but
-    not the smaller. -/
-theorem mvarCount_lt_of_isFree_subset_strict {eqs₁ eqs₂ : Equations α} (n : Nat)
-    (hvars : ∀ m, HasVars.isFree eqs₁ m → HasVars.isFree eqs₂ m)
-    (hn₁ : ¬ HasVars.isFree eqs₁ n)
-    (hn₂ : HasVars.isFree eqs₂ n) :
+theorem mvarCount_lt_of_isFree_subset_strict {eqs₁ eqs₂ : Equations C} (n : Nat)
+    (hvars : ∀ m, isFree eqs₁ m → isFree eqs₂ m)
+    (hn₁ : ¬ isFree eqs₁ n)
+    (hn₂ : isFree eqs₂ n) :
     eqs₁.mvarCount < eqs₂.mvarCount := by
-  let P : Equations α → Nat → Bool := fun eqs n =>
-    eqs.any (fun p => Signature.occurs n p.1 || Signature.occurs n p.2)
-  have hPfalse : ∀ (eqs : Equations α) m, HasVars.fresh eqs ≤ m → P eqs m = false := by
+  let P : Equations C → Nat → Bool := fun eqs n =>
+    eqs.any (fun p => Term.occurs n p.1 || Term.occurs n p.2)
+  have hPfalse : ∀ (eqs : Equations C) m, fresh eqs ≤ m → P eqs m = false := by
     intro eqs m hm
     cases hb : P eqs m
     · rfl
-    · exact absurd (not_isFree_of_fresh_le hm ((any_occurs_iff_isFree eqs m).mp hb)) (by
-        intro; contradiction)
-  let M := max (HasVars.fresh eqs₁) (HasVars.fresh eqs₂)
-  have heq₁ : (List.range M).countP (P eqs₁) = Equations.mvarCount eqs₁ :=
+    · exact absurd (not_isFree_of_fresh_le hm ((any_occurs_iff_isFree eqs m).mp hb))
+        (by intro; contradiction)
+  let M := max (fresh eqs₁) (fresh eqs₂)
+  have heq₁ : (List.range M).countP (P eqs₁) = mvarCount eqs₁ :=
     countP_range_eq_of_false_above (Nat.le_max_left _ _) (hPfalse eqs₁)
-  have heq₂ : (List.range M).countP (P eqs₂) = Equations.mvarCount eqs₂ :=
+  have heq₂ : (List.range M).countP (P eqs₂) = mvarCount eqs₂ :=
     countP_range_eq_of_false_above (Nat.le_max_right _ _) (hPfalse eqs₂)
   rw [← heq₁, ← heq₂]
   have hnM : n < M := by
-    have := HasVars.fresh_gt_free eqs₂ n hn₂
-    exact Nat.lt_of_lt_of_le this (Nat.le_max_right _ _)
-  apply countP_lt_countP_of_strict_at
-    (a := n) (P := P eqs₁) (Q := P eqs₂)
+    obtain ⟨q, hq, hor⟩ := hn₂
+    have hpfresh := fresh_ge_of_mem hq
+    rcases hor with h | h
+    · have := Term.fresh_gt_occurs q.1 n h
+      exact Nat.lt_of_lt_of_le (by omega) (Nat.le_max_right _ _)
+    · have := Term.fresh_gt_occurs q.2 n h
+      exact Nat.lt_of_lt_of_le (by omega) (Nat.le_max_right _ _)
+  apply countP_lt_countP_of_strict_at (a := n) (P := P eqs₁) (Q := P eqs₂)
   · intro m _ h
     exact (any_occurs_iff_isFree eqs₂ m).mpr (hvars m ((any_occurs_iff_isFree eqs₁ m).mp h))
   · exact List.mem_range.mpr hnM
@@ -159,25 +155,20 @@ theorem mvarCount_lt_of_isFree_subset_strict {eqs₁ eqs₂ : Equations α} (n :
     · exact absurd ((any_occurs_iff_isFree eqs₁ n).mp hb) hn₁
   · exact (any_occurs_iff_isFree eqs₂ n).mpr hn₂
 
-/-- `size` of a cons. -/
-theorem size_cons (p : Equation α) (eqs : Equations α) :
-    Equations.size (p :: eqs) =
-      Equations.size eqs + Signature.size p.1 + Signature.size p.2 :=
-  rfl
+theorem size_cons (p : Equation C) (eqs : Equations C) :
+    size (p :: eqs) = size eqs + Term.size p.1 + Term.size p.2 := rfl
 
-/-- `size` of an append. -/
-theorem size_append (xs eqs : Equations α) :
-    Equations.size (xs ++ eqs) = Equations.size xs + Equations.size eqs := by
+theorem size_append (xs eqs : Equations C) :
+    size (xs ++ eqs) = size xs + size eqs := by
   induction xs with
   | nil =>
-      show Equations.size eqs = Equations.size [] + Equations.size eqs
-      simp [Equations.size]
+      show size eqs = size [] + size eqs
+      simp [size]
   | cons p ps ih =>
-      show Equations.size ((p :: ps) ++ eqs) = _
+      show size ((p :: ps) ++ eqs) = _
       rw [List.cons_append, size_cons, size_cons, ih]
       omega
 
-/-- Lex helper: weak first component, strict second component. -/
 theorem _root_.Prod.Lex.ofNat_le_lt {a₁ a₂ b₁ b₂ : Nat}
     (hle : a₁ ≤ a₂) (hlt : a₁ = a₂ → b₁ < b₂) :
     Prod.Lex (· < ·) (· < ·) (a₁, b₁) (a₂, b₂) := by
@@ -187,3 +178,5 @@ theorem _root_.Prod.Lex.ofNat_le_lt {a₁ a₂ b₁ b₂ : Nat}
     exact Prod.Lex.right _ (hlt rfl)
 
 end Equations
+
+end LambdaLab.Unification
