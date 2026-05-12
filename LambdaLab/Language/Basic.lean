@@ -1,4 +1,5 @@
 import LambdaLab.Parser.Mixfix.Basic
+import LambdaLab.Substitution.Basic
 import Std.Data.HashMap
 
 /-!
@@ -51,15 +52,25 @@ inductive TypeError (Ty : Type) where
   | notArrow : (actual : Ty) → TypeError Ty
   | mismatch : (expected actual : Ty) → TypeError Ty
 
-/-- Result of type-checking `e` under `Γ`: either a structured error,
-or a type together with a derivation that `e` has that type. Parametric
-on the language's `HasType` relation, so each `ok` carries the
-language's own proof. -/
+/-- Result of type-checking `e` under `Γ`, where `Γ`, `e`, and the
+inferred type may all carry existential type variables. Either a
+structured error, or an inferred type `τ` together with a substitution
+`σ` that closes enough of those variables for the language's `HasType`
+relation to derive after `σ` has been applied everywhere.
+
+`Subst Ty = HashMap Nat Ty` and the `pSubst` action are provided by the
+`HasSubst _ Ty` instances. The kernel checker (which doesn't generate
+mvars) uses `σ = ∅`. -/
 inductive CheckResult {Ty Term : Type}
+    [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) : Type where
   | error : TypeError Ty → CheckResult HasType Γ e
-  | ok    : (τ : Ty) → HasType Γ e τ → CheckResult HasType Γ e
+  | ok    : (τ : Ty) → (σ : Subst Ty) →
+            HasType (HasSubst.pSubst Γ σ)
+                    (HasSubst.pSubst e σ)
+                    (HasSubst.pSubst τ σ) →
+            CheckResult HasType Γ e
 
 /-! ## The language interface -/
 
@@ -75,11 +86,20 @@ structure Language : Type 1 where
   /-- Decidable equality on types — needed by `infer` to compare types
   in the application case. -/
   tyDecEq : DecidableEq Ty
+  /-- Type-into-type substitution: how to apply a `Subst Ty` to a `Ty`
+  (typically derived from a `Signature Ty` instance). -/
+  tyHasSubst : HasSubst Ty Ty
+  /-- Substituting `Ty`-metavariables inside a `Term` (replaces type
+  annotations). -/
+  termHasSubst : HasSubst Term Ty
   /-- The declarative typing relation. -/
   HasType : Context Ty → Term → Ty → Prop
-  /-- Algorithmic type inference. The `ok` constructor of the result
-  carries a `HasType` derivation, so this is intrinsically sound. -/
-  infer : (Γ : Context Ty) → (e : Term) → CheckResult HasType Γ e
+  /-- Algorithmic type inference. The `ok` branch carries an inferred
+  type, a substitution, and a `HasType` derivation on the substituted
+  triple, so this is intrinsically sound. -/
+  infer : (Γ : Context Ty) → (e : Term) →
+          @CheckResult Ty Term tyHasSubst termHasSubst
+            (by infer_instance) HasType Γ e
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
@@ -90,6 +110,6 @@ structure Language : Type 1 where
   vernacular grammar. -/
   termParser : Parser Term
 
-attribute [instance] Language.tyDecEq
+attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
 
 end LambdaLab.Language

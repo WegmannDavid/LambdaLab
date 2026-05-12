@@ -19,6 +19,16 @@ runtime semantics needs (a `HasType` derivation).
 
 namespace LambdaLab.Language
 
+/-- A *typing claim* under a substitution: a `σ : Subst L.Ty` plus a
+`HasType` derivation about the `σ`-substituted triple `(Γ, e, τ)`. This
+is what every successful check produces; for the kernel checker `σ = ∅`. -/
+abbrev TypingClaim (L : Language) (Γ : Context L.Ty)
+    (e : L.Term) (τ : L.Ty) : Type :=
+  Σ' σ : Subst L.Ty,
+    L.HasType (HasSubst.pSubst Γ σ)
+              (HasSubst.pSubst e σ)
+              (HasSubst.pSubst τ σ)
+
 /-! ## Per-declaration errors and result -/
 
 /-- Why a single declaration failed to type-check. -/
@@ -30,22 +40,22 @@ inductive DeclError (Ty : Type) where
   declared one. -/
   | typeMismatch : (declared inferred : Ty) → DeclError Ty
 
-/-- Result of checking one declaration: an error, or the `HasType`
-derivation that the body matches the declared type. -/
+/-- Result of checking one declaration: an error, or a typing claim
+that the body matches the declared type. -/
 inductive Decl.CheckResult (L : Language) (Γ : Context L.Ty) (d : Decl L) :
     Type where
   | error : DeclError L.Ty → Decl.CheckResult L Γ d
-  | ok    : L.HasType Γ d.body d.type → Decl.CheckResult L Γ d
+  | ok    : TypingClaim L Γ d.body d.type → Decl.CheckResult L Γ d
 
 /-- Type-check one declaration in context `Γ`. On success, the result
-carries a proof that `d.body` has type `d.type` under `Γ`. -/
+carries σ and a `HasType` derivation about the σ-substituted triple. -/
 def Decl.check (L : Language) (Γ : Context L.Ty) (d : Decl L) :
     Decl.CheckResult L Γ d :=
   match L.infer Γ d.body with
   | .error err => .error (.inferError err)
-  | .ok τ proof =>
+  | .ok τ σ proof =>
       if h : τ = d.type then
-        .ok (h ▸ proof)
+        .ok ⟨σ, h ▸ proof⟩
       else
         .error (.typeMismatch d.type τ)
 
@@ -68,13 +78,13 @@ run it: a `HasType` derivation in the appropriate context. -/
 inductive CheckedCommand (L : Language) (Γ : Context L.Ty) :
     Command L → Type where
   | decl  : (d : Decl L) →
-            L.HasType Γ d.body d.type →
+            TypingClaim L Γ d.body d.type →
             CheckedCommand L Γ (.decl d)
   | eval  : (e : L.Term) → (τ : L.Ty) →
-            L.HasType Γ e τ →
+            TypingClaim L Γ e τ →
             CheckedCommand L Γ (.eval e)
   | check : (e : L.Term) → (τ : L.Ty) →
-            L.HasType Γ e τ →
+            TypingClaim L Γ e τ →
             CheckedCommand L Γ (.check e)
 
 /-- Context update induced by a command: `decl` extends the context
@@ -115,24 +125,24 @@ def Program.check (L : Language) :
   | Γ, .decl d :: rest    =>
       match Decl.check L Γ d with
       | .error err => .error (.atCommand (.inDecl d.name err))
-      | .ok proof  =>
+      | .ok claim  =>
           match Program.check L (Γ.cons d.name d.type) rest with
           | .error err => .error err
-          | .ok tail   => .ok (.cons (.decl d proof) tail)
+          | .ok tail   => .ok (.cons (.decl d claim) tail)
   | Γ, .eval e :: rest    =>
       match L.infer Γ e with
-      | .error err     => .error (.atCommand (.inEval err))
-      | .ok τ proof    =>
+      | .error err          => .error (.atCommand (.inEval err))
+      | .ok τ σ proof       =>
           match Program.check L Γ rest with
           | .error err => .error err
-          | .ok tail   => .ok (.cons (.eval e τ proof) tail)
+          | .ok tail   => .ok (.cons (.eval e τ ⟨σ, proof⟩) tail)
   | Γ, .check e :: rest   =>
       match L.infer Γ e with
-      | .error err     => .error (.atCommand (.inCheck err))
-      | .ok τ proof    =>
+      | .error err          => .error (.atCommand (.inCheck err))
+      | .ok τ σ proof       =>
           match Program.check L Γ rest with
           | .error err => .error err
-          | .ok tail   => .ok (.cons (.check e τ proof) tail)
+          | .ok tail   => .ok (.cons (.check e τ ⟨σ, proof⟩) tail)
 
 /-- Closed-program entry point: check from the empty context. -/
 def Program.checkClosed (L : Language) (cmds : List (Command L)) :

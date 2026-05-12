@@ -32,6 +32,8 @@ def lang : Language where
   Ty := Ty
   Term := Term
   tyDecEq := inferInstance
+  tyHasSubst := inferInstance
+  termHasSubst := inferInstance
   HasType := HasType
   infer := Term.infer
   eval := evalStub

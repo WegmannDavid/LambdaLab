@@ -1,4 +1,6 @@
 import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Unification
+import LambdaLab.Stlc.Named.Properties
 import LambdaLab.Language.Basic
 
 /-!
@@ -9,36 +11,60 @@ a derivation `Γ ⊢ e : τ`. Because every `lam` carries its annotation,
 well-typed terms have a unique type, so inference and checking coincide —
 no bidirectional split, no unification.
 
-The result is intrinsically sound: any `ok` branch carries its own proof.
+The kernel checker uses `σ = ∅` in the `CheckResult.ok` payload: ground
+terms have no metavariables, so the empty substitution suffices. A
+`HasType.pSubst_empty` bridge lets us package the existing kernel
+derivation into the new `(σ-pSubst-everything) HasType` shape.
 -/
 
 namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Language (CheckResult TypeError)
 
-def Term.infer (Γ : Ctx) : (e : Term) → CheckResult HasType Γ e
+/-- Apply the empty substitution everywhere — vacuous, but needed to
+match the `CheckResult.ok` constructor's expected shape. -/
+theorem HasType.pSubst_empty {Γ : Ctx} {e : Term} {τ : Ty}
+    (h : HasType Γ e τ) :
+    HasType (HasSubst.pSubst Γ (∅ : Subst Ty))
+            (HasSubst.pSubst e (∅ : Subst Ty))
+            (HasSubst.pSubst τ (∅ : Subst Ty)) := by
+  show HasType _ (Term.tyPSubst e ∅) (Signature.pSubst τ ∅)
+  rw [Term.tyPSubst_empty, Signature.pSubst_empty]
+  exact HasType.cong (fun x => (HashMap.pSubst_empty_get? Γ x).symm) h
+
+/-- Bare-bones inference returning either a `TypeError` or the raw
+`HasType` derivation. Kept as a separate function so the algorithm
+stays simple; the public `Term.infer` wraps the result into a
+`CheckResult` with `σ = ∅`. -/
+def Term.inferRaw (Γ : Ctx) :
+    (e : Term) → TypeError Ty ⊕ (Σ' τ, HasType Γ e τ)
   | .var x =>
       match h : Γ.get? x with
-      | none   => .error (.unbound x)
-      | some τ => .ok τ (.var h)
+      | none   => .inl (.unbound x)
+      | some τ => .inr ⟨τ, .var h⟩
   | .lam x τ₁ body =>
-      match Term.infer (Γ.cons x τ₁) body with
-      | .error err => .error err
-      | .ok τ₂ h   => .ok (τ₁ ⇒ τ₂) (.lam h)
+      match Term.inferRaw (Γ.cons x τ₁) body with
+      | .inl err     => .inl err
+      | .inr ⟨τ₂, h⟩ => .inr ⟨τ₁ ⇒ τ₂, .lam h⟩
   | .app e₁ e₂ =>
-      match Term.infer Γ e₁ with
-      | .error err   => .error err
-      | .ok .base _  => .error (.notArrow .base)
-      | .ok .inf _   => .error (.notArrow .inf)
-      | .ok (.mvar n) _ => .error (.notArrow (.mvar n))
-      | .ok (τ₁ ⇒ τ₂) hf =>
-          match Term.infer Γ e₂ with
-          | .error err => .error err
-          | .ok τa ha  =>
+      match Term.inferRaw Γ e₁ with
+      | .inl err              => .inl err
+      | .inr ⟨.base, _⟩       => .inl (.notArrow .base)
+      | .inr ⟨.inf, _⟩        => .inl (.notArrow .inf)
+      | .inr ⟨.mvar n, _⟩     => .inl (.notArrow (.mvar n))
+      | .inr ⟨(τ₁ ⇒ τ₂), hf⟩  =>
+          match Term.inferRaw Γ e₂ with
+          | .inl err     => .inl err
+          | .inr ⟨τa, ha⟩ =>
               if h : τa = τ₁ then
-                .ok τ₂ (.app hf (h ▸ ha))
+                .inr ⟨τ₂, .app hf (h ▸ ha)⟩
               else
-                .error (.mismatch τ₁ τa)
+                .inl (.mismatch τ₁ τa)
+
+def Term.infer (Γ : Ctx) (e : Term) : CheckResult HasType Γ e :=
+  match Term.inferRaw Γ e with
+  | .inl err     => .error err
+  | .inr ⟨τ, h⟩  => .ok τ ∅ (HasType.pSubst_empty h)
 
 /-- Closed-term entry point: infer in the empty context. -/
 def Term.inferClosed (e : Term) : CheckResult HasType Ctx.empty e :=

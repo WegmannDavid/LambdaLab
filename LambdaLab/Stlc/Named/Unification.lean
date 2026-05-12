@@ -107,4 +107,81 @@ instance : Signature Ty where
       show (1 : Nat) = 1 + (List.finRange 0).foldr _ 0
       rfl
 
+/-! ## `HasSubst Term Ty` — substitute `Ty.mvar`s in annotations.
+
+The "variables" of a `Term` (for the purpose of a `Subst Ty`) are the
+`Ty.mvar` indices that appear in its type annotations. `pSubst e σ`
+walks `e`, applying `σ` to each annotation. -/
+
+namespace Term
+
+def tyIsFree : Term → Nat → Prop
+  | .var _,        _ => False
+  | .lam _ τ body, n => HasVars.isFree τ n ∨ tyIsFree body n
+  | .app e₁ e₂,    n => tyIsFree e₁ n ∨ tyIsFree e₂ n
+
+def tyFresh : Term → Nat
+  | .var _        => 0
+  | .lam _ τ body => max (HasVars.fresh τ) (tyFresh body)
+  | .app e₁ e₂    => max (tyFresh e₁) (tyFresh e₂)
+
+theorem tyFresh_gt_tyIsFree : ∀ (e : Term) (n : Nat),
+    tyIsFree e n → n < tyFresh e := by
+  intro e
+  induction e with
+  | var _ => intro _ h; cases h
+  | lam x τ body ih =>
+      intro n h
+      simp only [tyFresh]
+      rcases h with hτ | hb
+      · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ hτ) (Nat.le_max_left _ _)
+      · exact Nat.lt_of_lt_of_le (ih _ hb) (Nat.le_max_right _ _)
+  | app e₁ e₂ ih₁ ih₂ =>
+      intro n h
+      simp only [tyFresh]
+      rcases h with h₁ | h₂
+      · exact Nat.lt_of_lt_of_le (ih₁ _ h₁) (Nat.le_max_left _ _)
+      · exact Nat.lt_of_lt_of_le (ih₂ _ h₂) (Nat.le_max_right _ _)
+
+def tyPSubst : Term → Subst Ty → Term
+  | .var x,        _ => .var x
+  | .lam x τ body, σ => .lam x (HasSubst.pSubst τ σ) (tyPSubst body σ)
+  | .app e₁ e₂,    σ => .app (tyPSubst e₁ σ) (tyPSubst e₂ σ)
+
+end Term
+
+instance : HasVars Term where
+  isFree := Term.tyIsFree
+  fresh  := Term.tyFresh
+  fresh_gt_free := Term.tyFresh_gt_tyIsFree
+
+instance : HasSubst Term Ty where
+  pSubst := Term.tyPSubst
+
+/-! ## `pSubst ∅` is the identity on `Term` and on `Ctx` (up to lookup).
+
+For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
+doesn't hold, but every `get?` agrees, which is enough for typing
+proofs (via `HasType.cong`). -/
+
+@[simp] theorem Term.tyPSubst_empty (e : Term) :
+    Term.tyPSubst e (∅ : Subst Ty) = e := by
+  induction e with
+  | var _ => rfl
+  | lam _ τ body ih =>
+      simp only [Term.tyPSubst, ih]
+      congr 1
+      exact Signature.pSubst_empty τ
+  | app _ _ ih₁ ih₂ =>
+      simp only [Term.tyPSubst, ih₁, ih₂]
+
+theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap String Ty) (x : String) :
+    (HasSubst.pSubst Γ (∅ : Subst Ty)).get? x = Γ.get? x := by
+  show (Γ.map (fun _ v => HasSubst.pSubst v (∅ : Subst Ty))).get? x = Γ.get? x
+  rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
+      ← Std.HashMap.get?_eq_getElem?]
+  cases h : Γ.get? x with
+  | none   => rfl
+  | some τ => exact congrArg some (Signature.pSubst_empty τ)
+
 end LambdaLab.Stlc.Named

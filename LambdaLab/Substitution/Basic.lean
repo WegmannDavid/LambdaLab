@@ -75,6 +75,16 @@ instance : HasVars Nat where
   fresh n := n + 1
   fresh_gt_free := by intro n m h; subst h; exact Nat.lt_succ_self _
 
+/-! ## A `String` has no `Nat` free variables
+
+Used as the key type in named contexts (`HashMap String Ty`): keys are
+binder names, not metavariables, so they contribute no support. -/
+
+instance : HasVars String where
+  isFree _ _ := False
+  fresh _ := 0
+  fresh_gt_free := by intro _ _ h; cases h
+
 /-! ## Substitution-into-`HashMap` instance
 
 Generalises the substitution-into-substitution case: any `HashMap K V`
