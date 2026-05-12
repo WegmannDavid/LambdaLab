@@ -281,17 +281,12 @@ theorem decomp_single (x y : α) (xs : Equations α) (n : Nat) (s : α)
   rw [List.map_map]
   apply List.map_congr_left
   intro i _
-  -- Goal: ((Vector.ofFn _).get i, (Vector.ofFn _).get i) = ((fun p => ...) ∘ ...) i
-  -- The (Vector.ofFn _).get i unfolds to the function applied at i.
-  have hax : (Vector.ofFn (fun j : Fin (arity c) =>
-                pSubst (ax.get j) ((∅ : Subst α).insert n s))).get i =
-              pSubst (ax.get i) ((∅ : Subst α).insert n s) := by
+  have hget : ∀ a : Vector α (arity c),
+      (Vector.ofFn (fun j : Fin (arity c) =>
+          pSubst (a.get j) ((∅ : Subst α).insert n s))).get i =
+        pSubst (a.get i) ((∅ : Subst α).insert n s) := fun _ => by
     show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
-  have hay : (Vector.ofFn (fun j : Fin (arity c) =>
-                pSubst (ay.get j) ((∅ : Subst α).insert n s))).get i =
-              pSubst (ay.get i) ((∅ : Subst α).insert n s) := by
-    show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
-  rw [hax, hay]
+  rw [hget ax, hget ay]
   rfl
 
 end Signature
@@ -361,6 +356,47 @@ theorem apply_construct (u : Unifier α) (c : Signature.Constructor α)
       rfl
 
 end Unifier
+
+/-- **Decomposition under unifier (forward direction).** If
+`decomp x y = some xs` and a unifier `l` already unifies every pair in
+`xs`, then it also unifies `(x, y)`. Used in the soundness proof of
+`unify` for the decomposition case. The reverse direction is
+`decomp_unifier_sound`. -/
+theorem Signature.decomp_apply_sound {α : Type} [Signature α] :
+    ∀ (l : Unifier α) (x y : α) (xs : Equations α),
+      Signature.decomp x y = some xs →
+      (∀ p ∈ xs, l.apply p.1 = l.apply p.2) →
+      l.apply x = l.apply y := by
+  intro l
+  induction l with
+  | nil =>
+      intro x y xs hd hu
+      have heqs : ∀ p ∈ xs, p.1 = p.2 := by
+        intro p hp
+        have := hu p hp
+        simp [Unifier.apply_nil] at this
+        exact this
+      exact Signature.decomp_struct_sound x y xs hd heqs
+  | cons head rest ih =>
+      intro x y xs hd hu
+      obtain ⟨n, s⟩ := head
+      have hd' : Signature.decomp (HasSubst.single x n s) (HasSubst.single y n s) =
+          some (xs.map (fun p =>
+            (HasSubst.single p.1 n s, HasSubst.single p.2 n s))) :=
+        Signature.decomp_single x y xs n s hd
+      have hu' : ∀ q ∈ xs.map (fun p =>
+          (HasSubst.single p.1 n s, HasSubst.single p.2 n s)),
+          Unifier.apply rest q.1 = Unifier.apply rest q.2 := by
+        intro q hq
+        rw [List.mem_map] at hq
+        obtain ⟨p, hp, hpeq⟩ := hq
+        subst hpeq
+        have := hu p hp
+        simp [Unifier.apply_cons] at this
+        exact this
+      have h := ih _ _ _ hd' hu'
+      simp [Unifier.apply_cons]
+      exact h
 
 /-- **Decomposition under unifier.** If a unifier `l` equates `x` and `y`,
 and `decomp x y = some xs`, then `l` also equates each pair in `xs`.

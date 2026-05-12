@@ -354,6 +354,12 @@ abbrev Unifier.Unifies {α : Type} [Signature α]
     (σ : Unifier α) (eqs : Equations α) : Prop :=
   ∀ p ∈ eqs, σ.apply p.1 = σ.apply p.2
 
+/-- Pull out the head equation from a unifier of `(x, y) :: eqs'`. -/
+theorem Unifier.Unifies.head_eq {α : Type} [Signature α]
+    {σ : Unifier α} {x y : α} {eqs' : Equations α}
+    (hσ : σ.Unifies ((x, y) :: eqs')) : σ.apply x = σ.apply y := by
+  simpa using hσ (x, y) List.mem_cons_self
+
 /-! ## Trivial bridge lemmas about substitution-on-equations.
 
 The deeper bridge lemmas connecting `unify`-style unifiers to

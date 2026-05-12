@@ -34,3 +34,6 @@ import LambdaLab.Substitution.Unification.Signature
 import LambdaLab.Substitution.Unification.Bridge
 import LambdaLab.Substitution.Unification.Measure
 import LambdaLab.Substitution.Unification.Basic
+import LambdaLab.Substitution.Unification.Soundness
+import LambdaLab.Substitution.Unification.Completeness
+import LambdaLab.Substitution.Unification.MGU
