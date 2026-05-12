@@ -99,10 +99,10 @@ structure Language : Type 1 where
   termHasSubst : HasSubst Term Ty
   /-- The declarative typing relation. -/
   HasType : Context Ty → Term → Ty → Prop
-  /-- Algorithmic type inference. The `ok` branch carries an inferred
-  type, a substitution, and a `HasType` derivation on the substituted
-  triple, so this is intrinsically sound. -/
-  infer : (Γ : Context Ty) → (e : Term) →
+  /-- Bidirectional elaboration: turn `(Γ, e)` (where `e` may carry
+  unresolved type holes) into an inferred type, a substitution, and a
+  `HasType` derivation on the substituted triple. Intrinsically sound. -/
+  elaborate : (Γ : Context Ty) → (e : Term) →
           @CheckResult Ty Term tyHasSubst termHasSubst
             (by infer_instance) HasType Γ e
   /-- Evaluate a well-typed term. Taking the derivation as input keeps

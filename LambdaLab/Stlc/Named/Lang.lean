@@ -37,7 +37,7 @@ def lang : Language where
   tyHasSubst := inferInstance
   termHasSubst := inferInstance
   HasType := HasType
-  infer := Term.infer
+  elaborate := Term.infer
   eval := evalStub
   typeParser := typeParser
   termParser := termParser
