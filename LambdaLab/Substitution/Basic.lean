@@ -22,6 +22,14 @@ class HasSubst (𝕋 : Type) (𝕊 : outParam Type) extends HasVars 𝕋 where
 def HasSubst.single [HasSubst 𝕋 𝕊] (t : 𝕋) (n : Nat) (s : 𝕊) : 𝕋 :=
   HasSubst.pSubst t (((∅ : Subst 𝕊).insert n s))
 
+/-- `MoreGeneral σ σ'` says σ is at least as general as σ': there exists
+some τ such that, on every term, applying σ' is the same as applying σ
+then τ. Reflexive (witness τ = `∅`, modulo `pSubst t ∅ = t`); the name
+covers both strictly-more-general and equally-general cases. -/
+def MoreGeneral {α : Type} [HasSubst α α] (σ σ' : Subst α) : Prop :=
+  ∃ τ : Subst α, ∀ t : α,
+    HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
+
 /-- For an arbitrary `f : α → Nat`, the foldr of `max` over a list bounds
 `f a` from above whenever `a` is in the list. Used to prove
 `fresh_gt_free` for substitution-shaped instances. -/

@@ -19,7 +19,7 @@ derivation into the new `(σ-pSubst-everything) HasType` shape.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language (CheckResult TypeError)
+open LambdaLab.Language (ElaborateResult TypeError)
 
 /-- Apply the empty substitution everywhere — vacuous, but needed to
 match the `CheckResult.ok` constructor's expected shape. -/
@@ -61,13 +61,17 @@ def Term.inferRaw (Γ : Ctx) :
               else
                 .inl (.mismatch τ₁ τa)
 
-def Term.infer (Γ : Ctx) (e : Term) : CheckResult HasType Γ e :=
+def Term.infer (Γ : Ctx) (e : Term) : ElaborateResult HasType Γ e :=
   match Term.inferRaw Γ e with
   | .inl err     => .error err
-  | .inr ⟨τ, h⟩  => .ok τ ∅ (HasType.pSubst_empty h)
+  | .inr ⟨τ, h⟩  =>
+      .ok τ ∅ (HasType.pSubst_empty h)
+        (fun σ' _ => ⟨σ', fun t => by
+          show HasSubst.pSubst t σ' = HasSubst.pSubst (Signature.pSubst t ∅) σ'
+          rw [Signature.pSubst_empty]⟩)
 
 /-- Closed-term entry point: infer in the empty context. -/
-def Term.inferClosed (e : Term) : CheckResult HasType Ctx.empty e :=
+def Term.inferClosed (e : Term) : ElaborateResult HasType Ctx.empty e :=
   e.infer Ctx.empty
 
 end LambdaLab.Stlc.Named

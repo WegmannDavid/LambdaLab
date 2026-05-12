@@ -53,7 +53,7 @@ def Decl.check (L : Language) (Γ : Context L.Ty) (d : Decl L) :
     Decl.CheckResult L Γ d :=
   match L.elaborate Γ d.body with
   | .error err => .error (.inferError err)
-  | .ok τ σ proof =>
+  | .ok τ σ proof _mgu =>
       if h : τ = d.type then
         .ok ⟨σ, h ▸ proof⟩
       else
@@ -131,15 +131,15 @@ def Program.check (L : Language) :
           | .ok tail   => .ok (.cons (.decl d claim) tail)
   | Γ, .eval e :: rest    =>
       match L.elaborate Γ e with
-      | .error err          => .error (.atCommand (.inEval err))
-      | .ok τ σ proof       =>
+      | .error err           => .error (.atCommand (.inEval err))
+      | .ok τ σ proof _mgu   =>
           match Program.check L Γ rest with
           | .error err => .error err
           | .ok tail   => .ok (.cons (.eval e τ ⟨σ, proof⟩) tail)
   | Γ, .check e :: rest   =>
       match L.elaborate Γ e with
-      | .error err          => .error (.atCommand (.inCheck err))
-      | .ok τ σ proof       =>
+      | .error err           => .error (.atCommand (.inCheck err))
+      | .ok τ σ proof _mgu   =>
           match Program.check L Γ rest with
           | .error err => .error err
           | .ok tail   => .ok (.cons (.check e τ ⟨σ, proof⟩) tail)

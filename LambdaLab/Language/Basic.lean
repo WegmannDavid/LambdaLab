@@ -52,25 +52,35 @@ inductive TypeError (Ty : Type) where
   | notArrow : (actual : Ty) → TypeError Ty
   | mismatch : (expected actual : Ty) → TypeError Ty
 
-/-- Result of type-checking `e` under `Γ`, where `Γ`, `e`, and the
+/-- Result of elaborating `e` under `Γ`, where `Γ`, `e`, and the
 inferred type may all carry existential type variables. Either a
-structured error, or an inferred type `τ` together with a substitution
-`σ` that closes enough of those variables for the language's `HasType`
-relation to derive after `σ` has been applied everywhere.
+structured error, or:
+
+* an inferred type `τ`,
+* an MGU `σ` that closes enough of those variables for the language's
+  `HasType` relation to derive on the substituted triple, and
+* a witness `mgu` that `σ` is more general than every other substitution
+  that makes `(Γ, e, τ)` type-check.
 
 `Subst Ty = HashMap Nat Ty` and the `pSubst` action are provided by the
 `HasSubst _ Ty` instances. The kernel checker (which doesn't generate
-mvars) uses `σ = ∅`. -/
-inductive CheckResult {Ty Term : Type}
+mvars) uses `σ = ∅`, in which case the MGU witness is trivial (any other
+σ' is more general than ∅ via `MoreGeneral σ' σ' = ⟨σ', …⟩`). -/
+inductive ElaborateResult {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) : Type where
-  | error : TypeError Ty → CheckResult HasType Γ e
+  | error : TypeError Ty → ElaborateResult HasType Γ e
   | ok    : (τ : Ty) → (σ : Subst Ty) →
-            HasType (HasSubst.pSubst Γ σ)
-                    (HasSubst.pSubst e σ)
-                    (HasSubst.pSubst τ σ) →
-            CheckResult HasType Γ e
+            (hSat : HasType (HasSubst.pSubst Γ σ)
+                            (HasSubst.pSubst e σ)
+                            (HasSubst.pSubst τ σ)) →
+            (mgu : ∀ σ' : Subst Ty,
+              HasType (HasSubst.pSubst Γ σ')
+                      (HasSubst.pSubst e σ')
+                      (HasSubst.pSubst τ σ') →
+              MoreGeneral σ σ') →
+            ElaborateResult HasType Γ e
 
 /-! ## The language interface -/
 
@@ -94,16 +104,21 @@ structure Language : Type 1 where
   /-- Type-into-type substitution: how to apply a `Subst Ty` to a `Ty`
   (typically derived from a `Signature Ty` instance). -/
   tyHasSubst : HasSubst Ty Ty
+  /-- The empty substitution acts as the identity on `Ty`. Required to
+  discharge the MGU witness in `ElaborateResult.ok` when the kernel
+  picks `σ = ∅`. Typically `Signature.pSubst_empty`. -/
+  tyPSubstEmpty : ∀ t : Ty, HasSubst.pSubst t (∅ : Subst Ty) = t
   /-- Substituting `Ty`-metavariables inside a `Term` (replaces type
   annotations). -/
   termHasSubst : HasSubst Term Ty
   /-- The declarative typing relation. -/
   HasType : Context Ty → Term → Ty → Prop
   /-- Bidirectional elaboration: turn `(Γ, e)` (where `e` may carry
-  unresolved type holes) into an inferred type, a substitution, and a
-  `HasType` derivation on the substituted triple. Intrinsically sound. -/
+  unresolved type holes) into an inferred type, an MGU substitution,
+  and a `HasType` derivation on the substituted triple. Intrinsically
+  sound. -/
   elaborate : (Γ : Context Ty) → (e : Term) →
-          @CheckResult Ty Term tyHasSubst termHasSubst
+          @ElaborateResult Ty Term tyHasSubst termHasSubst
             (by infer_instance) HasType Γ e
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/

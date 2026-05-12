@@ -310,15 +310,11 @@ theorem decomp_var_right (x : α) (n : Nat) : decomp x (var n) = none := by
 
 end Signature
 
-/-! ## Most-generality and the unifier API -/
+/-! ## Unifier API
 
-/-- `MoreGeneral σ σ'` says σ is at least as general as σ': there exists
-some τ such that, on every term, applying σ' is the same as applying σ
-then τ. Reflexive (witness τ = `∅`, modulo `pSubst t ∅ = t`); the name
-covers both strictly-more-general and equally-general cases. -/
-def MoreGeneral {α : Type} [Signature α] (σ σ' : Subst α) : Prop :=
-  ∃ τ : Subst α, ∀ t : α,
-    HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
+`MoreGeneral` (the parallel-`Subst` version) lives in
+`Substitution/Basic.lean` since it only needs `HasSubst`. The `Unifier`
+namespace below adds the list-form companion. -/
 
 /-- A unifier as an iterated single-binding sequence. The MGU computed
 by `unify` is returned in this form, with bindings applied left-to-right

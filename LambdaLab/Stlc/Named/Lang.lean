@@ -35,6 +35,7 @@ def lang : Language where
   initialParserState := ()
   tyDecEq := inferInstance
   tyHasSubst := inferInstance
+  tyPSubstEmpty := Signature.pSubst_empty
   termHasSubst := inferInstance
   HasType := HasType
   elaborate := Term.infer
