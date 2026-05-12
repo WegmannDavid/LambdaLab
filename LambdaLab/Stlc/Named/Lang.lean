@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Check
+import LambdaLab.Stlc.Named.HM
 import LambdaLab.Stlc.Named.Eval
 import LambdaLab.Stlc.Named.Parser
 import LambdaLab.Language.Basic
@@ -38,7 +38,7 @@ def lang : Language where
   tyPSubstEmpty := Signature.pSubst_empty
   termHasSubst := inferInstance
   HasType := HasType
-  elaborate := Term.infer
+  elaborate := Term.elaborate
   eval := evalStub
   typeParser := typeParser
   termParser := termParser

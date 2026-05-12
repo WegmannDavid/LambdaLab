@@ -1,6 +1,8 @@
 import LambdaLab.Stlc.Named.Typing
 import LambdaLab.Stlc.Named.Unification
 import LambdaLab.Stlc.Named.Properties
+import LambdaLab.Substitution.Unification.Soundness
+import LambdaLab.Language.Basic
 
 /-! # Monomorphic Hindley–Milner inference for the named STLC.
 
@@ -49,21 +51,6 @@ def Term.inferHM (Γ : Ctx) : Term → InferState → Except InferError (Ty × I
                 { counter := s₂.counter + 1
                   eqs     := (τf, τa ⇒ α) :: s₂.eqs }
               .ok (α, s₃)
-
-/-- Run inference under `Γ`, solve the collected equations, and apply
-the solution to the inferred type. The fresh counter is initialised to
-`HasVars.fresh e` so that newly-allocated mvars never collide with
-ones already present in the input. Free mvars in the result represent
-unconstrained type parameters. -/
-def Term.infer? (Γ : Ctx) (e : Term) : Except InferError Ty := do
-  let (τ, s) ← Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] }
-  match unify s.eqs with
-  | none   => throw (.unifyFail s.eqs)
-  | some σ => pure (HasSubst.pSubst τ σ)
-
-/-- Closed-term entry point. -/
-def Term.infer?Closed (e : Term) : Except InferError Ty :=
-  e.infer? Ctx.empty
 
 /-! ## Supporting lemmas for verification. -/
 
@@ -201,5 +188,33 @@ theorem inferHM_sound (Γ : Ctx) (e : Term) :
           rw [Ty.pSubst_arrow] at hα_constraint
           rw [hα_constraint] at hf
           exact HasType.app hf ha
+
+/-! ## Public verified elaborator. -/
+
+open LambdaLab.Language in
+/-- Walks the term collecting type constraints, calls `unify` to solve
+them, and packages the result as an `ElaborateResult`. The `ok` carries
+the *raw* inferred type τ — the user-visible resolved form is
+`HasSubst.pSubst τ σ`. The `hSat` witness chains `inferHM_sound` with
+`unify_unifies`. The `mgu` witness is still pending (`sorry`). -/
+def Term.elaborate (Γ : Ctx) (e : Term) : ElaborateResult HasType Γ e :=
+  match h_run : Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] } with
+  | .error (.unbound x) => .error (.unbound x)
+  | .error (.unifyFail _) =>
+      .error (.unbound "internal: inferHM returned unifyFail")
+  | .ok (τ, s) =>
+      match h_unify : unify s.eqs with
+      | none => .error (.mismatch τ τ)
+      | some σ =>
+          .ok τ σ
+            (inferHM_sound Γ e h_run σ (unify_unifies s.eqs σ h_unify))
+            (by
+              -- mgu witness — proper proof pending
+              sorry)
+
+/-- Closed-term entry point. -/
+def Term.elaborateClosed (e : Term) :
+    LambdaLab.Language.ElaborateResult HasType Ctx.empty e :=
+  e.elaborate Ctx.empty
 
 end LambdaLab.Stlc.Named
