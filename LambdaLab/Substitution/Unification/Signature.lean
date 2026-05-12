@@ -346,6 +346,24 @@ def apply {α : Type} [Signature α] (u : Unifier α) (t : α) : α :=
   rw [List.foldl_append]
   rfl
 
+/-- Compress a unifier list into a single parallel `Subst α` with the
+same semantic effect. Each binding `(n, s)` is recorded with the *rest*
+of the unifier already pushed into `s`, so that one parallel pass agrees
+with the iterated `apply`. See `apply_eq_pSubst_toSubst`. -/
+def toSubst {α : Type} [Signature α] : Unifier α → Subst α
+  | [] => ∅
+  | (n, s) :: rest =>
+      let σ := toSubst rest
+      σ.insert n (HasSubst.pSubst s σ)
+
+@[simp] theorem toSubst_nil {α : Type} [Signature α] :
+    toSubst ([] : Unifier α) = (∅ : Subst α) := rfl
+
+@[simp] theorem toSubst_cons {α : Type} [Signature α]
+    (n : Nat) (s : α) (rest : Unifier α) :
+    toSubst ((n, s) :: rest) =
+      (toSubst rest).insert n (HasSubst.pSubst s (toSubst rest)) := rfl
+
 end Unifier
 
 /-- A unifier (in the algebraic sense) of an equation set: makes every

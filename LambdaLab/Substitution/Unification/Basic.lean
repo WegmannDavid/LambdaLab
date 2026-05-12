@@ -11,18 +11,18 @@ decomposition. Termination is by lexicographic decrease in
 
 set_option linter.unusedVariables false in
 /-- The standard Martelli–Montanari unification algorithm. -/
-def unify {α : Type} [Signature α] (eqs : Equations α) : Option (Unifier α) :=
+def unifyList {α : Type} [Signature α] (eqs : Equations α) : Option (Unifier α) :=
   match eqs with
   | [] => some []
   | (x, y) :: eqs' =>
       match hx : Signature.isVar x with
       | some n =>
           if Signature.isVar y = some n then
-            unify eqs'
+            unifyList eqs'
           else if Signature.occurs n y then
             none
           else
-            match unify (HasSubst.single eqs' n y) with
+            match unifyList (HasSubst.single eqs' n y) with
             | some rest => some ((n, y) :: rest)
             | none => none
       | none =>
@@ -31,12 +31,12 @@ def unify {α : Type} [Signature α] (eqs : Equations α) : Option (Unifier α) 
               if Signature.occurs m x then
                 none
               else
-                match unify (HasSubst.single eqs' m x) with
+                match unifyList (HasSubst.single eqs' m x) with
                 | some rest => some ((m, x) :: rest)
                 | none => none
           | none =>
               match hd : Signature.decomp x y with
-              | some xs => unify (xs ++ eqs')
+              | some xs => unifyList (xs ++ eqs')
               | none => none
 termination_by (eqs.mvarCount, eqs.size)
 decreasing_by
@@ -134,3 +134,16 @@ decreasing_by
         Signature.size_decomp x y xs hd
       show _ < Equations.size eqs' + Signature.size x + Signature.size y
       omega
+
+/-! ## Public interface: compressed `Subst α` form.
+
+`unifyList` returns the unifier as a `List (Nat × α)` to make the
+algorithm's structure (and its proofs) easy to talk about. Callers
+generally want a single parallel `Subst α`, obtained by composing all
+the bindings via `Unifier.toSubst`. -/
+
+/-- Most-general unifier of `eqs` as a parallel `Subst α`, or `none`
+if no unifier exists. Wraps `unifyList` with `Unifier.toSubst`; see
+`Unifier.apply_eq_pSubst_toSubst` for the semantic bridge. -/
+def unify {α : Type} [Signature α] (eqs : Equations α) : Option (Subst α) :=
+  (unifyList eqs).map Unifier.toSubst

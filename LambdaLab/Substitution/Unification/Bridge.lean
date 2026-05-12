@@ -107,6 +107,62 @@ theorem single_off (t : α) (n : Nat) (s : α)
       rw [occurs_construct, List.any_eq_true]
       exact ⟨i, List.mem_finRange i, hfi⟩
 
+/-! ## `pSubst` on the empty substitution and composition law. -/
+
+/-- Applying the empty substitution is the identity. -/
+theorem pSubst_empty (t : α) : pSubst t (∅ : Subst α) = t := by
+  induction t using term_ind with
+  | var_case n =>
+      rw [pSubst_var, Std.HashMap.getD_empty]
+  | construct_case c args ih =>
+      rw [pSubst_construct]
+      congr 3
+      exact Vector.ofFn_get_eq_self ih
+
+/-- **Composition law for parallel substitution.** Substituting through a
+singleton `{n ↦ s}` and then through `σ` is the same as one parallel
+pass through `σ` extended with `n ↦ pSubst s σ`. This is the equation
+that converts an iterated `Unifier.apply` into a single `pSubst`. -/
+theorem pSubst_single_compose (t : α) (n : Nat) (s : α) (σ : Subst α) :
+    pSubst (HasSubst.single t n s) σ
+      = pSubst t (σ.insert n (pSubst s σ)) := by
+  show pSubst (pSubst t ((∅ : Subst α).insert n s)) σ
+      = pSubst t (σ.insert n (pSubst s σ))
+  induction t using term_ind with
+  | var_case k =>
+      rw [pSubst_var, Std.HashMap.getD_insert]
+      by_cases hk : n = k
+      · subst hk
+        simp only [BEq.rfl, ↓reduceIte]
+        rw [pSubst_var, Std.HashMap.getD_insert_self]
+      · have hbeq : (n == k) = false := by simp [hk]
+        rw [hbeq]
+        simp only [Bool.false_eq_true, ↓reduceIte, Std.HashMap.getD_empty]
+        rw [pSubst_var, pSubst_var, Std.HashMap.getD_insert, hbeq]
+        simp
+  | construct_case c args ih =>
+      show pSubst (pSubst (Signature.construct (Sum.inr ⟨c, args⟩))
+              ((∅ : Subst α).insert n s)) σ
+          = pSubst (Signature.construct (Sum.inr ⟨c, args⟩))
+              (σ.insert n (pSubst s σ))
+      rw [pSubst_construct, pSubst_construct, pSubst_construct]
+      congr 3
+      apply Vector.ext
+      intro i hi
+      have hget : ∀ (f : Fin (arity c) → α),
+          (Vector.ofFn f)[i]'hi = f ⟨i, hi⟩ := fun _ => by simp
+      rw [hget, hget]
+      -- LHS now: pSubst ((Vector.ofFn (fun j => pSubst (args.get j) (∅.insert n s))).get ⟨i, hi⟩) σ
+      show pSubst ((Vector.ofFn (fun j : Fin (arity c) =>
+                  pSubst (args.get j) ((∅ : Subst α).insert n s))).get ⟨i, hi⟩) σ
+            = pSubst (args.get ⟨i, hi⟩) (σ.insert n (pSubst s σ))
+      have hget' : (Vector.ofFn (fun j : Fin (arity c) =>
+                  pSubst (args.get j) ((∅ : Subst α).insert n s))).get ⟨i, hi⟩ =
+                pSubst (args.get ⟨i, hi⟩) ((∅ : Subst α).insert n s) := by
+        show ((Vector.ofFn _)[i]'hi) = _; simp
+      rw [hget']
+      exact ih ⟨i, hi⟩
+
 /-! ## `decomp` shape and structural lemmas. -/
 
 /-- When `decomp x y = some xs`, both `x` and `y` are constructors of
@@ -354,6 +410,26 @@ theorem apply_construct (u : Unifier α) (c : Signature.Constructor α)
       show ((Vector.ofFn _)[i]'hi) = _
       rw [getElem_ofFn]
       rfl
+
+/-! ## Bridge between iterated `apply` and one-shot `pSubst toSubst`.
+
+`Unifier.apply` applies the bindings one at a time, left-to-right. The
+`toSubst` conversion compresses the list into one parallel `Subst α` by
+pushing every later binding's effect into earlier values. The next
+theorem proves these two views agree on every term — letting the public
+`unify` API return `Option (Subst α)` while the internal proofs continue
+to work with the list form. -/
+
+theorem apply_eq_pSubst_toSubst (u : Unifier α) (t : α) :
+    u.apply t = HasSubst.pSubst t u.toSubst := by
+  induction u generalizing t with
+  | nil =>
+      rw [apply_nil, toSubst_nil]
+      exact (Signature.pSubst_empty t).symm
+  | cons p rest ih =>
+      obtain ⟨n, s⟩ := p
+      rw [apply_cons, ih, toSubst_cons]
+      exact Signature.pSubst_single_compose t n s (toSubst rest)
 
 end Unifier
 

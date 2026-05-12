@@ -1,8 +1,8 @@
 import LambdaLab.Substitution.Unification.Basic
 
-/-! # Most-generality of `unify`
+/-! # Most-generality of `unifyList`
 
-When `unify` succeeds, the returned unifier is at least as general as
+When `unifyList` succeeds, the returned unifier is at least as general as
 any other unifier of the same equation set. -/
 
 namespace Unifier
@@ -15,30 +15,30 @@ def MoreGeneral {α : Type} [Signature α] (u₁ u₂ : Unifier α) : Prop :=
 
 end Unifier
 
-/-- **Most-generality of `unify`.** When `unify eqs = some u`, `u` is at
+/-- **Most-generality of `unifyList`.** When `unifyList eqs = some u`, `u` is at
 least as general as any other unifier of `eqs`. Proved by induction on
-`unify.induct`, using `Signature.unifier_absorb` in the var-elim cases
+`unifyList.induct`, using `Signature.unifier_absorb` in the var-elim cases
 and `Signature.decomp_unifier_sound` in the decompose case. -/
-theorem unify_mgu {α : Type} [Signature α] :
+theorem unifyList_mgu {α : Type} [Signature α] :
     ∀ (eqs : Equations α) (u : Unifier α),
-      unify eqs = some u →
+      unifyList eqs = some u →
       ∀ (σ : Unifier α), σ.Unifies eqs →
       Unifier.MoreGeneral u σ := by
   intro eqs
-  induction eqs using unify.induct with
+  induction eqs using unifyList.induct with
   | case1 =>
       intro u hu σ _
-      have hueq : ([] : Unifier α) = u := by grind [unify]
+      have hueq : ([] : Unifier α) = u := by grind [unifyList]
       subst hueq
       exact ⟨σ, fun t => by simp [Unifier.apply]⟩
   | case2 x y eqs' m hxv hyv ih =>
       intro u hu σ hσ
-      have hu : unify eqs' = some u := by grind [unify]
+      have hu : unifyList eqs' = some u := by grind [unifyList]
       exact ih u hu σ (fun p hp => hσ p (List.mem_cons_of_mem _ hp))
-  | case3 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case3 _ _ _ _ _ _ _ => intro u hu _ _; grind [unifyList]
   | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
       intro u hu σ hσ
-      have hueq : (m, y) :: rest = u := by grind [unify]
+      have hueq : (m, y) :: rest = u := by grind [unifyList]
       subst hueq
       have hxeq : x = Signature.var m := Signature.var_of_isVar x m hxv
       have hxy : σ.apply (Signature.var m) = σ.apply y := hxeq ▸ hσ.head_eq
@@ -58,11 +58,11 @@ theorem unify_mgu {α : Type} [Signature α] :
       have hrec := hτ (HasSubst.single t m y)
       simp only [Unifier.apply_cons]
       rw [← habs, hrec]
-  | case5 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
-  | case6 _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case5 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unifyList]
+  | case6 _ _ _ _ _ _ _ => intro u hu _ _; grind [unifyList]
   | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
       intro u hu σ hσ
-      have hueq : (m, x) :: rest = u := by grind [unify]
+      have hueq : (m, x) :: rest = u := by grind [unifyList]
       subst hueq
       have hyeq : y = Signature.var m := Signature.var_of_isVar y m hyv
       have hxy : σ.apply (Signature.var m) = σ.apply x := (hyeq ▸ hσ.head_eq).symm
@@ -82,10 +82,10 @@ theorem unify_mgu {α : Type} [Signature α] :
       have hrec := hτ (HasSubst.single t m x)
       simp only [Unifier.apply_cons]
       rw [← habs, hrec]
-  | case8 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case8 _ _ _ _ _ _ _ _ _ => intro u hu _ _; grind [unifyList]
   | case9 x y eqs' hxv hyv xs hdec ih =>
       intro u hu σ hσ
-      have hu : unify (xs ++ eqs') = some u := by grind [unify]
+      have hu : unifyList (xs ++ eqs') = some u := by grind [unifyList]
       have hxy : σ.apply x = σ.apply y := hσ.head_eq
       have hσ' : σ.Unifies (xs ++ eqs') := by
         intro p hp
@@ -93,4 +93,27 @@ theorem unify_mgu {α : Type} [Signature α] :
         · exact Signature.decomp_unifier_sound x y xs σ hdec hxy p hp_xs
         · exact hσ p (List.mem_cons_of_mem _ hp_eqs')
       exact ih u hu σ hσ'
-  | case10 _ _ _ _ _ _ => intro u hu _ _; grind [unify]
+  | case10 _ _ _ _ _ _ => intro u hu _ _; grind [unifyList]
+
+/-! ## Public, `Subst α`-form MGU. -/
+
+/-- **Most-generality of `unify`.** When `unify eqs = some σ`, `σ` is at
+least as general as any list-form unifier of `eqs`, in the parallel
+`Subst α` sense (`MoreGeneral` from `Signature.lean`). The intermediate
+`Unifier.MoreGeneral` witness from `unifyList_mgu` is converted to a
+`Subst α` witness via `toSubst`. -/
+theorem unify_mgu {α : Type} [Signature α] :
+    ∀ (eqs : Equations α) (σ : Subst α),
+      unify eqs = some σ →
+      ∀ (u : Unifier α), u.Unifies eqs →
+      MoreGeneral σ u.toSubst := by
+  intro eqs σ hu u hu_unif
+  rw [unify, Option.map_eq_some_iff] at hu
+  obtain ⟨u₁, hul, rfl⟩ := hu
+  obtain ⟨τ, hτ⟩ := unifyList_mgu eqs u₁ hul u hu_unif
+  refine ⟨τ.toSubst, fun t => ?_⟩
+  -- Goal: pSubst t u.toSubst = pSubst (pSubst t u₁.toSubst) τ.toSubst
+  rw [← Unifier.apply_eq_pSubst_toSubst,
+      ← Unifier.apply_eq_pSubst_toSubst,
+      ← Unifier.apply_eq_pSubst_toSubst]
+  exact hτ t
