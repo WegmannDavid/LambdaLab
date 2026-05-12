@@ -83,6 +83,11 @@ structure Language : Type 1 where
   Ty : Type
   /-- Terms of the object language. -/
   Term : Type
+  /-- State threaded through the language's sub-parsers (e.g. a fresh-
+  mvar counter). `Unit` for stateless. -/
+  ParserState : Type
+  /-- The initial state value handed to a top-level parse. -/
+  initialParserState : ParserState
   /-- Decidable equality on types — needed by `infer` to compare types
   in the application case. -/
   tyDecEq : DecidableEq Ty
@@ -105,10 +110,10 @@ structure Language : Type 1 where
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
   /-- Sub-parser for types (with bundled printer), plugged into the
   vernacular grammar. -/
-  typeParser : Parser Ty
+  typeParser : Parser ParserState Ty
   /-- Sub-parser for terms (with bundled printer), plugged into the
   vernacular grammar. -/
-  termParser : Parser Term
+  termParser : Parser ParserState Term
 
 attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
 

@@ -8,7 +8,7 @@ A toy mixfix grammar over `String`: parens and a list-pair operator,
 with atoms identifying themselves. Demonstrates the parser running on
 actual input. -/
 
-def parens : Operator String := {
+def parens : Operator Unit String := {
   fixity := .closed
   nameParts := ["(", ")"]
   nameParts_ne_nil := by decide
@@ -17,7 +17,7 @@ def parens : Operator String := {
   build := fun (a : String) => "(" ++ a ++ ")"
 }
 
-def pair : Operator String := {
+def pair : Operator Unit String := {
   fixity := .closed
   nameParts := ["[", ",", "]"]
   nameParts_ne_nil := by decide
@@ -27,7 +27,7 @@ def pair : Operator String := {
 }
 
 /-- Prefix unary `! _`. -/
-def notOp : Operator String := {
+def notOp : Operator Unit String := {
   fixity := .prefix
   nameParts := ["!"]
   nameParts_ne_nil := by decide
@@ -38,7 +38,7 @@ def notOp : Operator String := {
 
 /-- Prefix lambda `λ _ . _`: takes a variable name (sub-parsed) and a
 recursive body. -/
-def lamOp : Operator String := {
+def lamOp : Operator Unit String := {
   fixity := .prefix
   nameParts := ["λ", "."]
   nameParts_ne_nil := by decide
@@ -48,7 +48,7 @@ def lamOp : Operator String := {
 }
 
 /-- Postfix unary `_ ?` (asks if). -/
-def askOp : Operator String := {
+def askOp : Operator Unit String := {
   fixity := .postfix
   nameParts := ["?"]
   nameParts_ne_nil := by decide
@@ -58,7 +58,7 @@ def askOp : Operator String := {
 }
 
 /-- Infix binary `_ + _`. -/
-def plusOp : Operator String := {
+def plusOp : Operator Unit String := {
   fixity := .infix .left
   nameParts := ["+"]
   nameParts_ne_nil := by decide
@@ -67,7 +67,7 @@ def plusOp : Operator String := {
   build := fun (a b : String) => "(" ++ a ++ "+" ++ b ++ ")"
 }
 
-def demoGrammar : Grammar String := {
+def demoGrammar : Grammar Unit String := {
   levels := [[parens, pair, notOp, lamOp, askOp, plusOp]]
   atomBuild := id
   juxtBuild := some (fun a b => "(" ++ a ++ " " ++ b ++ ")")
@@ -86,7 +86,7 @@ def runOne (s : String) : IO Unit := do
   let toks := tokenize s
   IO.println s!"input:   {s}"
   IO.println s!"tokens:  {toks}"
-  IO.println (showResult (parseAll demoGrammar toks))
+  IO.println (showResult ((parseAll demoGrammar () toks).map (·.snd)))
   IO.println ""
 
 def main (args : List String) : IO Unit := do

@@ -44,42 +44,53 @@ def fixityArity : Fixity → Nat → Nat
 
 /-! ## Parsers and printers
 
-A `Parser β` consumes some prefix of a token list and produces a `β`
-together with the leftover tokens. Its round-trip companion is a
-`Printer β` — given a `β`, return the tokens that the parser would
-re-consume to produce that value.
+A `Parser S β` consumes some prefix of a token list and produces a
+`β`, threading a parser state of type `S`. Its round-trip companion is
+a `Printer β` — given a `β`, return the tokens that the parser would
+re-consume to produce that value. The printer is stateless: state is a
+parsing-time-only artifact (e.g. a fresh-mvar counter).
 
-The user-facing intent is that for any sub-parser-printer pair, the
-round-trip law `∀ b ts, parser.run (printer b ++ ts) = some (b, ts)`
-holds. The parser-correctness proofs in later files take this as a
-precondition; we don't attempt to verify it here. -/
+For a stateless sub-parser use `Parser Unit β`. For one that needs to
+hand out fresh names or counters, use `Parser Nat β` (or any other
+state type).
 
-/-- A token-list printer: the round-trip companion of a `Parser β`. -/
+The user-facing intent is that for any *stateless* sub-parser-printer
+pair, the round-trip law
+`∀ b s ts, parser.run s (printer b ++ ts) = some (s, b, ts)` holds.
+Stateful sub-parsers obey a weaker law (state delta exists but isn't
+required to be zero). -/
+
+/-- A token-list printer: the round-trip companion of a `Parser S β`. -/
 abbrev Printer (β : Type) := β → List String
 
-/-- A token-list parser producing values of type `β`, bundled with its
-round-trip companion printer. -/
-structure Parser (β : Type) where
-  run : List String → Option (β × List String)
+/-- A token-list parser producing values of type `β`, threading a
+parser state of type `S`. Bundled with its round-trip companion printer. -/
+structure Parser (S β : Type) where
+  run : S → List String → Option (S × β × List String)
   printer : Printer β
+
+/-- A stateless parser. -/
+abbrev StatelessParser (β : Type) := Parser Unit β
 
 /-! ## Hole specifications -/
 
-/-- Specification of one argument hole in a mixfix operator. -/
-inductive HoleSpec (α : Type) : Type 1 where
+/-- Specification of one argument hole in a mixfix operator. The
+grammar's parser state `S` is shared across all sub-parsers in the
+grammar. -/
+inductive HoleSpec (S α : Type) : Type 1 where
   /-- A recursive hole: parse another expression of the operator's
   result type `α`. -/
-  | recurse : HoleSpec α
+  | recurse : HoleSpec S α
   /-- A sub-hole: parse a value of carrier type `β` using the bundled
   parser/printer pair. -/
-  | sub {β : Type} : Parser β → HoleSpec α
+  | sub {β : Type} : Parser S β → HoleSpec S α
 
 /-- The type that a hole's evaluated child must have. For `recurse`
 holes that's the operator's own result type `α`; for `sub` holes it's
 the sub-parser's carrier type. -/
-abbrev HoleSpec.evalType {α : Type} : HoleSpec α → Type
-  | .recurse            => α
-  | @HoleSpec.sub _ β _ => β
+abbrev HoleSpec.evalType {S α : Type} : HoleSpec S α → Type
+  | .recurse              => α
+  | @HoleSpec.sub _ _ β _ => β
 
 /-! ## Build-function types
 
@@ -89,7 +100,7 @@ curried over the eval-types of those holes:
 
 /-- The type of a build function for an operator with the given list of
 holes. -/
-abbrev buildType (α : Type) : List (HoleSpec α) → Type
+abbrev buildType {S : Type} (α : Type) : List (HoleSpec S α) → Type
   | []      => α
   | h :: hs => h.evalType → buildType α hs
 
@@ -113,23 +124,24 @@ or `by decide`):
 * Infix `_+_`: `nameParts = ["+"]`, `fixity = .infix .left`,
   `holes = [.recurse, .recurse]`, `build : α → α → α`.
 -/
-structure Operator (α : Type) : Type 1 where
+structure Operator (S α : Type) : Type 1 where
   fixity : Fixity
   nameParts : List String
   nameParts_ne_nil : nameParts ≠ []
-  holes : List (HoleSpec α)
+  holes : List (HoleSpec S α)
   holes_match_arity : holes.length = fixityArity fixity nameParts.length
   build : buildType α holes
 
 /-- The number of argument holes of an operator. -/
-def Operator.arity {α} (op : Operator α) : Nat := op.holes.length
+def Operator.arity {S α : Type} (op : Operator S α) : Nat := op.holes.length
 
-/-- A grammar over result type `α`: a list of precedence levels, plus
-a fall-through interpretation for bare identifier-like tokens, plus an
-optional juxtaposition combiner for application-style adjacency. -/
-structure Grammar (α : Type) : Type 1 where
+/-- A grammar over result type `α` with parser state `S`: a list of
+precedence levels, plus a fall-through interpretation for bare
+identifier-like tokens, plus an optional juxtaposition combiner for
+application-style adjacency. -/
+structure Grammar (S α : Type) : Type 1 where
   /-- Precedence levels, ordered from tightest- to loosest-binding. -/
-  levels : List (List (Operator α))
+  levels : List (List (Operator S α))
   /-- Interpretation of a bare token (e.g. a variable name in λ-calculus). -/
   atomBuild : String → α
   /-- Optional juxtaposition: when `some f`, after a head is parsed the

@@ -38,10 +38,10 @@ The empty grammar has no operators, so `parseTree` falls through to
 
 -- TODO(refactor): proof relied on `rfl`-by-unfolding behaviour that
 -- doesn't survive the SubParser → Parser/Printer split. Re-port.
-theorem parseTree_atom_emptyGrammar {α : Type} (atomBuild : String → α)
-    (s : String) :
-    parseTree ({ levels := [], atomBuild } : Grammar α) [s] =
-    some (.atom s, ⟨[], Nat.lt_succ_self _⟩) := by
+theorem parseTree_atom_emptyGrammar {S α : Type} (atomBuild : String → α)
+    (σ : S) (s : String) :
+    parseTree ({ levels := [], atomBuild } : Grammar S α) σ [s] =
+    some (σ, .atom s, ⟨[], Nat.lt_succ_self _⟩) := by
   sorry
 
 /-! ## A small lemma about `matchToken`
@@ -65,51 +65,45 @@ theorem matchToken_cons_ne {tok s : String} (rest : List String) (h : s ≠ tok)
 If the first name-part of an operator differs from the first input
 token, the closed-sequence walker rejects the input. -/
 
-theorem parseTreeClosedSeq_head_mismatch {α : Type} (g : Grammar α)
-    (nameParts : List String) (holes : List (HoleSpec α))
-    (s : String) (rest : List String)
+theorem parseTreeClosedSeq_head_mismatch {S α : Type} (g : Grammar S α)
+    (nameParts : List String) (holes : List (HoleSpec S α))
+    (σ : S) (s : String) (rest : List String)
     (h : nameParts.head? ≠ some s) :
-    parseTreeClosedSeq g nameParts holes (s :: rest) = none := by
+    parseTreeClosedSeq g nameParts holes σ (s :: rest) = none := by
   rcases nameParts with _ | ⟨np, nps⟩
-  · -- nameParts = []. All four match-cases skip the [] branch except the
-    -- catch-all, but `holes` is abstract so we make it concrete first.
-    rcases holes with _ | ⟨h', hs⟩
-    · show parseTreeClosedSeq g [] [] (s :: rest) = none
+  · rcases holes with _ | ⟨h', hs⟩
+    · show parseTreeClosedSeq g [] [] σ (s :: rest) = none
       unfold parseTreeClosedSeq; rfl
     · rcases h' with _ | @⟨_, p⟩
-      · show parseTreeClosedSeq g [] (.recurse :: hs) (s :: rest) = none
+      · show parseTreeClosedSeq g [] (.recurse :: hs) σ (s :: rest) = none
         unfold parseTreeClosedSeq; rfl
-      · show parseTreeClosedSeq g [] (.sub p :: hs) (s :: rest) = none
+      · show parseTreeClosedSeq g [] (.sub p :: hs) σ (s :: rest) = none
         unfold parseTreeClosedSeq; rfl
-  · -- nameParts = np :: nps; head? = some np, so np ≠ s, so s ≠ np
-    have hsp : s ≠ np := by
+  · have hsp : s ≠ np := by
       intro e
       apply h
       show (np :: nps).head? = some s
       rw [e]; rfl
     rcases nps with _ | ⟨q, nps'⟩
-    · -- nameParts = [np]
-      rcases holes with _ | ⟨h', hs⟩
-      · show parseTreeClosedSeq g [np] [] (s :: rest) = none
+    · rcases holes with _ | ⟨h', hs⟩
+      · show parseTreeClosedSeq g [np] [] σ (s :: rest) = none
         unfold parseTreeClosedSeq
         rw [matchToken_cons_ne rest hsp]
       · rcases h' with _ | @⟨_, p⟩
-        · show parseTreeClosedSeq g [np] (.recurse :: hs) (s :: rest) = none
+        · show parseTreeClosedSeq g [np] (.recurse :: hs) σ (s :: rest) = none
           unfold parseTreeClosedSeq
           rw [matchToken_cons_ne rest hsp]
-        · show parseTreeClosedSeq g [np] (.sub p :: hs) (s :: rest) = none
+        · show parseTreeClosedSeq g [np] (.sub p :: hs) σ (s :: rest) = none
           unfold parseTreeClosedSeq
           rw [matchToken_cons_ne rest hsp]
-    · -- nameParts = np :: q :: nps'
-      rcases holes with _ | ⟨h', hs⟩
-      · -- np :: q :: nps', [] -- catch-all returns none
-        show parseTreeClosedSeq g (np :: q :: nps') [] (s :: rest) = none
+    · rcases holes with _ | ⟨h', hs⟩
+      · show parseTreeClosedSeq g (np :: q :: nps') [] σ (s :: rest) = none
         unfold parseTreeClosedSeq; rfl
       · rcases h' with _ | @⟨_, p⟩
-        · show parseTreeClosedSeq g (np :: q :: nps') (.recurse :: hs) (s :: rest) = none
+        · show parseTreeClosedSeq g (np :: q :: nps') (.recurse :: hs) σ (s :: rest) = none
           unfold parseTreeClosedSeq
           rw [matchToken_cons_ne rest hsp]
-        · show parseTreeClosedSeq g (np :: q :: nps') (.sub p :: hs) (s :: rest) = none
+        · show parseTreeClosedSeq g (np :: q :: nps') (.sub p :: hs) σ (s :: rest) = none
           unfold parseTreeClosedSeq
           rw [matchToken_cons_ne rest hsp]
 
@@ -121,19 +115,19 @@ contribution to `findSome?` is `none`, so `parseTree` falls through to
 
 -- TODO(refactor): the `rfl` branches after `cases hf` no longer
 -- definitionally reduce; needs an explicit `simp [tryOp]` style port.
-theorem tryOp_eq_none_of_head_mismatch {α : Type} (g : Grammar α)
-    (s : String) (rest : List String) (op : Operator α)
+theorem tryOp_eq_none_of_head_mismatch {S α : Type} (g : Grammar S α)
+    (σ : S) (s : String) (rest : List String) (op : Operator S α)
     (hClosed : op.fixity = .closed → op.nameParts.head? ≠ some s) :
-    tryOp g (s :: rest) op = none := by
+    tryOp g σ (s :: rest) op = none := by
   sorry
 
 -- TODO(refactor): downstream of `parseTree_atom_emptyGrammar` and the
 -- `unfold parseTree; rfl` pattern. Re-port once those land.
-theorem parseTree_atom_of_no_match {α : Type} (g : Grammar α)
-    (s : String) (rest : List String)
+theorem parseTree_atom_of_no_match {S α : Type} (g : Grammar S α)
+    (σ : S) (s : String) (rest : List String)
     (h : ∀ op ∈ g.levels.flatten, op.fixity = .closed →
       op.nameParts.head? ≠ some s) :
-    parseTree g (s :: rest) = some (.atom s, ⟨rest, Nat.lt_succ_self _⟩) := by
+    parseTree g σ (s :: rest) = some (σ, .atom s, ⟨rest, Nat.lt_succ_self _⟩) := by
   sorry
 
 /-! ## Well-formedness
@@ -151,26 +145,26 @@ To state the round-trip theorem cleanly we need two things:
 
 /-- The first name-part of an operator. Always well-defined since
 `nameParts` is non-empty. -/
-def Operator.head {α : Type} (op : Operator α) : String :=
+def Operator.head {S α : Type} (op : Operator S α) : String :=
   op.nameParts.head op.nameParts_ne_nil
 
-theorem Operator.nameParts_head?_eq {α : Type} (op : Operator α) :
+theorem Operator.nameParts_head?_eq {S α : Type} (op : Operator S α) :
     op.nameParts.head? = some op.head :=
   List.head?_eq_some_head op.nameParts_ne_nil
 
 /-- Closed operators in `g` have pairwise distinct first name-parts. -/
-def Grammar.HeadDistinct {α : Type} (g : Grammar α) : Prop :=
+def Grammar.HeadDistinct {S α : Type} (g : Grammar S α) : Prop :=
   g.levels.flatten.Pairwise (fun op₁ op₂ =>
     op₁.fixity = .closed → op₂.fixity = .closed → op₁.head ≠ op₂.head)
 
 mutual
   /-- A well-formed parse tree: atoms aren't accidentally heads of any
   closed operator, and node operators are closed and present in `g`. -/
-  inductive Tree.WellFormed {α : Type} (g : Grammar α) : Tree α → Prop
+  inductive Tree.WellFormed {S α : Type} (g : Grammar S α) : Tree S α → Prop
     | atom (s : String)
         (h : ∀ op ∈ g.levels.flatten, op.fixity = .closed → op.head ≠ s) :
         Tree.WellFormed g (.atom s)
-    | node {op : Operator α} {cs : Children α op.holes}
+    | node {op : Operator S α} {cs : Children S α op.holes}
         (hClosed : op.fixity = .closed)
         (hMem : op ∈ g.levels.flatten)
         (hCs : Children.WellFormed g cs) :
@@ -178,22 +172,22 @@ mutual
 
   /-- A well-formed child list: each recursive child is well-formed, and
   each sub-hole's value round-trips through its printer/parser. -/
-  inductive Children.WellFormed {α : Type} (g : Grammar α) :
-      ∀ {hs : List (HoleSpec α)}, Children α hs → Prop
+  inductive Children.WellFormed {S α : Type} (g : Grammar S α) :
+      ∀ {hs : List (HoleSpec S α)}, Children S α hs → Prop
     | nil : Children.WellFormed g .nil
-    | consRec {hs : List (HoleSpec α)} {t : Tree α} {cs : Children α hs}
+    | consRec {hs : List (HoleSpec S α)} {t : Tree S α} {cs : Children S α hs}
         (hT : Tree.WellFormed g t)
         (hCs : Children.WellFormed g cs) :
         Children.WellFormed g (.consRec t cs)
-    | consSub {β : Type} {p : Parser β}
-              {hs : List (HoleSpec α)}
-              {v : β} {cs : Children α hs}
+    | consSub {β : Type} {p : Parser S β}
+              {hs : List (HoleSpec S α)}
+              {v : β} {cs : Children S α hs}
         (hPrintNeNil : p.printer v ≠ [])
-        (hRoundTrip : ∀ extra : List String,
-          p.run (p.printer v ++ extra) = some (v, extra))
+        (hRoundTrip : ∀ (σ : S) (extra : List String),
+          p.run σ (p.printer v ++ extra) = some (σ, v, extra))
         (hCs : Children.WellFormed g cs) :
         Children.WellFormed g
-          (@Children.consSub α β p hs v cs)
+          (@Children.consSub S α β p hs v cs)
 end
 
 /-! ## Op selection under HeadDistinct
@@ -205,25 +199,25 @@ operators always fail. So `findSome? (tryOp g input)` returns whatever
 
 /-- Specialised wrapper around `tryOp_eq_none_of_head_mismatch`: if
 `op'`'s head differs from `op`'s head, `tryOp` rejects `op.head :: rest`. -/
-theorem tryOp_of_head_ne {α : Type} (g : Grammar α)
-    (rest : List String) (op op' : Operator α)
+theorem tryOp_of_head_ne {S α : Type} (g : Grammar S α)
+    (σ : S) (rest : List String) (op op' : Operator S α)
     (h : op'.fixity = .closed → op'.head ≠ op.head) :
-    tryOp g (op.head :: rest) op' = none := by
+    tryOp g σ (op.head :: rest) op' = none := by
   apply tryOp_eq_none_of_head_mismatch
   intro hClosed'
   rw [Operator.nameParts_head?_eq]
   intro hEq
   exact h hClosed' (Option.some.inj hEq)
 
-theorem findSome?_tryOp_of_HeadDistinct {α : Type} (g : Grammar α)
-    (rest : List String) (op : Operator α)
+theorem findSome?_tryOp_of_HeadDistinct {S α : Type} (g : Grammar S α)
+    (σ : S) (rest : List String) (op : Operator S α)
     (hClosed : op.fixity = .closed)
-    (l : List (Operator α))
+    (l : List (Operator S α))
     (hP : l.Pairwise (fun op₁ op₂ =>
         op₁.fixity = .closed → op₂.fixity = .closed → op₁.head ≠ op₂.head))
     (hMem : op ∈ l) :
-    l.findSome? (tryOp g (op.head :: rest)) =
-      tryOp g (op.head :: rest) op := by
+    l.findSome? (tryOp g σ (op.head :: rest)) =
+      tryOp g σ (op.head :: rest) op := by
   induction l with
   | nil => exact absurd hMem (List.not_mem_nil)
   | cons head tail ih =>
@@ -231,9 +225,8 @@ theorem findSome?_tryOp_of_HeadDistinct {α : Type} (g : Grammar α)
     obtain ⟨hHead, hPtail⟩ := hP
     rw [List.mem_cons] at hMem
     rcases hMem with rfl | hMemTail
-    · -- op = head: at the front of the list
-      rw [List.findSome?_cons]
-      cases hOpVal : tryOp g (op.head :: rest) op with
+    · rw [List.findSome?_cons]
+      cases hOpVal : tryOp g σ (op.head :: rest) op with
       | some r => rfl
       | none   =>
           rw [List.findSome?_eq_none_iff]
@@ -242,9 +235,8 @@ theorem findSome?_tryOp_of_HeadDistinct {α : Type} (g : Grammar α)
           intro hClosed'
           intro hEq
           exact hHead op' hop'Mem hClosed hClosed' hEq.symm
-    · -- op ∈ tail: head must give none, then recurse
-      rw [List.findSome?_cons]
-      have hHeadNone : tryOp g (op.head :: rest) head = none := by
+    · rw [List.findSome?_cons]
+      have hHeadNone : tryOp g σ (op.head :: rest) head = none := by
         apply tryOp_of_head_ne
         intro hHeadClosed hEq
         exact hHead op hMemTail hHeadClosed hClosed hEq
@@ -267,21 +259,22 @@ when rewriting. -/
 -- need to be re-ported.
 
 mutual
-  theorem parseTree_roundtrip {α : Type} (g : Grammar α) (hG : g.HeadDistinct)
-      (t : Tree α) (hT : Tree.WellFormed g t) (extra : List String) :
-      (parseTree g (Tree.flatten t ++ extra)).map
-        (fun p => (p.fst, p.snd.val)) = some (t, extra) := by
+  theorem parseTree_roundtrip {S α : Type} (g : Grammar S α) (hG : g.HeadDistinct)
+      (t : Tree S α) (hT : Tree.WellFormed g t)
+      (σ : S) (extra : List String) :
+      (parseTree g σ (Tree.flatten t ++ extra)).map
+        (fun p => (p.fst, p.snd.fst, p.snd.snd.val)) = some (σ, t, extra) := by
     sorry
 
-  theorem parseTreeClosedSeq_roundtrip {α : Type} (g : Grammar α)
+  theorem parseTreeClosedSeq_roundtrip {S α : Type} (g : Grammar S α)
       (hG : g.HeadDistinct)
-      (nameParts : List String) {hs : List (HoleSpec α)} (cs : Children α hs)
+      (nameParts : List String) {hs : List (HoleSpec S α)} (cs : Children S α hs)
       (hCs : Children.WellFormed g cs)
       (hLen : nameParts.length = hs.length + 1)
-      (extra : List String) :
-      (parseTreeClosedSeq g nameParts hs
+      (σ : S) (extra : List String) :
+      (parseTreeClosedSeq g nameParts hs σ
         (weaveClosed nameParts (Children.flatten cs) ++ extra)).map
-        (fun p => (p.fst, p.snd.val)) = some (cs, extra) := by
+        (fun p => (p.fst, p.snd.fst, p.snd.snd.val)) = some (σ, cs, extra) := by
     sorry
 end
 
@@ -296,34 +289,38 @@ isn't a prefix of the consumed tokens). The recursive case has no such
 hypothesis — the parser uses `parseTree` itself, whose soundness is the
 inductive hypothesis. -/
 
-/-- A `Parser β` is sound if its `run` is a left-inverse of its
+/-- A `Parser S β` is sound if its `run` is a left-inverse of its
 `printer`: when `run` accepts, the `printer` reconstructs exactly the
 consumed prefix. -/
-def Parser.IsSound {β : Type} (p : Parser β) : Prop :=
-  ∀ (input : List String) (v : β) (rest : List String),
-    p.run input = some (v, rest) → input = p.printer v ++ rest
+def Parser.IsSound {S β : Type} (p : Parser S β) : Prop :=
+  ∀ (σ : S) (input : List String) (σ' : S) (v : β) (rest : List String),
+    p.run σ input = some (σ', v, rest) → input = p.printer v ++ rest
 
 /-- All sub-parsers used in any operator's holes in `g` are sound. -/
-def Grammar.SubsSound {α : Type} (g : Grammar α) : Prop :=
+def Grammar.SubsSound {S α : Type} (g : Grammar S α) : Prop :=
   ∀ op ∈ g.levels.flatten,
-    ∀ {β : Type} (p : Parser β),
+    ∀ {β : Type} (p : Parser S β),
       HoleSpec.sub p ∈ op.holes → p.IsSound
 
 mutual
-  theorem parseTree_sound {α : Type} (g : Grammar α) (hSubs : g.SubsSound)
-      (input : List String) (t : Tree α) (rest : List String)
-      (hP : (parseTree g input).map (fun q => (q.fst, q.snd.val)) =
-            some (t, rest)) :
+  theorem parseTree_sound {S α : Type} (g : Grammar S α) (hSubs : g.SubsSound)
+      (σ : S) (input : List String) (σ' : S) (t : Tree S α) (rest : List String)
+      (hP : (parseTree g σ input).map
+              (fun q => (q.fst, q.snd.fst, q.snd.snd.val)) =
+            some (σ', t, rest)) :
       input = Tree.flatten t ++ rest := by
     sorry
 
-  theorem parseTreeClosedSeq_sound {α : Type} (g : Grammar α) (hSubs : g.SubsSound)
-      (nameParts : List String) {hs : List (HoleSpec α)} (cs : Children α hs)
-      (hHsSound : ∀ {β : Type} (p : Parser β),
+  theorem parseTreeClosedSeq_sound {S α : Type} (g : Grammar S α)
+      (hSubs : g.SubsSound)
+      (nameParts : List String) {hs : List (HoleSpec S α)}
+      (cs : Children S α hs)
+      (hHsSound : ∀ {β : Type} (p : Parser S β),
         HoleSpec.sub p ∈ hs → p.IsSound)
-      (input rest : List String)
-      (hP : (parseTreeClosedSeq g nameParts hs input).map
-              (fun q => (q.fst, q.snd.val)) = some (cs, rest)) :
+      (σ : S) (input : List String) (σ' : S) (rest : List String)
+      (hP : (parseTreeClosedSeq g nameParts hs σ input).map
+              (fun q => (q.fst, q.snd.fst, q.snd.snd.val)) =
+            some (σ', cs, rest)) :
       input = weaveClosed nameParts (Children.flatten cs) ++ rest := by
     sorry
 end

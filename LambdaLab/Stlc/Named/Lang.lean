@@ -31,6 +31,8 @@ private def evalStub {Γ : Ctx} {e : Term} {τ : Ty}
 def lang : Language where
   Ty := Ty
   Term := Term
+  ParserState := Unit
+  initialParserState := ()
   tyDecEq := inferInstance
   tyHasSubst := inferInstance
   termHasSubst := inferInstance

@@ -33,7 +33,7 @@ open LambdaLab.Stlc.Named
 /-! ## Type grammar -/
 
 /-- Closed: `( τ )`. -/
-def typeParens : Operator Ty := {
+def typeParens : Operator Unit Ty := {
   fixity := .closed
   nameParts := ["(", ")"]
   nameParts_ne_nil := by decide
@@ -43,7 +43,7 @@ def typeParens : Operator Ty := {
 }
 
 /-- Infix right-associative: `τ → τ`. -/
-def arrowOp : Operator Ty := {
+def arrowOp : Operator Unit Ty := {
   fixity := .infix .right
   nameParts := ["→"]
   nameParts_ne_nil := by decide
@@ -55,7 +55,7 @@ def arrowOp : Operator Ty := {
 /-- Type grammar. The atom `_` is the surface "infer me" hole; every
 other atom (including `ι`) is treated as `Ty.base` — a parser limitation
 since `atomBuild` is total. -/
-def typeGrammar : Grammar Ty := {
+def typeGrammar : Grammar Unit Ty := {
   levels := [[typeParens, arrowOp]]
   atomBuild := fun s => if s = "_" then Ty.inf else Ty.base
   juxtBuild := none
@@ -72,15 +72,15 @@ def Ty.toTokens : Ty → List String
 /-! ## Term grammar -/
 
 /-- Sub-parser for types, using `typeGrammar`. -/
-def typeParser : Parser Ty where
-  run := fun input =>
-    match parseTree typeGrammar input with
-    | none           => none
-    | some (t, rest) => some (Tree.eval typeGrammar t, rest.val)
+def typeParser : Parser Unit Ty where
+  run := fun s input =>
+    match parseTree typeGrammar s input with
+    | none                 => none
+    | some (s', t, rest)   => some (s', Tree.eval typeGrammar t, rest.val)
   printer := Ty.toTokens
 
 /-- Closed: `( e )`. -/
-def termParens : Operator Term := {
+def termParens : Operator Unit Term := {
   fixity := .closed
   nameParts := ["(", ")"]
   nameParts_ne_nil := by decide
@@ -90,7 +90,7 @@ def termParens : Operator Term := {
 }
 
 /-- Prefix: `λ x : τ . body`. -/
-def lamOp : Operator Term := {
+def lamOp : Operator Unit Term := {
   fixity := .prefix
   nameParts := ["λ", ":", "."]
   nameParts_ne_nil := by decide
@@ -101,7 +101,7 @@ def lamOp : Operator Term := {
 
 /-- Term grammar. Variables are atoms; `λ` is prefix; application is
 juxtaposition. -/
-def termGrammar : Grammar Term := {
+def termGrammar : Grammar Unit Term := {
   levels := [[termParens, lamOp]]
   atomBuild := fun s => Term.var s
   juxtBuild := some (fun a b => Term.app a b)
@@ -117,11 +117,11 @@ def Term.toTokens : Term → List String
 
 /-- Sub-parser for terms, using `termGrammar`. Suitable for the
 vernacular's body slot. -/
-def termParser : Parser Term where
-  run := fun input =>
-    match parseTree termGrammar input with
-    | none           => none
-    | some (t, rest) => some (Tree.eval termGrammar t, rest.val)
+def termParser : Parser Unit Term where
+  run := fun s input =>
+    match parseTree termGrammar s input with
+    | none                 => none
+    | some (s', t, rest)   => some (s', Tree.eval termGrammar t, rest.val)
   printer := Term.toTokens
 
 /-! ## Top-level entry points -/
@@ -132,7 +132,7 @@ def tokenize (s : String) : List String :=
 
 /-- Parse a token list to a `Term`, requiring all tokens to be consumed. -/
 def parseTokens (input : List String) : Option Term :=
-  parseAll termGrammar input
+  (parseAll termGrammar () input).map (·.snd)
 
 /-- Parse a string to a `Term` via the whitespace tokenizer. -/
 def parse (s : String) : Option Term :=

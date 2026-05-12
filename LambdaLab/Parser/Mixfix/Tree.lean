@@ -35,23 +35,23 @@ namespace LambdaLab.Parser.Mixfix
 /-! ## Parse trees and child lists -/
 
 mutual
-  /-- A mixfix parse tree producing values of type `α`. The `app` case
-  represents juxtaposition (function application by adjacency); it
-  carries its own combiner so `eval` doesn't need to consult the
-  grammar. -/
-  inductive Tree (α : Type) : Type 1 where
-    | atom : String → Tree α
-    | node : (op : Operator α) → Children α op.holes → Tree α
-    | app  : (α → α → α) → Tree α → Tree α → Tree α
+  /-- A mixfix parse tree producing values of type `α` from a grammar
+  with parser state `S`. The `app` case represents juxtaposition
+  (function application by adjacency); it carries its own combiner so
+  `eval` doesn't need to consult the grammar. -/
+  inductive Tree (S α : Type) : Type 1 where
+    | atom : String → Tree S α
+    | node : (op : Operator S α) → Children S α op.holes → Tree S α
+    | app  : (α → α → α) → Tree S α → Tree S α → Tree S α
 
   /-- A heterogeneous list of children matching a list of hole specs:
-  a `Tree α` per recursive hole, and a `β` value per sub hole. -/
-  inductive Children (α : Type) : List (HoleSpec α) → Type 1 where
-    | nil : Children α []
-    | consRec {hs : List (HoleSpec α)} :
-        Tree α → Children α hs → Children α (.recurse :: hs)
-    | consSub {β : Type} {p : Parser β} {hs : List (HoleSpec α)} :
-        β → Children α hs → Children α (.sub p :: hs)
+  a `Tree S α` per recursive hole, and a `β` value per sub hole. -/
+  inductive Children (S α : Type) : List (HoleSpec S α) → Type 1 where
+    | nil : Children S α []
+    | consRec {hs : List (HoleSpec S α)} :
+        Tree S α → Children S α hs → Children S α (.recurse :: hs)
+    | consSub {β : Type} {p : Parser S β} {hs : List (HoleSpec S α)} :
+        β → Children S α hs → Children S α (.sub p :: hs)
 end
 
 /-! ## Flattening: tree → token stream
@@ -86,7 +86,7 @@ def weaveInfix : List String → List (List String) → List String
 
 mutual
   /-- Flatten a parse tree into its token stream. -/
-  def Tree.flatten {α : Type} : Tree α → List String
+  def Tree.flatten {S α : Type} : Tree S α → List String
     | .atom s     => [s]
     | .node op cs =>
         let parts := Children.flatten cs
@@ -100,8 +100,8 @@ mutual
 
   /-- Flatten a child list. Recursive children call back into
   `Tree.flatten`; sub children use their bundled parser's `printer`. -/
-  def Children.flatten {α : Type} :
-      ∀ {hs : List (HoleSpec α)}, Children α hs → List (List String)
+  def Children.flatten {S α : Type} :
+      ∀ {hs : List (HoleSpec S α)}, Children S α hs → List (List String)
     | _, .nil                     => []
     | _, .consRec t cs            => Tree.flatten t :: Children.flatten cs
     | _, .consSub (p := p) v cs   => p.printer v :: Children.flatten cs
@@ -114,7 +114,7 @@ mutual
   /-- Evaluate a parse tree using the grammar's `atomBuild` for atoms,
   the operators' `build` functions for nodes, and the per-node `app`
   combiner for juxtaposition. -/
-  def Tree.eval {α : Type} (g : Grammar α) : Tree α → α
+  def Tree.eval {S α : Type} (g : Grammar S α) : Tree S α → α
     | .atom s     => g.atomBuild s
     | .node op cs => Children.evalApply g op.build cs
     | .app f a b  => f (Tree.eval g a) (Tree.eval g b)
@@ -123,8 +123,8 @@ mutual
   /-- Apply a curried build function to the values evaluated from a
   child list, threading recursive holes through `Tree.eval` and passing
   sub-hole values straight through. -/
-  def Children.evalApply {α : Type} (g : Grammar α) :
-      ∀ {hs : List (HoleSpec α)}, buildType α hs → Children α hs → α
+  def Children.evalApply {S α : Type} (g : Grammar S α) :
+      ∀ {hs : List (HoleSpec S α)}, buildType α hs → Children S α hs → α
     | [],     a, .nil          => a
     | _ :: _, f, .consRec t cs => Children.evalApply g (f (Tree.eval g t)) cs
     | _ :: _, f, .consSub v cs => Children.evalApply g (f v) cs

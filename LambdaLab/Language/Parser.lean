@@ -67,7 +67,7 @@ inductive Command (L : Language) where
   | check : L.Term → Command L
 
 /-- The mixfix operator for `def NAME : TYPE := BODY`. -/
-def declOp (L : Language) : Operator (Option (Command L)) := {
+def declOp (L : Language) : Operator L.ParserState (Option (Command L)) := {
   fixity := .prefix
   nameParts := ["def", ":", ":="]
   nameParts_ne_nil := by decide
@@ -78,7 +78,7 @@ def declOp (L : Language) : Operator (Option (Command L)) := {
 }
 
 /-- The mixfix operator for `eval BODY`. -/
-def evalOp (L : Language) : Operator (Option (Command L)) := {
+def evalOp (L : Language) : Operator L.ParserState (Option (Command L)) := {
   fixity := .prefix
   nameParts := ["eval"]
   nameParts_ne_nil := by decide
@@ -88,7 +88,7 @@ def evalOp (L : Language) : Operator (Option (Command L)) := {
 }
 
 /-- The mixfix operator for `check BODY`. -/
-def checkOp (L : Language) : Operator (Option (Command L)) := {
+def checkOp (L : Language) : Operator L.ParserState (Option (Command L)) := {
   fixity := .prefix
   nameParts := ["check"]
   nameParts_ne_nil := by decide
@@ -100,7 +100,8 @@ def checkOp (L : Language) : Operator (Option (Command L)) := {
 /-- The vernacular grammar. Atom fallback returns `none` so `parseTree`
 producing an `.atom` (i.e. input not starting with a known command
 keyword) is detectable as a parse error. -/
-def vernacularGrammar (L : Language) : Grammar (Option (Command L)) := {
+def vernacularGrammar (L : Language) :
+    Grammar L.ParserState (Option (Command L)) := {
   levels := [[declOp L, evalOp L, checkOp L]]
   atomBuild := fun _ => none
   juxtBuild := none
@@ -121,9 +122,9 @@ def splitTokensOn (delim : String) : List String → List (List String)
 /-- Parse a single chunk (one command's tokens, not including the
 trailing `;`) into a `Command`. -/
 def parseChunk (L : Language) (chunk : List String) : Option (Command L) :=
-  match parseAll (vernacularGrammar L) chunk with
-  | some (some cmd) => some cmd
-  | _               => none
+  match parseAll (vernacularGrammar L) L.initialParserState chunk with
+  | some (_, some cmd) => some cmd
+  | _                  => none
 
 /-- Parse a token list into a list of commands. Splits on `;`, parses
 each chunk, drops any empty trailing chunk (which corresponds to the
