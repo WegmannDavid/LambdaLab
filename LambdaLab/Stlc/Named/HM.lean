@@ -189,6 +189,24 @@ theorem inferHM_sound (Γ : Ctx) (e : Term) :
           rw [hα_constraint] at hf
           exact HasType.app hf ha
 
+/-! ## TODO: completeness / MGU.
+
+Standard HM completeness ("any σ' that makes the term type-check is more
+general than HM's σ") requires the standard *principal types* /
+*fresh-mvar extension* trick:
+
+- The HM algorithm allocates fresh mvars (e.g. the `α` in the `app`
+  case). The user's σ' has no entry for those — it never saw them.
+- To get σ' to satisfy the HM-generated constraint `(τf, τa ⇒ α)`, we
+  have to extend σ' with bindings `α ↦ <the type of the result>` etc.
+- Then `unify_mgu` says HM's σ is more general than the *extended* σ';
+  the extension itself is more general than σ' (it's an extension), so
+  by transitivity HM's σ is more general than σ'.
+
+This is the textbook HM completeness proof — sound in spirit, but the
+extension construction + `MoreGeneral` transitivity proof is a real
+chunk of work (~200 LOC). Deferred. -/
+
 /-! ## Public verified elaborator. -/
 
 open LambdaLab.Language in
