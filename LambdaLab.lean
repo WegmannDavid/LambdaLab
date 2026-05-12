@@ -30,10 +30,7 @@ import LambdaLab.Language.Basic
 import LambdaLab.Language.Parser
 import LambdaLab.Language.Check
 import LambdaLab.Substitution.Basic
-import LambdaLab.Substitution.Unification.Term
+import LambdaLab.Substitution.Unification.Signature
 import LambdaLab.Substitution.Unification.Bridge
 import LambdaLab.Substitution.Unification.Measure
 import LambdaLab.Substitution.Unification.Basic
-import LambdaLab.Substitution.Unification.Soundness
-import LambdaLab.Substitution.Unification.Completeness
-import LambdaLab.Substitution.Unification.MGU
