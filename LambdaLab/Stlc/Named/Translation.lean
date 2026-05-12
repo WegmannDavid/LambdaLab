@@ -43,7 +43,6 @@ namespace LambdaLab.Stlc.Named
 def Ty.toDB : Ty → Stlc.DeBruijn.Ty
   | .base => Stlc.DeBruijn.Ty.base
   | .arrow τ₁ τ₂ => Stlc.DeBruijn.Ty.arrow τ₁.toDB τ₂.toDB
-  | .inf => Stlc.DeBruijn.Ty.base
   | .mvar _ => Stlc.DeBruijn.Ty.base
 
 /-! ## Variable lookup in a context -/
@@ -507,7 +506,6 @@ theorem Ty.fromDB_toDB : ∀ {τ : Ty}, τ.Ground → Ty.fromDB τ.toDB = τ := 
   | arrow τ₁ τ₂ ih₁ ih₂ =>
       obtain ⟨h₁, h₂⟩ := Ty.Ground.arrow.mp h
       simp [Ty.toDB, Ty.fromDB, ih₁ h₁, ih₂ h₂]
-  | inf      => exact absurd h Ty.Ground.inf
   | mvar n   => exact absurd h (Ty.Ground.mvar n)
 
 @[simp] theorem Ty.toDB_fromDB (t : Stlc.DeBruijn.Ty) : (Ty.fromDB t).toDB = t := by

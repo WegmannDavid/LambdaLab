@@ -11,9 +11,12 @@ Specializes the mixfix parser framework to produce
 
 Types:
 * `ι`        — base type.
-* `_`        — anonymous "infer me" hole, parsed as `Ty.inf`.
 * `τ → τ`    — function type (right-associative).
 * `( τ )`    — grouping.
+
+(Surface syntax `_` for "infer me" was removed alongside `Ty.inf`; it
+will return once the parser threads a fresh-mvar counter through
+`atomBuild`.)
 
 Terms:
 * identifier — variable.
@@ -57,7 +60,7 @@ other atom (including `ι`) is treated as `Ty.base` — a parser limitation
 since `atomBuild` is total. -/
 def typeGrammar : Grammar Unit Ty := {
   levels := [[typeParens, arrowOp]]
-  atomBuild := fun s => if s = "_" then Ty.inf else Ty.base
+  atomBuild := fun _ => Ty.base
   juxtBuild := none
 }
 
@@ -66,7 +69,6 @@ def typeGrammar : Grammar Unit Ty := {
 def Ty.toTokens : Ty → List String
   | .base      => ["ι"]
   | .arrow a b => "(" :: Ty.toTokens a ++ "→" :: Ty.toTokens b ++ [")"]
-  | .inf       => ["_"]
   | .mvar n    => [s!"?{n}"]
 
 /-! ## Term grammar -/

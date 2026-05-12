@@ -50,7 +50,6 @@ def Term.inferRaw (Γ : Ctx) :
       match Term.inferRaw Γ e₁ with
       | .inl err              => .inl err
       | .inr ⟨.base, _⟩       => .inl (.notArrow .base)
-      | .inr ⟨.inf, _⟩        => .inl (.notArrow .inf)
       | .inr ⟨.mvar n, _⟩     => .inl (.notArrow (.mvar n))
       | .inr ⟨(τ₁ ⇒ τ₂), hf⟩  =>
           match Term.inferRaw Γ e₂ with

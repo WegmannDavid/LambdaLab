@@ -14,27 +14,24 @@ namespace LambdaLab.Stlc.Named
 
 /-! ## Types -/
 
-/-- Types include unification holes:
-* `inf` — surface-level "infer me" hole, produced by the parser and
-  replaced with a fresh `mvar` during elaboration. Never reaches the unifier.
+/-- Types include unification metavariables:
 * `mvar n` — unification metavariable, identified by a unique `Nat`.
-  Created by elaboration's freshening pass; eliminated by substitution. -/
+  Created by the parser (fresh per `_`) and the elaborator's app rule;
+  eliminated by substitution. -/
 inductive Ty where
   | base : Ty
   | arrow : Ty → Ty → Ty
-  | inf : Ty
   | mvar : Nat → Ty
   deriving DecidableEq, Repr
 
 infixr:25 " ⇒ " => Ty.arrow
 
-/-- A type is *ground* when it contains no `.inf` or `.meta`. The kernel
-typing relation `HasType` and the bridge to the de Bruijn variant only
-expect ground types. -/
+/-- A type is *ground* when it contains no `mvar`. The kernel typing
+relation `HasType` and the bridge to the de Bruijn variant only expect
+ground types. -/
 def Ty.isGround : Ty → Bool
   | .base       => true
   | .arrow a b  => a.isGround && b.isGround
-  | .inf        => false
   | .mvar _     => false
 
 abbrev Ty.Ground (τ : Ty) : Prop := τ.isGround = true
@@ -44,8 +41,6 @@ abbrev Ty.Ground (τ : Ty) : Prop := τ.isGround = true
 @[simp] theorem Ty.Ground.arrow {a b : Ty} :
     (a ⇒ b).Ground ↔ a.Ground ∧ b.Ground := by
   simp [Ty.Ground, Ty.isGround]
-
-@[simp] theorem Ty.Ground.inf : ¬ Ty.inf.Ground := by simp [Ty.Ground, Ty.isGround]
 
 @[simp] theorem Ty.Ground.mvar (n : Nat) : ¬ (Ty.mvar n).Ground := by
   simp [Ty.Ground, Ty.isGround]
@@ -58,7 +53,7 @@ inductive Term where
   | app : Term → Term → Term
   deriving Repr
 
-/-- Every type annotation inside `e` is ground (no `.inf`, no `.mvar`). -/
+/-- Every type annotation inside `e` is ground (no `.mvar`). -/
 def Term.AnnotsGround : Term → Prop
   | .var _        => True
   | .lam _ τ body => τ.Ground ∧ body.AnnotsGround
