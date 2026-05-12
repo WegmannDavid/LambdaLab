@@ -159,4 +159,56 @@ theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap String Ty) (x : String) :
   | none   => rfl
   | some τ => exact congrArg some (Signature.pSubst_empty τ)
 
+/-! ## `pSubst` unfolding lemmas for each `Ty` constructor. -/
+
+@[simp] theorem Ty.pSubst_base (σ : Subst Ty) :
+    HasSubst.pSubst Ty.base σ = Ty.base := by
+  show Signature.pSubst Ty.base σ = _
+  show Signature.pSubst (Signature.construct (Sum.inr
+        ⟨TyConstructor.base, Vector.ofFn Fin.elim0⟩)) σ = _
+  rw [Signature.pSubst_construct]
+  rfl
+
+@[simp] theorem Ty.pSubst_mvar (n : Nat) (σ : Subst Ty) :
+    HasSubst.pSubst (Ty.mvar n) σ = σ.getD n (Ty.mvar n) := by
+  show Signature.pSubst (Signature.var n : Ty) σ = _
+  exact Signature.pSubst_var n σ
+
+@[simp] theorem Ty.pSubst_arrow (a b : Ty) (σ : Subst Ty) :
+    HasSubst.pSubst (Ty.arrow a b) σ =
+      Ty.arrow (HasSubst.pSubst a σ) (HasSubst.pSubst b σ) := by
+  show Signature.pSubst (Signature.construct (Sum.inr ⟨TyConstructor.arrow,
+        Vector.ofFn (fun i : Fin 2 =>
+          match i with | 0 => a | 1 => b)⟩)) σ = _
+  rw [Signature.pSubst_construct]
+  show Signature.construct (Sum.inr ⟨TyConstructor.arrow,
+        Vector.ofFn fun i : Fin 2 => Signature.pSubst
+          ((Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get i) σ⟩) = _
+  show Ty.arrow ((Vector.ofFn _).get 0) ((Vector.ofFn _).get 1) = _
+  have h0 : (Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get 0 = a := by
+    show ((Vector.ofFn _)[(0 : Fin 2).val]'(0 : Fin 2).isLt) = _
+    simp
+  have h1 : (Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get 1 = b := by
+    show ((Vector.ofFn _)[(1 : Fin 2).val]'(1 : Fin 2).isLt) = _
+    simp
+  show Ty.arrow (Signature.pSubst ((Vector.ofFn _).get 0) σ)
+                (Signature.pSubst ((Vector.ofFn _).get 1) σ) = _
+  rw [h0, h1]
+  rfl
+
+/-! ## How `pSubst` interacts with `Ctx` lookup. -/
+
+/-- Looking up a key in a `σ`-substituted context returns the
+`σ`-substituted value. -/
+theorem HashMap.pSubst_get? (Γ : Std.HashMap String Ty) (σ : Subst Ty)
+    (x : String) :
+    (HasSubst.pSubst Γ σ).get? x =
+      (Γ.get? x).map (fun τ => HasSubst.pSubst τ σ) := by
+  show (Γ.map (fun _ v => HasSubst.pSubst v σ)).get? x = _
+  rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
+      ← Std.HashMap.get?_eq_getElem?]
+
 end LambdaLab.Stlc.Named

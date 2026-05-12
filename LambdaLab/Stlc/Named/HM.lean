@@ -1,5 +1,6 @@
 import LambdaLab.Stlc.Named.Typing
 import LambdaLab.Stlc.Named.Unification
+import LambdaLab.Stlc.Named.Properties
 
 /-! # Monomorphic Hindley–Milner inference for the named STLC.
 
@@ -24,33 +25,30 @@ structure InferState where
   counter : Nat
   eqs     : Equations Ty
 
-abbrev InferM := StateT InferState (Except InferError)
-
-/-- Allocate a fresh `Ty.mvar`. -/
-def fresh : InferM Ty := do
-  let s ← get
-  set { s with counter := s.counter + 1 }
-  return .mvar s.counter
-
-/-- Push a `τ₁ = τ₂` constraint onto the pile. -/
-def constrain (τ₁ τ₂ : Ty) : InferM Unit :=
-  modify fun s => { s with eqs := (τ₁, τ₂) :: s.eqs }
-
-/-- Monomorphic constraint-based inference. -/
-def Term.inferHM (Γ : Ctx) : Term → InferM Ty
-  | .var x =>
+/-- Pure constraint-based inference: walks the term with an explicit
+state (counter + accumulated equations) and returns the inferred type
+plus the updated state. -/
+def Term.inferHM (Γ : Ctx) : Term → InferState → Except InferError (Ty × InferState)
+  | .var x,        s =>
       match Γ.get? x with
-      | none   => throw (.unbound x)
-      | some τ => pure τ
-  | .lam x τ₁ body => do
-      let τ₂ ← inferHM (Γ.cons x τ₁) body
-      pure (τ₁ ⇒ τ₂)
-  | .app e₁ e₂ => do
-      let τf ← inferHM Γ e₁
-      let τa ← inferHM Γ e₂
-      let α  ← fresh
-      constrain τf (τa ⇒ α)
-      pure α
+      | none   => .error (.unbound x)
+      | some τ => .ok (τ, s)
+  | .lam x τ₁ body, s =>
+      match Term.inferHM (Γ.cons x τ₁) body s with
+      | .error err     => .error err
+      | .ok (τ₂, s')   => .ok (τ₁ ⇒ τ₂, s')
+  | .app e₁ e₂,     s =>
+      match Term.inferHM Γ e₁ s with
+      | .error err      => .error err
+      | .ok (τf, s₁)    =>
+          match Term.inferHM Γ e₂ s₁ with
+          | .error err      => .error err
+          | .ok (τa, s₂)    =>
+              let α := Ty.mvar s₂.counter
+              let s₃ : InferState :=
+                { counter := s₂.counter + 1
+                  eqs     := (τf, τa ⇒ α) :: s₂.eqs }
+              .ok (α, s₃)
 
 /-- Run inference under `Γ`, solve the collected equations, and apply
 the solution to the inferred type. The fresh counter is initialised to
@@ -58,7 +56,7 @@ the solution to the inferred type. The fresh counter is initialised to
 ones already present in the input. Free mvars in the result represent
 unconstrained type parameters. -/
 def Term.infer? (Γ : Ctx) (e : Term) : Except InferError Ty := do
-  let (τ, s) ← (e.inferHM Γ).run { counter := HasVars.fresh e, eqs := [] }
+  let (τ, s) ← Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] }
   match unify s.eqs with
   | none   => throw (.unifyFail s.eqs)
   | some σ => pure (HasSubst.pSubst τ σ)
@@ -66,5 +64,71 @@ def Term.infer? (Γ : Ctx) (e : Term) : Except InferError Ty := do
 /-- Closed-term entry point. -/
 def Term.infer?Closed (e : Term) : Except InferError Ty :=
   e.infer? Ctx.empty
+
+/-! ## Supporting lemmas for verification. -/
+
+/-- `cons` and `pSubst` commute under `get?` — substituting an extended
+context agrees, key-by-key, with extending a substituted context. Used
+via `HasType.cong` to bridge `pSubst (Γ.cons x τ) σ` and
+`(pSubst Γ σ).cons x (pSubst τ σ)`. -/
+theorem Ctx.pSubst_cons_get? (Γ : Ctx) (σ : Subst Ty)
+    (x : String) (τ : Ty) (y : String) :
+    (HasSubst.pSubst (Γ.cons x τ) σ).get? y =
+      ((HasSubst.pSubst Γ σ).cons x (HasSubst.pSubst τ σ)).get? y := by
+  rw [HashMap.pSubst_get?, Ctx.get?_cons, Ctx.get?_cons]
+  rw [HashMap.pSubst_get?]
+  by_cases hxy : x = y
+  · subst hxy; simp
+  · simp [hxy]
+
+/-- A substitution `σ` *satisfies* a list of equations when applying it
+to each side gives the same term. -/
+def SatisfiesEqs (σ : Subst Ty) (eqs : Equations Ty) : Prop :=
+  ∀ p ∈ eqs, HasSubst.pSubst p.1 σ = HasSubst.pSubst p.2 σ
+
+theorem SatisfiesEqs.mono {σ : Subst Ty} {eqs eqs' : Equations Ty}
+    (h : SatisfiesEqs σ eqs') (hsub : eqs ⊆ eqs') :
+    SatisfiesEqs σ eqs :=
+  fun p hp => h p (hsub hp)
+
+/-! ## Soundness of `inferHM`.
+
+If `σ` satisfies all the equations accumulated by `inferHM Γ e s`, then
+`HasType` derives on the σ-substituted triple. -/
+
+/-- `inferHM` is monotone in its accumulated equations: the final state
+contains every equation from the initial state. -/
+theorem inferHM_eqs_mono (Γ : Ctx) (e : Term) :
+    ∀ {s s' : InferState} {τ : Ty},
+    Term.inferHM Γ e s = .ok (τ, s') → s.eqs ⊆ s'.eqs := by
+  induction e generalizing Γ with
+  | var x =>
+      intro s s' τ h
+      unfold Term.inferHM at h
+      split at h
+      · cases h
+      · cases h; exact fun _ hp => hp
+  | lam x τ₁ body ih =>
+      intro s s' τ h
+      unfold Term.inferHM at h
+      split at h
+      · cases h
+      · rename_i τ₂ s₁ h_inner
+        cases h
+        exact ih (Γ.cons x τ₁) h_inner
+  | app e₁ e₂ ih₁ ih₂ =>
+      intro s s' τ h
+      unfold Term.inferHM at h
+      split at h
+      · cases h
+      · rename_i τf s₁ h_e1
+        split at h
+        · cases h
+        · rename_i τa s₂ h_e2
+          cases h
+          have h₁ := ih₁ Γ h_e1
+          have h₂ := ih₂ Γ h_e2
+          intro p hp
+          exact List.mem_cons_of_mem _ (h₂ (h₁ hp))
 
 end LambdaLab.Stlc.Named
