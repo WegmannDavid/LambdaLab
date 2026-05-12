@@ -26,6 +26,7 @@ import LambdaLab.Parser.Mixfix.Basic
 import LambdaLab.Parser.Mixfix.Parser
 import LambdaLab.Stlc.Named.Parser
 import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Stlc.Named.Unification
 import LambdaLab.Language.Basic
 import LambdaLab.Language.Parser
 import LambdaLab.Language.Check
