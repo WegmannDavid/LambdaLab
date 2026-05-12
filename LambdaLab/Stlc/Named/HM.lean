@@ -46,7 +46,7 @@ def Ty.materialize : Ty → InferM Ty
 /-- Monomorphic constraint-based inference. -/
 def Term.inferHM (Γ : Ctx) : Term → InferM Ty
   | .var x =>
-      match Γ x with
+      match Γ.get? x with
       | none   => throw (.unbound x)
       | some τ => pure τ
   | .lam x τ₁ body => do

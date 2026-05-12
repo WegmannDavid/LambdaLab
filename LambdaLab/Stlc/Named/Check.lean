@@ -18,7 +18,7 @@ open LambdaLab.Language (CheckResult TypeError)
 
 def Term.infer (Γ : Ctx) : (e : Term) → CheckResult HasType Γ e
   | .var x =>
-      match h : Γ x with
+      match h : Γ.get? x with
       | none   => .error (.unbound x)
       | some τ => .ok τ (.var h)
   | .lam x τ₁ body =>

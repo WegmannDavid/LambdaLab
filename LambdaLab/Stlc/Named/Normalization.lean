@@ -86,7 +86,7 @@ theorem HasType.sn : ∀ {Γ : Ctx} {e : Term} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ → SN e := by
   intro Γ e τ hΓ hag ht
   let binders := e.freeVars
-  have hbound : ∀ x ∈ binders, ∃ σ, Γ x = some σ ∧ σ.Ground := by
+  have hbound : ∀ x ∈ binders, ∃ σ, Γ.get? x = some σ ∧ σ.Ground := by
     intro x hx
     obtain ⟨σ, heq⟩ := HasType.freeVars_in_ctx e ht x hx
     exact ⟨σ, heq, hΓ x σ heq⟩

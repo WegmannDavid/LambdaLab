@@ -1,4 +1,5 @@
 import LambdaLab.Parser.Mixfix.Basic
+import Std.Data.HashMap
 
 /-!
 # Language interface
@@ -11,9 +12,8 @@ this structure.
 
 ## Pinned design choices
 
-* **Contexts are name-style:** `Context Ty := String → Option Ty`. This
-  lets shadowing and exchange fall out of `funext` and matches the
-  vernacular's surface syntax. De-Bruijn-style languages are not
+* **Contexts are name-keyed hashmaps:** `Context Ty := Std.HashMap String Ty`.
+  Shadowing is `insert` (overrides). De-Bruijn-style languages are not
   required to instance `Language`.
 * **Inference returns a derivation.** `infer` produces a `CheckResult`
   whose `ok` constructor carries a proof in the language's `HasType`,
@@ -30,17 +30,17 @@ open LambdaLab.Parser.Mixfix
 
 /-! ## Contexts -/
 
-/-- A typing context: a partial map from variable names to types. -/
-def Context (Ty : Type) : Type := String → Option Ty
+/-- A typing context: a hashmap from variable names to types. -/
+abbrev Context (Ty : Type) : Type := Std.HashMap String Ty
 
 /-- The empty context. -/
-def Context.empty {Ty : Type} : Context Ty := fun _ => none
+def Context.empty {Ty : Type} : Context Ty := ∅
 
 /-- Extend a context with a binding `x : τ`. The new binding shadows
 any previous binding of `x`. -/
 def Context.cons {Ty : Type} (x : String) (τ : Ty) (Γ : Context Ty) :
     Context Ty :=
-  fun y => if x = y then some τ else Γ y
+  Γ.insert x τ
 
 /-! ## Type-check results -/
 

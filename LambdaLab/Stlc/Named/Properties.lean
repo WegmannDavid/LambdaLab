@@ -12,7 +12,7 @@ namespace LambdaLab.Stlc.Named
 /-- Two named contexts that agree on every key induce the same typing
 judgements. -/
 theorem HasType.cong : ∀ {Γ Γ' : Ctx} {e τ},
-    (∀ x, Γ x = Γ' x) → HasType Γ e τ → HasType Γ' e τ := by
+    (∀ x, Γ.get? x = Γ'.get? x) → HasType Γ e τ → HasType Γ' e τ := by
   intro Γ Γ' e τ hcong h
   induction h generalizing Γ' with
   | var heq => exact HasType.var (by rw [← hcong]; exact heq)
@@ -20,7 +20,7 @@ theorem HasType.cong : ∀ {Γ Γ' : Ctx} {e τ},
       apply HasType.lam
       apply ih
       intro y
-      simp only [Ctx.cons]
+      rw [Ctx.get?_cons, Ctx.get?_cons]
       split
       · rfl
       · exact hcong _
@@ -28,7 +28,7 @@ theorem HasType.cong : ∀ {Γ Γ' : Ctx} {e τ},
 
 /-- Every free variable of a typed term is bound in the context. -/
 theorem HasType.freeVars_in_ctx : ∀ (e : Term) {Γ τ},
-    HasType Γ e τ → ∀ x, x ∈ e.freeVars → ∃ σ, Γ x = some σ := by
+    HasType Γ e τ → ∀ x, x ∈ e.freeVars → ∃ σ, Γ.get? x = some σ := by
   intro e
   induction e with
   | var y =>
@@ -42,7 +42,7 @@ theorem HasType.freeVars_in_ctx : ∀ (e : Term) {Γ τ},
           simp [Term.freeVars, List.mem_filter] at hx
           obtain ⟨hxb, hxy⟩ := hx
           have ⟨σ', heq⟩ := ih hb x hxb
-          simp only [Ctx.cons] at heq
+          rw [Ctx.get?_cons] at heq
           split at heq
           · rename_i h_eq; exact absurd h_eq.symm hxy
           · exact ⟨σ', heq⟩
@@ -60,11 +60,12 @@ theorem HasType.closed_no_free {e τ} (h : HasType Ctx.empty e τ) :
     ∀ x, x ∉ e.freeVars := by
   intro x hx
   obtain ⟨τ', heq⟩ := HasType.freeVars_in_ctx e h x hx
-  simp [Ctx.empty] at heq
+  rw [Ctx.get?_empty] at heq
+  cases heq
 
 /-- Typing only depends on `Γ`'s value at the term's free variables. -/
 theorem HasType.relevant : ∀ (e : Term) {Γ Γ' : Ctx} {τ},
-    HasType Γ e τ → (∀ x ∈ e.freeVars, Γ x = Γ' x) → HasType Γ' e τ := by
+    HasType Γ e τ → (∀ x ∈ e.freeVars, Γ.get? x = Γ'.get? x) → HasType Γ' e τ := by
   intro e
   induction e with
   | var y =>
@@ -81,7 +82,7 @@ theorem HasType.relevant : ∀ (e : Term) {Γ Γ' : Ctx} {τ},
           apply HasType.lam
           apply ih hb
           intro z hz
-          simp only [Ctx.cons]
+          rw [Ctx.get?_cons, Ctx.get?_cons]
           by_cases h_yz : y = z
           · simp [h_yz]
           · simp [h_yz]

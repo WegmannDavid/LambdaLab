@@ -31,7 +31,7 @@ theorem HasType.preservation : ∀ {Γ : Ctx} {e e' : Term} {τ : Ty},
     HasType Γ e τ → e ⟶ e' → HasType Γ e' τ := by
   intro Γ e e' τ hΓ hag hag' ht hs
   let binders := e.freeVars
-  have hbound : ∀ x ∈ binders, ∃ σ, Γ x = some σ ∧ σ.Ground := by
+  have hbound : ∀ x ∈ binders, ∃ σ, Γ.get? x = some σ ∧ σ.Ground := by
     intro x hx
     obtain ⟨σ, heq⟩ := HasType.freeVars_in_ctx e ht x hx
     exact ⟨σ, heq, hΓ x σ heq⟩

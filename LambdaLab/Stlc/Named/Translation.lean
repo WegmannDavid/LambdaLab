@@ -537,7 +537,7 @@ agree along the given binder list: for every binder `x`, the named lookup
 yields some `τ` whose translation matches the de Bruijn lookup at the
 corresponding index. -/
 def CtxCompat (Γ : Ctx) (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx) : Prop :=
-  ∀ x ∈ binders, ∃ τ : Ty, Γ x = some τ ∧ τ.Ground ∧
+  ∀ x ∈ binders, ∃ τ : Ty, Γ.get? x = some τ ∧ τ.Ground ∧
     Stlc.DeBruijn.Lookup db_ctx (lookupVar x binders) τ.toDB
 
 theorem CtxCompat.cons {Γ : Ctx} {binders : List String} {db_ctx : Stlc.DeBruijn.Ctx}
@@ -555,8 +555,7 @@ theorem CtxCompat.cons {Γ : Ctx} {binders : List String} {db_ctx : Stlc.DeBruij
     · obtain ⟨τ_y, heq, hg, hl⟩ := hcompat y hy'
       have hxy : ¬ x = y := fun h => hyx h.symm
       refine ⟨τ_y, ?_, hg, ?_⟩
-      · show (if x = y then some τ₁ else Γ y) = some τ_y
-        rw [if_neg hxy]; exact heq
+      · rw [Ctx.get?_cons, if_neg hxy]; exact heq
       · have hlk : lookupVar y (x :: binders) = lookupVar y binders + 1 := by
           simp [lookupVar, hxy]
         rw [hlk]; exact .there hl
@@ -566,11 +565,11 @@ binder names are bound in `Γ`. -/
 def Ctx.toDB (Γ : Ctx) : List String → Stlc.DeBruijn.Ctx
   | [] => []
   | x :: xs =>
-    (match Γ x with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
+    (match Γ.get? x with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
     Ctx.toDB Γ xs
 
 theorem CtxCompat.fromCtx (Γ : Ctx) (binders : List String)
-    (hbound : ∀ x ∈ binders, ∃ τ, Γ x = some τ ∧ τ.Ground) :
+    (hbound : ∀ x ∈ binders, ∃ τ, Γ.get? x = some τ ∧ τ.Ground) :
     CtxCompat Γ binders (Ctx.toDB Γ binders) := by
   intro x hx
   induction binders with
@@ -584,12 +583,12 @@ theorem CtxCompat.fromCtx (Γ : Ctx) (binders : List String)
         exact .here
       · rcases List.mem_cons.mp hx with hxEq | hx'
         · exact absurd hxEq.symm hyx
-        · have hbound' : ∀ z ∈ ys, ∃ τ, Γ z = some τ ∧ τ.Ground :=
+        · have hbound' : ∀ z ∈ ys, ∃ τ, Γ.get? z = some τ ∧ τ.Ground :=
             fun z hz => hbound z (List.mem_cons.mpr (Or.inr hz))
           obtain ⟨τ_x, heq, hg, hl⟩ := ih hbound' hx'
           refine ⟨τ_x, heq, hg, ?_⟩
           have hcons : Ctx.toDB Γ (y :: ys) =
-            (match Γ y with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
+            (match Γ.get? y with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
             Ctx.toDB Γ ys := rfl
           rw [hcons]
           have hlk : lookupVar x (y :: ys) = lookupVar x ys + 1 := by
