@@ -218,36 +218,28 @@ the *raw* inferred type τ — the user-visible resolved form is
 def Term.elaborate (Γ : Ctx) (e : Term) : ElaborateResult HasType Γ e :=
   match h_run : Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] } with
   | .error (.unbound x) =>
-      .error (.unbound x)
-        (by
-          -- no-typing witness for an unbound variable. Provable directly
-          -- (HasType.var needs Γ.get? x = some τ, but `inferHM Γ (var x)`
-          -- only errors when Γ.get? x = none — and pSubst-on-context
-          -- preserves none lookups). Deferred until we tackle the MGU
-          -- proof, since the structure is similar.
-          sorry)
+      .error (.unbound x) (by
+        -- ¬ Elaborable HasType Γ e for unbound x. Same theorem family
+        -- as MGU (HM completeness — typing-existence implies
+        -- HM-doesn't-fail).
+        sorry)
   | .error (.unifyFail _) =>
-      .error (.unbound "internal: inferHM returned unifyFail")
-        (by sorry)
+      .error (.unbound "internal: inferHM returned unifyFail") (by sorry)
   | .ok (τ, s) =>
       match h_unify : unify s.eqs with
       | none =>
-          .error (.mismatch τ τ)
-            (by
-              -- no-typing witness when `unify` fails on the collected eqs.
-              -- By inferHM completeness (dual of soundness), any typing σ'
-              -- would satisfy the eqs; `unify_complete` then gives a
-              -- contradiction with `h_unify : unify _ = none`. Same
-              -- theorem family as the MGU proof.
-              sorry)
+          .error (.mismatch τ τ) (by
+            -- ¬ Elaborable: HM completeness says any typing σ' would
+            -- satisfy the collected constraints, but `unify` says they're
+            -- unsatisfiable. Same theorem family as MGU.
+            sorry)
       | some σ =>
-          .ok τ σ
-            (inferHM_sound Γ e h_run σ (unify_unifies s.eqs σ h_unify))
-            (by
-              -- MGU witness — proper proof pending. See the comment block
-              -- earlier in this file for the proof sketch (fresh-mvar
-              -- extension + MoreGeneral transitivity).
-              sorry)
+          .ok τ ⟨σ,
+            inferHM_sound Γ e h_run σ (unify_unifies s.eqs σ h_unify),
+            by
+              -- MGU witness — see the comment block earlier in this file
+              -- for the proof sketch (fresh-mvar extension + transitivity).
+              sorry⟩
 
 /-- Closed-term entry point. -/
 def Term.elaborateClosed (e : Term) :

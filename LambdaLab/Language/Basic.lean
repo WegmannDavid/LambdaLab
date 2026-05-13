@@ -52,37 +52,41 @@ inductive TypeError (Ty : Type) where
   | notArrow : (actual : Ty) → TypeError Ty
   | mismatch : (expected actual : Ty) → TypeError Ty
 
-/-- Result of elaborating `e` under `Γ`, where `Γ`, `e`, and the
-inferred type may all carry existential type variables. A *decidable*
-typing judgment:
+/-- `Elaborable HasType Γ e τ` — `τ` is a *principal* type for `e`
+under `Γ`. Bundles a witness substitution `σ` with proofs that:
+* `σ` types the triple `(Γ, e, τ)` after pSubst;
+* `σ` is more general than every other substitution that types the
+  triple at `τ`.
 
-* `ok` carries an inferred type `τ`, an MGU `σ`, the typing derivation
-  `hSat`, and the MGU witness `mgu`.
-* `error` carries the structured `TypeError` plus a *no-typing*
-  witness: no substitution `σ'` and no type `τ'` make the σ'-substituted
-  triple type-check.
+The type `τ` is a parameter (no `∃ τ`); `σ` lives as a structure field
+rather than an existential so callers can destructure it in
+`Type`-valued definitions. -/
+structure Elaborable {Ty Term : Type}
+    [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
+    (HasType : Context Ty → Term → Ty → Prop)
+    (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
+  σ    : Subst Ty
+  hSat : HasType (HasSubst.pSubst Γ σ)
+                 (HasSubst.pSubst e σ)
+                 (HasSubst.pSubst τ σ)
+  mgu  : ∀ σ' : Subst Ty,
+           HasType (HasSubst.pSubst Γ σ')
+                   (HasSubst.pSubst e σ')
+                   (HasSubst.pSubst τ σ') →
+           MoreGeneral σ σ'
 
-`Subst Ty = HashMap Nat Ty` and the `pSubst` action are provided by the
-`HasSubst _ Ty` instances. -/
+/-- Result of elaborating `e` under `Γ`. The `ok` branch carries the
+inferred type `τ` and the `Elaborable Γ e τ` witness; the `error`
+branch carries a structured `TypeError` plus a uniform negative claim
+`∀ τ, ¬ Elaborable Γ e τ` (no type at all is a principal type for `e`). -/
 inductive ElaborateResult {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) : Type where
   | error : TypeError Ty →
-            (noType : ∀ (σ' : Subst Ty) (τ' : Ty),
-              ¬ HasType (HasSubst.pSubst Γ σ')
-                        (HasSubst.pSubst e σ')
-                        τ') →
+            (∀ τ : Ty, Elaborable HasType Γ e τ → False) →
             ElaborateResult HasType Γ e
-  | ok    : (τ : Ty) → (σ : Subst Ty) →
-            (hSat : HasType (HasSubst.pSubst Γ σ)
-                            (HasSubst.pSubst e σ)
-                            (HasSubst.pSubst τ σ)) →
-            (mgu : ∀ σ' : Subst Ty,
-              HasType (HasSubst.pSubst Γ σ')
-                      (HasSubst.pSubst e σ')
-                      (HasSubst.pSubst τ σ') →
-              MoreGeneral σ σ') →
+  | ok    : (τ : Ty) → Elaborable HasType Γ e τ →
             ElaborateResult HasType Γ e
 
 /-! ## The language interface -/
