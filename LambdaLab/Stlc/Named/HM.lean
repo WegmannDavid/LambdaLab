@@ -217,17 +217,36 @@ the *raw* inferred type τ — the user-visible resolved form is
 `unify_unifies`. The `mgu` witness is still pending (`sorry`). -/
 def Term.elaborate (Γ : Ctx) (e : Term) : ElaborateResult HasType Γ e :=
   match h_run : Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] } with
-  | .error (.unbound x) => .error (.unbound x)
+  | .error (.unbound x) =>
+      .error (.unbound x)
+        (by
+          -- no-typing witness for an unbound variable. Provable directly
+          -- (HasType.var needs Γ.get? x = some τ, but `inferHM Γ (var x)`
+          -- only errors when Γ.get? x = none — and pSubst-on-context
+          -- preserves none lookups). Deferred until we tackle the MGU
+          -- proof, since the structure is similar.
+          sorry)
   | .error (.unifyFail _) =>
       .error (.unbound "internal: inferHM returned unifyFail")
+        (by sorry)
   | .ok (τ, s) =>
       match h_unify : unify s.eqs with
-      | none => .error (.mismatch τ τ)
+      | none =>
+          .error (.mismatch τ τ)
+            (by
+              -- no-typing witness when `unify` fails on the collected eqs.
+              -- By inferHM completeness (dual of soundness), any typing σ'
+              -- would satisfy the eqs; `unify_complete` then gives a
+              -- contradiction with `h_unify : unify _ = none`. Same
+              -- theorem family as the MGU proof.
+              sorry)
       | some σ =>
           .ok τ σ
             (inferHM_sound Γ e h_run σ (unify_unifies s.eqs σ h_unify))
             (by
-              -- mgu witness — proper proof pending
+              -- MGU witness — proper proof pending. See the comment block
+              -- earlier in this file for the proof sketch (fresh-mvar
+              -- extension + MoreGeneral transitivity).
               sorry)
 
 /-- Closed-term entry point. -/

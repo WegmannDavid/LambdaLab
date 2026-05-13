@@ -53,24 +53,27 @@ inductive TypeError (Ty : Type) where
   | mismatch : (expected actual : Ty) → TypeError Ty
 
 /-- Result of elaborating `e` under `Γ`, where `Γ`, `e`, and the
-inferred type may all carry existential type variables. Either a
-structured error, or:
+inferred type may all carry existential type variables. A *decidable*
+typing judgment:
 
-* an inferred type `τ`,
-* an MGU `σ` that closes enough of those variables for the language's
-  `HasType` relation to derive on the substituted triple, and
-* a witness `mgu` that `σ` is more general than every other substitution
-  that makes `(Γ, e, τ)` type-check.
+* `ok` carries an inferred type `τ`, an MGU `σ`, the typing derivation
+  `hSat`, and the MGU witness `mgu`.
+* `error` carries the structured `TypeError` plus a *no-typing*
+  witness: no substitution `σ'` and no type `τ'` make the σ'-substituted
+  triple type-check.
 
 `Subst Ty = HashMap Nat Ty` and the `pSubst` action are provided by the
-`HasSubst _ Ty` instances. The kernel checker (which doesn't generate
-mvars) uses `σ = ∅`, in which case the MGU witness is trivial (any other
-σ' is more general than ∅ via `MoreGeneral σ' σ' = ⟨σ', …⟩`). -/
+`HasSubst _ Ty` instances. -/
 inductive ElaborateResult {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) : Type where
-  | error : TypeError Ty → ElaborateResult HasType Γ e
+  | error : TypeError Ty →
+            (noType : ∀ (σ' : Subst Ty) (τ' : Ty),
+              ¬ HasType (HasSubst.pSubst Γ σ')
+                        (HasSubst.pSubst e σ')
+                        τ') →
+            ElaborateResult HasType Γ e
   | ok    : (τ : Ty) → (σ : Subst Ty) →
             (hSat : HasType (HasSubst.pSubst Γ σ)
                             (HasSubst.pSubst e σ)
