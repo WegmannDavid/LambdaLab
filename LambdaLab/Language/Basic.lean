@@ -82,12 +82,12 @@ branch carries a structured `TypeError` plus a uniform negative claim
 inductive ElaborateResult {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
-    (Γ : Context Ty) (e : Term) : Type where
+    (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
   | error : TypeError Ty →
-            (∀ τ : Ty, Elaborable HasType Γ e τ → False) →
-            ElaborateResult HasType Γ e
-  | ok    : (τ : Ty) → Elaborable HasType Γ e τ →
-            ElaborateResult HasType Γ e
+            (Elaborable HasType Γ e τ → False) →
+            ElaborateResult HasType Γ e τ
+  | ok    : Elaborable HasType Γ e τ →
+            ElaborateResult HasType Γ e τ
 
 /-! ## The language interface -/
 
@@ -111,6 +111,10 @@ structure Language : Type 1 where
   /-- Type-into-type substitution: how to apply a `Subst Ty` to a `Ty`
   (typically derived from a `Signature Ty` instance). -/
   tyHasSubst : HasSubst Ty Ty
+  /-- Construct a `Ty` mvar from a `Nat` index. Used by inferential
+  callers (`eval`/`check` commands) to pick a fresh type to feed into
+  `elaborate`. -/
+  freshTy : Nat → Ty
   /-- The empty substitution acts as the identity on `Ty`. Required to
   discharge the MGU witness in `ElaborateResult.ok` when the kernel
   picks `σ = ∅`. Typically `Signature.pSubst_empty`. -/
@@ -120,13 +124,14 @@ structure Language : Type 1 where
   termHasSubst : HasSubst Term Ty
   /-- The declarative typing relation. -/
   HasType : Context Ty → Term → Ty → Prop
-  /-- Bidirectional elaboration: turn `(Γ, e)` (where `e` may carry
-  unresolved type holes) into an inferred type, an MGU substitution,
-  and a `HasType` derivation on the substituted triple. Intrinsically
-  sound. -/
-  elaborate : (Γ : Context Ty) → (e : Term) →
+  /-- Bidirectional elaboration: fit `e` at the (possibly mvar-laden)
+  expected type `τ` under `Γ`, returning a substitution `σ` that closes
+  the existentials so `HasType` derives on the substituted triple. For
+  full inference, pass a fresh `Ty.mvar` as `τ`; the returned `σ` then
+  tells you what that mvar should be. -/
+  elaborate : (Γ : Context Ty) → (e : Term) → (τ : Ty) →
           @ElaborateResult Ty Term tyHasSubst termHasSubst
-            (by infer_instance) HasType Γ e
+            (by infer_instance) HasType Γ e τ
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term

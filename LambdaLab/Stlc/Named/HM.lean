@@ -210,40 +210,53 @@ chunk of work (~200 LOC). Deferred. -/
 /-! ## Public verified elaborator. -/
 
 open LambdaLab.Language in
-/-- Walks the term collecting type constraints, calls `unify` to solve
-them, and packages the result as an `ElaborateResult`. The `ok` carries
-the *raw* inferred type τ — the user-visible resolved form is
-`HasSubst.pSubst τ σ`. The `hSat` witness chains `inferHM_sound` with
-`unify_unifies`. The `mgu` witness is still pending (`sorry`). -/
-def Term.elaborate (Γ : Ctx) (e : Term) : ElaborateResult HasType Γ e :=
-  match h_run : Term.inferHM Γ e { counter := HasVars.fresh e, eqs := [] } with
+/-- Bidirectional: fit `e` at the expected type `τExpected` under `Γ`.
+Walks `e` collecting constraints, adds `(τ_inf, τExpected)` to align the
+inferred type with the expected one, and runs `unify`. For full
+inference, pass a fresh `Ty.mvar` as `τExpected`. The fresh counter is
+seeded past every mvar in either `e` or `τExpected`. -/
+def Term.elaborate (Γ : Ctx) (e : Term) (τExpected : Ty) :
+    ElaborateResult HasType Γ e τExpected :=
+  let initCounter := max (HasVars.fresh e) (HasVars.fresh τExpected)
+  match h_run : Term.inferHM Γ e { counter := initCounter, eqs := [] } with
   | .error (.unbound x) =>
       .error (.unbound x) (by
-        -- ¬ Elaborable HasType Γ e for unbound x. Same theorem family
-        -- as MGU (HM completeness — typing-existence implies
-        -- HM-doesn't-fail).
+        -- ¬ Elaborable: an unbound variable can't type at any τ. Same
+        -- theorem family as MGU; deferred.
         sorry)
   | .error (.unifyFail _) =>
       .error (.unbound "internal: inferHM returned unifyFail") (by sorry)
-  | .ok (τ, s) =>
-      match h_unify : unify s.eqs with
+  | .ok (τ_inf, s) =>
+      let allEqs : Equations Ty := (τ_inf, τExpected) :: s.eqs
+      match h_unify : unify allEqs with
       | none =>
-          .error (.mismatch τ τ) (by
-            -- ¬ Elaborable: HM completeness says any typing σ' would
-            -- satisfy the collected constraints, but `unify` says they're
-            -- unsatisfiable. Same theorem family as MGU.
+          .error (.mismatch τExpected τ_inf) (by
+            -- ¬ Elaborable: by HM completeness any σ' typing e at
+            -- τExpected would satisfy the collected eqs *plus*
+            -- (τ_inf, τExpected); `unify_complete` then contradicts
+            -- `h_unify : unify allEqs = none`. Deferred.
             sorry)
       | some σ =>
-          .ok τ ⟨σ,
-            inferHM_sound Γ e h_run σ (unify_unifies s.eqs σ h_unify),
+          .ok ⟨σ,
             by
-              -- MGU witness — see the comment block earlier in this file
-              -- for the proof sketch (fresh-mvar extension + transitivity).
+              -- hSat: HasType (pSubst Γ σ) (pSubst e σ) (pSubst τExpected σ)
+              have hUnif := unify_unifies allEqs σ h_unify
+              have hSat_eqs : SatisfiesEqs σ s.eqs := fun p hp =>
+                hUnif p (List.mem_cons_of_mem _ hp)
+              have hAlign : HasSubst.pSubst τ_inf σ = HasSubst.pSubst τExpected σ :=
+                hUnif (τ_inf, τExpected) List.mem_cons_self
+              have hType := inferHM_sound Γ e h_run σ hSat_eqs
+              rw [hAlign] at hType
+              exact hType,
+            by
+              -- MGU witness — see the comment block earlier in this file.
               sorry⟩
 
-/-- Closed-term entry point. -/
+/-- Closed-term entry point. Picks `Ty.mvar 0` as the expected type so
+the result describes the inferred type purely through `σ`. -/
 def Term.elaborateClosed (e : Term) :
-    LambdaLab.Language.ElaborateResult HasType Ctx.empty e :=
-  e.elaborate Ctx.empty
+    LambdaLab.Language.ElaborateResult HasType Ctx.empty e
+      (Ty.mvar (HasVars.fresh e)) :=
+  e.elaborate Ctx.empty (Ty.mvar (HasVars.fresh e))
 
 end LambdaLab.Stlc.Named
