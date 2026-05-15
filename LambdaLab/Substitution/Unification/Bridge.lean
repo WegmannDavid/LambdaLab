@@ -786,6 +786,18 @@ principal-types proof in `W.lean`: when W picks a fresh `mvar k`, any
 user-supplied σ' (which is freshness-blind to W's `k`) can be extended
 without affecting its action on the source. -/
 
+/-- Restricting σ to keys below `n` doesn't change pSubst's action on
+any `t` whose free mvars are all below `n` (i.e. `HasVars.fresh t ≤ n`).
+This is the key lemma for option D in the principal-types story:
+W's σ has bindings at indices ≥ srcFresh (its internal fresh mvars);
+those bindings are invisible to the source-level pSubst, so pruning
+them gives an action-equivalent substitution on the source. -/
+theorem Signature.pSubst_restrictBelow {α : Type} [Signature α]
+    (σ : Subst α) (n : Nat) (t : α)
+    (h_fresh : HasVars.fresh t ≤ n) :
+    HasSubst.pSubst t (Subst.restrictBelow σ n) = HasSubst.pSubst t σ := by
+  sorry
+
 theorem Signature.pSubst_insert_fresh {α : Type} [Signature α]
     (σ : Subst α) (k : Nat) (v : α) (t : α)
     (h_fresh : ¬ HasVars.isFree t k) :

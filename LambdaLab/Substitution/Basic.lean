@@ -106,6 +106,24 @@ theorem Subst.comp_getD [HasSubst α α] (σ τ : Subst α) (n : Nat) (d : α) :
       rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?]
   | some t => simp only [Option.getD]
 
+/-! ## Restriction by domain threshold
+
+`Subst.restrictBelow σ n` is σ with all bindings whose key is `≥ n`
+dropped. Used by the elaborator to prune W's internal fresh-mvar
+bindings (which sit at indices ≥ the source's fresh threshold) so the
+substitution returned by `Term.elaborate` doesn't expose algorithm
+scaffolding. -/
+
+/-- Restrict σ to keys strictly below `n`. -/
+def Subst.restrictBelow {α : Type} (σ : Subst α) (n : Nat) : Subst α :=
+  σ.filter (fun k _ => decide (k < n))
+
+/-- `get?` characterization: below the threshold σ is preserved; at or
+above the threshold the result is `none`. -/
+theorem Subst.restrictBelow_get? {α : Type} (σ : Subst α) (n k : Nat) :
+    (Subst.restrictBelow σ n).get? k = if k < n then σ.get? k else none := by
+  sorry
+
 /-- For an arbitrary `f : α → Nat`, the foldr of `max` over a list bounds
 `f a` from above whenever `a` is in the list. Used to prove
 `fresh_gt_free` for substitution-shaped instances. -/

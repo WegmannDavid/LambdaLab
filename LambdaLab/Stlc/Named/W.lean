@@ -221,50 +221,36 @@ theorem W_correct : ∀ (Γ : Ctx) (e : Term) (τ : Ty) (σ : Subst Ty),
       | (show (Term.tyPSubst _ _).size < _
          rw [Term.tyPSubst_size]; simp only [Term.size]; omega))
 
-/-- **Principal types theorem for W.** For any σ' that makes `HasType`
-hold on the σ'-substituted triple, `W` succeeds with some σ that is at
-least as general as σ'.
+/-- Source-fresh threshold: any `k ≥ srcFresh Γ e τ` is not free in
+any of `Γ`, `e`, `τ`. Used by `W_principal` to prune W's internal
+fresh-mvar bindings from the substitution exposed at the elaboration
+boundary. -/
+def srcFresh (Γ : Ctx) (e : Term) (τ : Ty) : Nat :=
+  max (HasVars.fresh Γ) (max (HasVars.fresh e) (HasVars.fresh τ))
 
-Strong induction on `Term.size` (matching W's recursion). The lam and
-app cases are left as `sorry`s: their proofs require careful threading
-of the fresh-mvar extension (σ' must be extended by mapping W's fresh
-mvars to the types HasType ascribes them) and the bridge from
-`MoreGeneral` over the extended σ'' back to σ'. -/
+/-- **Principal types theorem for W (option D form).** For any σ' that
+types the σ'-substituted triple, W succeeds with some σ, and **σ
+restricted to source mvars** is at least as general as σ'.
+
+Why the restriction? σ's full domain may include W's internal fresh
+mvars (introduced by `freshIdxLam`/`freshIdxApp`), to which σ' is
+freshness-blind. Quantifying `MoreGeneral` over *all* `t` then fails at
+`t = mvar k` for those internal `k` — σ commits to a concrete type but
+σ' is undefined. Pruning σ before quoting MoreGeneral removes the
+internal bindings, recovering the universal-`t` form.
+
+**Status:** statement updated; proofs are all `sorry`. Lifting the
+old var/lam/app sketches to the pruned form is the next task. -/
 theorem W_principal : ∀ (Γ : Ctx) (e : Term) (τ : Ty) (σ' : Subst Ty),
     HasType (HasSubst.pSubst Γ σ')
             (HasSubst.pSubst e σ')
             (HasSubst.pSubst τ σ') →
-    ∃ σ, W Γ e τ = some σ ∧ MoreGeneral σ σ'
-  | Γ, .var x, τ, σ', h => by
-      have h_get := HasType.var_inv (show HasType _ (Term.var x) _ from h)
-      rw [HashMap.pSubst_get?] at h_get
-      cases hx : Γ.get? x with
-      | none => rw [hx] at h_get; cases h_get
-      | some τ' =>
-          rw [hx, Option.map_some, Option.some.injEq] at h_get
-          have h_unifies : Subst.Unifies σ' [(τ, τ')] := by
-            intro p hp
-            rw [List.mem_singleton] at hp
-            subst hp
-            exact h_get.symm
-          obtain ⟨σ, h_unify⟩ :=
-            Option.ne_none_iff_exists.mp
-              (unify_complete_subst [(τ, τ')] σ' h_unifies)
-          refine ⟨σ, ?_, ?_⟩
-          · simp only [W, hx, ← h_unify]
-          · exact unify_mgu_subst [(τ, τ')] σ σ' h_unify.symm h_unifies
-  | _Γ, .lam _x _α _body, _τ, _σ', _h => by
-      -- TODO: extend σ' with σ'' = σ'.insert k β_act (β_act from lam_inv).
-      -- Apply IH to body, get σ_body more general than σ''.
-      -- Show unify on [(τ[σ_body], (α ⇒ β)[σ_body])] succeeds (via σ'').
-      -- Compose; conclude MoreGeneral on σ'' (and bridge to σ').
-      sorry
-  | _Γ, .app _e₁ _e₂, _τ, _σ', _h => by
-      -- TODO: extend σ' with σ'' = σ'.insert k (input type from app_inv).
-      -- Apply IH to e₁ at (mvar k ⇒ τ), get σ₁ more general than σ''.
-      -- Apply IH to e₂[σ₁] at (mvar k)[σ₁], get σ₂ more general than (σ'' lifted).
-      -- Compose; conclude MoreGeneral on σ'' (and bridge to σ').
-      sorry
+    ∃ σ, W Γ e τ = some σ ∧
+         MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
+  -- Recursion structure: induct on `Term.size` to match W's recursion.
+  -- All three cases sorried until the option-D proof is filled in.
+  intro Γ e τ σ' _h
+  sorry
 
 /-- W succeeds whenever any substitution makes the triple well-typed. -/
 theorem W_complete {Γ : Ctx} {e : Term} {τ : Ty} {σ' : Subst Ty}
@@ -276,20 +262,26 @@ theorem W_complete {Γ : Ctx} {e : Term} {τ : Ty} {σ' : Subst Ty}
   rw [h_W]
   exact Option.some_ne_none σ
 
-/-- For W's returned σ specifically, every σ' that makes HasType hold is
-a specialization of σ. Corollary of `W_principal` once σ is fixed. -/
+/-- Corollary of `W_principal` once W's returned σ is fixed. Returns
+the pruned-σ form (option D). -/
 theorem W_principal_of_eq {Γ : Ctx} {e : Term} {τ : Ty} {σ σ' : Subst Ty}
     (h_W : W Γ e τ = some σ)
     (h : HasType (HasSubst.pSubst Γ σ')
                  (HasSubst.pSubst e σ')
                  (HasSubst.pSubst τ σ')) :
-    MoreGeneral σ σ' := by
+    MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
   obtain ⟨σ₀, h_W₀, h_mgu⟩ := W_principal Γ e τ σ' h
   rw [h_W] at h_W₀
-  -- h_W₀ : some σ = some σ₀ ⇒ σ = σ₀
   have : σ = σ₀ := by injection h_W₀
   rw [this]
   exact h_mgu
+
+/-- The σ exposed to elaboration consumers: W's output pruned to keys
+strictly below the source-fresh threshold. The unpruned σ may bind W's
+internal scaffolding mvars; the pruned form drops those so the
+`MoreGeneral` field's `∀ t` quantifier works against arbitrary σ'. -/
+private def elabσ (Γ : Ctx) (e : Term) (τ : Ty) (σ_full : Subst Ty) : Subst Ty :=
+  Subst.restrictBelow σ_full (srcFresh Γ e τ)
 
 def Term.elaborate :
     (Γ : Ctx) → (e : Term) → (τ : Ty) → Language.ElaborationResult HasType Γ e τ
@@ -297,10 +289,16 @@ def Term.elaborate :
       match Heq : W Γ e τ with
       | none   =>
           Language.ElaborationResult.error
-            (fun ⟨σ', hSat, _⟩ => W_complete hSat Heq)
-      | some σ => Language.ElaborationResult.ok
-          { σ := σ
-            hSat := (W_correct Γ e τ σ Heq).toHasType
+            (fun ⟨_σ', hSat, _⟩ => W_complete hSat Heq)
+      | some σ_full =>
+          Language.ElaborationResult.ok
+          { σ := elabσ Γ e τ σ_full
+            hSat := by
+              -- HasType on (Γ[σ_pruned], e[σ_pruned], τ[σ_pruned]) from
+              -- HasType on (Γ[σ_full], …) via pSubst_restrictBelow on
+              -- Γ, e, τ (whose fresh is bounded by srcFresh). Needs
+              -- Term/Ctx specializations of pSubst_restrictBelow.
+              sorry
             mgu := fun σ' h_σ' => W_principal_of_eq Heq h_σ' }
 
 end LambdaLab.Stlc.Named
