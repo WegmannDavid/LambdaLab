@@ -706,3 +706,109 @@ theorem Signature.occurs_no_unifier {α : Type} [Signature α]
       rw [heq] at hstrict
       exact Nat.lt_irrefl _ hstrict
 
+/-! ## Composition law for `Subst.comp` (generic for `Signature α`)
+
+The named-STLC instance proves `Ty.pSubst_comp` in
+`Stlc/Named/Unification.lean` by structural induction on `Ty`; here we
+prove the same fact abstractly for any `Signature α` using `term_ind`.
+Stated with `HasSubst.pSubst` so downstream `rw`s work without `show`. -/
+
+theorem Signature.pSubst_comp {α : Type} [Signature α]
+    (σ τ : Subst α) (t : α) :
+    HasSubst.pSubst t (Subst.comp σ τ) =
+      HasSubst.pSubst (HasSubst.pSubst t τ) σ := by
+  show Signature.pSubst t (Subst.comp σ τ) =
+       Signature.pSubst (Signature.pSubst t τ) σ
+  induction t using Signature.term_ind with
+  | var_case n =>
+      rw [Signature.pSubst_var, Subst.comp_getD, Signature.pSubst_var]
+      cases hτ : τ.get? n with
+      | none =>
+          have h₁ : τ.getD n (Signature.var n) = Signature.var n := by
+            rw [Std.HashMap.getD_eq_getD_getElem?,
+                ← Std.HashMap.get?_eq_getElem?, hτ]
+            rfl
+          rw [h₁, Signature.pSubst_var]
+      | some t' =>
+          have h₁ : τ.getD n (Signature.var n) = t' := by
+            rw [Std.HashMap.getD_eq_getD_getElem?,
+                ← Std.HashMap.get?_eq_getElem?, hτ]
+            rfl
+          rw [h₁]
+          rfl
+  | construct_case c args ih =>
+      rw [Signature.pSubst_construct, Signature.pSubst_construct,
+          Signature.pSubst_construct]
+      congr 3
+      apply Vector.ext
+      intro i hi
+      have hget : ∀ (f : Fin (Signature.arity c) → α),
+          (Vector.ofFn f)[i]'hi = f ⟨i, hi⟩ := fun _ => by simp
+      rw [hget, hget]
+      have hget' : (Vector.ofFn (fun j : Fin (Signature.arity c) =>
+                Signature.pSubst (args.get j) τ)).get ⟨i, hi⟩ =
+              Signature.pSubst (args.get ⟨i, hi⟩) τ := by
+        show ((Vector.ofFn _)[i]'hi) = _; simp
+      rw [hget']
+      exact ih ⟨i, hi⟩
+
+/-! ## `MoreGeneral` algebra (generic for `Signature α`).
+
+`MoreGeneral` from `Substitution/Basic.lean` is generic in `HasSubst α α`,
+but its useful algebraic laws need `Signature.pSubst_empty` (for `refl`)
+and `Signature.pSubst_comp` (for `trans`). -/
+
+/-- Reflexivity of `MoreGeneral`: every substitution is at least as
+general as itself. Witness τ = `∅`. -/
+theorem MoreGeneral.refl {α : Type} [Signature α] (σ : Subst α) :
+    MoreGeneral σ σ :=
+  ⟨(∅ : Subst α),
+   fun t => (Signature.pSubst_empty (HasSubst.pSubst t σ)).symm⟩
+
+/-- Transitivity of `MoreGeneral`: chains compose via `Subst.comp`. -/
+theorem MoreGeneral.trans {α : Type} [Signature α] {σ₁ σ₂ σ₃ : Subst α}
+    (h₁ : MoreGeneral σ₁ σ₂) (h₂ : MoreGeneral σ₂ σ₃) : MoreGeneral σ₁ σ₃ := by
+  obtain ⟨τ₁, hτ₁⟩ := h₁
+  obtain ⟨τ₂, hτ₂⟩ := h₂
+  refine ⟨Subst.comp τ₂ τ₁, fun t => ?_⟩
+  calc HasSubst.pSubst t σ₃
+      = HasSubst.pSubst (HasSubst.pSubst t σ₂) τ₂ := hτ₂ t
+    _ = HasSubst.pSubst (HasSubst.pSubst (HasSubst.pSubst t σ₁) τ₁) τ₂ := by
+          rw [hτ₁]
+    _ = HasSubst.pSubst (HasSubst.pSubst t σ₁) (Subst.comp τ₂ τ₁) := by
+          rw [← Signature.pSubst_comp]
+
+/-! ## Fresh-mvar extension.
+
+Inserting a binding `(k, v)` into σ doesn't change `pSubst`'s action on
+any term `t` that doesn't mention `k` as a free variable. Used by the
+principal-types proof in `W.lean`: when W picks a fresh `mvar k`, any
+user-supplied σ' (which is freshness-blind to W's `k`) can be extended
+without affecting its action on the source. -/
+
+theorem Signature.pSubst_insert_fresh {α : Type} [Signature α]
+    (σ : Subst α) (k : Nat) (v : α) (t : α)
+    (h_fresh : ¬ HasVars.isFree t k) :
+    HasSubst.pSubst t (σ.insert k v) = HasSubst.pSubst t σ := by
+  show Signature.pSubst t (σ.insert k v) = Signature.pSubst t σ
+  induction t using Signature.term_ind with
+  | var_case n =>
+      rw [Signature.pSubst_var, Signature.pSubst_var,
+          Std.HashMap.getD_insert]
+      have hkn_ne : k ≠ n := by
+        intro h; exact h_fresh ((Signature.isFree_var n k).mpr h)
+      simp [hkn_ne]
+  | construct_case c args ih =>
+      rw [Signature.pSubst_construct, Signature.pSubst_construct]
+      congr 3
+      apply Vector.ext
+      intro i hi
+      have hget : ∀ (f : Fin (Signature.arity c) → α),
+          (Vector.ofFn f)[i]'hi = f ⟨i, hi⟩ := fun _ => by simp
+      rw [hget, hget]
+      apply ih ⟨i, hi⟩
+      intro h_arg_free
+      exact h_fresh
+        ((Signature.isFree_construct c args k).mpr ⟨⟨i, hi⟩, h_arg_free⟩)
+
+

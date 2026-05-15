@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Unification
 
 /-!
 # Generic properties of named-variable typing
@@ -103,5 +104,64 @@ theorem HasType.relevant : ∀ (e : Term) {Γ Γ' : Ctx} {τ},
 theorem HasType.weaken_closed {v τ} (Γ : Ctx) (hv : HasType Ctx.empty v τ) :
     HasType Γ v τ :=
   HasType.relevant v hv (fun x hx => absurd hx (HasType.closed_no_free hv x))
+
+/-! ## Stability of `HasType` under type substitution. -/
+
+/-- `cons` and `pSubst` commute under `get?` — substituting an extended
+context agrees, key-by-key, with extending a substituted context. Used
+via `HasType.cong` to bridge `pSubst (Γ.cons x τ) σ` and
+`(pSubst Γ σ).cons x (pSubst τ σ)`. -/
+theorem Ctx.pSubst_cons_get? (Γ : Ctx) (σ : Subst Ty)
+    (x : String) (τ : Ty) (y : String) :
+    (HasSubst.pSubst (Γ.cons x τ) σ).get? y =
+      ((HasSubst.pSubst Γ σ).cons x (HasSubst.pSubst τ σ)).get? y := by
+  rw [HashMap.pSubst_get?, Ctx.get?_cons, Ctx.get?_cons]
+  rw [HashMap.pSubst_get?]
+  by_cases hxy : x = y
+  · subst hxy; simp
+  · simp [hxy]
+
+/-- **Stability of `HasType` under type substitution.** Applying any
+substitution to all three of context, term, and type preserves the
+typing derivation. Proved by structural induction on the derivation. -/
+theorem HasType.subst {Γ : Ctx} {e : Term} {τ : Ty}
+    (h : HasType Γ e τ) (ρ : Subst Ty) :
+    HasType (HasSubst.pSubst Γ ρ)
+            (HasSubst.pSubst e ρ)
+            (HasSubst.pSubst τ ρ) := by
+  induction h with
+  | var h_get =>
+      apply HasType.var
+      rw [HashMap.pSubst_get?, h_get]
+      rfl
+  | lam _ ih =>
+      simp only [Ty.pSubst_arrow]
+      apply HasType.lam
+      apply HasType.cong _ ih
+      intro y
+      apply Ctx.pSubst_cons_get?
+  | app _ _ ih₁ ih₂ =>
+      rw [Ty.pSubst_arrow] at ih₁
+      exact HasType.app ih₁ ih₂
+
+/-! ## Inversion lemmas.
+
+These let a `HasType` derivation be peeled apart by syntactic case
+analysis on the term: each constructor of `Term` admits exactly one
+shape of derivation. -/
+
+theorem HasType.var_inv {Γ : Ctx} {x : String} {τ : Ty}
+    (h : HasType Γ (.var x) τ) : Γ.get? x = some τ := by
+  cases h with | var h_get => exact h_get
+
+theorem HasType.lam_inv {Γ : Ctx} {x : String} {α : Ty} {body : Term} {τ : Ty}
+    (h : HasType Γ (.lam x α body) τ) :
+    ∃ β : Ty, τ = (α ⇒ β) ∧ HasType (Γ.cons x α) body β := by
+  cases h with | lam h_body => exact ⟨_, rfl, h_body⟩
+
+theorem HasType.app_inv {Γ : Ctx} {e₁ e₂ : Term} {τ : Ty}
+    (h : HasType Γ (.app e₁ e₂) τ) :
+    ∃ α : Ty, HasType Γ e₁ (α ⇒ τ) ∧ HasType Γ e₂ α := by
+  cases h with | app h₁ h₂ => exact ⟨_, h₁, h₂⟩
 
 end LambdaLab.Stlc.Named

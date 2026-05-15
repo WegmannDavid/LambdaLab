@@ -123,6 +123,16 @@ def tyPSubst : Term → Subst Ty → Term
   | .lam x τ body, σ => .lam x (HasSubst.pSubst τ σ) (tyPSubst body σ)
   | .app e₁ e₂,    σ => .app (tyPSubst e₁ σ) (tyPSubst e₂ σ)
 
+/-- `tyPSubst` preserves `Term.size`, since it only modifies type
+annotations, not term structure. Needed for the well-founded recursion
+in `W`'s app case, whose second recursive call is on `pSubst e₂ σ₁`. -/
+theorem tyPSubst_size (e : Term) (σ : Subst Ty) :
+    (Term.tyPSubst e σ).size = e.size := by
+  induction e with
+  | var _ => rfl
+  | lam _ _ body ih => simp only [Term.tyPSubst, Term.size, ih]
+  | app _ _ ih₁ ih₂ => simp only [Term.tyPSubst, Term.size, ih₁, ih₂]
+
 end Term
 
 instance : HasVars Term where
@@ -210,5 +220,111 @@ theorem HashMap.pSubst_get? (Γ : Std.HashMap String Ty) (σ : Subst Ty)
   show (Γ.map (fun _ v => HasSubst.pSubst v σ)).get? x = _
   rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
       ← Std.HashMap.get?_eq_getElem?]
+
+/-! ## Soundness of `Subst.comp` for `Ty`, `Term`, and `Ctx`.
+
+The generic `Subst.comp` from `Substitution.Basic` is just a function on
+hash maps; its action only matches "apply τ, then σ" once we discharge
+the per-instance correctness law `pSubst t (comp σ τ) = pSubst (pSubst t
+τ) σ`. The three theorems below close it for the three substitution
+targets the named-STLC needs. -/
+
+/-- **Soundness of `Subst.comp` for `Ty`.** Substituting through the
+composed substitution is the same as substituting through τ first and
+then through σ. Structural induction on the type. -/
+theorem Ty.pSubst_comp (σ τ : Subst Ty) (t : Ty) :
+    HasSubst.pSubst t (Subst.comp σ τ) =
+      HasSubst.pSubst (HasSubst.pSubst t τ) σ := by
+  induction t with
+  | base => simp
+  | mvar n =>
+      rw [Ty.pSubst_mvar, Subst.comp_getD, Ty.pSubst_mvar]
+      cases hτ : τ.get? n with
+      | none =>
+          have h₁ : τ.getD n (Ty.mvar n) = Ty.mvar n := by
+            rw [Std.HashMap.getD_eq_getD_getElem?,
+                ← Std.HashMap.get?_eq_getElem?, hτ]
+            rfl
+          rw [h₁, Ty.pSubst_mvar]
+      | some t' =>
+          have h₁ : τ.getD n (Ty.mvar n) = t' := by
+            rw [Std.HashMap.getD_eq_getD_getElem?,
+                ← Std.HashMap.get?_eq_getElem?, hτ]
+            rfl
+          rw [h₁]
+  | arrow a b iha ihb =>
+      simp only [Ty.pSubst_arrow, iha, ihb]
+
+/-- **Soundness of `Subst.comp` for `Term`.** Same composition law, on
+the term substitution `tyPSubst` (which applies σ to annotations). -/
+theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : Term) :
+    Term.tyPSubst e (Subst.comp σ τ) =
+      Term.tyPSubst (Term.tyPSubst e τ) σ := by
+  induction e with
+  | var x => rfl
+  | lam x α body ih =>
+      simp only [Term.tyPSubst, Ty.pSubst_comp, ih]
+  | app e₁ e₂ ih₁ ih₂ =>
+      simp only [Term.tyPSubst, ih₁, ih₂]
+
+/-- `HasSubst.pSubst`-flavored corollary of `tyPSubst_comp`, for use in
+proofs that prefer the class API. -/
+theorem Term.pSubst_comp (σ τ : Subst Ty) (e : Term) :
+    HasSubst.pSubst e (Subst.comp σ τ) =
+      HasSubst.pSubst (HasSubst.pSubst e τ) σ :=
+  Term.tyPSubst_comp σ τ e
+
+/-- **Soundness of `Subst.comp` for `Ctx`.** Substituting the context
+through `comp σ τ` is `get?`-extensional to substituting through τ then
+σ — which is the form `HasType.cong` consumes. -/
+theorem Ctx.pSubst_comp_get? (Γ : Std.HashMap String Ty) (σ τ : Subst Ty)
+    (x : String) :
+    (HasSubst.pSubst Γ (Subst.comp σ τ)).get? x =
+      (HasSubst.pSubst (HasSubst.pSubst Γ τ) σ).get? x := by
+  rw [HashMap.pSubst_get?, HashMap.pSubst_get?, HashMap.pSubst_get?]
+  cases Γ.get? x with
+  | none => rfl
+  | some t => simp only [Option.map_some, Ty.pSubst_comp]
+
+/-! ## Fresh-mvar extension at the `Term` and `Ctx` levels.
+
+Specializations of `Signature.pSubst_insert_fresh`: extending σ with a
+fresh-from-target binding is action-preserving on terms and (key-by-key)
+on contexts. -/
+
+theorem Term.tyPSubst_insert_fresh (e : Term) (σ : Subst Ty)
+    (k : Nat) (v : Ty) (h_fresh : ¬ HasVars.isFree e k) :
+    Term.tyPSubst e (σ.insert k v) = Term.tyPSubst e σ := by
+  induction e with
+  | var x => rfl
+  | lam x α body ih =>
+      simp only [Term.tyPSubst]
+      have h_α : ¬ HasVars.isFree α k := fun h => h_fresh (Or.inl h)
+      have h_body : ¬ HasVars.isFree body k := fun h => h_fresh (Or.inr h)
+      rw [Signature.pSubst_insert_fresh σ k v α h_α, ih h_body]
+  | app e₁ e₂ ih₁ ih₂ =>
+      simp only [Term.tyPSubst]
+      have h_e₁ : ¬ HasVars.isFree e₁ k := fun h => h_fresh (Or.inl h)
+      have h_e₂ : ¬ HasVars.isFree e₂ k := fun h => h_fresh (Or.inr h)
+      rw [ih₁ h_e₁, ih₂ h_e₂]
+
+/-- `get?`-extensional version of the fresh extension for contexts. -/
+theorem Ctx.pSubst_insert_fresh_get? (Γ : Std.HashMap String Ty)
+    (σ : Subst Ty) (k : Nat) (v : Ty)
+    (h_fresh : ¬ HasVars.isFree Γ k) (x : String) :
+    (HasSubst.pSubst Γ (σ.insert k v)).get? x = (HasSubst.pSubst Γ σ).get? x := by
+  rw [HashMap.pSubst_get?, HashMap.pSubst_get?]
+  cases hx : Γ.get? x with
+  | none => rfl
+  | some τ' =>
+      simp only [Option.map_some]
+      congr 1
+      apply Signature.pSubst_insert_fresh
+      intro h_τ_free
+      apply h_fresh
+      refine ⟨(x, τ'), ?_, Or.inr h_τ_free⟩
+      rw [Std.HashMap.mem_toList_iff_getElem?_eq_some,
+          ← Std.HashMap.get?_eq_getElem?]
+      exact hx
 
 end LambdaLab.Stlc.Named

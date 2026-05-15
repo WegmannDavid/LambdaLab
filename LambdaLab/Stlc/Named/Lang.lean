@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.HM
+import LambdaLab.Stlc.Named.W
 import LambdaLab.Stlc.Named.Eval
 import LambdaLab.Stlc.Named.Parser
 import LambdaLab.Language.Basic

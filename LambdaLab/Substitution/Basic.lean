@@ -30,6 +30,82 @@ def MoreGeneral {α : Type} [HasSubst α α] (σ σ' : Subst α) : Prop :=
   ∃ τ : Subst α, ∀ t : α,
     HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
 
+/-- Parallel composition of substitutions. `comp σ τ` is the substitution
+whose intended action is "apply τ first, then σ" — i.e. function
+composition `σ ∘ τ` on terms.
+
+* For each `(n, t) ∈ τ`, the result binds `n ↦ pSubst t σ`.
+* For each `(n, s) ∈ σ` with `n ∉ dom τ`, the result preserves `n ↦ s`.
+
+Implemented as `σ.insertMany (mappedTau)` so that `insertMany`'s override
+semantics gives τ's mapped entries priority over σ's bindings for shared
+keys.
+
+The correctness law
+`HasSubst.pSubst t (Subst.comp σ τ) = HasSubst.pSubst (HasSubst.pSubst t τ) σ`
+cannot be proved from the `HasSubst` axioms alone; it must be discharged
+per instance (typically by structural induction on `t`). -/
+def Subst.comp [HasSubst α α] (σ τ : Subst α) : Subst α :=
+  σ.insertMany (τ.toList.map (fun p => (p.1, HasSubst.pSubst p.2 σ)))
+
+/-- The `get?` characterization of `Subst.comp`: at every variable `n`,
+the composed substitution either returns τ's binding with `σ` applied
+(when `n ∈ dom τ`) or σ's binding (when `n ∉ dom τ`). -/
+theorem Subst.comp_get? [HasSubst α α] (σ τ : Subst α) (n : Nat) :
+    (Subst.comp σ τ).get? n =
+      match τ.get? n with
+      | some t => some (HasSubst.pSubst t σ)
+      | none   => σ.get? n := by
+  unfold Subst.comp
+  have hdistinct_τ : τ.toList.Pairwise (fun a b => (a.1 == b.1) = false) :=
+    Std.HashMap.distinct_keys_toList
+  have hdistinct :
+      (τ.toList.map (fun p => (p.1, HasSubst.pSubst p.2 σ))).Pairwise
+        (fun a b => (a.1 == b.1) = false) :=
+    hdistinct_τ.map _ (fun _ _ h => h)
+  rw [Std.HashMap.get?_eq_getElem?]
+  cases hτ : τ.get? n with
+  | none =>
+      simp only
+      rw [← Std.HashMap.get?_eq_getElem?]
+      apply Std.HashMap.getElem?_insertMany_list_of_contains_eq_false
+      simp only [List.map_map, Function.comp_def, List.contains_eq_mem,
+                 decide_eq_false_iff_not]
+      intro hmem
+      rcases List.mem_map.mp hmem with ⟨p, hp_mem, hp_eq⟩
+      have hpτ : τ.get? p.1 = some p.2 := by
+        rw [Std.HashMap.get?_eq_getElem?]
+        exact Std.HashMap.mem_toList_iff_getElem?_eq_some.mp hp_mem
+      rw [hp_eq] at hpτ
+      rw [hpτ] at hτ
+      cases hτ
+  | some t =>
+      simp only
+      have hmem_τ : (n, t) ∈ τ.toList := by
+        rw [Std.HashMap.mem_toList_iff_getElem?_eq_some,
+            ← Std.HashMap.get?_eq_getElem?]
+        exact hτ
+      have hmem : (n, HasSubst.pSubst t σ) ∈
+                    τ.toList.map (fun p => (p.1, HasSubst.pSubst p.2 σ)) :=
+        List.mem_map.mpr ⟨(n, t), hmem_τ, rfl⟩
+      exact Std.HashMap.getElem?_insertMany_list_of_mem
+        BEq.rfl hdistinct hmem
+
+/-- `getD` variant of `Subst.comp_get?`: convenient for working with
+`pSubst` on substitution variables, which is defined via `getD`. -/
+theorem Subst.comp_getD [HasSubst α α] (σ τ : Subst α) (n : Nat) (d : α) :
+    (Subst.comp σ τ).getD n d =
+      match τ.get? n with
+      | some t => HasSubst.pSubst t σ
+      | none   => σ.getD n d := by
+  rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?,
+      Subst.comp_get?]
+  cases τ.get? n with
+  | none =>
+      simp only
+      rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?]
+  | some t => simp only [Option.getD]
+
 /-- For an arbitrary `f : α → Nat`, the foldr of `max` over a list bounds
 `f a` from above whenever `a` is in the list. Used to prove
 `fresh_gt_free` for substitution-shaped instances. -/

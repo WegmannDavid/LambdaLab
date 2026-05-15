@@ -61,7 +61,7 @@ under `Γ`. Bundles a witness substitution `σ` with proofs that:
 The type `τ` is a parameter (no `∃ τ`); `σ` lives as a structure field
 rather than an existential so callers can destructure it in
 `Type`-valued definitions. -/
-structure Elaborable {Ty Term : Type}
+structure Elaboration {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
@@ -79,15 +79,14 @@ structure Elaborable {Ty Term : Type}
 inferred type `τ` and the `Elaborable Γ e τ` witness; the `error`
 branch carries a structured `TypeError` plus a uniform negative claim
 `∀ τ, ¬ Elaborable Γ e τ` (no type at all is a principal type for `e`). -/
-inductive ElaborateResult {Ty Term : Type}
+inductive ElaborationResult {Ty Term : Type}
     [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
     (HasType : Context Ty → Term → Ty → Prop)
     (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
-  | error : TypeError Ty →
-            (Elaborable HasType Γ e τ → False) →
-            ElaborateResult HasType Γ e τ
-  | ok    : Elaborable HasType Γ e τ →
-            ElaborateResult HasType Γ e τ
+  | error : (Elaboration HasType Γ e τ → False) →
+            ElaborationResult HasType Γ e τ
+  | ok    : Elaboration HasType Γ e τ →
+            ElaborationResult HasType Γ e τ
 
 /-! ## The language interface -/
 
@@ -129,8 +128,8 @@ structure Language : Type 1 where
   the existentials so `HasType` derives on the substituted triple. For
   full inference, pass a fresh `Ty.mvar` as `τ`; the returned `σ` then
   tells you what that mvar should be. -/
-  elaborate : (Γ : Context Ty) → (e : Term) → (τ : Ty) →
-          @ElaborateResult Ty Term tyHasSubst termHasSubst
+  elaborate : (Γ : Context Ty) → (e : Term) → (τ : Ty)→
+          @ElaborationResult Ty Term tyHasSubst termHasSubst
             (by infer_instance) HasType Γ e τ
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/

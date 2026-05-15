@@ -1,4 +1,6 @@
 import LambdaLab.Substitution.Unification.Basic
+import LambdaLab.Substitution.Unification.Soundness
+import LambdaLab.Substitution.Unification.Completeness
 
 /-! # Most-generality of `unifyList`
 
@@ -116,4 +118,51 @@ theorem unify_mgu {α : Type} [Signature α] :
   rw [← Unifier.apply_eq_pSubst_toSubst,
       ← Unifier.apply_eq_pSubst_toSubst,
       ← Unifier.apply_eq_pSubst_toSubst]
+  exact hτ t
+
+/-! ## `Subst α`-form `unify_complete` and `unify_mgu`.
+
+These are derived from the `Unifier`-form versions via
+`Subst.exists_equivalent_unifier` (the bridge below, currently stubbed).
+The W principal-types proof uses these directly. -/
+
+/-- **Bridge: `Subst α` ⟶ action-equivalent `Unifier α`.**
+
+For any `Subst α` that unifies `eqs`, we can find a `Unifier α` with the
+same `pSubst`-action on every term. With this we can transport the
+existing `Unifier`-form `unify_complete`/`unify_mgu` to `Subst`-form
+versions without re-proving the inductive structure.
+
+**Status:** the construction is left as `sorry`. The natural witness is
+`σ.toList` after iterating to an idempotent fixed point (which exists
+for acyclic σ — and any σ that comes from a finite typing derivation is
+acyclic). Filling this in is the main remaining gap below
+the W principal-types theorem. -/
+theorem exists_equivalent_unifier {α : Type} [Signature α]
+    (σ : Subst α) (eqs : Equations α) (_h : Subst.Unifies σ eqs) :
+    ∃ u : Unifier α,
+      u.Unifies eqs ∧
+        (∀ t : α, HasSubst.pSubst t u.toSubst = HasSubst.pSubst t σ) :=
+  sorry
+
+/-- **Completeness, `Subst α` form.** If any `Subst α` unifies the
+equations, `unify` doesn't fail. -/
+theorem unify_complete_subst {α : Type} [Signature α] :
+    ∀ (eqs : Equations α) (σ' : Subst α),
+      Subst.Unifies σ' eqs → unify eqs ≠ none := by
+  intro eqs σ' h_unifies
+  obtain ⟨u, hu, _⟩ := exists_equivalent_unifier σ' eqs h_unifies
+  exact unify_complete eqs u hu
+
+/-- **Most-generality, `Subst α` form.** When `unify eqs = some σ`, `σ`
+is at least as general as any `Subst α` unifying `eqs`. -/
+theorem unify_mgu_subst {α : Type} [Signature α] :
+    ∀ (eqs : Equations α) (σ : Subst α) (σ' : Subst α),
+      unify eqs = some σ → Subst.Unifies σ' eqs → MoreGeneral σ σ' := by
+  intro eqs σ σ' hu h_unifies
+  obtain ⟨u, h_u_unif, h_u_act⟩ := exists_equivalent_unifier σ' eqs h_unifies
+  have h_mgu := unify_mgu eqs σ hu u h_u_unif
+  obtain ⟨τ, hτ⟩ := h_mgu
+  refine ⟨τ, fun t => ?_⟩
+  rw [← h_u_act t]
   exact hτ t
