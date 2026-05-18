@@ -46,23 +46,21 @@ def fixityArity : Fixity → Nat → Nat
 
 /-! ## Hole specifications -/
 
-/-- Specification of one argument hole in a mixfix operator. The
-grammar's parser state `S` is shared across all sub-parsers in the
-grammar. -/
-inductive HoleSpec (S α : Type) : Type 1 where
+/-- Specification of one argument hole in a mixfix operator. -/
+inductive HoleSpec (α : Type) : Type 1 where
   /-- A recursive hole: parse another expression of the operator's
   result type `α`. -/
-  | recurse : HoleSpec S α
+  | recurse : HoleSpec α
   /-- A sub-hole: parse a value of carrier type `β` using the bundled
   parser/printer pair. -/
-  | sub {β : Type} : Parser S β → HoleSpec S α
+  | sub {β : Type} : Parser β → HoleSpec α
 
 /-- The type that a hole's evaluated child must have. For `recurse`
 holes that's the operator's own result type `α`; for `sub` holes it's
 the sub-parser's carrier type. -/
-abbrev HoleSpec.evalType {S α : Type} : HoleSpec S α → Type
-  | .recurse              => α
-  | @HoleSpec.sub _ _ β _ => β
+abbrev HoleSpec.evalType {α : Type} : HoleSpec α → Type
+  | .recurse            => α
+  | @HoleSpec.sub _ β _ => β
 
 /-! ## Build-function types
 
@@ -72,7 +70,7 @@ curried over the eval-types of those holes:
 
 /-- The type of a build function for an operator with the given list of
 holes. -/
-abbrev buildType {S : Type} (α : Type) : List (HoleSpec S α) → Type
+abbrev buildType (α : Type) : List (HoleSpec α) → Type
   | []      => α
   | h :: hs => h.evalType → buildType α hs
 
@@ -96,24 +94,23 @@ or `by decide`):
 * Infix `_+_`: `nameParts = ["+"]`, `fixity = .infix .left`,
   `holes = [.recurse, .recurse]`, `build : α → α → α`.
 -/
-structure Operator (S α : Type) : Type 1 where
+structure Operator (α : Type) : Type 1 where
   fixity : Fixity
   nameParts : List String
   nameParts_ne_nil : nameParts ≠ []
-  holes : List (HoleSpec S α)
+  holes : List (HoleSpec α)
   holes_match_arity : holes.length = fixityArity fixity nameParts.length
   build : buildType α holes
 
 /-- The number of argument holes of an operator. -/
-def Operator.arity {S α : Type} (op : Operator S α) : Nat := op.holes.length
+def Operator.arity {α : Type} (op : Operator α) : Nat := op.holes.length
 
-/-- A grammar over result type `α` with parser state `S`: a list of
-precedence levels, plus a fall-through interpretation for bare
-identifier-like tokens, plus an optional juxtaposition combiner for
-application-style adjacency. -/
-structure Grammar (S α : Type) : Type 1 where
+/-- A grammar over result type `α`: a list of precedence levels, plus a
+fall-through interpretation for bare identifier-like tokens, plus an
+optional juxtaposition combiner for application-style adjacency. -/
+structure Grammar (α : Type) : Type 1 where
   /-- Precedence levels, ordered from tightest- to loosest-binding. -/
-  levels : List (List (Operator S α))
+  levels : List (List (Operator α))
   /-- Interpretation of a bare token (e.g. a variable name in λ-calculus). -/
   atomBuild : String → α
   /-- Optional juxtaposition: when `some f`, after a head is parsed the

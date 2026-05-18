@@ -51,7 +51,7 @@ juxtaposition: `f )` shouldn't juxtapose because `)` isn't an
 expression starter. A token can start an expression if either it's not
 mentioned in any operator's name-parts (a free atom), or it is the
 first name-part of some closed/prefix operator. -/
-def canStartExpr {S α : Type} (g : Grammar S α) (tok : String) : Bool :=
+def canStartExpr {α : Type} (g : Grammar α) (tok : String) : Bool :=
   let isInAnyNameParts :=
     g.levels.flatten.any (fun op => op.nameParts.contains tok)
   let isFirstOfHeadOp :=
@@ -62,14 +62,14 @@ def canStartExpr {S α : Type} (g : Grammar S α) (tok : String) : Bool :=
 
 /-- Run a user-supplied sub-parser, requiring that it consumes at least
 one token. If the sub-parser returns the same (or longer) input, treat
-it as a parse failure. Threads the parser state `s`. -/
-def runParser {S β : Type} (subP : Parser S β) (s : S) (input : List String) :
-    Option (S × β × { rest : List String // rest.length < input.length }) :=
-  match subP.run s input with
+it as a parse failure. -/
+def runParser {β : Type} (subP : Parser β) (input : List String) :
+    Option (β × { rest : List String // rest.length < input.length }) :=
+  match subP.run input with
   | none => none
-  | some (s', val, rest) =>
+  | some (val, rest) =>
       if h : rest.length < input.length then
-        some (s', val, ⟨rest, h⟩)
+        some (val, ⟨rest, h⟩)
       else
         none
 
@@ -79,16 +79,16 @@ def runParser {S β : Type} (subP : Parser S β) (s : S) (input : List String) :
 for binders that bind a variable name (e.g. `λ x : τ . body`), and for
 the vernacular's `def NAME` slot. (This will eventually want a
 keyword-excluding variant; for now any token is accepted.) -/
-def stringParser {S : Type} : Parser S String where
-  run := fun s input =>
+def stringParser : Parser String where
+  run := fun input =>
     match input with
     | []        => none
-    | t :: rest => some (s, t, rest)
+    | t :: rest => some (t, rest)
   printer := fun s => [s]
 
 /-- Atom fallback: take the first token and wrap it as `Tree.atom`. -/
-def atomFallbackTree {S α : Type} : ∀ (input : List String),
-    Option (Tree S α × { rest : List String // rest.length < input.length })
+def atomFallbackTree {α : Type} : ∀ (input : List String),
+    Option (Tree α × { rest : List String // rest.length < input.length })
   | []        => none
   | t :: rest => some (.atom t, ⟨rest, Nat.lt_succ_self _⟩)
 
@@ -96,201 +96,200 @@ def atomFallbackTree {S α : Type} : ∀ (input : List String),
 
 mutual
   /-- Try parsing the input as a head operator (closed or prefix). -/
-  def tryOp {S α : Type} (g : Grammar S α) (s : S) (input : List String)
-      (op : Operator S α) :
-      Option (S × Tree S α × { rest : List String // rest.length < input.length }) :=
+  def tryOp {α : Type} (g : Grammar α) (input : List String)
+      (op : Operator α) :
+      Option (Tree α × { rest : List String // rest.length < input.length }) :=
     match op.fixity with
     | .closed =>
-        match parseTreeClosedSeq g op.nameParts op.holes s input with
-        | some (s', cs, rest) => some (s', .node op cs, rest)
-        | none                => none
+        match parseTreeClosedSeq g op.nameParts op.holes input with
+        | some (cs, rest) => some (.node op cs, rest)
+        | none            => none
     | .prefix =>
-        match parseTreePrefixSeq g op.nameParts op.holes s input with
-        | some (s', cs, rest) => some (s', .node op cs, rest)
-        | none                => none
+        match parseTreePrefixSeq g op.nameParts op.holes input with
+        | some (cs, rest) => some (.node op cs, rest)
+        | none            => none
     | _       => none
   termination_by (input.length, 1)
 
   /-- Try wrapping an already-parsed head with a postfix or infix
   operator. Requires `op.holes.head = .recurse` so the head fits the
   leading hole as a recursive child. -/
-  def tryTail {S α : Type} (g : Grammar S α) (head : Tree S α) (s : S)
-      (input : List String) (op : Operator S α) :
-      Option (S × Tree S α × { rest : List String // rest.length < input.length }) :=
+  def tryTail {α : Type} (g : Grammar α) (head : Tree α)
+      (input : List String) (op : Operator α) :
+      Option (Tree α × { rest : List String // rest.length < input.length }) :=
     match h_holes : op.holes, op.fixity with
     | .recurse :: tailHoles, .postfix =>
-        match parseTreeClosedSeq g op.nameParts tailHoles s input with
-        | some (s', cs, rest) =>
-            some (s', .node op (h_holes ▸ Children.consRec head cs), rest)
+        match parseTreeClosedSeq g op.nameParts tailHoles input with
+        | some (cs, rest) =>
+            some (.node op (h_holes ▸ Children.consRec head cs), rest)
         | none => none
     | .recurse :: tailHoles, .infix _ =>
-        match parseTreePrefixSeq g op.nameParts tailHoles s input with
-        | some (s', cs, rest) =>
-            some (s', .node op (h_holes ▸ Children.consRec head cs), rest)
+        match parseTreePrefixSeq g op.nameParts tailHoles input with
+        | some (cs, rest) =>
+            some (.node op (h_holes ▸ Children.consRec head cs), rest)
         | none => none
     | _, _ => none
   termination_by (input.length, 1)
 
   /-- Parse a head expression: an atom or a closed/prefix operator. -/
-  def parseHead {S α : Type} (g : Grammar S α) (s : S) (input : List String) :
-      Option (S × Tree S α × { rest : List String // rest.length < input.length }) :=
-    match g.levels.flatten.findSome? (tryOp g s input) with
+  def parseHead {α : Type} (g : Grammar α) (input : List String) :
+      Option (Tree α × { rest : List String // rest.length < input.length }) :=
+    match g.levels.flatten.findSome? (tryOp g input) with
     | some r => some r
-    | none   => (atomFallbackTree input).map (fun (t, r) => (s, t, r))
+    | none   => atomFallbackTree input
   termination_by (input.length, 2)
 
   /-- Repeatedly apply `tryTail` (and juxtaposition, if enabled) to wrap
   `head` with as many trailing operators / applications as match.
-  Returns the final tree, updated state, and any unconsumed tokens.
-  Always returns at least the unwrapped head. -/
-  def tryTailLoop {S α : Type} (g : Grammar S α) (head : Tree S α) (s : S)
+  Returns the final tree and any unconsumed tokens. Always returns at
+  least the unwrapped head. -/
+  def tryTailLoop {α : Type} (g : Grammar α) (head : Tree α)
       (input : List String) :
-      S × Tree S α × { rest : List String // rest.length ≤ input.length } :=
-    match g.levels.flatten.findSome? (tryTail g head s input) with
-    | some (s', newHead, ⟨rest, hR⟩) =>
-        let next := tryTailLoop g newHead s' rest
-        ⟨next.fst, next.snd.fst,
-          ⟨next.snd.snd.val, by have := next.snd.snd.property; omega⟩⟩
+      Tree α × { rest : List String // rest.length ≤ input.length } :=
+    match g.levels.flatten.findSome? (tryTail g head input) with
+    | some (newHead, ⟨rest, hR⟩) =>
+        let next := tryTailLoop g newHead rest
+        ⟨next.fst,
+          ⟨next.snd.val, by have := next.snd.property; omega⟩⟩
     | none =>
         match g.juxtBuild with
-        | none => ⟨s, head, ⟨input, Nat.le_refl _⟩⟩
+        | none => ⟨head, ⟨input, Nat.le_refl _⟩⟩
         | some f =>
             match h_inp : input.head? with
-            | none => ⟨s, head, ⟨input, Nat.le_refl _⟩⟩
+            | none => ⟨head, ⟨input, Nat.le_refl _⟩⟩
             | some tok =>
                 if canStartExpr g tok then
-                  match parseHead g s input with
-                  | none => ⟨s, head, ⟨input, Nat.le_refl _⟩⟩
-                  | some (s', next, ⟨rest, hR⟩) =>
-                      let further := tryTailLoop g (.app f head next) s' rest
-                      ⟨further.fst, further.snd.fst,
-                       ⟨further.snd.snd.val,
-                        by have := further.snd.snd.property; omega⟩⟩
-                else ⟨s, head, ⟨input, Nat.le_refl _⟩⟩
+                  match parseHead g input with
+                  | none => ⟨head, ⟨input, Nat.le_refl _⟩⟩
+                  | some (next, ⟨rest, hR⟩) =>
+                      let further := tryTailLoop g (.app f head next) rest
+                      ⟨further.fst,
+                       ⟨further.snd.val,
+                        by have := further.snd.property; omega⟩⟩
+                else ⟨head, ⟨input, Nat.le_refl _⟩⟩
   termination_by (input.length, 3)
 
   /-- Parse a token list into a parse tree. Parses a head, then applies
   any trailing postfix/infix operators. Always consumes at least one
   token on success (via `parseHead`). -/
-  def parseTree {S α : Type} (g : Grammar S α) (s : S) (input : List String) :
-      Option (S × Tree S α × { rest : List String // rest.length < input.length }) :=
-    match parseHead g s input with
+  def parseTree {α : Type} (g : Grammar α) (input : List String) :
+      Option (Tree α × { rest : List String // rest.length < input.length }) :=
+    match parseHead g input with
     | none => none
-    | some (s', head, ⟨rest, hR⟩) =>
-        let result := tryTailLoop g head s' rest
-        some (result.fst, result.snd.fst,
-              ⟨result.snd.snd.val, by have := result.snd.snd.property; omega⟩)
+    | some (head, ⟨rest, hR⟩) =>
+        let result := tryTailLoop g head rest
+        some (result.fst,
+              ⟨result.snd.val, by have := result.snd.property; omega⟩)
   termination_by (input.length, 4)
 
   /-- Walk a closed operator's interleaved name-parts and holes, building
-  a `Children S α hs` value. -/
-  def parseTreeClosedSeq {S α : Type} (g : Grammar S α) :
-      List String → ∀ (hs : List (HoleSpec S α)),
-        ∀ (s : S) (input : List String),
-        Option (S × Children S α hs ×
+  a `Children α hs` value. -/
+  def parseTreeClosedSeq {α : Type} (g : Grammar α) :
+      List String → ∀ (hs : List (HoleSpec α)),
+        ∀ (input : List String),
+        Option (Children α hs ×
           { rest : List String // rest.length < input.length })
-    | [last],    [],                s, input =>
+    | [last],    [],                input =>
         match matchToken last input with
         | none              => none
-        | some ⟨rest, hR⟩  => some (s, .nil, ⟨rest, hR⟩)
-    | np :: nps, .recurse :: hs,    s, input =>
+        | some ⟨rest, hR⟩  => some (.nil, ⟨rest, hR⟩)
+    | np :: nps, .recurse :: hs,    input =>
         match matchToken np input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match parseTree g s rest with
-            | none                              => none
-            | some (s', subTree, ⟨rest', hR'⟩) =>
-                match parseTreeClosedSeq g nps hs s' rest' with
-                | none                           => none
-                | some (s'', cs, ⟨rest'', hR''⟩) =>
-                    some (s'', .consRec subTree cs, ⟨rest'', by omega⟩)
-    | np :: nps, .sub subP :: hs, s, input =>
+            match parseTree g rest with
+            | none                       => none
+            | some (subTree, ⟨rest', hR'⟩) =>
+                match parseTreeClosedSeq g nps hs rest' with
+                | none                    => none
+                | some (cs, ⟨rest'', hR''⟩) =>
+                    some (.consRec subTree cs, ⟨rest'', by omega⟩)
+    | np :: nps, .sub subP :: hs, input =>
         match matchToken np input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match runParser subP s rest with
-            | none                           => none
-            | some (s', val, ⟨rest', hR'⟩) =>
-                match parseTreeClosedSeq g nps hs s' rest' with
-                | none                           => none
-                | some (s'', cs, ⟨rest'', hR''⟩) =>
-                    some (s'', .consSub val cs, ⟨rest'', by omega⟩)
-    | _,         _,                 _, _     => none
-  termination_by _ _ _ input => (input.length, 0)
+            match runParser subP rest with
+            | none                    => none
+            | some (val, ⟨rest', hR'⟩) =>
+                match parseTreeClosedSeq g nps hs rest' with
+                | none                    => none
+                | some (cs, ⟨rest'', hR''⟩) =>
+                    some (.consSub val cs, ⟨rest'', by omega⟩)
+    | _,         _,                 _     => none
+  termination_by _ _ input => (input.length, 0)
 
   /-- Walk a prefix operator's interleaved name-parts and holes. A prefix
   operator with `n` name-parts has `n` holes (one trailing each name).
   Base case: a single name + a single hole. -/
-  def parseTreePrefixSeq {S α : Type} (g : Grammar S α) :
-      List String → ∀ (hs : List (HoleSpec S α)),
-        ∀ (s : S) (input : List String),
-        Option (S × Children S α hs ×
+  def parseTreePrefixSeq {α : Type} (g : Grammar α) :
+      List String → ∀ (hs : List (HoleSpec α)),
+        ∀ (input : List String),
+        Option (Children α hs ×
           { rest : List String // rest.length < input.length })
-    | [name],    [.recurse],          s, input =>
+    | [name],    [.recurse],          input =>
         match matchToken name input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match parseTree g s rest with
-            | none                           => none
-            | some (s', tree, ⟨rest', hR'⟩) =>
-                some (s', .consRec tree .nil, ⟨rest', by omega⟩)
-    | [name],    [.sub subP],         s, input =>
+            match parseTree g rest with
+            | none                    => none
+            | some (tree, ⟨rest', hR'⟩) =>
+                some (.consRec tree .nil, ⟨rest', by omega⟩)
+    | [name],    [.sub subP],         input =>
         match matchToken name input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match runParser subP s rest with
-            | none                          => none
-            | some (s', val, ⟨rest', hR'⟩) =>
-                some (s', .consSub val .nil, ⟨rest', by omega⟩)
-    | np :: nps, .recurse :: hs,      s, input =>
+            match runParser subP rest with
+            | none                   => none
+            | some (val, ⟨rest', hR'⟩) =>
+                some (.consSub val .nil, ⟨rest', by omega⟩)
+    | np :: nps, .recurse :: hs,      input =>
         match matchToken np input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match parseTree g s rest with
-            | none                              => none
-            | some (s', subTree, ⟨rest', hR'⟩) =>
-                match parseTreePrefixSeq g nps hs s' rest' with
-                | none                           => none
-                | some (s'', cs, ⟨rest'', hR''⟩) =>
-                    some (s'', .consRec subTree cs, ⟨rest'', by omega⟩)
-    | np :: nps, .sub subP :: hs,   s, input =>
+            match parseTree g rest with
+            | none                       => none
+            | some (subTree, ⟨rest', hR'⟩) =>
+                match parseTreePrefixSeq g nps hs rest' with
+                | none                    => none
+                | some (cs, ⟨rest'', hR''⟩) =>
+                    some (.consRec subTree cs, ⟨rest'', by omega⟩)
+    | np :: nps, .sub subP :: hs,   input =>
         match matchToken np input with
         | none              => none
         | some ⟨rest, hR⟩  =>
-            match runParser subP s rest with
-            | none                           => none
-            | some (s', val, ⟨rest', hR'⟩) =>
-                match parseTreePrefixSeq g nps hs s' rest' with
-                | none                           => none
-                | some (s'', cs, ⟨rest'', hR''⟩) =>
-                    some (s'', .consSub val cs, ⟨rest'', by omega⟩)
-    | _,         _,                   _, _     => none
-  termination_by _ _ _ input => (input.length, 0)
+            match runParser subP rest with
+            | none                    => none
+            | some (val, ⟨rest', hR'⟩) =>
+                match parseTreePrefixSeq g nps hs rest' with
+                | none                    => none
+                | some (cs, ⟨rest'', hR''⟩) =>
+                    some (.consSub val cs, ⟨rest'', by omega⟩)
+    | _,         _,                   _     => none
+  termination_by _ _ input => (input.length, 0)
 end
 
 /-! ## Top-level entry points -/
 
 /-- Parse a token list, producing a value of the grammar's result type
-via `Tree.eval`, and threading the parser state `s`. -/
-def parse {S α : Type} (g : Grammar S α) (s : S) (input : List String) :
-    Option (S × α × { rest : List String // rest.length < input.length }) :=
-  match parseTree g s input with
+via `Tree.eval`. -/
+def parse {α : Type} (g : Grammar α) (input : List String) :
+    Option (α × { rest : List String // rest.length < input.length }) :=
+  match parseTree g input with
   | none              => none
-  | some (s', t, rest) => some (s', Tree.eval g t, rest)
+  | some (t, rest)    => some (Tree.eval g t, rest)
 
 /-- Parse a complete token list. Succeeds only if the parse consumes
-every token. Returns the value and the final state. -/
-def parseAll {S α : Type} (g : Grammar S α) (s : S) (input : List String) :
-    Option (S × α) :=
-  match parseTree g s input with
-  | some (s', t, ⟨[], _⟩) => some (s', Tree.eval g t)
-  | _                     => none
+every token. -/
+def parseAll {α : Type} (g : Grammar α) (input : List String) : Option α :=
+  match parseTree g input with
+  | some (t, ⟨[], _⟩) => some (Tree.eval g t)
+  | _                 => none
 
 /-- Like `parseAll` but returns the parse tree as well. -/
-def parseAllTree {S α : Type} (g : Grammar S α) (s : S) (input : List String) :
-    Option (S × Tree S α) :=
-  match parseTree g s input with
-  | some (s', t, ⟨[], _⟩) => some (s', t)
-  | _                     => none
+def parseAllTree {α : Type} (g : Grammar α) (input : List String) :
+    Option (Tree α) :=
+  match parseTree g input with
+  | some (t, ⟨[], _⟩) => some t
+  | _                 => none
 
 end LambdaLab.Parser.Mixfix
