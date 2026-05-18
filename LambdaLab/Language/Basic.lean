@@ -27,6 +27,7 @@ this structure.
 
 namespace LambdaLab.Language
 
+open LambdaLab.Parser
 open LambdaLab.Parser.Mixfix
 
 /-! ## Contexts -/

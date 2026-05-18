@@ -30,6 +30,7 @@ multi-character literals such as `→` to single tokens.
 
 namespace LambdaLab.Stlc.Named.Parser
 
+open LambdaLab.Parser
 open LambdaLab.Parser.Mixfix
 open LambdaLab.Stlc.Named
 

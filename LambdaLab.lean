@@ -21,6 +21,7 @@ import LambdaLab.Stlc.Named.Confluence
 import LambdaLab.Stlc.Named.Preservation
 import LambdaLab.Stlc.Named.Normalization
 import LambdaLab.Stlc.Named.Eval
+import LambdaLab.Parser.Basic
 import LambdaLab.Parser.Mixfix.Basic
 import LambdaLab.Parser.Mixfix.Parser
 import LambdaLab.Stlc.Named.Parser
