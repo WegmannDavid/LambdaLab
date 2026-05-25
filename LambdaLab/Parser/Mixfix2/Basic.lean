@@ -54,9 +54,16 @@ def Operator.const (s : String) : Operator where
 
 @[simp] theorem Operator.const_arity (s : String) : (Operator.const s).arity = 0 := rfl
 
-/-- A grammar is just a list of operators. -/
+/-- All name-part tokens of an operator array, concatenated in order. -/
+def nameTokens (ops : Array Operator) : List String :=
+  ops.toList.flatMap (·.nameParts)
+
+/-- A grammar: operators in loosest-first precedence order, with every
+name-part token distinct across the whole grammar. This "unique reading"
+condition is what makes `parse` a left inverse of `flatten` — each token
+identifies exactly one operator-and-position, so parsing is forced. -/
 structure Grammar where
   ops : Array Operator
-  -- distinctness of name parts is required later
+  nameParts_nodup : (nameTokens ops).Nodup
 
 end LambdaLab.Parser.Mixfix2

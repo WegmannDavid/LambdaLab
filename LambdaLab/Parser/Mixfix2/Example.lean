@@ -20,7 +20,7 @@ def add : Operator where
 
 def one : Operator := .const "1"
 
-abbrev G : Grammar := { ops := #[add, one] }
+abbrev G : Grammar := { ops := #[add, one], nameParts_nodup := by decide }
 
 /-- The constant `1` reached directly at depth `1` (the tighter slot). -/
 def one1 : Tree G 1 := .top (.mk (by decide) .nil)
