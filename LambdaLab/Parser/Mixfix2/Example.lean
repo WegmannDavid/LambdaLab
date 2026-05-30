@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Mixfix2.Tree
+import LambdaLab.Parser.Mixfix2.Bijection
 
 /-!
 Sanity checks for the grammar-indexed tree. Grammar (loosest-first):
@@ -38,5 +38,54 @@ def e1plus1 : Expr G :=
 (well-typed only because the left hole sits at the same level `0`). -/
 def e1plus1plus1 : Expr G :=
   .top (.mk (by decide) (.cons e1plus1 (.cons one1 .nil)))
+
+/-! ## Parse round-trips for all four fixities
+
+A richer grammar exercising prefix/postfix/infix parsing. Loosest-first:
+
+    + (infix .left), - (prefix), ! (postfix), 1 (const)
+
+`run` renders the parse result as `(parsed-tree-flatten, leftover)`; for a
+complete parse the flatten equals the input and the leftover is empty —
+i.e. the token stream round-trips through `parse`. -/
+
+def neg : Operator where
+  fixity := .prefix
+  nameParts := ["-"]
+  nameParts_ne_nil := by simp
+def bang : Operator where
+  fixity := .postfix
+  nameParts := ["!"]
+  nameParts_ne_nil := by simp
+
+abbrev G2 : Grammar :=
+  { ops := #[add, neg, bang, one], nameParts_nodup := by decide }
+
+/-- Render `parse 0 s` as `(flatten, leftover)`. -/
+def run (s : List String) : Option (List String × List String) :=
+  match parse G2 0 s with
+  | some (t, r) => some (t.flatten, r.val)
+  | none        => none
+
+-- closed constant
+#eval run ["1"]                       -- some ([1], [])
+-- left-associative infix chaining
+#eval run ["1", "+", "1", "+", "1"]   -- some ([1,+,1,+,1], [])
+-- prefix, chained
+#eval run ["-", "-", "1"]             -- some ([-,-,1], [])
+-- postfix, chained
+#eval run ["1", "!", "!"]             -- some ([1,!,!], [])
+-- mixed precedence
+#eval run ["-", "1", "+", "1", "!"]   -- some ([-,1,+,1,!], [])
+-- leftover handling
+#eval run ["1", "+", "1", "extra"]    -- some ([1,+,1], [extra])
+
+/-- Every example round-trips: `parse` returns the full input with no
+leftover. (`native_decide`-checked since `run` is computable but built by
+well-founded recursion, so it does not reduce by `rfl`.) -/
+example : run ["1", "+", "1", "+", "1"] = some (["1", "+", "1", "+", "1"], []) := by native_decide
+example : run ["-", "-", "1"] = some (["-", "-", "1"], []) := by native_decide
+example : run ["1", "!", "!"] = some (["1", "!", "!"], []) := by native_decide
+example : run ["-", "1", "+", "1", "!"] = some (["-", "1", "+", "1", "!"], []) := by native_decide
 
 end LambdaLab.Parser.Mixfix2.Example
