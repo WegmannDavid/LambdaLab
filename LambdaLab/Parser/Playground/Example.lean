@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Playground.Parse
+import LambdaLab.Parser.Playground.Uniqueness
 
 /-!
 # A concrete precedence grammar for the Playground
@@ -211,5 +211,63 @@ def mixLookup : Token → Option MSym
 #eval (parse (G := mix) ["x", "=", "x", "=", "x"]).map (·.flatten)
 -- [["-", "x", "!"]]            (`-(x!)`: `!` binds tighter than `-`)
 #eval (parse (G := mix) ["-", "x", "!"]).map (·.flatten)
+
+/-! ## Unambiguity of the concrete grammars
+
+Both grammars satisfy the syntactic criterion `Unambiguous`, hence (modulo the
+open `unambiguous_flatten_injective`) `flatten` is injective and `parse` is
+subsingleton on them. -/
+
+theorem arith_unambiguous : Unambiguous arith where
+  nameParts_nodup := by intro a; cases a <;> decide
+  nameParts_disjoint := by
+    intro a b hne tk htk
+    cases a <;> cases b <;>
+      simp_all [arith, symOp, Operator.const] <;>
+      rcases htk with rfl | rfl <;> simp_all
+  tighter_disjoint := by
+    intro a b₁ b₂ h₁ h₂ hne c hc₁ hc₂
+    cases a <;> simp_all [arith, symTighter]
+    -- only `mul` survives: tighter mul = [paren, num]
+    rcases h₁ with h₁ | h₁ <;> rcases h₂ with h₂ | h₂ <;>
+      subst h₁ <;> subst h₂ <;>
+      first
+        | exact absurd rfl hne
+        | · have e₁ := ReachTighter.eq_of_sink (G := arith) rfl hc₁
+            have e₂ := ReachTighter.eq_of_sink (G := arith) rfl hc₂
+            simp_all
+  loosest_disjoint := by
+    intro r₁ r₂ h₁ h₂ hne c hc₁ hc₂
+    simp_all [arith]
+
+theorem mix_unambiguous : Unambiguous mix where
+  nameParts_nodup := by intro a; cases a <;> decide
+  nameParts_disjoint := by
+    intro a b hne tk htk
+    cases a <;> cases b <;> simp_all [mix, mixOp, Operator.const]
+  tighter_disjoint := by
+    intro a b₁ b₂ h₁ h₂ hne c hc₁ hc₂
+    cases a <;> simp_all [mix, mixTighter]
+  loosest_disjoint := by
+    intro r₁ r₂ h₁ h₂ hne c hc₁ hc₂
+    simp_all [mix]
+
+/-- `arith`'s `flatten` is injective (modulo the open criterion). -/
+theorem arith_flatten_injective : FlattenInjective arith :=
+  unambiguous_flatten_injective arith_unambiguous
+
+/-- `mix`'s `flatten` is injective (modulo the open criterion). -/
+theorem mix_flatten_injective : FlattenInjective mix :=
+  unambiguous_flatten_injective mix_unambiguous
+
+/-- `parse` on `arith` returns at most one result. -/
+theorem arith_parse_unique {tkns : List Token} {e₁ e₂ : Expr arith}
+    (h₁ : e₁ ∈ parse (G := arith) tkns) (h₂ : e₂ ∈ parse (G := arith) tkns) : e₁ = e₂ :=
+  parse_unique arith_flatten_injective h₁ h₂
+
+/-- `parse` on `mix` returns at most one result. -/
+theorem mix_parse_unique {tkns : List Token} {e₁ e₂ : Expr mix}
+    (h₁ : e₁ ∈ parse (G := mix) tkns) (h₂ : e₂ ∈ parse (G := mix) tkns) : e₁ = e₂ :=
+  parse_unique mix_flatten_injective h₁ h₂
 
 end LambdaLab.Parser.Playground
