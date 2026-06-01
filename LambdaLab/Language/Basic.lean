@@ -1,4 +1,3 @@
-import LambdaLab.Parser.Mixfix.Basic
 import LambdaLab.Substitution.Basic
 import Std.Data.HashMap
 
@@ -6,10 +5,9 @@ import Std.Data.HashMap
 # Language interface
 
 A `Language` bundles the per-language hooks the vernacular needs:
-sub-parsers for types and terms, a typing relation, an algorithmic
-inferrer, and an evaluator. Anything that should work uniformly across
-object languages (parsing, type-checking, evaluation) is parametric on
-this structure.
+a typing relation, an algorithmic inferrer, and an evaluator. Anything
+that should work uniformly across object languages (type-checking,
+evaluation) is parametric on this structure.
 
 ## Pinned design choices
 
@@ -26,9 +24,6 @@ this structure.
 -/
 
 namespace LambdaLab.Language
-
-open LambdaLab.Parser
-open LambdaLab.Parser.Mixfix
 
 /-! ## Contexts -/
 
@@ -92,9 +87,8 @@ inductive ElaborationResult {Ty Term : Type}
 /-! ## The language interface -/
 
 /-- A complete object-language interface. Bundles syntax (`Ty`, `Term`),
-parsing (`typeParser` + printer, `termParser` + printer), the
-declarative typing relation (`HasType`), the algorithmic inferrer
-(`infer`), and the evaluator (`eval`). -/
+the declarative typing relation (`HasType`), the algorithmic inferrer
+(`elaborate`), and the evaluator (`eval`). -/
 structure Language : Type 1 where
   /-- Types of the object language. -/
   Ty : Type
@@ -130,12 +124,6 @@ structure Language : Type 1 where
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
-  /-- Sub-parser for types (with bundled printer), plugged into the
-  vernacular grammar. -/
-  typeParser : Parser Ty
-  /-- Sub-parser for terms (with bundled printer), plugged into the
-  vernacular grammar. -/
-  termParser : Parser Term
 
 attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
 

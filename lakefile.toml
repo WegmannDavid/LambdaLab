@@ -1,14 +1,6 @@
 name = "LambdaLab"
 version = "0.1.0"
-defaultTargets = ["lambdalab"]
+defaultTargets = ["LambdaLab"]
 
 [[lean_lib]]
 name = "LambdaLab"
-
-[[lean_exe]]
-name = "lambdalab"
-root = "Main"
-
-[[lean_exe]]
-name = "lambdalab-stlc"
-root = "MainStlc"

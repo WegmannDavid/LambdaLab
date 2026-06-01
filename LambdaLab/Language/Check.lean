@@ -1,4 +1,4 @@
-import LambdaLab.Language.Parser
+import LambdaLab.Language.Basic
 
 /-!
 # Verified type-checking for vernacular programs
@@ -18,6 +18,26 @@ runtime semantics needs (a `HasType` derivation).
 -/
 
 namespace LambdaLab.Language
+
+/-! ## Vernacular commands
+
+The surface-syntax parser that produced these has been removed; the data
+types remain as the interface that `Program.check` consumes. -/
+
+/-- A single top-level declaration introduced by `def`. -/
+structure Decl (L : Language) where
+  name : String
+  type : L.Ty
+  body : L.Term
+
+/-- A vernacular command. -/
+inductive Command (L : Language) where
+  /-- `def NAME : TYPE := BODY` — introduces a binding. -/
+  | decl  : Decl L → Command L
+  /-- `eval BODY` — evaluate the term. -/
+  | eval  : L.Term → Command L
+  /-- `check BODY` — show the term's type. -/
+  | check : L.Term → Command L
 
 /-- A *typing claim* under a substitution: a `σ : Subst L.Ty` plus a
 `HasType` derivation about the `σ`-substituted triple `(Γ, e, τ)`. This

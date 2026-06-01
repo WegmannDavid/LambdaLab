@@ -1,2 +1,0 @@
-def id : ι → ι := λ x : ι . x ;
-def apply_id : ι := id y ;

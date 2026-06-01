@@ -1,6 +1,5 @@
 import LambdaLab.Stlc.Named.W
 import LambdaLab.Stlc.Named.Eval
-import LambdaLab.Stlc.Named.Parser
 import LambdaLab.Language.Basic
 
 /-!
@@ -19,7 +18,7 @@ threads the elaborator's well-formedness witnesses through to
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language LambdaLab.Stlc.Named.Parser
+open LambdaLab.Language
 
 /-- Placeholder: returns the input term. To be replaced by
 `HasType.eval` once the elaborator threads `Ground`/`AnnotsGround`
@@ -39,7 +38,5 @@ def lang : Language where
   HasType := HasType
   elaborate := Term.elaborate
   eval := evalStub
-  typeParser := typeParser
-  termParser := termParser
 
 end LambdaLab.Stlc.Named
