@@ -114,26 +114,27 @@ def tParen : Tree arith Sym.paren :=
 
 /-! ## Parsing
 
-Each result is mapped through `flatten`, so a successful round-trip prints
-`some <the input tokens>`. -/
+`parse` returns the list of full parses; each is mapped through `flatten`. Since
+`arith` is unambiguous (total-order DAG), every accepted input prints as a
+singleton `[<the input tokens>]`, and rejected input prints `[]`. -/
 
--- some ["n"]
+-- [["n"]]
 #eval (parse (G := arith) ["n"]).map (·.flatten)
--- some ["n", "+", "n"]
+-- [["n", "+", "n"]]
 #eval (parse (G := arith) ["n", "+", "n"]).map (·.flatten)
--- some ["(", "n", ")"]
+-- [["(", "n", ")"]]
 #eval (parse (G := arith) ["(", "n", ")"]).map (·.flatten)
--- some ["n", "+", "n", "*", "n"]   (mul binds tighter)
+-- [["n", "+", "n", "*", "n"]]   (mul binds tighter)
 #eval (parse (G := arith) ["n", "+", "n", "*", "n"]).map (·.flatten)
--- some ["n", "*", "n", "+", "n"]
+-- [["n", "*", "n", "+", "n"]]
 #eval (parse (G := arith) ["n", "*", "n", "+", "n"]).map (·.flatten)
--- some ["n", "+", "n", "+", "n"]   (left-assoc chain)
+-- [["n", "+", "n", "+", "n"]]   (left-assoc chain)
 #eval (parse (G := arith) ["n", "+", "n", "+", "n"]).map (·.flatten)
--- some ["(", "n", "+", "n", ")", "*", "n"]
+-- [["(", "n", "+", "n", ")", "*", "n"]]
 #eval (parse (G := arith) ["(", "n", "+", "n", ")", "*", "n"]).map (·.flatten)
--- none   (malformed: missing closing paren)
+-- []   (malformed: missing closing paren)
 #eval (parse (G := arith) ["(", "n"]).map (·.flatten)
--- none   (trailing junk)
+-- []   (trailing junk)
 #eval (parse (G := arith) ["n", "n"]).map (·.flatten)
 
 /-! ## A grammar exercising prefix / postfix / infixR / infixN
@@ -194,21 +195,21 @@ def mixLookup : Token → Option MSym
        · rintro rfl; rfl
        · intro h; simp only [mixLookup] at h; split at h <;> simp_all)
 
--- some ["-", "x"]                 (prefix)
+-- [["-", "x"]]                 (prefix)
 #eval (parse (G := mix) ["-", "x"]).map (·.flatten)
--- some ["-", "-", "x"]            (prefix stacks)
+-- [["-", "-", "x"]]            (prefix stacks)
 #eval (parse (G := mix) ["-", "-", "x"]).map (·.flatten)
--- some ["x", "!"]                 (postfix)
+-- [["x", "!"]]                 (postfix)
 #eval (parse (G := mix) ["x", "!"]).map (·.flatten)
--- some ["x", "!", "!"]            (postfix stacks)
+-- [["x", "!", "!"]]            (postfix stacks)
 #eval (parse (G := mix) ["x", "!", "!"]).map (·.flatten)
--- some ["x", "^", "x", "^", "x"]  (right-assoc; type forces `x ^ (x ^ x)`)
+-- [["x", "^", "x", "^", "x"]]  (right-assoc; type forces `x ^ (x ^ x)`)
 #eval (parse (G := mix) ["x", "^", "x", "^", "x"]).map (·.flatten)
--- some ["x", "=", "x"]            (non-assoc, single use OK)
+-- [["x", "=", "x"]]            (non-assoc, single use OK)
 #eval (parse (G := mix) ["x", "=", "x"]).map (·.flatten)
--- none                            (non-assoc rejects chaining `x = x = x`)
+-- []                            (non-assoc rejects chaining `x = x = x`)
 #eval (parse (G := mix) ["x", "=", "x", "=", "x"]).map (·.flatten)
--- some ["-", "x", "!"]            (`-(x!)`: `!` binds tighter than `-`)
+-- [["-", "x", "!"]]            (`-(x!)`: `!` binds tighter than `-`)
 #eval (parse (G := mix) ["-", "x", "!"]).map (·.flatten)
 
 end LambdaLab.Parser.Playground
