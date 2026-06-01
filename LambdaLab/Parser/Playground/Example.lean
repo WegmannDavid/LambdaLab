@@ -1,95 +1,214 @@
 import LambdaLab.Parser.Playground.Parse
 
 /-!
-# A minimal concrete grammar for the Playground
+# A concrete precedence grammar for the Playground
 
-Every operator here is *closed*: it begins and ends with a literal token,
-with `arity` child holes strictly interior. We use a tiny arithmetic-ish
-grammar — a constant, parentheses, and a bracketed `+` — and show that
-`parse` inverts `Tree.flatten`.
+A tiny arithmetic grammar exercising the new fixities and precedence DAG:
 
-For `lookup` to be unambiguous, the operators must have *distinct leading
-tokens*. That is why `add` is written `[ _ + _ ]` rather than `( _ + _ )`:
-otherwise it would collide with `paren`'s leading `(`.
+* `num`   — a nullary constant `n`           (closed, tightest)
+* `paren` — `( _ )`                           (closed)
+* `add`   — `_ + _`, left-associative        (loosest)
+* `mul`   — `_ * _`, left-associative         (tighter than `add`)
+
+Precedence chain (loosest → tightest): `add → mul → {paren, num}`. So
+`a + b * c` groups as `a + (b * c)` and `a - b - c`-style chains nest left.
+
+This file *type-checks* the design — constructing the `Grammar` (discharging
+`tighter_wf` and `lookup_spec`) and building a few precedence-indexed trees —
+and then exercises the parser: the `#eval` round-trips at the bottom confirm
+well-formed inputs parse and re-flatten to themselves, and malformed inputs are
+rejected.
 -/
 
 namespace LambdaLab.Parser.Playground
 
-/-- Three operators. `num` is a nullary constant `n`; `paren` is `( _ )`;
-`add` is the bracketed `[ _ + _ ]`. -/
+open LambdaLab.Parser
+
+/-- Operator names. -/
 inductive Sym where
-  | num
-  | paren
-  | add
+  | num | paren | add | mul
 deriving DecidableEq, Repr
 
-def arith : Grammar where
+/-- Each operator's shape (fixity + name-parts). -/
+def symOp : Sym → Operator
+  | .num   => .const "n"
+  | .paren => { fixity := .closed,      nameParts := ["(", ")"], nameParts_ne := by simp }
+  | .add   => { fixity := .infix .left, nameParts := ["+"],      nameParts_ne := by simp }
+  | .mul   => { fixity := .infix .left, nameParts := ["*"],      nameParts_ne := by simp }
+
+/-- Immediately-tighter successors: `add → mul → {paren, num}`. -/
+def symTighter : Sym → List Sym
+  | .num   => []
+  | .paren => []
+  | .add   => [.mul]
+  | .mul   => [.paren, .num]
+
+/-- A rank witnessing acyclicity: higher = looser. -/
+def symRank : Sym → Nat
+  | .num => 0 | .paren => 0 | .mul => 1 | .add => 2
+
+/-- `tighter` is well-founded: each step strictly drops the rank. -/
+theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
+  Subrelation.wf
+    (r := fun x y => symRank x < symRank y)
+    (fun {x y} (h : x ∈ symTighter y) => by
+      cases x <;> cases y <;> simp_all [symTighter, symRank])
+    (measure symRank).wf
+
+/-- Resolve a leading token to its operator. -/
+def symLookup : Token → Option Sym
+  | "n" => some .num
+  | "(" => some .paren
+  | "+" => some .add
+  | "*" => some .mul
+  | _   => none
+
+/-- The arithmetic grammar. Marked `@[reducible]` so `arith.Op` unfolds to
+`Sym` during unification and instance search — without it, `.op`/`.mk` can't
+infer `G` and `decide` can't find `DecidableEq arith.Op`. -/
+@[reducible] def arith : Grammar where
   Op := Sym
-  arity
-    | .num   => 0
-    | .paren => 1
-    | .add   => 2
-  OpDescs
-    | .num   => .last "n"                          -- shape:  n
-    | .paren => .part "(" (.last ")")              -- shape:  ( _ )
-    | .add   => .part "[" (.part "+" (.last "]"))  -- shape:  [ _ + _ ]
-  lookup
-    | "n" => some .num
-    | "(" => some .paren
-    | "[" => some .add
-    | _   => none
+  operator := symOp
+  loosest := [.add]
+  tighter := symTighter
+  tighter_wf := symTighter_wf
+  lookup := symLookup
   lookup_spec := by
     intro o tkn
     cases o <;>
-      (simp only [beginsWith, decide_eq_true_eq]
+      (simp only [symOp, Operator.head, Operator.const, List.head_cons]
        constructor
        · rintro rfl; rfl
-       · intro h; split at h <;> simp_all)
+       · intro h; simp only [symLookup] at h; split at h <;> simp_all)
 
-/-- The constant `n`. -/
-def num : Tree arith := .op .num .last
+/-! ## Example trees
 
-/-- `( e )`. -/
-def paren (e : Tree arith) : Tree arith := .op .paren (.part e .last)
+Because operands at a loose node embed tighter ones by explicit `next` steps,
+atoms must be "lifted" up the precedence chain. A few helpers make that bearable. -/
 
-/-- `[ l + r ]`. -/
-def add (l r : Tree arith) : Tree arith := .op .add (.part l (.part r .last))
+/-- The bare constant `n`, at its own (tight) node. (We pin `G := arith` on
+`.op`: its children argument's type mentions `(G.operator a).fixity`, which
+stays stuck while `G` is a metavar, so the expected type alone doesn't fix it.) -/
+def tNum : Tree arith Sym.num := Tree.op (G := arith) Sym.num (.closed (.last "n"))
 
-/-- The tree `( [ n + n ] )`. -/
-def example₁ : Tree arith := paren (add num num)
+/-- `n` lifted to the `mul` level. -/
+def tNumMul : Tree arith Sym.mul := .next (.mk Sym.num (by decide) tNum)
 
--- ( [ n + n ] )  ↝  ["(", "[", "n", "+", "n", "]", ")"]
-#eval example₁.flatten
+/-- `n` lifted to the `add` level. -/
+def tNumAdd : Tree arith Sym.add := .next (.mk Sym.mul (by decide) tNumMul)
 
-/-- `flatten` gives the bracketed rendering. -/
-example : example₁.flatten = ["(", "[", "n", "+", "n", "]", ")"] := rfl
+/-- `n` as something strictly tighter than `add`. -/
+def bNumAdd : TreeBelow arith Sym.add := .mk Sym.mul (by decide) tNumMul
 
-/-! ## Round-trip: `parse` inverts `flatten`
+/-- `n + n` — left operand at the `add` level, right strictly tighter. -/
+def tAdd : Tree arith Sym.add :=
+  Tree.op (G := arith) Sym.add (.infixL tNumAdd (.last "+") bNumAdd)
 
-`Tree arith` has no `DecidableEq` (its `Op` is an arbitrary type), so we
-witness the round-trip by re-flattening the parse result and comparing token
-streams: `flatten ∘ parse ∘ flatten = flatten`.
+/-- `( n )` — the interior hole is a top-level expression (here, `n` at `add`). -/
+def tParen : Tree arith Sym.paren :=
+  Tree.op (G := arith) Sym.paren (.closed (.cons "(" (.mk Sym.add (by decide) tNumAdd) (.last ")")))
 
-(`parse` is defined by well-founded recursion, so it does not reduce by `rfl`;
-we use `#guard`, which evaluates via the compiler and fails the build if the
-check is false — a real, axiom-free, build-time check.) -/
+#guard tNum.flatten == ["n"]
+#guard tAdd.flatten == ["n", "+", "n"]
+#guard tParen.flatten == ["(", "n", ")"]
 
-/-- Full parser for `arith`: parse one tree and require every token consumed. -/
-def parse : List Token → Option (Tree arith) := parseAll (parser arith)
+/-! ## Parsing
 
--- some ["(", "[", "n", "+", "n", "]", ")"]
-#eval (parse example₁.flatten).map (·.flatten)
+Each result is mapped through `flatten`, so a successful round-trip prints
+`some <the input tokens>`. -/
 
-#guard (parse example₁.flatten).map (·.flatten) == some example₁.flatten
+-- some ["n"]
+#eval (parse (G := arith) ["n"]).map (·.flatten)
+-- some ["n", "+", "n"]
+#eval (parse (G := arith) ["n", "+", "n"]).map (·.flatten)
+-- some ["(", "n", ")"]
+#eval (parse (G := arith) ["(", "n", ")"]).map (·.flatten)
+-- some ["n", "+", "n", "*", "n"]   (mul binds tighter)
+#eval (parse (G := arith) ["n", "+", "n", "*", "n"]).map (·.flatten)
+-- some ["n", "*", "n", "+", "n"]
+#eval (parse (G := arith) ["n", "*", "n", "+", "n"]).map (·.flatten)
+-- some ["n", "+", "n", "+", "n"]   (left-assoc chain)
+#eval (parse (G := arith) ["n", "+", "n", "+", "n"]).map (·.flatten)
+-- some ["(", "n", "+", "n", ")", "*", "n"]
+#eval (parse (G := arith) ["(", "n", "+", "n", ")", "*", "n"]).map (·.flatten)
+-- none   (malformed: missing closing paren)
+#eval (parse (G := arith) ["(", "n"]).map (·.flatten)
+-- none   (trailing junk)
+#eval (parse (G := arith) ["n", "n"]).map (·.flatten)
 
--- Parsing a bare constant and a nested paren both succeed.
-#guard (parse ["n"]).map (·.flatten) == some ["n"]
-#guard (parse ["(", "(", "n", ")", ")"]).map (·.flatten)
-        == some ["(", "(", "n", ")", ")"]
+/-! ## A grammar exercising prefix / postfix / infixR / infixN
 
--- Malformed input is rejected.
-#guard (parse ["(", "]"]).isNone            -- wrong closer
-#guard (parse ["[", "n", "+", "n"]).isNone  -- missing trailing "]"
-#guard (parse ["n", "n"]).isNone            -- trailing junk
+A linear precedence chain (loosest → tightest): `= → ^ → - → ! → x`, with one
+operator of each remaining fixity. Round-trips below confirm the parser handles
+all four; the non-associative `=` correctly *rejects* `x = x = x`. -/
+
+inductive MSym where
+  | atom | fact | neg | pow | eq
+deriving DecidableEq, Repr
+
+def mixOp : MSym → Operator
+  | .atom => .const "x"
+  | .fact => { fixity := .postfix,         nameParts := ["!"], nameParts_ne := by simp }
+  | .neg  => { fixity := .prefix,          nameParts := ["-"], nameParts_ne := by simp }
+  | .pow  => { fixity := .infix .right,    nameParts := ["^"], nameParts_ne := by simp }
+  | .eq   => { fixity := .infix .nonAssoc, nameParts := ["="], nameParts_ne := by simp }
+
+/-- `= → ^ → - → ! → x` (loosest → tightest). -/
+def mixTighter : MSym → List MSym
+  | .atom => []
+  | .fact => [.atom]
+  | .neg  => [.fact]
+  | .pow  => [.neg]
+  | .eq   => [.pow]
+
+def mixRank : MSym → Nat
+  | .atom => 0 | .fact => 1 | .neg => 2 | .pow => 3 | .eq => 4
+
+theorem mixTighter_wf : WellFounded (fun b a => b ∈ mixTighter a) :=
+  Subrelation.wf
+    (r := fun x y => mixRank x < mixRank y)
+    (fun {x y} (h : x ∈ mixTighter y) => by
+      cases x <;> cases y <;> simp_all [mixTighter, mixRank])
+    (measure mixRank).wf
+
+def mixLookup : Token → Option MSym
+  | "x" => some .atom
+  | "!" => some .fact
+  | "-" => some .neg
+  | "^" => some .pow
+  | "=" => some .eq
+  | _   => none
+
+@[reducible] def mix : Grammar where
+  Op := MSym
+  operator := mixOp
+  loosest := [.eq]
+  tighter := mixTighter
+  tighter_wf := mixTighter_wf
+  lookup := mixLookup
+  lookup_spec := by
+    intro o tkn
+    cases o <;>
+      (simp only [mixOp, Operator.head, Operator.const, List.head_cons]
+       constructor
+       · rintro rfl; rfl
+       · intro h; simp only [mixLookup] at h; split at h <;> simp_all)
+
+-- some ["-", "x"]                 (prefix)
+#eval (parse (G := mix) ["-", "x"]).map (·.flatten)
+-- some ["-", "-", "x"]            (prefix stacks)
+#eval (parse (G := mix) ["-", "-", "x"]).map (·.flatten)
+-- some ["x", "!"]                 (postfix)
+#eval (parse (G := mix) ["x", "!"]).map (·.flatten)
+-- some ["x", "!", "!"]            (postfix stacks)
+#eval (parse (G := mix) ["x", "!", "!"]).map (·.flatten)
+-- some ["x", "^", "x", "^", "x"]  (right-assoc; type forces `x ^ (x ^ x)`)
+#eval (parse (G := mix) ["x", "^", "x", "^", "x"]).map (·.flatten)
+-- some ["x", "=", "x"]            (non-assoc, single use OK)
+#eval (parse (G := mix) ["x", "=", "x"]).map (·.flatten)
+-- none                            (non-assoc rejects chaining `x = x = x`)
+#eval (parse (G := mix) ["x", "=", "x", "=", "x"]).map (·.flatten)
+-- some ["-", "x", "!"]            (`-(x!)`: `!` binds tighter than `-`)
+#eval (parse (G := mix) ["-", "x", "!"]).map (·.flatten)
 
 end LambdaLab.Parser.Playground
