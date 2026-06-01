@@ -55,11 +55,11 @@ theorem length_lt {l : List α} (r : RightSublist l) : r.list.length < l.length 
 
 end RightSublist
 
-abbrev Parser (α : Type) := (tkn : List Token) → Option (α × RightSublist tkn)
+abbrev Parser (α : Type) := (tkn : List Token) → Option (List (α × RightSublist tkn))
 
-def parseAll (p : Parser α) (tkns : List Token) : Option α :=
-  match p tkns with
-  | some (a, r) => if r.list = [] then some a else none
-  | _ => none
+--def unambiguousFullParse (p : Parser α) (tkns : List Token) : Option α :=
+--  match p tkns with
+--  | some ((a, r) :: []) => if r.list = [] then some a else none
+--  | _ => none
 
 end LambdaLab.Parser
