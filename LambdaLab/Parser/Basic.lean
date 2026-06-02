@@ -57,9 +57,5 @@ end RightSublist
 
 abbrev Parser (α : Type) := (tkn : List Token) → Option (List (α × RightSublist tkn))
 
---def unambiguousFullParse (p : Parser α) (tkns : List Token) : Option α :=
---  match p tkns with
---  | some ((a, r) :: []) => if r.list = [] then some a else none
---  | _ => none
 
 end LambdaLab.Parser
