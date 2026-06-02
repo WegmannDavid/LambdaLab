@@ -4,3 +4,7 @@ defaultTargets = ["LambdaLab"]
 
 [[lean_lib]]
 name = "LambdaLab"
+
+[[lean_exe]]
+name = "playground"
+root = "Main"
