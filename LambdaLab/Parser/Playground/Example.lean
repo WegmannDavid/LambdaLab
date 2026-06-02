@@ -233,8 +233,8 @@ theorem arith_unambiguous : Unambiguous arith where
       subst h₁ <;> subst h₂ <;>
       first
         | exact absurd rfl hne
-        | · have e₁ := ReachTighter.eq_of_sink (G := arith) rfl hc₁
-            have e₂ := ReachTighter.eq_of_sink (G := arith) rfl hc₂
+        | · have e₁ := TighterEq.eq_of_sink (G := arith) rfl hc₁
+            have e₂ := TighterEq.eq_of_sink (G := arith) rfl hc₂
             simp_all
   loosest_disjoint := by
     intro r₁ r₂ h₁ h₂ hne c hc₁ hc₂

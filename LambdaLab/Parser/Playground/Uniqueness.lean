@@ -38,39 +38,39 @@ structure Unambiguous (G : Grammar) : Prop where
   nameParts_disjoint : ∀ a b : G.Op, a ≠ b →
     ∀ tk ∈ (G.operator a).nameParts, tk ∉ (G.operator b).nameParts
   tighter_disjoint : ∀ (a b₁ b₂ : G.Op), b₁ ∈ G.tighter a → b₂ ∈ G.tighter a → b₁ ≠ b₂ →
-    ∀ c, ReachTighter G.tighter b₁ c → ReachTighter G.tighter b₂ c → False
+    ∀ c, TighterEq G.tighter b₁ c → TighterEq G.tighter b₂ c → False
   loosest_disjoint : ∀ (r₁ r₂ : G.Op), r₁ ∈ G.loosest → r₂ ∈ G.loosest → r₁ ≠ r₂ →
-    ∀ c, ReachTighter G.tighter r₁ c → ReachTighter G.tighter r₂ c → False
+    ∀ c, TighterEq G.tighter r₁ c → TighterEq G.tighter r₂ c → False
 
 /-! ## Reachability lemmas -/
 
-theorem ReachTighter.eq_of_sink {t : G.Op → List G.Op} {a c : G.Op}
-    (hsink : t a = []) (h : ReachTighter t a c) : c = a := by
+theorem TighterEq.eq_of_sink {t : G.Op → List G.Op} {a c : G.Op}
+    (hsink : t a = []) (h : TighterEq t a c) : c = a := by
   cases h with
   | refl => rfl
   | step hmem _ => rw [hsink] at hmem; exact absurd hmem List.not_mem_nil
 
-theorem ReachTighter.trans {t : G.Op → List G.Op} {a b c : G.Op}
-    (h₁ : ReachTighter t a b) (h₂ : ReachTighter t b c) : ReachTighter t a c := by
+theorem TighterEq.trans {t : G.Op → List G.Op} {a b c : G.Op}
+    (h₁ : TighterEq t a b) (h₂ : TighterEq t b c) : TighterEq t a c := by
   induction h₁ with
   | refl => exact h₂
-  | step hmem _ ih => exact ReachTighter.step hmem (ih h₂)
+  | step hmem _ ih => exact TighterEq.step hmem (ih h₂)
 
 /-- No cycle: if `b` is immediately tighter than `a`, then `a` is not reachable
 from `b`. -/
 theorem no_cycle {a b : G.Op} (h : b ∈ G.tighter a) :
-    ¬ ReachTighter G.tighter b a := by
-  suffices H : ∀ a, ∀ b, b ∈ G.tighter a → ReachTighter G.tighter b a → False from H a b h
+    ¬ TighterEq G.tighter b a := by
+  suffices H : ∀ a, ∀ b, b ∈ G.tighter a → TighterEq G.tighter b a → False from H a b h
   intro a
   induction a using G.tighter_wf.induction with
   | _ a ih =>
     intro b hRba hreach
     cases hreach with
-    | refl => exact ih a hRba a hRba ReachTighter.refl
+    | refl => exact ih a hRba a hRba TighterEq.refl
     | step hRcb hca =>
         rename_i c
-        have hcb : ReachTighter G.tighter c b :=
-          hca.trans (ReachTighter.step hRba ReachTighter.refl)
+        have hcb : TighterEq G.tighter c b :=
+          hca.trans (TighterEq.step hRba TighterEq.refl)
         exact ih b hRba c hRcb hcb
 
 /-! ## Name-part lemmas -/
@@ -230,7 +230,7 @@ theorem InfixTail.flatten_head_op {a : G.Op} (p : InfixTail G a) :
 
 mutual
   theorem Tree.headTok_reach {b : G.Op} (t : Tree G b) :
-      ∃ o, ReachTighter G.tighter b o ∧ t.flatten.head? = some (G.operator o).head := by
+      ∃ o, TighterEq G.tighter b o ∧ t.flatten.head? = some (G.operator o).head := by
     match t with
     | .op a ch =>
         obtain ⟨o, hr, hh⟩ := ch.headTok_reach
@@ -240,19 +240,19 @@ mutual
         exact ⟨o, hr, by simpa only [Tree.flatten] using hh⟩
 
   theorem TreeBelow.headTok_reach {a : G.Op} (tb : TreeBelow G a) :
-      ∃ o, ReachTighter G.tighter a o ∧ tb.flatten.head? = some (G.operator o).head := by
+      ∃ o, TighterEq G.tighter a o ∧ tb.flatten.head? = some (G.operator o).head := by
     match tb with
     | .mk b hmem t =>
         obtain ⟨o, hr, hh⟩ := t.headTok_reach
-        exact ⟨o, ReachTighter.step hmem hr, by simpa only [TreeBelow.flatten] using hh⟩
+        exact ⟨o, TighterEq.step hmem hr, by simpa only [TreeBelow.flatten] using hh⟩
 
   theorem Children.headTok_reach {a : G.Op} {f : Fixity} (ch : Children G a f) :
-      ∃ o, ReachTighter G.tighter a o ∧ ch.flatten.head? = some (G.operator o).head := by
+      ∃ o, TighterEq G.tighter a o ∧ ch.flatten.head? = some (G.operator o).head := by
     match ch with
     | .closed w =>
-        exact ⟨a, ReachTighter.refl, by simpa only [Children.flatten] using w.flatten_head_op⟩
+        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using w.flatten_head_op⟩
     | .«prefix» ps =>
-        exact ⟨a, ReachTighter.refl, by simpa only [Children.flatten] using ps.flatten_head_op⟩
+        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using ps.flatten_head_op⟩
     | .«postfix» tb pt =>
         obtain ⟨o, hr, hh⟩ := tb.headTok_reach
         refine ⟨o, hr, ?_⟩
@@ -278,7 +278,7 @@ end
 level `a`: no operator reachable from `a` has its head there. (Vacuous when
 `s = []`.) This is exactly what makes prefix-form unique decomposition true. -/
 def Stops (a : G.Op) (s : List Token) : Prop :=
-  ∀ o, ReachTighter G.tighter a o → s.head? ≠ some (G.operator o).head
+  ∀ o, TighterEq G.tighter a o → s.head? ≠ some (G.operator o).head
 
 /-- `s` begins with no operator's head at all (stops every level). -/
 def StopsAll (s : List Token) : Prop :=
@@ -292,12 +292,12 @@ def StopsBelow (a : G.Op) (s : List Token) : Prop :=
 theorem StopsAll.stops {s : List Token} (h : StopsAll (G := G) s) (a : G.Op) : Stops a s :=
   fun o _ => h o
 
-theorem Stops.mono {a b : G.Op} {s : List Token} (hab : ReachTighter G.tighter a b)
+theorem Stops.mono {a b : G.Op} {s : List Token} (hab : TighterEq G.tighter a b)
     (h : Stops a s) : Stops b s :=
   fun o hbo => h o (hab.trans hbo)
 
 theorem Stops.below {a : G.Op} {s : List Token} (h : Stops a s) : StopsBelow a s :=
-  fun _b hb => h.mono (ReachTighter.step hb ReachTighter.refl)
+  fun _b hb => h.mono (TighterEq.step hb TighterEq.refl)
 
 /-- A leftover beginning with `a`'s own head stops everything strictly tighter
 than `a` (acyclicity: `a` is unreachable from anything tighter). -/
@@ -494,13 +494,13 @@ mutual
           simpa only [PostfixTail.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ s₁ (t₂.flatten ++ s₂) heq (nameParts_tail_notHead hG a)
         exact absurd (by rw [hw.2, head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op)
-          (hs₁ a ReachTighter.refl)
+          (hs₁ a TighterEq.refl)
     | .cons w₁ t₁, .last w₂ =>
         have heq : w₁.flatten ++ (t₁.flatten ++ s₁) = w₂.flatten ++ s₂ := by
           simpa only [PostfixTail.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (t₁.flatten ++ s₁) s₂ heq (nameParts_tail_notHead hG a)
         exact absurd (by rw [← hw.2, head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op)
-          (hs₂ a ReachTighter.refl)
+          (hs₂ a TighterEq.refl)
     | .cons w₁ t₁, .cons w₂ t₂ =>
         have heq : w₁.flatten ++ (t₁.flatten ++ s₁) = w₂.flatten ++ (t₂.flatten ++ s₂) := by
           simpa only [PostfixTail.flatten, List.append_assoc] using h
@@ -530,7 +530,7 @@ mutual
         have htb := udTreeBelow hG tb₁ tb₂ s₁ (t₂.flatten ++ s₂) hw.2 hs₁.below
           (StopsBelow_of_head hG (by rw [head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op))
         exact absurd (by rw [htb.2, head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op)
-          (hs₁ a ReachTighter.refl)
+          (hs₁ a TighterEq.refl)
     | .cons w₁ tb₁ t₁, .last w₂ tb₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ (t₁.flatten ++ s₁))
                  = w₂.flatten ++ (tb₂.flatten ++ s₂) := by
@@ -541,7 +541,7 @@ mutual
           (StopsBelow_of_head hG (by rw [head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op))
           hs₂.below
         exact absurd (by rw [← htb.2, head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op)
-          (hs₂ a ReachTighter.refl)
+          (hs₂ a TighterEq.refl)
     | .cons w₁ tb₁ t₁, .cons w₂ tb₂ t₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ (t₁.flatten ++ s₁))
                  = w₂.flatten ++ (tb₂.flatten ++ (t₂.flatten ++ s₂)) := by
@@ -632,8 +632,8 @@ mutual
           exact (hae ▸ no_cycle hb') ho
         have heq' : (hbb ▸ lt).flatten ++ mid = u.flatten ++ s₂ := by cases hbb; exact hlt'
         have hrec := udTree hG (hbb ▸ lt) u mid s₂ heq' (hbb ▸ hsmid)
-          (hs₂.mono (ReachTighter.step hb ReachTighter.refl))
-        exact hs₂ a ReachTighter.refl (by rw [← hrec.2]; exact hmid)
+          (hs₂.mono (TighterEq.step hb TighterEq.refl))
+        exact hs₂ a TighterEq.refl (by rw [← hrec.2]; exact hmid)
       · obtain ⟨o₁, hr₁, hh₁⟩ := lt.headTok_reach
         obtain ⟨o₂, hr₂, hh₂⟩ := u.headTok_reach
         have hhd : lt.flatten.head? = u.flatten.head? :=

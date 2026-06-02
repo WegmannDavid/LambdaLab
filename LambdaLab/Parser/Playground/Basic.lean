@@ -72,14 +72,32 @@ def Operator.const (s : Token) : Operator where
 
 @[simp] theorem Operator.const_head (s : Token) : (Operator.const s).head = s := rfl
 
-/-- Reachability through the `tighter` successor lists: `ReachTighter t a b`
+/-- Reachability through the `tighter` successor lists: `TighterEq t a b`
 holds when `b` can be reached from `a` by repeatedly stepping into `t`, i.e.
 "`b` binds at least as tightly as `a`". This is the precedence order induced by
 a successor function `t : Op → List Op`. Defined over the raw `t` (not over a
 `Grammar`) so it can appear in `Grammar`'s own well-formedness fields. -/
-inductive ReachTighter {Op : Type} (t : Op → List Op) : Op → Op → Prop where
-  | refl {a} : ReachTighter t a a
-  | step {a b c} : b ∈ t a → ReachTighter t b c → ReachTighter t a c
+inductive TighterEq {Op : Type} (t : Op → List Op) : Op → Op → Prop where
+  | refl {a} : TighterEq t a a
+  | step {a b c} : b ∈ t a → TighterEq t b c → TighterEq t a c
+
+/-- The **strict** version of `TighterEq`: the *transitive* (but not
+reflexive) closure of `tighter`. `Tighter t a b` holds when `b` is
+reached from `a` by **one or more** `tighter` steps — i.e. "`b` binds *strictly*
+more tightly than `a`". Like `TighterEq`, defined over the raw successor
+function `t` rather than a `Grammar`, so it can sit in `Grammar`'s
+well-formedness fields and be reused (`Tighter G.tighter`). -/
+inductive Tighter {Op : Type} (t : Op → List Op) : Op → Op → Prop where
+  | base {a b} : b ∈ t a → Tighter t a b
+  | step {a b c} : b ∈ t a → Tighter t b c → Tighter t a c
+
+/-- A strictly-tighter path is in particular a (reflexive-transitive)
+tighter-path. -/
+theorem Tighter.toTighterEq {Op : Type} {t : Op → List Op} {a b : Op}
+    (h : Tighter t a b) : TighterEq t a b := by
+  induction h with
+  | base hmem => exact TighterEq.step hmem TighterEq.refl
+  | step hmem _ ih => exact TighterEq.step hmem ih
 
 /-- A grammar: an (abstract) operator-name type `Op`, the declaration of each
 operator, the precedence structure, and a `lookup` resolving a token to the
@@ -87,7 +105,7 @@ operator it leads.
 
 **Precedence** is a successor graph — a DAG. `tighter o` lists the operators
 *immediately* tighter than `o`; the full order is reachability
-(`ReachTighter tighter`). `loosest` lists the **source** operators (the loosest
+(`TighterEq tighter`). `loosest` lists the **source** operators (the loosest
 ones, where the parser starts); a DAG may have several. One well-formedness
 field pins it down:
 
