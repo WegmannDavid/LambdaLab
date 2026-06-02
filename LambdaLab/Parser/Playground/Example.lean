@@ -100,9 +100,9 @@ def tNumAdd : Tree arith Sym.add := .next (.mk Sym.mul (by decide) tNumMul)
 /-- `n` as something strictly tighter than `add`. -/
 def bNumAdd : TreeBelow arith Sym.add := .mk Sym.mul (by decide) tNumMul
 
-/-- `n + n` — left operand at the `add` level, right strictly tighter. -/
+/-- `n + n` — head operand strictly tighter, then one `(+ , operand)` spine step. -/
 def tAdd : Tree arith Sym.add :=
-  Tree.op (G := arith) Sym.add (.infixL tNumAdd (.last "+") bNumAdd)
+  Tree.op (G := arith) Sym.add (.infixL bNumAdd (.last (.last "+") bNumAdd))
 
 /-- `( n )` — the interior hole is a top-level expression (here, `n` at `add`). -/
 def tParen : Tree arith Sym.paren :=

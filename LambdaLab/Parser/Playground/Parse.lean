@@ -130,7 +130,9 @@ mutual
 
   /-- All parses of an expression at precedence node `a`: operator-`a`
   applications (per fixity) together with fall-throughs to tighter expressions.
-  For postfix/infix-left the fall-through is the tail loop's stop case. -/
+  Chaining/stacking is delegated to the spine parsers `parsePrefixStack`,
+  `parsePostfixTail`, `parseInfixTail`; the fall-through `Tree.next` is emitted
+  alongside. -/
   def parseTree (a : G.Op) (tkns : List Token) : List (Tree G a × RightSublist tkns) :=
     match hf : (G.operator a).fixity with
     | .closed =>
@@ -138,20 +140,23 @@ mutual
             (fun x => (Tree.op a (hf ▸ Children.closed x.1), x.2))
         ++ (parseBelow a tkns).map (fun x => (Tree.next x.1, x.2))
     | .prefix =>
-        (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-          (parseTree a x.2.list).map (fun y =>
-            (Tree.op a (hf ▸ Children.prefix x.1 y.1), x.2.trans y.2)))
+        (parsePrefixStack a tkns).map (fun x => (Tree.op a (hf ▸ Children.prefix x.1), x.2))
         ++ (parseBelow a tkns).map (fun x => (Tree.next x.1, x.2))
     | .postfix =>
-        (parseBelow a tkns).flatMap (fun x => parsePostfixTail a hf (Tree.next x.1) tkns x.2)
+        (parseBelow a tkns).flatMap (fun x =>
+          (Tree.next x.1, x.2) ::
+          (parsePostfixTail a x.2.list).map (fun y =>
+            (Tree.op a (hf ▸ Children.postfix x.1 y.1), x.2.trans y.2)))
     | .infix .left =>
-        (parseBelow a tkns).flatMap (fun x => parseInfixLTail a hf (Tree.next x.1) tkns x.2)
+        (parseBelow a tkns).flatMap (fun x =>
+          (Tree.next x.1, x.2) ::
+          (parseInfixTail a x.2.list).map (fun y =>
+            (Tree.op a (hf ▸ Children.infixL x.1 y.1), x.2.trans y.2)))
     | .infix .right =>
         (parseBelow a tkns).flatMap (fun x =>
           (Tree.next x.1, x.2) ::
-          (parseWoven (G.operator a).nameParts x.2.list).flatMap (fun y =>
-            (parseTree a y.2.list).map (fun z =>
-              (Tree.op a (hf ▸ Children.infixR x.1 y.1 z.1), x.2.trans (y.2.trans z.2)))))
+          (parseInfixTail a x.2.list).map (fun y =>
+            (Tree.op a (hf ▸ Children.infixR x.1 y.1), x.2.trans y.2)))
     | .infix .nonAssoc =>
         (parseBelow a tkns).flatMap (fun x =>
           (Tree.next x.1, x.2) ::
@@ -166,41 +171,49 @@ mutual
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; have := y.2.length_lt; omega)
 
-  /-- Left-assoc tail loop: the stop case `(acc, r)` plus every left-fold that
-  consumes a further occurrence of `a`. -/
-  def parseInfixLTail (a : G.Op) (hf : (G.operator a).fixity = .infix .left)
-      (acc : Tree G a) (tkns0 : List Token) (r : RightSublist tkns0) :
-      List (Tree G a × RightSublist tkns0) :=
-    (acc, r) ::
-    (parseWoven (G.operator a).nameParts r.list).flatMap (fun x =>
-      (parseBelow a x.2.list).flatMap (fun y =>
-        parseInfixLTail a hf (Tree.op a (hf ▸ Children.infixL acc x.1 y.1)) tkns0
-          (r.trans (x.2.trans y.2))))
-  termination_by (r.list.length, 1, 0)
+  /-- A non-empty prefix stack: a weave, then either a strictly-tighter body
+  (`last`) or a further `a`-prefix layer (`more`). -/
+  def parsePrefixStack (a : G.Op) (tkns : List Token) :
+      List (PrefixStack G a × RightSublist tkns) :=
+    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
+      (parseBelow a x.2.list).map (fun y => (PrefixStack.last x.1 y.1, x.2.trans y.2))
+      ++ (parsePrefixStack a x.2.list).map (fun z => (PrefixStack.more x.1 z.1, x.2.trans z.2)))
+  termination_by (tkns.length, 1, 0)
   decreasing_by
     all_goals simp_wf
     all_goals first
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
-      | exact Prod.Lex.left _ _
-          (by have := x.2.length_lt; have := y.2.length_lt
-              simp only [RightSublist.trans]; omega)
 
-  /-- Postfix tail loop: the stop case `(acc, r)` plus every fold consuming a
-  further occurrence of `a`. -/
-  def parsePostfixTail (a : G.Op) (hf : (G.operator a).fixity = .postfix)
-      (acc : Tree G a) (tkns0 : List Token) (r : RightSublist tkns0) :
-      List (Tree G a × RightSublist tkns0) :=
-    (acc, r) ::
-    (parseWoven (G.operator a).nameParts r.list).flatMap (fun x =>
-      parsePostfixTail a hf (Tree.op a (hf ▸ Children.postfix acc x.1)) tkns0 (r.trans x.2))
-  termination_by (r.list.length, 1, 0)
+  /-- A non-empty trailing-weave list for a postfix operator. -/
+  def parsePostfixTail (a : G.Op) (tkns : List Token) :
+      List (PostfixTail G a × RightSublist tkns) :=
+    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
+      (PostfixTail.last x.1, x.2) ::
+      (parsePostfixTail a x.2.list).map (fun z => (PostfixTail.cons x.1 z.1, x.2.trans z.2)))
+  termination_by (tkns.length, 1, 0)
   decreasing_by
     all_goals simp_wf
     all_goals first
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
-      | exact Prod.Lex.left _ _
-          (by have := x.2.length_lt; simp only [RightSublist.trans]; omega)
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+
+  /-- A non-empty `(separator-weave, tighter operand)` spine for an infix
+  operator (shared by left/right associativity). -/
+  def parseInfixTail (a : G.Op) (tkns : List Token) :
+      List (InfixTail G a × RightSublist tkns) :=
+    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
+      (parseBelow a x.2.list).flatMap (fun y =>
+        (InfixTail.last x.1 y.1, x.2.trans y.2) ::
+        (parseInfixTail a y.2.list).map (fun z =>
+          (InfixTail.cons x.1 y.1 z.1, x.2.trans (y.2.trans z.2)))))
+  termination_by (tkns.length, 1, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; have := y.2.length_lt; omega)
 
   /-- All strictly-tighter parses. -/
   def parseBelow (a : G.Op) (tkns : List Token) : List (TreeBelow G a × RightSublist tkns) :=

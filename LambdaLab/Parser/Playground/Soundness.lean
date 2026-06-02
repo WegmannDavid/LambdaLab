@@ -33,27 +33,26 @@ theorem flatten_cast_closed {a : G.Op}
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
 theorem flatten_cast_prefix {a : G.Op}
-    (hf : (G.operator a).fixity = Fixity.prefix) (w : Woven G (G.operator a).nameParts)
-    (t : Tree G a) :
-    (Tree.op a (hf ▸ Children.prefix w t)).flatten = w.flatten ++ t.flatten := by
+    (hf : (G.operator a).fixity = Fixity.prefix) (ps : PrefixStack G a) :
+    (Tree.op a (hf ▸ Children.prefix ps)).flatten = ps.flatten := by
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
 theorem flatten_cast_postfix {a : G.Op}
-    (hf : (G.operator a).fixity = Fixity.postfix) (t : Tree G a)
-    (w : Woven G (G.operator a).nameParts) :
-    (Tree.op a (hf ▸ Children.postfix t w)).flatten = t.flatten ++ w.flatten := by
+    (hf : (G.operator a).fixity = Fixity.postfix) (tb : TreeBelow G a)
+    (pt : PostfixTail G a) :
+    (Tree.op a (hf ▸ Children.postfix tb pt)).flatten = tb.flatten ++ pt.flatten := by
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
 theorem flatten_cast_infixL {a : G.Op}
-    (hf : (G.operator a).fixity = Fixity.infix .left) (l : Tree G a)
-    (w : Woven G (G.operator a).nameParts) (r : TreeBelow G a) :
-    (Tree.op a (hf ▸ Children.infixL l w r)).flatten = l.flatten ++ w.flatten ++ r.flatten := by
+    (hf : (G.operator a).fixity = Fixity.infix .left) (hd : TreeBelow G a)
+    (tl : InfixTail G a) :
+    (Tree.op a (hf ▸ Children.infixL hd tl)).flatten = hd.flatten ++ tl.flatten := by
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
 theorem flatten_cast_infixR {a : G.Op}
-    (hf : (G.operator a).fixity = Fixity.infix .right) (l : TreeBelow G a)
-    (w : Woven G (G.operator a).nameParts) (r : Tree G a) :
-    (Tree.op a (hf ▸ Children.infixR l w r)).flatten = l.flatten ++ w.flatten ++ r.flatten := by
+    (hf : (G.operator a).fixity = Fixity.infix .right) (hd : TreeBelow G a)
+    (tl : InfixTail G a) :
+    (Tree.op a (hf ▸ Children.infixR hd tl)).flatten = hd.flatten ++ tl.flatten := by
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
 theorem flatten_cast_infixN {a : G.Op}
@@ -62,7 +61,7 @@ theorem flatten_cast_infixN {a : G.Op}
     (Tree.op a (hf ▸ Children.infixN l w r)).flatten = l.flatten ++ w.flatten ++ r.flatten := by
   simp only [Tree.flatten]; generalize (G.operator a).fixity = fx at hf; subst hf; rfl
 
-/-- Soundness for `parseExpr`, proved together with the other seven parsers via
+/-- Soundness for `parseExpr`, proved together with the other eight parsers via
 mutual functional induction (over list membership). -/
 theorem parseExpr_sound :
     ∀ (tkns : List Token) (e : Expr G) (r : RightSublist tkns),
@@ -74,10 +73,8 @@ theorem parseExpr_sound :
       ∀ e r, (e, r) ∈ parseExprRoots rs hsub tkns → e.flatten ++ r.list = tkns)
     (motive3 := fun (a : G.Op) (tkns : List Token) =>
       ∀ t r, (t, r) ∈ parseTree a tkns → t.flatten ++ r.list = tkns)
-    (motive4 := fun (a : G.Op) (hf : (G.operator a).fixity = .infix .left)
-        (acc : Tree G a) (tkns0 : List Token) (r : RightSublist tkns0) =>
-      ∀ t r', (t, r') ∈ parseInfixLTail a hf acc tkns0 r →
-        t.flatten ++ r'.list = acc.flatten ++ r.list)
+    (motive4 := fun (a : G.Op) (tkns : List Token) =>
+      ∀ p r, (p, r) ∈ parseInfixTail a tkns → p.flatten ++ r.list = tkns)
     (motive5 := fun (parts : List Token) (tkns : List Token) =>
       ∀ w r, (w, r) ∈ parseWoven parts tkns → w.flatten ++ r.list = tkns)
     (motive6 := fun (a : G.Op) (tkns : List Token) =>
@@ -85,10 +82,10 @@ theorem parseExpr_sound :
     (motive7 := fun (a : G.Op) (bs : List G.Op) (hsub : ∀ b ∈ bs, b ∈ G.tighter a)
         (tkns : List Token) =>
       ∀ b r, (b, r) ∈ parseBelowList a bs hsub tkns → b.flatten ++ r.list = tkns)
-    (motive8 := fun (a : G.Op) (hf : (G.operator a).fixity = .postfix)
-        (acc : Tree G a) (tkns0 : List Token) (r : RightSublist tkns0) =>
-      ∀ t r', (t, r') ∈ parsePostfixTail a hf acc tkns0 r →
-        t.flatten ++ r'.list = acc.flatten ++ r.list)
+    (motive8 := fun (a : G.Op) (tkns : List Token) =>
+      ∀ p r, (p, r) ∈ parsePostfixTail a tkns → p.flatten ++ r.list = tkns)
+    (motive9 := fun (a : G.Op) (tkns : List Token) =>
+      ∀ p r, (p, r) ∈ parsePrefixStack a tkns → p.flatten ++ r.list = tkns)
   -- parseExpr: delegate to parseExprRoots IH
   case case1 => intro tkns IH e r h; unfold parseExpr at h; exact IH e r h
   -- parseExprRoots []
@@ -127,69 +124,31 @@ theorem parseExpr_sound :
       simp only [Prod.mk.injEq] at heq
       obtain ⟨rfl, rfl⟩ := heq
       simp only [Tree.flatten]
-      exact IH1 xb xr hx
+      exact IH1 xb _ hx
   -- parseTree prefix
   case case5 =>
-    intro a tkns hf IH3 IH2 IH1 t r h
+    intro a tkns hf IH2 IH1 t r h
     unfold parseTree at h
     split at h <;>
       first
         | (rename_i heqf; exact absurd (hf ▸ heqf) (by decide))
         | skip
     rcases List.mem_append.mp h with h | h
-    · rcases List.mem_flatMap.mp h with ⟨x, hx, hy⟩
-      obtain ⟨xw, xr⟩ := x
-      rcases List.mem_map.mp hy with ⟨y, hyy, heq⟩
-      obtain ⟨yt, yr⟩ := y
+    · rcases List.mem_map.mp h with ⟨x, hx, heq⟩
+      obtain ⟨xp, xr⟩ := x
       simp only [Prod.mk.injEq] at heq
       obtain ⟨h1, rfl⟩ := heq
-      rw [← h1, flatten_cast_prefix]
-      simp only [RightSublist.trans]
-      have hw := IH2 xw xr hx
-      have ht := IH3 (xw, xr) yt yr hyy
-      rw [List.append_assoc, ht, hw]
-      all_goals exact hf
+      rw [← h1, flatten_cast_prefix hf]
+      exact IH2 xp xr hx
     · rcases List.mem_map.mp h with ⟨x, hx, heq⟩
       obtain ⟨xb, xr⟩ := x
       simp only [Prod.mk.injEq] at heq
       obtain ⟨rfl, rfl⟩ := heq
       simp only [Tree.flatten]
-      exact IH1 xb xr hx
+      exact IH1 xb _ hx
   -- parseTree postfix
   case case6 =>
     intro a tkns hf IH2 IH1 t r h
-    unfold parseTree at h
-    split at h <;>
-      first
-        | (rename_i heqf; exact absurd (hf ▸ heqf) (by decide))
-        | skip
-    rcases List.mem_flatMap.mp h with ⟨x, hx, hy⟩
-    obtain ⟨xb, xr⟩ := x
-    have hb := IH1 xb xr hx
-    have htail := IH2 (xb, xr) t r hy
-    rw [htail]
-    simp only [Tree.flatten]
-    exact hb
-    all_goals exact hf
-  -- parseTree infixL
-  case case7 =>
-    intro a tkns hf IH2 IH1 t r h
-    unfold parseTree at h
-    split at h <;>
-      first
-        | (rename_i heqf; exact absurd (hf ▸ heqf) (by decide))
-        | skip
-    rcases List.mem_flatMap.mp h with ⟨x, hx, hy⟩
-    obtain ⟨xb, xr⟩ := x
-    have hb := IH1 xb xr hx
-    have htail := IH2 (xb, xr) t r hy
-    rw [htail]
-    simp only [Tree.flatten]
-    exact hb
-    all_goals exact hf
-  -- parseTree infixR
-  case case8 =>
-    intro a tkns hf IH3 IH2 IH1 t r h
     unfold parseTree at h
     split at h <;>
       first
@@ -202,19 +161,63 @@ theorem parseExpr_sound :
       obtain ⟨rfl, rfl⟩ := heq
       simp only [Tree.flatten]
       exact IH1 xb _ hx
-    · rcases List.mem_flatMap.mp hmem with ⟨y, hy, hz⟩
-      obtain ⟨yw, yr⟩ := y
-      rcases List.mem_map.mp hz with ⟨z, hzz, heq⟩
-      obtain ⟨zt, zr⟩ := z
+    · rcases List.mem_map.mp hmem with ⟨y, hy, heq⟩
+      obtain ⟨yp, yr⟩ := y
       simp only [Prod.mk.injEq] at heq
       obtain ⟨h1, rfl⟩ := heq
-      rw [← h1, flatten_cast_infixR]
+      rw [← h1, flatten_cast_postfix hf]
       simp only [RightSublist.trans]
-      have hl := IH1 xb xr hx
-      have hw := IH2 (xb, xr) yw yr hy
-      have hr := IH3 (xb, xr) (yw, yr) zt zr hzz
-      rw [List.append_assoc, List.append_assoc, hr, hw, hl]
-      all_goals exact hf
+      have hb := IH1 xb xr hx
+      have hpt := IH2 (xb, xr) yp yr hy
+      rw [List.append_assoc, hpt, hb]
+  -- parseTree infixL
+  case case7 =>
+    intro a tkns hf IH2 IH1 t r h
+    unfold parseTree at h
+    split at h <;>
+      first
+        | (rename_i heqf; exact absurd (hf ▸ heqf) (by decide))
+        | skip
+    rcases List.mem_flatMap.mp h with ⟨x, hx, hmem⟩
+    obtain ⟨xb, xr⟩ := x
+    rcases List.mem_cons.mp hmem with heq | hmem
+    · simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [Tree.flatten]
+      exact IH1 xb _ hx
+    · rcases List.mem_map.mp hmem with ⟨y, hy, heq⟩
+      obtain ⟨yt, yr⟩ := y
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨h1, rfl⟩ := heq
+      rw [← h1, flatten_cast_infixL hf]
+      simp only [RightSublist.trans]
+      have hb := IH1 xb xr hx
+      have htl := IH2 (xb, xr) yt yr hy
+      rw [List.append_assoc, htl, hb]
+  -- parseTree infixR
+  case case8 =>
+    intro a tkns hf IH2 IH1 t r h
+    unfold parseTree at h
+    split at h <;>
+      first
+        | (rename_i heqf; exact absurd (hf ▸ heqf) (by decide))
+        | skip
+    rcases List.mem_flatMap.mp h with ⟨x, hx, hmem⟩
+    obtain ⟨xb, xr⟩ := x
+    rcases List.mem_cons.mp hmem with heq | hmem
+    · simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [Tree.flatten]
+      exact IH1 xb _ hx
+    · rcases List.mem_map.mp hmem with ⟨y, hy, heq⟩
+      obtain ⟨yt, yr⟩ := y
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨h1, rfl⟩ := heq
+      rw [← h1, flatten_cast_infixR hf]
+      simp only [RightSublist.trans]
+      have hb := IH1 xb xr hx
+      have htl := IH2 (xb, xr) yt yr hy
+      rw [List.append_assoc, htl, hb]
   -- parseTree infixN
   case case9 =>
     intro a tkns hf IH3 IH2 IH1 t r h
@@ -243,24 +246,30 @@ theorem parseExpr_sound :
       have hr := IH3 (xb, xr) (yw, yr) zb zr hzz
       rw [List.append_assoc, List.append_assoc, hr, hw, hl]
       all_goals exact hf
-  -- parseInfixLTail
+  -- parseInfixTail
   case case10 =>
-    intro a hf acc tkns0 r IH3 IH2 IH1 t r' h
-    rw [parseInfixLTail] at h
-    rcases List.mem_cons.mp h with heq | hmem
+    intro a tkns IH2 IH1 IH0 p r h
+    rw [parseInfixTail] at h
+    rcases List.mem_flatMap.mp h with ⟨x, hx, hy⟩
+    obtain ⟨xw, xr⟩ := x
+    rcases List.mem_flatMap.mp hy with ⟨y, hy2, hmem⟩
+    obtain ⟨yb, yr⟩ := y
+    rcases List.mem_cons.mp hmem with heq | hmem
     · simp only [Prod.mk.injEq] at heq
       obtain ⟨rfl, rfl⟩ := heq
-      rfl
-    · rcases List.mem_flatMap.mp hmem with ⟨x, hx, hy⟩
-      obtain ⟨xw, xr⟩ := x
-      rcases List.mem_flatMap.mp hy with ⟨y, hy2, hz⟩
-      obtain ⟨yb, yr⟩ := y
-      have htail := IH3 (xw, xr) (yb, yr) t r' hz
-      rw [htail, flatten_cast_infixL hf]
-      simp only [RightSublist.trans]
-      have hw := IH1 xw xr hx
-      have hb := IH2 (xw, xr) yb yr hy2
-      rw [List.append_assoc, List.append_assoc, hb, hw]
+      simp only [InfixTail.flatten, RightSublist.trans]
+      have hw := IH0 xw xr hx
+      have hb := IH1 (xw, xr) yb yr hy2
+      rw [List.append_assoc, hb, hw]
+    · rcases List.mem_map.mp hmem with ⟨z, hz, heq⟩
+      obtain ⟨zt, zr⟩ := z
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [InfixTail.flatten, RightSublist.trans]
+      have hw := IH0 xw xr hx
+      have hb := IH1 (xw, xr) yb yr hy2
+      have htl := IH2 (xw, xr) (yb, yr) zt zr hz
+      rw [List.append_assoc, List.append_assoc, htl, hb, hw]
   -- parseWoven [t] (t::rest)
   case case11 =>
     intro t rest w r h
@@ -317,19 +326,46 @@ theorem parseExpr_sound :
     · exact IH1 b r h
   -- parsePostfixTail
   case case19 =>
-    intro a hf acc tkns0 r IH2 IH1 t r' h
+    intro a tkns IH2 IH1 p r h
     rw [parsePostfixTail] at h
-    rcases List.mem_cons.mp h with heq | hmem
+    rcases List.mem_flatMap.mp h with ⟨x, hx, hmem⟩
+    obtain ⟨xw, xr⟩ := x
+    rcases List.mem_cons.mp hmem with heq | hmem
     · simp only [Prod.mk.injEq] at heq
       obtain ⟨rfl, rfl⟩ := heq
-      rfl
-    · rcases List.mem_flatMap.mp hmem with ⟨x, hx, hy⟩
-      obtain ⟨xw, xr⟩ := x
-      have htail := IH2 (xw, xr) t r' hy
-      rw [htail, flatten_cast_postfix hf]
-      simp only [RightSublist.trans]
+      simp only [PostfixTail.flatten]
+      exact IH1 xw _ hx
+    · rcases List.mem_map.mp hmem with ⟨z, hz, heq⟩
+      obtain ⟨zp, zr⟩ := z
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [PostfixTail.flatten, RightSublist.trans]
       have hw := IH1 xw xr hx
-      rw [List.append_assoc, hw]
+      have hpt := IH2 (xw, xr) zp zr hz
+      rw [List.append_assoc, hpt, hw]
+  -- parsePrefixStack
+  case case20 =>
+    intro a tkns IH2 IH1 IH0 p r h
+    rw [parsePrefixStack] at h
+    rcases List.mem_flatMap.mp h with ⟨x, hx, hmem⟩
+    obtain ⟨xw, xr⟩ := x
+    rcases List.mem_append.mp hmem with hmem | hmem
+    · rcases List.mem_map.mp hmem with ⟨y, hy, heq⟩
+      obtain ⟨yb, yr⟩ := y
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [PrefixStack.flatten, RightSublist.trans]
+      have hw := IH0 xw xr hx
+      have hb := IH2 (xw, xr) yb yr hy
+      rw [List.append_assoc, hb, hw]
+    · rcases List.mem_map.mp hmem with ⟨z, hz, heq⟩
+      obtain ⟨zp, zr⟩ := z
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      simp only [PrefixStack.flatten, RightSublist.trans]
+      have hw := IH0 xw xr hx
+      have hps := IH1 (xw, xr) zp zr hz
+      rw [List.append_assoc, hps, hw]
 
 /-- Top-level soundness: every full `parse` is a tree flattening to all input. -/
 theorem parse_sound {tkns : List Token} {e : Expr G}
