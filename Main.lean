@@ -1,10 +1,10 @@
-import LambdaLab.Parser.Playground.Example
+import LambdaLab.Parser.Playground2.Example
 
 /-!
 # Playground parser demo
 
 A tiny CLI that runs the verified precedence-DAG mixfix parser
-(`LambdaLab.Parser.Playground`) over the concrete `arith` and `mix` grammars
+(`LambdaLab.Parser.Playground2`) over the concrete `arith` and `mix` grammars
 from `Example.lean`.
 
 * `lake exe playground`            — run the built-in showcase
@@ -16,7 +16,7 @@ re-flattened token string) and a rejected input yields none.
 -/
 
 open LambdaLab.Parser (Token)
-open LambdaLab.Parser.Playground
+open LambdaLab.Parser.Playground2
 
 /-- Render a token list as a space-separated string. -/
 def renderTokens (ts : List Token) : String := " ".intercalate ts
