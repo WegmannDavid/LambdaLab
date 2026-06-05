@@ -133,9 +133,11 @@ mutual
     match t with
     | .op _ _ ch => simpa only [Tree.flatten] using ch.flatten_ne
 
-  theorem Children.flatten_ne {b : G.Op} {f : Fixity} (ch : Children G b f) :
+  theorem Children.flatten_ne {b : G.Op} {s : Shape} (ch : Children G b s) :
       ch.flatten ≠ [] := by
     match ch with
+    | .wLast _ => simp [Children.flatten]
+    | .wCons _ _ _ => simp [Children.flatten]
     | .closed w => simpa only [Children.flatten] using w.flatten_ne
     | .«prefix» ps => simpa only [Children.flatten] using ps.flatten_ne
     | .«postfix» tb pt =>
@@ -150,82 +152,68 @@ mutual
     | .infixN l w r =>
         simp only [Children.flatten]; intro h
         exact l.flatten_ne (List.append_eq_nil_iff.mp (List.append_eq_nil_iff.mp h).1).1
-
-  theorem PrefixStack.flatten_ne {b : G.Op} (ps : PrefixStack G b) : ps.flatten ≠ [] := by
-    match ps with
-    | .last w tb =>
-        simp only [PrefixStack.flatten]; intro h
+    | .psLast w tb =>
+        simp only [Children.flatten]; intro h
         exact w.flatten_ne (List.append_eq_nil_iff.mp h).1
-    | .more w ps =>
-        simp only [PrefixStack.flatten]; intro h
+    | .psMore w ps =>
+        simp only [Children.flatten]; intro h
         exact w.flatten_ne (List.append_eq_nil_iff.mp h).1
-
-  theorem PostfixTail.flatten_ne {b : G.Op} (pt : PostfixTail G b) : pt.flatten ≠ [] := by
-    match pt with
-    | .last w => simpa only [PostfixTail.flatten] using w.flatten_ne
-    | .cons w t =>
-        simp only [PostfixTail.flatten]; intro h
+    | .ptLast w => simpa only [Children.flatten] using w.flatten_ne
+    | .ptCons w t =>
+        simp only [Children.flatten]; intro h
         exact w.flatten_ne (List.append_eq_nil_iff.mp h).1
-
-  theorem InfixTail.flatten_ne {b : G.Op} (tl : InfixTail G b) : tl.flatten ≠ [] := by
-    match tl with
-    | .last w tb =>
-        simp only [InfixTail.flatten]; intro h
+    | .itLast w tb =>
+        simp only [Children.flatten]; intro h
         exact w.flatten_ne (List.append_eq_nil_iff.mp h).1
-    | .cons w tb t =>
-        simp only [InfixTail.flatten]; intro h
+    | .itCons w tb t =>
+        simp only [Children.flatten]; intro h
         exact w.flatten_ne (List.append_eq_nil_iff.mp (List.append_eq_nil_iff.mp h).1).1
-
-  theorem Woven.flatten_ne {parts : List Token} (w : Woven G parts) : w.flatten ≠ [] := by
-    match w with
-    | .last _ => simp [Woven.flatten]
-    | .cons _ _ _ => simp [Woven.flatten]
 end
 
 /-! ## Leading-token facts -/
 
-theorem Woven.flatten_head {parts : List Token} (w : Woven G parts) :
+theorem Children.headWeave {parts : List Token} (w : Children G a (.weave parts)) :
     w.flatten.head? = parts.head? := by
   match w with
-  | .last tk => rfl
-  | .cons tk e w => rfl
+  | .wLast tk => rfl
+  | .wCons tk e w => rfl
 
-theorem Woven.flatten_head_op {a : G.Op} (w : Woven G (G.operator a).nameParts) :
+theorem Children.headOpWeave {a : G.Op} (w : Children G a (.weave (G.operator a).nameParts)) :
     w.flatten.head? = some (G.operator a).head := by
-  rw [Woven.flatten_head, List.head?_eq_some_head (G.operator a).nameParts_ne]; rfl
+  rw [Children.headWeave, List.head?_eq_some_head (G.operator a).nameParts_ne]; rfl
 
-theorem Woven.flatten_head_mem {parts : List Token} (w : Woven G parts) {t : Token}
+theorem Children.headMemWeave {parts : List Token} (w : Children G a (.weave parts)) {t : Token}
     (ht : w.flatten.head? = some t) : t ∈ parts := by
-  rw [Woven.flatten_head] at ht
+  rw [Children.headWeave] at ht
   cases parts with
   | nil => simp at ht
   | cons x xs =>
       simp only [List.head?_cons, Option.some.injEq] at ht
       subst ht; simp
 
-theorem PrefixStack.flatten_head_op {a : G.Op} (p : PrefixStack G a) :
+theorem Children.headOpPrefix {a : G.Op} (p : Children G a .prefix) :
     p.flatten.head? = some (G.operator a).head := by
   cases p with
-  | last w tb =>
-      simp only [PrefixStack.flatten]; rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
-  | more w ps =>
-      simp only [PrefixStack.flatten]; rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
+  | psLast w tb =>
+      simp only [Children.flatten]; rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
+  | psMore w ps =>
+      simp only [Children.flatten]; rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
 
-theorem PostfixTail.flatten_head_op {a : G.Op} (p : PostfixTail G a) :
+theorem Children.headOpPostTail {a : G.Op} (p : Children G a .postTail) :
     p.flatten.head? = some (G.operator a).head := by
   cases p with
-  | last w => simpa only [PostfixTail.flatten] using w.flatten_head_op
-  | cons w t =>
-      simp only [PostfixTail.flatten]; rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
+  | ptLast w => simpa only [Children.flatten] using w.headOpWeave
+  | ptCons w t =>
+      simp only [Children.flatten]; rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
 
-theorem InfixTail.flatten_head_op {a : G.Op} (p : InfixTail G a) :
+theorem Children.headOpInfixTail {a : G.Op} (p : Children G a .infixTail) :
     p.flatten.head? = some (G.operator a).head := by
   cases p with
-  | last w tb =>
-      simp only [InfixTail.flatten]; rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
-  | cons w tb t =>
-      simp only [InfixTail.flatten, List.append_assoc]
-      rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
+  | itLast w tb =>
+      simp only [Children.flatten]; rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
+  | itCons w tb t =>
+      simp only [Children.flatten, List.append_assoc]
+      rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
 
 mutual
   theorem Tree.headTok_reach {l : Level G} (t : Tree G l) :
@@ -235,13 +223,13 @@ mutual
         obtain ⟨o, hr, hh⟩ := ch.headTok_reach
         exact ⟨o, by simpa only [Tree.flatten] using hh, a, hc, hr⟩
 
-  theorem Children.headTok_reach {a : G.Op} {f : Fixity} (ch : Children G a f) :
+  theorem Children.headTok_reach {a : G.Op} {f : Fixity} (ch : Children G a (.body f)) :
       ∃ o, TighterEq G.tighter a o ∧ ch.flatten.head? = some (G.operator o).head := by
     match ch with
     | .closed w =>
-        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using w.flatten_head_op⟩
+        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using w.headOpWeave⟩
     | .«prefix» ps =>
-        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using ps.flatten_head_op⟩
+        exact ⟨a, TighterEq.refl, by simpa only [Children.flatten] using ps.headOpPrefix⟩
     | .«postfix» tb pt =>
         obtain ⟨o, hh, x, hx, hxo⟩ := tb.headTok_reach
         refine ⟨o, (Tighter.trans_tighterEq (hx : Tighter G.tighter a x) hxo).toTighterEq, ?_⟩
@@ -331,14 +319,14 @@ theorem Stops_of_head_tighter (hG : Unambiguous G) {a c : G.Op} (hac : Tighter G
   have hao : a = o := Classical.byContradiction fun hne => hG.heads_distinct hne heq
   exact Tighter.irrefl_tighterEq hac (hao ▸ hco)
 
-/-- `Woven G []` is uninhabited. -/
-theorem Woven.not_nil (w : Woven G []) : False := by cases w
+/-- A weave over the empty name-part list is uninhabited. -/
+theorem Children.weave_not_nil {a : G.Op} (w : Children G a (.weave [])) : False := by cases w
 
 /-- Constructor equality for `Tree.op` across an operator cast. The level
 witness is proof-irrelevant, so only the operator and its children must match. -/
 theorem Tree.op_cast_eq {l : Level G} {b₁ b₂ : G.Op} (hbb : b₁ = b₂)
     {h₁ : Level.condition l b₁} {h₂ : Level.condition l b₂}
-    {ch₁ : Children G b₁ (G.operator b₁).fixity} {ch₂ : Children G b₂ (G.operator b₂).fixity}
+    {ch₁ : Children G b₁ (.body (G.operator b₁).fixity)} {ch₂ : Children G b₂ (.body (G.operator b₂).fixity)}
     (hc : hbb ▸ ch₁ = ch₂) : Tree.op b₁ h₁ ch₁ = (Tree.op b₂ h₂ ch₂ : Tree G l) := by
   subst hbb; subst hc; rfl
 
@@ -444,7 +432,7 @@ mutual
     all_goals (have hl := Level.sizeOf_pos l; omega)
 
   theorem udChildren (hG : Unambiguous G) {a : G.Op} {f : Fixity}
-      (c₁ c₂ : Children G a f) (s₁ s₂ : List Token)
+      (c₁ c₂ : Children G a (.body f)) (s₁ s₂ : List Token)
       (h : c₁.flatten ++ s₁ = c₂.flatten ++ s₂) (hs₁ : Stops a s₁) (hs₂ : Stops a s₂) :
       c₁ = c₂ ∧ s₁ = s₂ := by
     match c₁, c₂ with
@@ -460,24 +448,24 @@ mutual
         have heq : tb₁.flatten ++ (pt₁.flatten ++ s₁) = tb₂.flatten ++ (pt₂.flatten ++ s₂) := by
           simpa only [Children.flatten, List.append_assoc] using h
         have htb := udTree hG tb₁ tb₂ (pt₁.flatten ++ s₁) (pt₂.flatten ++ s₂) heq
-          (StopsBelow_of_head hG (by rw [head?_append_left pt₁.flatten_ne]; exact pt₁.flatten_head_op))
-          (StopsBelow_of_head hG (by rw [head?_append_left pt₂.flatten_ne]; exact pt₂.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left pt₁.flatten_ne]; exact pt₁.headOpPostTail))
+          (StopsBelow_of_head hG (by rw [head?_append_left pt₂.flatten_ne]; exact pt₂.headOpPostTail))
         have hpt := udPostfixTail hG pt₁ pt₂ s₁ s₂ htb.2 hs₁ hs₂
         exact ⟨by rw [htb.1, hpt.1], hpt.2⟩
     | .infixL hd₁ tl₁, .infixL hd₂ tl₂ =>
         have heq : hd₁.flatten ++ (tl₁.flatten ++ s₁) = hd₂.flatten ++ (tl₂.flatten ++ s₂) := by
           simpa only [Children.flatten, List.append_assoc] using h
         have hhd := udTree hG hd₁ hd₂ (tl₁.flatten ++ s₁) (tl₂.flatten ++ s₂) heq
-          (StopsBelow_of_head hG (by rw [head?_append_left tl₁.flatten_ne]; exact tl₁.flatten_head_op))
-          (StopsBelow_of_head hG (by rw [head?_append_left tl₂.flatten_ne]; exact tl₂.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left tl₁.flatten_ne]; exact tl₁.headOpInfixTail))
+          (StopsBelow_of_head hG (by rw [head?_append_left tl₂.flatten_ne]; exact tl₂.headOpInfixTail))
         have htl := udInfixTail hG tl₁ tl₂ s₁ s₂ hhd.2 hs₁ hs₂
         exact ⟨by rw [hhd.1, htl.1], htl.2⟩
     | .infixR hd₁ tl₁, .infixR hd₂ tl₂ =>
         have heq : hd₁.flatten ++ (tl₁.flatten ++ s₁) = hd₂.flatten ++ (tl₂.flatten ++ s₂) := by
           simpa only [Children.flatten, List.append_assoc] using h
         have hhd := udTree hG hd₁ hd₂ (tl₁.flatten ++ s₁) (tl₂.flatten ++ s₂) heq
-          (StopsBelow_of_head hG (by rw [head?_append_left tl₁.flatten_ne]; exact tl₁.flatten_head_op))
-          (StopsBelow_of_head hG (by rw [head?_append_left tl₂.flatten_ne]; exact tl₂.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left tl₁.flatten_ne]; exact tl₁.headOpInfixTail))
+          (StopsBelow_of_head hG (by rw [head?_append_left tl₂.flatten_ne]; exact tl₂.headOpInfixTail))
         have htl := udInfixTail hG tl₁ tl₂ s₁ s₂ hhd.2 hs₁ hs₂
         exact ⟨by rw [hhd.1, htl.1], htl.2⟩
     | .infixN l₁ w₁ r₁, .infixN l₂ w₂ r₂ =>
@@ -486,165 +474,165 @@ mutual
           simpa only [Children.flatten, List.append_assoc] using h
         have hl := udTree hG l₁ l₂ (w₁.flatten ++ (r₁.flatten ++ s₁))
           (w₂.flatten ++ (r₂.flatten ++ s₂)) heq
-          (StopsBelow_of_head hG (by rw [head?_append_left w₁.flatten_ne]; exact w₁.flatten_head_op))
-          (StopsBelow_of_head hG (by rw [head?_append_left w₂.flatten_ne]; exact w₂.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left w₁.flatten_ne]; exact w₁.headOpWeave))
+          (StopsBelow_of_head hG (by rw [head?_append_left w₂.flatten_ne]; exact w₂.headOpWeave))
         have hw := udWoven hG w₁ w₂ (r₁.flatten ++ s₁) (r₂.flatten ++ s₂) hl.2
           (nameParts_tail_notHead hG a)
         have hr := udTree hG r₁ r₂ s₁ s₂ hw.2 hs₁.below hs₂.below
         exact ⟨by rw [hl.1, hw.1, hr.1], hr.2⟩
   termination_by sizeOf c₁ + sizeOf c₂
 
-  theorem udPrefixStack (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : PrefixStack G a)
+  theorem udPrefixStack (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : Children G a .prefix)
       (s₁ s₂ : List Token) (h : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
       (hs₁ : Stops a s₁) (hs₂ : Stops a s₂) : p₁ = p₂ ∧ s₁ = s₂ := by
     match p₁, p₂ with
-    | .last w₁ tb₁, .last w₂ tb₂ =>
+    | .psLast w₁ tb₁, .psLast w₂ tb₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ s₁) = w₂.flatten ++ (tb₂.flatten ++ s₂) := by
-          simpa only [PrefixStack.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ s₁) (tb₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         have htb := udTree hG tb₁ tb₂ s₁ s₂ hw.2 hs₁.below hs₂.below
         exact ⟨by rw [hw.1, htb.1], htb.2⟩
-    | .last w₁ tb₁, .more w₂ p₂ =>
+    | .psLast w₁ tb₁, .psMore w₂ p₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ s₁) = w₂.flatten ++ (p₂.flatten ++ s₂) := by
-          simpa only [PrefixStack.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ s₁) (p₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         -- tb₁ leads with a tighter operator's head; p₂ leads with a.head — contradiction.
         obtain ⟨o, hhead, x, hxc, hxo⟩ := tb₁.headTok_reach
         have hhd : tb₁.flatten.head? = p₂.flatten.head? :=
           head?_eq_of_prefix hw.2 tb₁.flatten_ne p₂.flatten_ne
-        rw [p₂.flatten_head_op, hhead] at hhd
+        rw [p₂.headOpPrefix, hhead] at hhd
         have heq2 : (G.operator o).head = (G.operator a).head := Option.some.inj hhd
         have hoa : o = a := Classical.byContradiction fun hne => hG.heads_distinct hne heq2
         exact (Tighter.irrefl_tighterEq (hxc : Tighter G.tighter a x) (hoa ▸ hxo)).elim
-    | .more w₁ p₁, .last w₂ tb₂ =>
+    | .psMore w₁ p₁, .psLast w₂ tb₂ =>
         have heq : w₁.flatten ++ (p₁.flatten ++ s₁) = w₂.flatten ++ (tb₂.flatten ++ s₂) := by
-          simpa only [PrefixStack.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (p₁.flatten ++ s₁) (tb₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         obtain ⟨o, hhead, x, hxc, hxo⟩ := tb₂.headTok_reach
         have hhd : p₁.flatten.head? = tb₂.flatten.head? :=
           head?_eq_of_prefix hw.2 p₁.flatten_ne tb₂.flatten_ne
-        rw [p₁.flatten_head_op, hhead] at hhd
+        rw [p₁.headOpPrefix, hhead] at hhd
         have heq2 : (G.operator a).head = (G.operator o).head := Option.some.inj hhd
         have hoa : o = a := Classical.byContradiction fun hne => hG.heads_distinct hne heq2.symm
         exact (Tighter.irrefl_tighterEq (hxc : Tighter G.tighter a x) (hoa ▸ hxo)).elim
-    | .more w₁ p₁, .more w₂ p₂ =>
+    | .psMore w₁ p₁, .psMore w₂ p₂ =>
         have heq : w₁.flatten ++ (p₁.flatten ++ s₁) = w₂.flatten ++ (p₂.flatten ++ s₂) := by
-          simpa only [PrefixStack.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (p₁.flatten ++ s₁) (p₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         have hp := udPrefixStack hG p₁ p₂ s₁ s₂ hw.2 hs₁ hs₂
         exact ⟨by rw [hw.1, hp.1], hp.2⟩
   termination_by sizeOf p₁ + sizeOf p₂
 
-  theorem udPostfixTail (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : PostfixTail G a)
+  theorem udPostfixTail (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : Children G a .postTail)
       (s₁ s₂ : List Token) (h : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
       (hs₁ : Stops a s₁) (hs₂ : Stops a s₂) : p₁ = p₂ ∧ s₁ = s₂ := by
     match p₁, p₂ with
-    | .last w₁, .last w₂ =>
+    | .ptLast w₁, .ptLast w₂ =>
         have heq : w₁.flatten ++ s₁ = w₂.flatten ++ s₂ := by
-          simpa only [PostfixTail.flatten] using h
+          simpa only [Children.flatten] using h
         have hw := udWoven hG w₁ w₂ s₁ s₂ heq (nameParts_tail_notHead hG a)
         exact ⟨by rw [hw.1], hw.2⟩
-    | .last w₁, .cons w₂ t₂ =>
+    | .ptLast w₁, .ptCons w₂ t₂ =>
         have heq : w₁.flatten ++ s₁ = w₂.flatten ++ (t₂.flatten ++ s₂) := by
-          simpa only [PostfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ s₁ (t₂.flatten ++ s₂) heq (nameParts_tail_notHead hG a)
-        exact absurd (by rw [hw.2, head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op)
+        exact absurd (by rw [hw.2, head?_append_left t₂.flatten_ne]; exact t₂.headOpPostTail)
           (hs₁ a TighterEq.refl)
-    | .cons w₁ t₁, .last w₂ =>
+    | .ptCons w₁ t₁, .ptLast w₂ =>
         have heq : w₁.flatten ++ (t₁.flatten ++ s₁) = w₂.flatten ++ s₂ := by
-          simpa only [PostfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (t₁.flatten ++ s₁) s₂ heq (nameParts_tail_notHead hG a)
-        exact absurd (by rw [← hw.2, head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op)
+        exact absurd (by rw [← hw.2, head?_append_left t₁.flatten_ne]; exact t₁.headOpPostTail)
           (hs₂ a TighterEq.refl)
-    | .cons w₁ t₁, .cons w₂ t₂ =>
+    | .ptCons w₁ t₁, .ptCons w₂ t₂ =>
         have heq : w₁.flatten ++ (t₁.flatten ++ s₁) = w₂.flatten ++ (t₂.flatten ++ s₂) := by
-          simpa only [PostfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (t₁.flatten ++ s₁) (t₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         have ht := udPostfixTail hG t₁ t₂ s₁ s₂ hw.2 hs₁ hs₂
         exact ⟨by rw [hw.1, ht.1], ht.2⟩
   termination_by sizeOf p₁ + sizeOf p₂
 
-  theorem udInfixTail (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : InfixTail G a)
+  theorem udInfixTail (hG : Unambiguous G) {a : G.Op} (p₁ p₂ : Children G a .infixTail)
       (s₁ s₂ : List Token) (h : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
       (hs₁ : Stops a s₁) (hs₂ : Stops a s₂) : p₁ = p₂ ∧ s₁ = s₂ := by
     match p₁, p₂ with
-    | .last w₁ tb₁, .last w₂ tb₂ =>
+    | .itLast w₁ tb₁, .itLast w₂ tb₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ s₁) = w₂.flatten ++ (tb₂.flatten ++ s₂) := by
-          simpa only [InfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ s₁) (tb₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         have htb := udTree hG tb₁ tb₂ s₁ s₂ hw.2 hs₁.below hs₂.below
         exact ⟨by rw [hw.1, htb.1], htb.2⟩
-    | .last w₁ tb₁, .cons w₂ tb₂ t₂ =>
+    | .itLast w₁ tb₁, .itCons w₂ tb₂ t₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ s₁)
                  = w₂.flatten ++ (tb₂.flatten ++ (t₂.flatten ++ s₂)) := by
-          simpa only [InfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ s₁) (tb₂.flatten ++ (t₂.flatten ++ s₂)) heq
           (nameParts_tail_notHead hG a)
         have htb := udTree hG tb₁ tb₂ s₁ (t₂.flatten ++ s₂) hw.2 hs₁.below
-          (StopsBelow_of_head hG (by rw [head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op))
-        exact absurd (by rw [htb.2, head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op)
+          (StopsBelow_of_head hG (by rw [head?_append_left t₂.flatten_ne]; exact t₂.headOpInfixTail))
+        exact absurd (by rw [htb.2, head?_append_left t₂.flatten_ne]; exact t₂.headOpInfixTail)
           (hs₁ a TighterEq.refl)
-    | .cons w₁ tb₁ t₁, .last w₂ tb₂ =>
+    | .itCons w₁ tb₁ t₁, .itLast w₂ tb₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ (t₁.flatten ++ s₁))
                  = w₂.flatten ++ (tb₂.flatten ++ s₂) := by
-          simpa only [InfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ (t₁.flatten ++ s₁)) (tb₂.flatten ++ s₂) heq
           (nameParts_tail_notHead hG a)
         have htb := udTree hG tb₁ tb₂ (t₁.flatten ++ s₁) s₂ hw.2
-          (StopsBelow_of_head hG (by rw [head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left t₁.flatten_ne]; exact t₁.headOpInfixTail))
           hs₂.below
-        exact absurd (by rw [← htb.2, head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op)
+        exact absurd (by rw [← htb.2, head?_append_left t₁.flatten_ne]; exact t₁.headOpInfixTail)
           (hs₂ a TighterEq.refl)
-    | .cons w₁ tb₁ t₁, .cons w₂ tb₂ t₂ =>
+    | .itCons w₁ tb₁ t₁, .itCons w₂ tb₂ t₂ =>
         have heq : w₁.flatten ++ (tb₁.flatten ++ (t₁.flatten ++ s₁))
                  = w₂.flatten ++ (tb₂.flatten ++ (t₂.flatten ++ s₂)) := by
-          simpa only [InfixTail.flatten, List.append_assoc] using h
+          simpa only [Children.flatten, List.append_assoc] using h
         have hw := udWoven hG w₁ w₂ (tb₁.flatten ++ (t₁.flatten ++ s₁))
           (tb₂.flatten ++ (t₂.flatten ++ s₂)) heq (nameParts_tail_notHead hG a)
         have htb := udTree hG tb₁ tb₂ (t₁.flatten ++ s₁) (t₂.flatten ++ s₂) hw.2
-          (StopsBelow_of_head hG (by rw [head?_append_left t₁.flatten_ne]; exact t₁.flatten_head_op))
-          (StopsBelow_of_head hG (by rw [head?_append_left t₂.flatten_ne]; exact t₂.flatten_head_op))
+          (StopsBelow_of_head hG (by rw [head?_append_left t₁.flatten_ne]; exact t₁.headOpInfixTail))
+          (StopsBelow_of_head hG (by rw [head?_append_left t₂.flatten_ne]; exact t₂.headOpInfixTail))
         have ht := udInfixTail hG t₁ t₂ s₁ s₂ htb.2 hs₁ hs₂
         exact ⟨by rw [hw.1, htb.1, ht.1], ht.2⟩
   termination_by sizeOf p₁ + sizeOf p₂
 
-  theorem udWoven (hG : Unambiguous G) {parts : List Token}
-      (w₁ w₂ : Woven G parts) (s₁ s₂ : List Token)
+  theorem udWoven (hG : Unambiguous G) {a : G.Op} {parts : List Token}
+      (w₁ w₂ : Children G a (.weave parts)) (s₁ s₂ : List Token)
       (h : w₁.flatten ++ s₁ = w₂.flatten ++ s₂)
       (hpr : ∀ tk ∈ parts.tail, ∀ o : G.Op, (G.operator o).head ≠ tk) :
       w₁ = w₂ ∧ s₁ = s₂ := by
     match w₁, w₂ with
-    | .last tk, w₂ =>
+    | .wLast tk, w₂ =>
         cases w₂ with
-        | last tk' =>
+        | wLast tk' =>
             refine ⟨rfl, ?_⟩
-            simpa only [Woven.flatten, List.cons_append, List.nil_append,
+            simpa only [Children.flatten, List.cons_append, List.nil_append,
               List.cons.injEq, true_and] using h
-        | cons tk' e w => exact (w.not_nil).elim
-    | .cons tk e₁ w₁', w₂ =>
+        | wCons tk' e w => exact (w.weave_not_nil).elim
+    | .wCons tk e₁ w₁', w₂ =>
         cases w₂ with
-        | last tk' => exact (w₁'.not_nil).elim
-        | cons _ e₂ w₂' =>
+        | wLast tk' => exact (w₁'.weave_not_nil).elim
+        | wCons _ e₂ w₂' =>
         have heq : e₁.flatten ++ (w₁'.flatten ++ s₁) = e₂.flatten ++ (w₂'.flatten ++ s₂) := by
           have h' : [tk] ++ (e₁.flatten ++ (w₁'.flatten ++ s₁))
                   = [tk] ++ (e₂.flatten ++ (w₂'.flatten ++ s₂)) := by
-            simpa only [Woven.flatten, List.append_assoc] using h
+            simpa only [Children.flatten, List.append_assoc] using h
           exact List.append_cancel_left h'
         -- each interior hole is followed by the next name-part, which is nobody's head
         have hstop1 : StopsAll (G := G) (w₁'.flatten ++ s₁) := by
           intro o hcon
           rw [head?_append_left w₁'.flatten_ne] at hcon
-          exact hpr _ (w₁'.flatten_head_mem hcon) o rfl
+          exact hpr _ (w₁'.headMemWeave hcon) o rfl
         have hstop2 : StopsAll (G := G) (w₂'.flatten ++ s₂) := by
           intro o hcon
           rw [head?_append_left w₂'.flatten_ne] at hcon
-          exact hpr _ (w₂'.flatten_head_mem hcon) o rfl
+          exact hpr _ (w₂'.headMemWeave hcon) o rfl
         have hrec := udTree hG e₁ e₂ (w₁'.flatten ++ s₁) (w₂'.flatten ++ s₂) heq hstop1 hstop2
         have hrec2 := udWoven hG w₁' w₂' s₁ s₂ hrec.2 (fun t ht => hpr t (mem_of_mem_tail ht))
         exact ⟨by rw [hrec.1, hrec2.1], hrec2.2⟩
@@ -692,7 +680,7 @@ mutual
     all_goals omega
 
   theorem udOpNext (hG : Unambiguous G) {a : G.Op} {f : Fixity}
-      (c : Children G a f)
+      (c : Children G a (.body f))
       (b : G.Op) (hb : b ∈ G.tighter a) (u : Tree G (.tighterEq b)) (s₁ s₂ : List Token)
       (heq : c.flatten ++ s₁ = u.flatten ++ s₂)
       (_hs₁ : Stops a s₁) (hs₂ : Stops a s₂) : False := by
@@ -700,7 +688,7 @@ mutual
     | .closed w, heq =>
         obtain ⟨o, hr, hh⟩ := u.headTok_reachEq
         have hca : (Children.closed w).flatten.head? = some (G.operator a).head := by
-          simpa only [Children.flatten] using w.flatten_head_op
+          simpa only [Children.flatten] using w.headOpWeave
         have hhd : (Children.closed w).flatten.head? = u.flatten.head? :=
           head?_eq_of_prefix heq (Children.closed w).flatten_ne u.flatten_ne
         rw [hca, hh] at hhd
@@ -710,7 +698,7 @@ mutual
     | .«prefix» ps, heq =>
         obtain ⟨o, hr, hh⟩ := u.headTok_reachEq
         have hca : (Children.«prefix» ps).flatten.head? = some (G.operator a).head := by
-          simpa only [Children.flatten] using ps.flatten_head_op
+          simpa only [Children.flatten] using ps.headOpPrefix
         have hhd : (Children.«prefix» ps).flatten.head? = u.flatten.head? :=
           head?_eq_of_prefix heq (Children.«prefix» ps).flatten_ne u.flatten_ne
         rw [hca, hh] at hhd
@@ -719,19 +707,19 @@ mutual
         exact no_cycle hb (hoa ▸ hr)
     | .«postfix» tb pt, heq =>
         refine udLeadOp hG tb b hb u (pt.flatten ++ s₁) s₂ ?_ ?_ hs₂
-        · rw [head?_append_left pt.flatten_ne]; exact pt.flatten_head_op
+        · rw [head?_append_left pt.flatten_ne]; exact pt.headOpPostTail
         · simpa only [Children.flatten, List.append_assoc] using heq
     | .infixL hd tl, heq =>
         refine udLeadOp hG hd b hb u (tl.flatten ++ s₁) s₂ ?_ ?_ hs₂
-        · rw [head?_append_left tl.flatten_ne]; exact tl.flatten_head_op
+        · rw [head?_append_left tl.flatten_ne]; exact tl.headOpInfixTail
         · simpa only [Children.flatten, List.append_assoc] using heq
     | .infixR hd tl, heq =>
         refine udLeadOp hG hd b hb u (tl.flatten ++ s₁) s₂ ?_ ?_ hs₂
-        · rw [head?_append_left tl.flatten_ne]; exact tl.flatten_head_op
+        · rw [head?_append_left tl.flatten_ne]; exact tl.headOpInfixTail
         · simpa only [Children.flatten, List.append_assoc] using heq
     | .infixN l w r, heq =>
         refine udLeadOp hG l b hb u (w.flatten ++ (r.flatten ++ s₁)) s₂ ?_ ?_ hs₂
-        · rw [head?_append_left w.flatten_ne]; exact w.flatten_head_op
+        · rw [head?_append_left w.flatten_ne]; exact w.headOpWeave
         · simpa only [Children.flatten, List.append_assoc] using heq
   termination_by sizeOf c + sizeOf u
   decreasing_by

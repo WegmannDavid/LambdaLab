@@ -93,18 +93,18 @@ demands by supplying the matching reachability witness. -/
 `Tree.opSelf`'s children argument mentions `(G.operator a).fixity`, which stays
 stuck while `G` is a metavar.) -/
 def tNum : Tree arith (.tighterEq Sym.num) :=
-  Tree.opSelf (G := arith) Sym.num (.closed (.last "n"))
+  Tree.opSelf (G := arith) Sym.num (.closed (.wLast "n"))
 
 /-- `n` as something strictly tighter than `add` (root `num`, `Tighter add num`
 via `add → mul → num`). -/
 def bNumAdd : Tree arith (.tighter Sym.add) :=
   Tree.op (G := arith) Sym.num
     (Tighter.step (show Sym.mul ∈ arith.tighter Sym.add by decide)
-      (Tighter.base (show Sym.num ∈ arith.tighter Sym.mul by decide))) (.closed (.last "n"))
+      (Tighter.base (show Sym.num ∈ arith.tighter Sym.mul by decide))) (.closed (.wLast "n"))
 
 /-- `n + n` — head operand strictly tighter, then one `(+ , operand)` spine step. -/
 def tAdd : Tree arith (.tighterEq Sym.add) :=
-  Tree.opSelf (G := arith) Sym.add (.infixL bNumAdd (.last (.last "+") bNumAdd))
+  Tree.opSelf (G := arith) Sym.add (.infixL bNumAdd (.itLast (.wLast "+") bNumAdd))
 
 /-- `n` as a top-level expression (root `num`, reachable from the loosest `add`). -/
 def eNum : Tree arith .loosest :=
@@ -112,11 +112,11 @@ def eNum : Tree arith .loosest :=
     ⟨Sym.add, by decide,
       TighterEq.step (show Sym.mul ∈ arith.tighter Sym.add by decide)
         (TighterEq.step (show Sym.num ∈ arith.tighter Sym.mul by decide) TighterEq.refl)⟩
-    (.closed (.last "n"))
+    (.closed (.wLast "n"))
 
 /-- `( n )` — the interior hole is a top-level expression (here, `n`). -/
 def tParen : Tree arith (.tighterEq Sym.paren) :=
-  Tree.opSelf (G := arith) Sym.paren (.closed (.cons "(" eNum (.last ")")))
+  Tree.opSelf (G := arith) Sym.paren (.closed (.wCons "(" eNum (.wLast ")")))
 
 #guard tNum.flatten == ["n"]
 #guard tAdd.flatten == ["n", "+", "n"]

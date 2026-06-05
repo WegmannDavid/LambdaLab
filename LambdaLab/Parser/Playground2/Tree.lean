@@ -3,55 +3,34 @@ import LambdaLab.Parser.Playground2.Basic
 /-!
 # Precedence-indexed parse trees (strictly-tighter operands)
 
-A `Tree G l` is an expression whose **top operator** satisfies the level
-constraint `l : Level G`. Indexing by a level makes precedence *structural*: a
-tree may only mention operators allowed by `l` (and, recursively, tighter ones),
-so unreachable ("dead") operators are excluded by construction and no `covers`
-side-condition is needed.
+Two inductive types carry the whole parse-tree family:
 
-A `Level` records *which* precedence constraint the top operator must meet:
+* `Tree G l` — an operator applied at a node satisfying the precedence
+  constraint `l : Level G`.
+* `Children G a s` — the body of operator `a`, at a structural position
+  `s : Shape`.
 
-* `Level.tighter a`   — strictly tighter than `a` (an operand position);
-* `Level.tighterEq a` — tighter-or-equal to `a` (what parsing *at* node `a`
-  yields: either `a` applied, or a strictly-tighter fall-through);
-* `Level.loosest`     — reachable from some loosest operator (a top-level
-  expression).
+Both follow the same idea: fold a whole family of former types into one, indexed
+by a descriptor. `Tree` folds the old jump-tree / `TreeBelow` / `Expr` by the
+*precedence constraint* `Level` (`.tighter`/`.tighterEq`/`.loosest`). `Children`
+folds the old `Children` / `PrefixStack` / `PostfixTail` / `InfixTail` / `Woven`
+by the *structural position* `Shape`:
 
-This single index folds the three former notions — the jump-tree `Tree G a`,
-the strictly-tighter `TreeBelow G a`, and the top-level `Expr G` — into one
-type:
-
-* `Tree G (.tighterEq a)` is the old jump-tree at `a`;
-* `Tree G (.tighter a)`   is the old `TreeBelow G a`;
-* `Tree G .loosest`       is the old `Expr G`.
+* `.body f`     — a complete operator body of fixity `f` (was `Children`);
+* `.prefix`     — a prefix stack `U⁺ T` (was `PrefixStack`);
+* `.postTail`   — a postfix trailing `U⁺` (was `PostfixTail`);
+* `.infixTail`  — an infix trailing `(U T)⁺` (was `InfixTail`);
+* `.weave ps`   — one *unit* `U`: the name-parts `ps` interleaved with interior
+  (loosest) operands (was `Woven`).
 
 **Key design choice (unique-reading).** Every operand of an operator is
 *strictly tighter* than that operator — there are **no same-level operands**.
-Associativity, which classically wants a same-level operand (`x + y + z`
-nesting `(x + y) + z`), is instead encoded by *iteration*: a left or right
-associative operator carries an explicit non-empty spine of strictly-tighter
-operands, and prefix/postfix operators carry an explicit stack. This is
-isomorphic to the nested trees (no expressiveness lost — the canonical nesting
-is the unique one), but it makes the operator's separator token a reliable
-*discriminator*: the separator lives at the operator's own level, strictly
-looser than every operand, so by acyclicity it can never appear at a top-level
-operand boundary of any operand. That is exactly what unique decomposition
+Associativity is encoded by *iteration* (an explicit non-empty spine of
+strictly-tighter operands), not by same-level nesting. This makes the operator's
+separator token a reliable discriminator: it lives at the operator's own level,
+strictly looser than every operand, so by acyclicity it can never sit at a
+top-level operand boundary of any operand — exactly what unique decomposition
 needs.
-
-The mutual family:
-
-* `Tree G l` — an operator applied at a node satisfying `l` (`op`). The node is
-  packed in the constructor, so a tree carries its own root; `reindex` weakens
-  the *level* without touching the tree.
-* `Children G a f` — the holes of `a`, indexed by its fixity `f`. **All**
-  boundary operands sit at `Tree G (.tighter a)` (strictly tighter); chaining is
-  via the spine/stack inductives below.
-* `PrefixStack` / `PostfixTail` — a non-empty stack of one operator's
-  prefix/postfix applications, bottoming out in a strictly-tighter operand.
-* `InfixTail` — the non-empty `(separator, operand)` spine shared by the left
-  and right associative cases.
-* `Woven G parts` — the interior weave: between consecutive name-parts sits a
-  top-level expression (`Tree G .loosest`).
 -/
 
 namespace LambdaLab.Parser.Playground2
@@ -60,9 +39,9 @@ open LambdaLab.Parser
 
 /-- A precedence *level*: the constraint placed on a tree's top operator. -/
 inductive Level (G : Grammar) : Type where
-  | tighter   : G.Op → Level G
-  | tighterEq : G.Op → Level G
-  | loosest   : Level G
+| tighter   : G.Op → Level G
+| tighterEq : G.Op → Level G
+| loosest   : Level G
 
 /-- The predicate a top operator `b` must satisfy to inhabit level `l`. -/
 def Level.condition {G : Grammar} (l : Level G) : G.Op → Prop :=
@@ -84,53 +63,53 @@ theorem Level.condition_trans {G : Grammar} {l : Level G} {a b : G.Op}
 def Level.reaches {G : Grammar} (l : Level G) (o : G.Op) : Prop :=
   ∃ a, Level.condition l a ∧ TighterEq G.tighter a o
 
+/-- A *structural position* within an operator's body: which of the former body
+types a `Children` value represents. The only one carrying data is `.weave`,
+holding the name-parts still to be emitted in the current unit. -/
+inductive Shape where
+  | body      : Fixity → Shape
+  | «prefix»  : Shape
+  | postTail  : Shape
+  | infixTail : Shape
+  | weave     : List Token → Shape
+
 mutual
   /-- An expression whose top operator satisfies level `l`. -/
   inductive Tree (G : Grammar) : Level G → Type where
-    | op : (a : G.Op) → Level.condition l a → Children G a (G.operator a).fixity → Tree G l
+    | op : (a : G.Op) → Level.condition l a →
+           Children G a (.body (G.operator a).fixity) → Tree G l
 
-  /-- The holes of operator `a`, with placement and level dictated by fixity.
-  Every boundary operand is `Tree G (.tighter a)` (strictly tighter); chaining
-  lives in the spine/stack inductives. -/
-  inductive Children (G : Grammar) : G.Op → Fixity → Type where
-    | closed  : Woven G (G.operator a).nameParts → Children G a .closed
-    | prefix  : PrefixStack G a → Children G a .prefix
-    | postfix : Tree G (.tighter a) → PostfixTail G a → Children G a .postfix
-    | infixL  : Tree G (.tighter a) → InfixTail G a → Children G a (.infix .left)
-    | infixR  : Tree G (.tighter a) → InfixTail G a → Children G a (.infix .right)
-    | infixN  : Tree G (.tighter a) → Woven G (G.operator a).nameParts → Tree G (.tighter a) →
-                Children G a (.infix .nonAssoc)
-
-  /-- A non-empty stack of `a`-prefix applications: each layer is `a`'s prefix
-  weave, wrapping either a strictly-tighter body (`last`) or another `a`-prefix
-  layer (`more`) — encoding ` - - x `. The recursion is on the right, so the
-  body is reached carrying the outer leftover. -/
-  inductive PrefixStack (G : Grammar) : G.Op → Type where
-    | last : Woven G (G.operator a).nameParts → Tree G (.tighter a) → PrefixStack G a
-    | more : Woven G (G.operator a).nameParts → PrefixStack G a → PrefixStack G a
-
-  /-- The trailing weaves of a postfix stack — the ` ! ! ` of ` x ! ! ` (the
-  leading operand lives in `Children.postfix`). A non-empty right-nesting list,
-  so the recursion always carries the outer leftover. -/
-  inductive PostfixTail (G : Grammar) : G.Op → Type where
-    | last : Woven G (G.operator a).nameParts → PostfixTail G a
-    | cons : Woven G (G.operator a).nameParts → PostfixTail G a → PostfixTail G a
-
-  /-- The associative tail shared by `infixL`/`infixR`: one-or-more
-  `(separator-weave, tighter operand)` steps. With a leading `Tree G (.tighter a)`
-  head (in `Children`) this represents `x + y + z` as the spine `x , (+ y) , (+ z)`.
-  The two fixities produce the same token stream and differ only by their
-  `Children` constructor (forced by the operator's fixity), so they share this
-  tail and are never compared against each other. -/
-  inductive InfixTail (G : Grammar) : G.Op → Type where
-    | last : Woven G (G.operator a).nameParts → Tree G (.tighter a) → InfixTail G a
-    | cons : Woven G (G.operator a).nameParts → Tree G (.tighter a) → InfixTail G a → InfixTail G a
-
-  /-- The interior weave of a non-empty name-part list: a top-level expression
-  sits between each pair of consecutive name-parts. -/
-  inductive Woven (G : Grammar) : List Token → Type where
-    | last : (tk : Token) → Woven G [tk]
-    | cons : (tk : Token) → Tree G .loosest → Woven G rest → Woven G (tk :: rest)
+  /-- The body of operator `a` at structural position `s`. The constructors are
+  the union of the five former body types, each pinned to its `Shape` so the
+  fixity discipline is preserved (a closed body cannot sprout a boundary operand,
+  `infixN` cannot repeat, etc.). -/
+  inductive Children (G : Grammar) : G.Op → Shape → Type where
+    -- one unit `U`: name-parts interleaved with interior (loosest) operands (was `Woven`)
+    | wLast : (tk : Token) → Children G a (.weave [tk])
+    | wCons : (tk : Token) → Tree G .loosest → Children G a (.weave rest) →
+              Children G a (.weave (tk :: rest))
+    -- complete bodies (was `Children`)
+    | closed  : Children G a (.weave (G.operator a).nameParts) → Children G a (.body .closed)
+    | «prefix» : Children G a .prefix → Children G a (.body .prefix)
+    | «postfix» : Tree G (.tighter a) → Children G a .postTail → Children G a (.body .postfix)
+    | infixL  : Tree G (.tighter a) → Children G a .infixTail → Children G a (.body (.infix .left))
+    | infixR  : Tree G (.tighter a) → Children G a .infixTail → Children G a (.body (.infix .right))
+    | infixN  : Tree G (.tighter a) → Children G a (.weave (G.operator a).nameParts) →
+                Tree G (.tighter a) → Children G a (.body (.infix .nonAssoc))
+    -- prefix stack `U⁺ T` (was `PrefixStack`)
+    | psLast : Children G a (.weave (G.operator a).nameParts) → Tree G (.tighter a) →
+               Children G a .prefix
+    | psMore : Children G a (.weave (G.operator a).nameParts) → Children G a .prefix →
+               Children G a .prefix
+    -- postfix trailing `U⁺` (was `PostfixTail`)
+    | ptLast : Children G a (.weave (G.operator a).nameParts) → Children G a .postTail
+    | ptCons : Children G a (.weave (G.operator a).nameParts) → Children G a .postTail →
+               Children G a .postTail
+    -- infix trailing `(U T)⁺` (was `InfixTail`)
+    | itLast : Children G a (.weave (G.operator a).nameParts) → Tree G (.tighter a) →
+               Children G a .infixTail
+    | itCons : Children G a (.weave (G.operator a).nameParts) → Tree G (.tighter a) →
+               Children G a .infixTail → Children G a .infixTail
 end
 
 mutual
@@ -138,29 +117,22 @@ mutual
   def Tree.flatten {G : Grammar} {l : Level G} : Tree G l → List Token
     | .op _ _ ch => ch.flatten
 
-  def Children.flatten {G : Grammar} {a : G.Op} {f : Fixity} : Children G a f → List Token
+  /-- Flatten a body to its token stream (one function for all positions). -/
+  def Children.flatten {G : Grammar} {a : G.Op} {s : Shape} : Children G a s → List Token
+    | .wLast tk      => [tk]
+    | .wCons tk e w  => [tk] ++ e.flatten ++ w.flatten
     | .closed w      => w.flatten
-    | .prefix ps     => ps.flatten
-    | .postfix tb pt => tb.flatten ++ pt.flatten
+    | .«prefix» ps   => ps.flatten
+    | .«postfix» tb pt => tb.flatten ++ pt.flatten
     | .infixL hd tl  => hd.flatten ++ tl.flatten
     | .infixR hd tl  => hd.flatten ++ tl.flatten
     | .infixN l w r  => l.flatten ++ w.flatten ++ r.flatten
-
-  def PrefixStack.flatten {G : Grammar} {a : G.Op} : PrefixStack G a → List Token
-    | .last w tb => w.flatten ++ tb.flatten
-    | .more w ps => w.flatten ++ ps.flatten
-
-  def PostfixTail.flatten {G : Grammar} {a : G.Op} : PostfixTail G a → List Token
-    | .last w   => w.flatten
-    | .cons w t => w.flatten ++ t.flatten
-
-  def InfixTail.flatten {G : Grammar} {a : G.Op} : InfixTail G a → List Token
-    | .last w tb   => w.flatten ++ tb.flatten
-    | .cons w tb t => w.flatten ++ tb.flatten ++ t.flatten
-
-  def Woven.flatten {G : Grammar} {parts : List Token} : Woven G parts → List Token
-    | .last tk     => [tk]
-    | .cons tk e w => [tk] ++ e.flatten ++ w.flatten
+    | .psLast w tb   => w.flatten ++ tb.flatten
+    | .psMore w ps   => w.flatten ++ ps.flatten
+    | .ptLast w      => w.flatten
+    | .ptCons w t    => w.flatten ++ t.flatten
+    | .itLast w tb   => w.flatten ++ tb.flatten
+    | .itCons w tb t => w.flatten ++ tb.flatten ++ t.flatten
 end
 
 /-- Weaken the level of a tree along an implication of conditions. Since `op`
@@ -178,12 +150,13 @@ def Tree.reindex {G : Grammar} {l l' : Level G}
 /-- The operator `a` applied to its `Children`, viewed at its own level
 `.tighterEq a` (the witness is reflexivity). This is what the parser emits when
 operator `a` matches; pinning the level lets `TighterEq.refl` elaborate. -/
-def Tree.opSelf {G : Grammar} (a : G.Op) (ch : Children G a (G.operator a).fixity) :
+def Tree.opSelf {G : Grammar} (a : G.Op) (ch : Children G a (.body (G.operator a).fixity)) :
     Tree G (.tighterEq a) :=
   Tree.op a TighterEq.refl ch
 
 @[simp] theorem Tree.opSelf_flatten {G : Grammar} {a : G.Op}
-    (ch : Children G a (G.operator a).fixity) : (Tree.opSelf a ch).flatten = ch.flatten := rfl
+    (ch : Children G a (.body (G.operator a).fixity)) :
+    (Tree.opSelf a ch).flatten = ch.flatten := rfl
 
 /-- Present a strictly-tighter tree at the tighter-or-equal level (the old
 `TreeBelow.lift`/`next` fall-through: a `Tree G (.tighter a)` is in particular a

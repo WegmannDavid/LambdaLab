@@ -39,7 +39,7 @@ def parseAtLevel (l : Level G) (tkns : List Token) : List (Tree G l × RightSubl
 theorem parseTree_eq_closed {a : G.Op} (hf : (G.operator a).fixity = .closed)
     (tkns : List Token) :
     parseTree a tkns =
-      (parseWoven (G.operator a).nameParts tkns).map
+      (parseWoven a (G.operator a).nameParts tkns).map
           (fun x => (Tree.opSelf a (hf ▸ Children.closed x.1), x.2))
       ++ (parseBelow a tkns).map (fun x => (x.1.lift, x.2)) := by
   rw [parseTree]; split <;> first | rfl | (rename_i heq; rw [hf] at heq; cases heq)
@@ -83,7 +83,7 @@ theorem parseTree_eq_infixN {a : G.Op} (hf : (G.operator a).fixity = .infix .non
     parseTree a tkns =
       (parseBelow a tkns).flatMap (fun x =>
         (x.1.lift, x.2) ::
-        (parseWoven (G.operator a).nameParts x.2.list).flatMap (fun y =>
+        (parseWoven a (G.operator a).nameParts x.2.list).flatMap (fun y =>
           (parseBelow a y.2.list).map (fun z =>
             (Tree.opSelf a (hf ▸ Children.infixN x.1 y.1 z.1), x.2.trans (y.2.trans z.2))))) := by
   rw [parseTree]; split <;> first | rfl | (rename_i heq; rw [hf] at heq; cases heq)
@@ -195,28 +195,34 @@ theorem mem_parseAtLevel_reindex {l : Level G} {a : G.Op} (hc : Level.condition 
 
 /-! ## The completeness recursion (structural, via `Tree.rec`) -/
 
+/-- The completeness statement for a `Children`, dispatched by its structural
+position `Shape`: a body parses (via `opSelf`) into `parseTree`; a prefix stack /
+postfix tail / infix tail / weave parses into the corresponding spine parser.
+This is the single `Children`-motive for `Tree.rec`. -/
+def ChildrenComplete (G : Grammar) (a : G.Op) : (s : Shape) → Children G a s → Prop
+  | .body f, c => ∀ (heq : (G.operator a).fixity = f) tkns rest,
+      (Tree.opSelf a (heq ▸ c)).flatten ++ rest = tkns →
+      ∃ r : RightSublist tkns, (Tree.opSelf a (heq ▸ c), r) ∈ parseTree a tkns ∧ r.list = rest
+  | .prefix, c => ∀ tkns rest, c.flatten ++ rest = tkns →
+      ∃ r : RightSublist tkns, (c, r) ∈ parsePrefixStack a tkns ∧ r.list = rest
+  | .postTail, c => ∀ tkns rest, c.flatten ++ rest = tkns →
+      ∃ r : RightSublist tkns, (c, r) ∈ parsePostfixTail a tkns ∧ r.list = rest
+  | .infixTail, c => ∀ tkns rest, c.flatten ++ rest = tkns →
+      ∃ r : RightSublist tkns, (c, r) ∈ parseInfixTail a tkns ∧ r.list = rest
+  | .weave parts, c => ∀ tkns rest, c.flatten ++ rest = tkns →
+      ∃ r : RightSublist tkns, (c, r) ∈ parseWoven a parts tkns ∧ r.list = rest
+
 /-- **Core completeness.** Every tree's flattening (followed by any `rest`) is
 among the parses at its level, with `rest` as the leftover. Proved by structural
-recursion on the mutual tree family via `Tree.rec`. -/
+recursion on the two-type tree family via `Tree.rec`. -/
 theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List Token)
     (h : t.flatten ++ rest = tkns) :
     ∃ r : RightSublist tkns, (t, r) ∈ parseAtLevel l tkns ∧ r.list = rest := by
   refine @Tree.rec G
       (motive_1 := fun l t => ∀ tkns rest, t.flatten ++ rest = tkns →
         ∃ r : RightSublist tkns, (t, r) ∈ parseAtLevel l tkns ∧ r.list = rest)
-      (motive_2 := fun a f c => ∀ (heq : (G.operator a).fixity = f) tkns rest,
-        (Tree.opSelf a (heq ▸ c)).flatten ++ rest = tkns →
-        ∃ r : RightSublist tkns,
-          (Tree.opSelf a (heq ▸ c), r) ∈ parseTree a tkns ∧ r.list = rest)
-      (motive_3 := fun a ps => ∀ tkns rest, ps.flatten ++ rest = tkns →
-        ∃ r : RightSublist tkns, (ps, r) ∈ parsePrefixStack a tkns ∧ r.list = rest)
-      (motive_4 := fun a pt => ∀ tkns rest, pt.flatten ++ rest = tkns →
-        ∃ r : RightSublist tkns, (pt, r) ∈ parsePostfixTail a tkns ∧ r.list = rest)
-      (motive_5 := fun a tl => ∀ tkns rest, tl.flatten ++ rest = tkns →
-        ∃ r : RightSublist tkns, (tl, r) ∈ parseInfixTail a tkns ∧ r.list = rest)
-      (motive_6 := fun parts w => ∀ tkns rest, w.flatten ++ rest = tkns →
-        ∃ r : RightSublist tkns, (w, r) ∈ parseWoven parts tkns ∧ r.list = rest)
-      ?op ?closed ?cpre ?cpost ?ciL ?ciR ?ciN ?psl ?psm ?ptl ?ptc ?itl ?itc ?wl ?wc
+      (motive_2 := fun a s c => ChildrenComplete G a s c)
+      ?op ?wl ?wc ?closed ?cpre ?cpost ?ciL ?ciR ?ciN ?psl ?psm ?ptl ?ptc ?itl ?itc
       l t tkns rest h
   -- Tree.op: children parse at the op's own node; transport up to level `l`.
   case op =>
@@ -295,7 +301,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- PrefixStack.last
   case psl =>
     intro a w tb ihw ihtb tkns rest hflat
-    simp only [PrefixStack.flatten, List.append_assoc] at hflat
+    simp only [Children.flatten, List.append_assoc] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns (tb.flatten ++ rest) hflat
     obtain ⟨rt, hmemt, hrt⟩ := ihtb rw_.list rest hrw.symm
     refine ⟨rw_.trans rt, ?_, by simpa [RightSublist.trans] using hrt⟩
@@ -307,7 +313,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- PrefixStack.more
   case psm =>
     intro a w ps ihw ihps tkns rest hflat
-    simp only [PrefixStack.flatten, List.append_assoc] at hflat
+    simp only [Children.flatten, List.append_assoc] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns (ps.flatten ++ rest) hflat
     obtain ⟨rp, hmemp, hrp⟩ := ihps rw_.list rest hrw.symm
     refine ⟨rw_.trans rp, ?_, by simpa [RightSublist.trans] using hrp⟩
@@ -319,7 +325,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- PostfixTail.last
   case ptl =>
     intro a w ihw tkns rest hflat
-    simp only [PostfixTail.flatten] at hflat
+    simp only [Children.flatten] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns rest hflat
     refine ⟨rw_, ?_, hrw⟩
     rw [parsePostfixTail]
@@ -327,7 +333,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- PostfixTail.cons
   case ptc =>
     intro a w pt ihw ihpt tkns rest hflat
-    simp only [PostfixTail.flatten, List.append_assoc] at hflat
+    simp only [Children.flatten, List.append_assoc] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns (pt.flatten ++ rest) hflat
     obtain ⟨rp, hmemp, hrp⟩ := ihpt rw_.list rest hrw.symm
     refine ⟨rw_.trans rp, ?_, by simpa [RightSublist.trans] using hrp⟩
@@ -339,7 +345,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- InfixTail.last
   case itl =>
     intro a w tb ihw ihtb tkns rest hflat
-    simp only [InfixTail.flatten, List.append_assoc] at hflat
+    simp only [Children.flatten, List.append_assoc] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns (tb.flatten ++ rest) hflat
     obtain ⟨rt, hmemt, hrt⟩ := ihtb rw_.list rest hrw.symm
     refine ⟨rw_.trans rt, ?_, by simpa [RightSublist.trans] using hrt⟩
@@ -352,7 +358,7 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
   -- InfixTail.cons
   case itc =>
     intro a w tb tl ihw ihtb ihtl tkns rest hflat
-    simp only [InfixTail.flatten, List.append_assoc] at hflat
+    simp only [Children.flatten, List.append_assoc] at hflat
     obtain ⟨rw_, hmemw, hrw⟩ := ihw tkns (tb.flatten ++ (tl.flatten ++ rest)) hflat
     obtain ⟨rt, hmemt, hrt⟩ := ihtb rw_.list (tl.flatten ++ rest) hrw.symm
     obtain ⟨rl, hmeml, hrl⟩ := ihtl rt.list rest hrt.symm
@@ -364,31 +370,31 @@ theorem mem_parseTree_complete {l : Level G} (t : Tree G l) (tkns rest : List To
     refine ⟨(tb, rt), hmemt, ?_⟩
     apply List.mem_cons.mpr; right
     exact List.mem_map.mpr ⟨(tl, rl), hmeml, rfl⟩
-  -- Woven.last
+  -- Children.wLast
   case wl =>
-    intro tk tkns rest h
-    simp only [Woven.flatten] at h
+    intro a tk tkns rest h
+    simp only [Children.flatten] at h
     subst h
     refine ⟨RightSublist.cons tk rest, ?_, rfl⟩
-    show (Woven.last tk, RightSublist.cons tk rest) ∈ parseWoven [tk] (tk :: rest)
+    show (Children.wLast tk, RightSublist.cons tk rest) ∈ parseWoven a [tk] (tk :: rest)
     rw [parseWoven.eq_1, if_pos rfl]
     exact List.mem_singleton.mpr rfl
-  -- Woven.cons
+  -- Children.wCons
   case wc =>
-    intro restParts tk e w' ihe ihw tkns rest h
+    intro a restParts tk e w' ihe ihw tkns rest h
     obtain ⟨p, ps, hps⟩ : ∃ p ps, restParts = p :: ps := by
       cases w' with
-      | last tk2 => exact ⟨tk2, [], rfl⟩
-      | cons tk2 _ _ => exact ⟨tk2, _, rfl⟩
+      | wLast tk2 => exact ⟨tk2, [], rfl⟩
+      | wCons tk2 _ _ => exact ⟨tk2, _, rfl⟩
     subst hps
-    simp only [Woven.flatten, List.append_assoc, List.cons_append, List.nil_append] at h
+    simp only [Children.flatten, List.append_assoc, List.cons_append, List.nil_append] at h
     subst h
     obtain ⟨re, hmeme, hre⟩ := ihe (e.flatten ++ (w'.flatten ++ rest)) (w'.flatten ++ rest) rfl
     obtain ⟨rw2, hmemw2, hrw2⟩ := ihw re.list rest (by rw [hre])
     refine ⟨(RightSublist.cons tk _).trans (re.trans rw2), ?_, by
       simpa [RightSublist.trans, RightSublist.cons] using hrw2⟩
-    show (Woven.cons tk e w', _) ∈
-      parseWoven (tk :: p :: ps) (tk :: (e.flatten ++ (w'.flatten ++ rest)))
+    show (Children.wCons tk e w', _) ∈
+      parseWoven a (tk :: p :: ps) (tk :: (e.flatten ++ (w'.flatten ++ rest)))
     rw [parseWoven.eq_2, if_pos rfl]
     apply List.mem_flatMap.mpr
     refine ⟨(e, re), hmeme, ?_⟩

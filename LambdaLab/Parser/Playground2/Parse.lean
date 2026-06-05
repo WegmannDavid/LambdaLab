@@ -138,7 +138,7 @@ mutual
   def parseTree (a : G.Op) (tkns : List Token) : List (Tree G (.tighterEq a) × RightSublist tkns) :=
     match hf : (G.operator a).fixity with
     | .closed =>
-        (parseWoven (G.operator a).nameParts tkns).map
+        (parseWoven a (G.operator a).nameParts tkns).map
             (fun x => (Tree.opSelf a (hf ▸ Children.closed x.1), x.2))
         ++ (parseBelow a tkns).map (fun x => (x.1.lift, x.2))
     | .prefix =>
@@ -162,7 +162,7 @@ mutual
     | .infix .nonAssoc =>
         (parseBelow a tkns).flatMap (fun x =>
           (x.1.lift, x.2) ::
-          (parseWoven (G.operator a).nameParts x.2.list).flatMap (fun y =>
+          (parseWoven a (G.operator a).nameParts x.2.list).flatMap (fun y =>
             (parseBelow a y.2.list).map (fun z =>
               (Tree.opSelf a (hf ▸ Children.infixN x.1 y.1 z.1), x.2.trans (y.2.trans z.2)))))
   termination_by (tkns.length, G.rank a * 4 + 3, 0)
@@ -176,10 +176,10 @@ mutual
   /-- A non-empty prefix stack: a weave, then either a strictly-tighter body
   (`last`) or a further `a`-prefix layer (`more`). -/
   def parsePrefixStack (a : G.Op) (tkns : List Token) :
-      List (PrefixStack G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-      (parseBelow a x.2.list).map (fun y => (PrefixStack.last x.1 y.1, x.2.trans y.2))
-      ++ (parsePrefixStack a x.2.list).map (fun z => (PrefixStack.more x.1 z.1, x.2.trans z.2)))
+      List (Children G a .prefix × RightSublist tkns) :=
+    (parseWoven a (G.operator a).nameParts tkns).flatMap (fun x =>
+      (parseBelow a x.2.list).map (fun y => (Children.psLast x.1 y.1, x.2.trans y.2))
+      ++ (parsePrefixStack a x.2.list).map (fun z => (Children.psMore x.1 z.1, x.2.trans z.2)))
   termination_by (tkns.length, 1, 0)
   decreasing_by
     all_goals simp_wf
@@ -189,10 +189,10 @@ mutual
 
   /-- A non-empty trailing-weave list for a postfix operator. -/
   def parsePostfixTail (a : G.Op) (tkns : List Token) :
-      List (PostfixTail G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-      (PostfixTail.last x.1, x.2) ::
-      (parsePostfixTail a x.2.list).map (fun z => (PostfixTail.cons x.1 z.1, x.2.trans z.2)))
+      List (Children G a .postTail × RightSublist tkns) :=
+    (parseWoven a (G.operator a).nameParts tkns).flatMap (fun x =>
+      (Children.ptLast x.1, x.2) ::
+      (parsePostfixTail a x.2.list).map (fun z => (Children.ptCons x.1 z.1, x.2.trans z.2)))
   termination_by (tkns.length, 1, 0)
   decreasing_by
     all_goals simp_wf
@@ -203,12 +203,12 @@ mutual
   /-- A non-empty `(separator-weave, tighter operand)` spine for an infix
   operator (shared by left/right associativity). -/
   def parseInfixTail (a : G.Op) (tkns : List Token) :
-      List (InfixTail G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
+      List (Children G a .infixTail × RightSublist tkns) :=
+    (parseWoven a (G.operator a).nameParts tkns).flatMap (fun x =>
       (parseBelow a x.2.list).flatMap (fun y =>
-        (InfixTail.last x.1 y.1, x.2.trans y.2) ::
+        (Children.itLast x.1 y.1, x.2.trans y.2) ::
         (parseInfixTail a y.2.list).map (fun z =>
-          (InfixTail.cons x.1 y.1 z.1, x.2.trans (y.2.trans z.2)))))
+          (Children.itCons x.1 y.1 z.1, x.2.trans (y.2.trans z.2)))))
   termination_by (tkns.length, 1, 0)
   decreasing_by
     all_goals simp_wf
@@ -245,15 +245,15 @@ mutual
 
   /-- Consume an operator's name-parts, recursing into `parseExpr` for the
   interior (delimited) holes. -/
-  def parseWoven : (parts : List Token) → (tkns : List Token) →
-      List (Woven G parts × RightSublist tkns)
+  def parseWoven (a : G.Op) : (parts : List Token) → (tkns : List Token) →
+      List (Children G a (.weave parts) × RightSublist tkns)
     | [tk], (t :: rest) =>
-        if t = tk then [(Woven.last tk, RightSublist.cons t rest)] else []
+        if t = tk then [(Children.wLast tk, RightSublist.cons t rest)] else []
     | (tk :: p :: ps), (t :: rest) =>
         if t = tk then
           (parseExpr rest).flatMap (fun x =>
-            (parseWoven (p :: ps) x.2.list).map (fun y =>
-              (Woven.cons tk x.1 y.1, (RightSublist.cons t rest).trans (x.2.trans y.2))))
+            (parseWoven a (p :: ps) x.2.list).map (fun y =>
+              (Children.wCons tk x.1 y.1, (RightSublist.cons t rest).trans (x.2.trans y.2))))
         else []
     | _, _ => []
   termination_by _ tkns => (tkns.length, 0, 0)
