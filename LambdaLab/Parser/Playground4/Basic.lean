@@ -1,0 +1,103 @@
+import LambdaLab.Parser.Basic
+
+
+namespace LambdaLab.Parser.Playground4
+
+
+
+inductive Associativity where
+  | nonAssoc
+deriving DecidableEq, Repr
+
+
+inductive Fixity where
+| closed
+| prefx
+| postfx
+| infx (assoc : Associativity)
+deriving DecidableEq, Repr
+
+
+inductive Operator : Fixity → Type where
+| const : Token → Operator .closed
+| closed : Token → Operator .closed → Operator .closed
+| prefx : Token → Operator .prefx
+| infx : Operator .prefx → Operator (.infx .nonAssoc)
+| postfx : Operator .closed → Operator .postfx
+
+def firstToken (o : Operator f) : Token :=
+  match o with
+  | .const tkn    => tkn
+  | .closed tkn _ => tkn
+  | .prefx tkn    => tkn
+  | .infx o       => firstToken o
+  | .postfx o     => firstToken o
+
+/-- Reachability through the `tighter` successor lists: `TighterEq t a b`
+holds when `b` can be reached from `a` by repeatedly stepping into `t`, i.e.
+"`b` binds at least as tightly as `a`". This is the precedence order induced by
+a successor function `t : Op → List Op`. Defined over the raw `t` (not over a
+`Grammar`) so it can appear in `Grammar`'s own well-formedness fields. -/
+inductive TighterEq {Op : Type} (t : Op → List Op) : Op → Op → Prop where
+  | refl {a} : TighterEq t a a
+  | step {a b c} : b ∈ t a → TighterEq t b c → TighterEq t a c
+
+/-- The **strict** version of `TighterEq`: the *transitive* (but not
+reflexive) closure of `tighter`. `Tighter t a b` holds when `b` is
+reached from `a` by **one or more** `tighter` steps — i.e. "`b` binds *strictly*
+more tightly than `a`". Like `TighterEq`, defined over the raw successor
+function `t` rather than a `Grammar`, so it can sit in `Grammar`'s
+well-formedness fields and be reused (`Tighter G.tighter`). -/
+inductive Tighter {Op : Type} (t : Op → List Op) : Op → Op → Prop where
+  | base {a b} : b ∈ t a → Tighter t a b
+  | step {a b c} : b ∈ t a → Tighter t b c → Tighter t a c
+
+/-- A strictly-tighter path is in particular a (reflexive-transitive)
+tighter-path. -/
+theorem Tighter.toTighterEq {Op : Type} {t : Op → List Op} {a b : Op}
+    (h : Tighter t a b) : TighterEq t a b := by
+  induction h with
+  | base hmem => exact TighterEq.step hmem TighterEq.refl
+  | step hmem _ ih => exact TighterEq.step hmem ih
+
+/-- A grammar: an (abstract) operator-name type `Op`, the declaration of each
+operator, the precedence structure, and a `lookup` resolving a token to the
+operator it leads.
+
+**Precedence** is a successor graph — a DAG. `tighter o` lists the operators
+*immediately* tighter than `o`; the full order is reachability
+(`TighterEq tighter`). `loosest` lists the **source** operators (the loosest
+ones, where the parser starts); a DAG may have several. One well-formedness
+field pins it down:
+
+* `tighter_wf` — going tighter is **well-founded** (no infinite ever-tighter
+  chain). This is *both* the acyclicity guarantee *and* the termination measure
+  for the parser *and* for the precedence-indexed `Tree` (see `Tree.lean`), so
+  no separate finiteness witness is needed.
+
+There is deliberately **no coverage/reachability field**. `Tree G` is indexed
+by precedence node, so a tree rooted at a `loosest` operator can only mention
+operators reachable from it — unreachable ("dead") operators are excluded
+*structurally* rather than forbidden by an axiom, and the round-trip theorem is
+stated for trees at a `loosest` node.
+
+The order is left **partial** (a DAG): incomparable operators are allowed and
+must be parenthesized relative to one another. Forcing it total — a single
+chain, one operator per rung, no ties — would be an *extra* field, not a
+missing one.
+
+`lookup_spec` is the well-formedness condition — `lookup` inverts
+`Operator.head`: a token resolves to `o` exactly when it is `o`'s leading
+name-part. Since `lookup` is a function, this also forces *distinct leading
+tokens* across operators — the unique-reading condition that lets a parser
+recover an operator from the token stream. -/
+structure Grammar where
+  Op : Type
+  operator : Op → Σ f, Operator f
+  loosest : List Op
+  tighter : Op → List Op
+  tighter_wf : WellFounded (fun b a => b ∈ tighter a)
+  lookup : Token → Option Op
+  lookup_spec : ∀ o tkn, firstToken (operator o).2 = tkn ↔ lookup tkn = some o
+
+end LambdaLab.Parser.Playground4
