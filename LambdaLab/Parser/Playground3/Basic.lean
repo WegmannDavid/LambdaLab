@@ -26,11 +26,20 @@ def NonEmptyList.app (l r : NonEmptyList α) : NonEmptyList α :=
   | last x => .cons x r
   | cons x xs => .cons x (xs.app r)
 
+def NonEmptyList.toList : NonEmptyList α → List α
+  | last x => [x]
+  | cons x xs => x :: xs.toList
+
 inductive Operator : Type where
 | closed : NonEmptyList Token → Operator
 --| prefix : NonEmptyList Token → Operator
 | infx : NonEmptyList Token → Operator
 --| postfix : NonEmptyList Token → Operator
+
+/-- The name-part tokens of an operator, in body order. -/
+def Operator.nameTokens : Operator → List Token
+  | .closed tkns => tkns.toList
+  | .infx tkns => tkns.toList
 
 
 /-- Reachability through the `tighter` successor lists: `TighterEq t a b`
