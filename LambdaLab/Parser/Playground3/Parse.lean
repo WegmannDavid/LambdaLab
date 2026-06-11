@@ -1,52 +1,42 @@
 import LambdaLab.Parser.Playground3.Tree
 
 /-!
-# Precedence-climbing parser (all parses)
+# Parser for the `Part`/`Parts` parse-tree model (all parses)
 
-Parses a token stream into **all** precedence-indexed parses: every function
-returns a `List (… × RightSublist tkns)` (`none`→`[]`, `some x`→`[x]`,
-sequencing→`flatMap`). Roots/nodes are *concatenated*, not first-committed, so
-ambiguous or multi-root grammars surface every reading; an unambiguous
-(total-order) grammar yields a singleton. `parse` keeps the full-consumption
-parses.
+A precedence-climbing parser over the flattened operator-body representation of
+`Tree.lean`: an operator body is a `List (Part G)`, each `Part` either a literal
+`namePart` token or a recursive `hole` at some precedence `Level`. The parser
+returns **all** precedence-indexed parses (`List (… × RightSublist tkns)`,
+concatenated, never first-committed), so an ambiguous or multi-root grammar
+surfaces every reading and an unambiguous one yields a singleton.
 
-The shape of the recursion follows the grammar `⟦a⟧ = (operator a applied) | ⟦tighter a⟧`:
+The recursion mirrors the level structure `condition`:
 
-* `parseTree a` parses an expression at node `a`. For a **closed** operator it
-  matches the operator's name-parts directly (`parseWoven`); otherwise it falls
-  through to a strictly-tighter expression (`parseBelow`, wrapped in `next`).
-* All six fixities are handled. `prefix`/infix-`right`/`nonAssoc` are recursive
-  descent; the left-recursive `postfix`/infix-`left` use the tail loops
-  `parsePostfixTail`/`parseInfixLTail`, which return the stop case `(acc, r)`
-  (the fall-through) *and* every further fold — so all prefixes of a spine are
-  emitted.
-* `parseWoven` consumes an operator's name-parts, recursing into `parseExpr`
-  for the interior (delimited) holes.
-* `parseBelow` collects parses from every immediately-tighter node.
+* `parseExpr .loosest` / `parseExpr (.tighter a)` fan out, via `parseExprList`,
+  over the candidate operator lists (`G.loosest` / `G.tighter a`), reindexing
+  each `Tree G (.tighterEq c)` up to the requested level.
+* `parseExpr (.tighterEq a)` either applies operator `a` itself (parsing its
+  body `Part.parts a` with `parseParts`) or falls through to a strictly-tighter
+  expression.
+* `parseParts` walks an operator body left-to-right: a `namePart` must match the
+  next token; a `hole` recurses into `parseExpr` at the hole's level.
 
-Every parse in a returned list carries a `RightSublist` (proper suffix), so it
-consumed ≥1 token — fall-through is fine because it delegates to a parse that
-eventually consumes an atom.
+The parser is **total** — defined by well-founded recursion on the lexicographic
+triple `(tkns.length, levelMeasure, list-length)`:
 
-## Termination
+* **tokens** — `tkns.length`; drops whenever a `namePart` is matched or a hole's
+  sub-expression is consumed (a `RightSublist`).
+* **levelMeasure** — `rank · 4 + phase`, where `rank` is a `Nat` manufactured
+  from `tighter_wf` (`Grammar.rank`, strictly decreasing along `tighter`). At
+  *equal* tokens the chain `tighterEq a → body a → tighter a → tighterEq b`
+  (`b ∈ tighter a`) strictly decreases: the phases order the first three steps,
+  and `rank b < rank a` drops the last. The leading-hole recursion of an infix
+  operator (whose body `Part.parts a` begins with `.hole (.tighter a)`) is the
+  only same-token descent into a sub-expression, and it drops `rank`.
+* **list-length** — the candidate worklist of `parseExprList`, shrinking while
+  tokens and level stay fixed.
 
-The recursion has two dimensions, so the measure is the lexicographic
-`(tokens, level, list-length)`:
-
-* **tokens** — `tkns.length`; strictly drops whenever a name-part is consumed.
-* **level** — built from `Grammar.rank` (a `Nat` manufactured from `tighter_wf`,
-  since the abstract graph carries no number): a fall-through descends to a
-  strictly tighter node at the *same* tokens, and `rank` strictly drops there.
-  The entry parsers sit at `topRank` (above every loosest operator) and
-  `parseWoven` at `0` (below every node), so the same-token pipeline
-  `parseTree → parseBelow → parseBelowList → parseTree(tighter)` is well-founded.
-* **list-length** — the `rs`/`bs` worklists of `parseExprRoots`/`parseBelowList`,
-  which shrink while tokens and level stay fixed.
-
-Fully proved — no `sorry`. The list rewrite keeps this measure unchanged; the
-extra `flatMap`-collected parses don't add recursive calls, only more results,
-and each recursive call still decreases the same triple (the `flatMap`-bound
-remainder `x.2 : RightSublist …` supplies the token drop via `length_lt`).
+No correctness proofs (soundness / completeness / uniqueness) — only termination.
 -/
 
 namespace LambdaLab.Parser.Playground3
@@ -55,12 +45,39 @@ open LambdaLab.Parser
 
 variable {G : Grammar}
 
+/-! ## Precedence-order plumbing -/
+
+/-- A `tighter`-or-equal path is either trivial or a strictly-tighter path. -/
+theorem TighterEq.toTighterOrEq {Op : Type} {t : Op → List Op} {a b : Op}
+    (h : TighterEq t a b) : a = b ∨ Tighter t a b := by
+  induction h with
+  | refl => exact Or.inl rfl
+  | step hmem _ ih =>
+      cases ih with
+      | inl hEq => exact Or.inr (hEq ▸ Tighter.base hmem)
+      | inr hT  => exact Or.inr (Tighter.step hmem hT)
+
+/-- Prepending an immediate `tighter` step to a `tighter`-or-equal path yields a
+*strictly* tighter path: the witness that an operator reached from `b ∈ tighter a`
+binds strictly more tightly than `a`. -/
+theorem Tighter.ofMemTighterEq {Op : Type} {t : Op → List Op} {a b o : Op}
+    (hmem : b ∈ t a) (h : TighterEq t b o) : Tighter t a o := by
+  cases h.toTighterOrEq with
+  | inl hEq => exact hEq ▸ Tighter.base hmem
+  | inr hT  => exact Tighter.step hmem hT
+
+/-- Weaken the level of an expression along an implication of level conditions.
+Since `Expr.op` stores the operator (not the level), only the level witness
+changes — the body and hence the flattening are untouched. -/
+def Expr.reindex {l l' : Level G}
+    (h : ∀ o, Level.condition l o → Level.condition l' o) : Expr G l → Expr G l'
+  | .op o hc parts => .op o (h o hc) parts
+
 /-! ## A `Nat` rank for the termination measure
 
 The `tighter` graph is well-founded but carries no number, so we manufacture a
-`Nat` `rank` that strictly decreases along `tighter`. The parser's termination
-measure is then the ordinary lexicographic `(tokens, level, list-length)` with
-`level` built from `rank`. -/
+`Nat` `rank` strictly decreasing along `tighter`, exactly as in the other
+playgrounds. -/
 
 /-- Any element of a `Nat` list is `≤` its `foldr max 0`. -/
 theorem le_foldr_max {l : List Nat} {x : Nat} (h : x ∈ l) : x ≤ l.foldr Nat.max 0 := by
@@ -72,9 +89,9 @@ theorem le_foldr_max {l : List Nat} {x : Nat} (h : x ∈ l) : x ≤ l.foldr Nat.
       · exact Nat.le_max_left _ _
       · exact Nat.le_trans (ih h') (Nat.le_max_right _ _)
 
-/-- A `Nat` rank derived from the well-founded `tighter` graph: one more than
-the max rank of the immediately-tighter operators. Strictly decreasing along
-`tighter` (`rank_lt`). Used only to build the parser's termination measure. -/
+/-- A `Nat` rank derived from the well-founded `tighter` graph: one more than the
+max rank of the immediately-tighter operators. Strictly decreasing along
+`tighter` (`rank_lt`). -/
 def Grammar.rank (G : Grammar) (a : G.Op) : Nat :=
   G.tighter_wf.fix (C := fun _ => Nat)
     (fun a ih => ((G.tighter a).attach.map (fun b => ih b.1 b.2 + 1)).foldr Nat.max 0) a
@@ -83,7 +100,7 @@ theorem Grammar.rank_eq (G : Grammar) (a : G.Op) :
     G.rank a = ((G.tighter a).attach.map (fun b => G.rank b.1 + 1)).foldr Nat.max 0 :=
   WellFounded.fix_eq _ _ _
 
-/-- The defining property: tighter operators have strictly smaller rank. -/
+/-- Tighter operators have strictly smaller rank. -/
 theorem Grammar.rank_lt (G : Grammar) {a b : G.Op} (h : b ∈ G.tighter a) :
     G.rank b < G.rank a := by
   rw [G.rank_eq a]
@@ -92,8 +109,7 @@ theorem Grammar.rank_lt (G : Grammar) {a b : G.Op} (h : b ∈ G.tighter a) :
   have := le_foldr_max hmem
   omega
 
-/-- A rank strictly above every loosest operator — the "top" level for the
-entry parsers (`parseExpr`/`parseExprRoots`). -/
+/-- A rank strictly above every loosest operator. -/
 def Grammar.topRank (G : Grammar) : Nat := (G.loosest.map G.rank).foldr Nat.max 0 + 1
 
 theorem Grammar.rank_lt_topRank (G : Grammar) {r : G.Op} (h : r ∈ G.loosest) :
@@ -103,166 +119,141 @@ theorem Grammar.rank_lt_topRank (G : Grammar) {r : G.Op} (h : r ∈ G.loosest) :
   unfold Grammar.topRank
   omega
 
+/-- The looseness base of a level: `topRank` for `loosest`, the operator's rank
+for `tighter`/`tighterEq`. Used as the candidate-worklist's measure. -/
+def Level.base : Level G → Nat
+  | .loosest     => G.topRank
+  | .tighter a   => G.rank a
+  | .tighterEq a => G.rank a
+
+/-- The secondary termination measure of a level: `base · 4 + phase`. The phase
+orders, at equal tokens, the same-rank chain `tighterEq → body → tighter`
+(`tighterEq` is `3`; `loosest`/`tighter`, which only fan out, are `1`). -/
+def Level.measure : Level G → Nat
+  | .loosest     => G.topRank * 4 + 1
+  | .tighter a   => G.rank a * 4 + 1
+  | .tighterEq a => G.rank a * 4 + 3
+
+/-- The secondary measure of an operator body: one more than the leading hole's
+level measure (so parsing that hole strictly decreases), or `0` when the body
+starts with a `namePart` (which consumes a token instead). -/
+def partsMeasure : List (Part G) → Nat
+  | .hole ℓ :: _ => Level.measure ℓ + 1
+  | _            => 0
+
+/-- An operator body's `Part.inner` segment always begins with a `namePart`, so
+it carries no leading-hole measure. -/
+theorem partsMeasure_inner_eq_zero (tkns : NonEmptyList Token) :
+    partsMeasure (Part.inner (G := G) tkns) = 0 := by
+  cases tkns <;> rfl
+
+/-- An operator body measures strictly below its own `tighterEq` level: a
+`closed` body starts with a `namePart` (measure `0`); an `infx` body starts with
+`.hole (.tighter a)` (measure `rank a · 4 + 2`), both `< rank a · 4 + 3`. -/
+theorem partsMeasure_parts_lt (a : G.Op) :
+    partsMeasure (Part.parts a) < Level.measure (Level.tighterEq a) := by
+  unfold Part.parts
+  cases h : G.operator a with
+  | closed tkns =>
+      rw [partsMeasure_inner_eq_zero]
+      simp only [Level.measure]; omega
+  | infx tkns =>
+      simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
+      omega
+
+/-! ## The parser -/
+
+-- A couple of `decreasing_by` leaves unfold the level measures with a fixed
+-- `simp only` set whose lemmas don't all fire on every goal; that's intended.
+set_option linter.unusedSimpArgs false in
 mutual
-  /-- All top-level parses (one per loosest root that succeeds). -/
-  def parseExpr (tkns : List Token) : List (Expr G × RightSublist tkns) :=
-    parseExprRoots G.loosest (fun _ h => h) tkns
-  termination_by (tkns.length, G.topRank * 4 + 3, 0)
+  /-- All parses of an expression constrained to level `l`. -/
+  def parseExpr : (l : Level G) → (tkns : List Token) →
+      List (Expr G l × RightSublist tkns)
+    | .loosest, tkns =>
+        parseExprList .loosest G.loosest (fun c hc _o hco => ⟨c, hc, hco⟩)
+          (fun _ hc => G.rank_lt_topRank hc) tkns
+    | .tighter a, tkns =>
+        parseExprList (.tighter a) (G.tighter a) (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco)
+          (fun _ hc => G.rank_lt hc) tkns
+    | .tighterEq a, tkns =>
+        (parseParts (Part.parts a) tkns).map
+            (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G (.tighterEq a)), x.2))
+        ++ (parseExpr (.tighter a) tkns).map
+            (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
+                        (fun _ hh => Tighter.toTighterEq (show Tighter G.tighter a _ from hh)), x.2))
+  termination_by l tkns => (tkns.length, Level.measure l, 0)
   decreasing_by
     all_goals simp_wf
-    all_goals exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (partsMeasure_parts_lt _))
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure, Level.base]; omega))
 
-  /-- Concatenate the parses from every root `r ∈ rs ⊆ loosest` (no first-commit). -/
-  def parseExprRoots (rs : List G.Op) (hsub : ∀ r ∈ rs, r ∈ G.loosest)
-      (tkns : List Token) : List (Expr G × RightSublist tkns) :=
-    match rs with
-    | [] => []
-    | r :: rest =>
-        (parseTree r tkns).map (fun x => (Expr.mk r (hsub r List.mem_cons_self) x.1, x.2))
-        ++ parseExprRoots rest (fun b hb => hsub b (List.mem_cons_of_mem r hb)) tkns
-  termination_by (tkns.length, G.topRank * 4 + 1, rs.length)
+  /-- Concatenate, with no first-commit, the parses contributed by each candidate
+  operator `c ∈ cs`: parse at `c`'s own level and reindex up to `l`. `h` supplies,
+  per candidate, the proof that anything `c` reaches satisfies level `l`; `hrank`
+  the rank bound that makes the candidate descent decrease. -/
+  def parseExprList (l : Level G) (cs : List G.Op)
+      (h : ∀ c ∈ cs, ∀ o, TighterEq G.tighter c o → Level.condition l o)
+      (hrank : ∀ c ∈ cs, G.rank c < Level.base l) :
+      (tkns : List Token) → List (Expr G l × RightSublist tkns) :=
+    fun tkns =>
+      match cs, h, hrank with
+      | [], _, _ => []
+      | c :: rest, h, hrank =>
+          (parseExpr (.tighterEq c) tkns).map
+              (fun x => (x.1.reindex (l := .tighterEq c) (l' := l)
+                          (fun o hh => h c List.mem_cons_self o
+                            (show TighterEq G.tighter c o from hh)), x.2))
+          ++ parseExprList l rest (fun c' hc' => h c' (List.mem_cons_of_mem _ hc'))
+              (fun c' hc' => hrank c' (List.mem_cons_of_mem _ hc')) tkns
+  termination_by tkns => (tkns.length, Level.base l * 4, cs.length)
   decreasing_by
     all_goals simp_wf
     all_goals first
       | exact Prod.Lex.right _ (Prod.Lex.left _ _
-          (by have := G.rank_lt_topRank (hsub r List.mem_cons_self); omega))
-      | exact Prod.Lex.right _ (Prod.Lex.right _ (by omega))
+          (by have := hrank c List.mem_cons_self
+              first | (simp only [Level.measure]; omega) | omega))
+      | exact Prod.Lex.right _ (Prod.Lex.right _
+          (by first | (simp only [List.length_cons]; omega) | omega))
 
-  /-- All parses of an expression at precedence node `a`: operator-`a`
-  applications (per fixity) together with fall-throughs to tighter expressions.
-  Chaining/stacking is delegated to the spine parsers `parsePrefixStack`,
-  `parsePostfixTail`, `parseInfixTail`; the fall-through `Tree.next` is emitted
-  alongside. -/
-  def parseTree (a : G.Op) (tkns : List Token) : List (Tree G a × RightSublist tkns) :=
-    match hf : (G.operator a).fixity with
-    | .closed =>
-        (parseWoven (G.operator a).nameParts tkns).map
-            (fun x => (Tree.op a (hf ▸ Children.closed x.1), x.2))
-        ++ (parseBelow a tkns).map (fun x => (Tree.next x.1, x.2))
-    | .prefix =>
-        (parsePrefixStack a tkns).map (fun x => (Tree.op a (hf ▸ Children.prefix x.1), x.2))
-        ++ (parseBelow a tkns).map (fun x => (Tree.next x.1, x.2))
-    | .postfix =>
-        (parseBelow a tkns).flatMap (fun x =>
-          (Tree.next x.1, x.2) ::
-          (parsePostfixTail a x.2.list).map (fun y =>
-            (Tree.op a (hf ▸ Children.postfix x.1 y.1), x.2.trans y.2)))
-    | .infix .left =>
-        (parseBelow a tkns).flatMap (fun x =>
-          (Tree.next x.1, x.2) ::
-          (parseInfixTail a x.2.list).map (fun y =>
-            (Tree.op a (hf ▸ Children.infixL x.1 y.1), x.2.trans y.2)))
-    | .infix .right =>
-        (parseBelow a tkns).flatMap (fun x =>
-          (Tree.next x.1, x.2) ::
-          (parseInfixTail a x.2.list).map (fun y =>
-            (Tree.op a (hf ▸ Children.infixR x.1 y.1), x.2.trans y.2)))
-    | .infix .nonAssoc =>
-        (parseBelow a tkns).flatMap (fun x =>
-          (Tree.next x.1, x.2) ::
-          (parseWoven (G.operator a).nameParts x.2.list).flatMap (fun y =>
-            (parseBelow a y.2.list).map (fun z =>
-              (Tree.op a (hf ▸ Children.infixN x.1 y.1 z.1), x.2.trans (y.2.trans z.2)))))
-  termination_by (tkns.length, G.rank a * 4 + 3, 0)
+  /-- Parse an operator body `ps : List (Part G)` left-to-right: match each
+  `namePart` against the next token, recurse into `parseExpr` at each `hole`'s
+  level. The two singleton cases bottom out the recursion without a separate
+  empty-consuming step, so every result consumes ≥1 token (a `RightSublist`). -/
+  def parseParts : (ps : List (Part G)) → (tkns : List Token) →
+      List (Parts G ps × RightSublist tkns)
+    | [], _ => []
+    | [.namePart tk], tkns =>
+        match tkns with
+        | t :: rest => if t = tk then [(Parts.namePart tk Parts.nil, RightSublist.cons t rest)] else []
+        | []        => []
+    | [.hole l], tkns =>
+        (parseExpr l tkns).map (fun x => (Parts.hole x.1 Parts.nil, x.2))
+    | .namePart tk :: y :: rest', tkns =>
+        match tkns with
+        | t :: ts =>
+            if t = tk then
+              (parseParts (y :: rest') ts).map
+                  (fun z => (Parts.namePart tk z.1, (RightSublist.cons t ts).trans z.2))
+            else []
+        | [] => []
+    | .hole l :: y :: rest', tkns =>
+        (parseExpr l tkns).flatMap (fun x =>
+          (parseParts (y :: rest') x.2.list).map
+              (fun z => (Parts.hole x.1 z.1, x.2.trans z.2)))
+  termination_by ps tkns => (tkns.length, partsMeasure ps, 0)
   decreasing_by
     all_goals simp_wf
     all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by first | (simp only [partsMeasure]; omega) | omega))
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; have := y.2.length_lt; omega)
-
-  /-- A non-empty prefix stack: a weave, then either a strictly-tighter body
-  (`last`) or a further `a`-prefix layer (`more`). -/
-  def parsePrefixStack (a : G.Op) (tkns : List Token) :
-      List (PrefixStack G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-      (parseBelow a x.2.list).map (fun y => (PrefixStack.last x.1 y.1, x.2.trans y.2))
-      ++ (parsePrefixStack a x.2.list).map (fun z => (PrefixStack.more x.1 z.1, x.2.trans z.2)))
-  termination_by (tkns.length, 1, 0)
-  decreasing_by
-    all_goals simp_wf
-    all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
-
-  /-- A non-empty trailing-weave list for a postfix operator. -/
-  def parsePostfixTail (a : G.Op) (tkns : List Token) :
-      List (PostfixTail G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-      (PostfixTail.last x.1, x.2) ::
-      (parsePostfixTail a x.2.list).map (fun z => (PostfixTail.cons x.1 z.1, x.2.trans z.2)))
-  termination_by (tkns.length, 1, 0)
-  decreasing_by
-    all_goals simp_wf
-    all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
-
-  /-- A non-empty `(separator-weave, tighter operand)` spine for an infix
-  operator (shared by left/right associativity). -/
-  def parseInfixTail (a : G.Op) (tkns : List Token) :
-      List (InfixTail G a × RightSublist tkns) :=
-    (parseWoven (G.operator a).nameParts tkns).flatMap (fun x =>
-      (parseBelow a x.2.list).flatMap (fun y =>
-        (InfixTail.last x.1 y.1, x.2.trans y.2) ::
-        (parseInfixTail a y.2.list).map (fun z =>
-          (InfixTail.cons x.1 y.1 z.1, x.2.trans (y.2.trans z.2)))))
-  termination_by (tkns.length, 1, 0)
-  decreasing_by
-    all_goals simp_wf
-    all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; have := y.2.length_lt; omega)
-
-  /-- All strictly-tighter parses. -/
-  def parseBelow (a : G.Op) (tkns : List Token) : List (TreeBelow G a × RightSublist tkns) :=
-    parseBelowList a (G.tighter a) (fun _ h => h) tkns
-  termination_by (tkns.length, G.rank a * 4 + 2, 0)
-  decreasing_by
-    all_goals simp_wf
-    all_goals exact Prod.Lex.right _ (Prod.Lex.left _ _ (by omega))
-
-  /-- Concatenate the parses from every immediately-tighter node `b ∈ bs`. -/
-  def parseBelowList (a : G.Op) (bs : List G.Op) (hsub : ∀ b ∈ bs, b ∈ G.tighter a)
-      (tkns : List Token) : List (TreeBelow G a × RightSublist tkns) :=
-    match bs with
-    | [] => []
-    | b :: rest =>
-        (parseTree b tkns).map (fun x => (TreeBelow.mk b (hsub b List.mem_cons_self) x.1, x.2))
-        ++ parseBelowList a rest (fun c hc => hsub c (List.mem_cons_of_mem b hc)) tkns
-  termination_by (tkns.length, G.rank a * 4 + 1, bs.length)
-  decreasing_by
-    all_goals simp_wf
-    all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _
-          (by have := G.rank_lt (hsub b List.mem_cons_self); omega))
-      | exact Prod.Lex.right _ (Prod.Lex.right _ (by omega))
-
-  /-- Consume an operator's name-parts, recursing into `parseExpr` for the
-  interior (delimited) holes. -/
-  def parseWoven : (parts : List Token) → (tkns : List Token) →
-      List (Woven G parts × RightSublist tkns)
-    | [tk], (t :: rest) =>
-        if t = tk then [(Woven.last tk, RightSublist.cons t rest)] else []
-    | (tk :: p :: ps), (t :: rest) =>
-        if t = tk then
-          (parseExpr rest).flatMap (fun x =>
-            (parseWoven (p :: ps) x.2.list).map (fun y =>
-              (Woven.cons tk x.1 y.1, (RightSublist.cons t rest).trans (x.2.trans y.2))))
-        else []
-    | _, _ => []
-  termination_by _ tkns => (tkns.length, 0, 0)
-  decreasing_by
-    all_goals simp_wf
-    all_goals first
-      | exact Prod.Lex.left _ _ (by omega)
-      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+      | exact Prod.Lex.left _ _ (by first | (simp only [List.length_cons]; omega) | omega)
 end
 
 /-- All full parses (consuming the entire input). For an unambiguous grammar
 this is a singleton (or empty). -/
-def parse (tkns : List Token) : List (Expr G) :=
-  (parseExpr (G := G) tkns).filterMap (fun x => if x.2.list = [] then some x.1 else none)
+def parse (tkns : List Token) : List (Expr G .loosest) :=
+  (parseExpr (G := G) .loosest tkns).filterMap (fun x => if x.2.list = [] then some x.1 else none)
 
 end LambdaLab.Parser.Playground3

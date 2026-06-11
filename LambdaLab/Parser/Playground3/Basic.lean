@@ -4,61 +4,34 @@ import LambdaLab.Parser.Basic
 namespace LambdaLab.Parser.Playground3
 
 
-/-- How an operator associates when it chains with operators of equal
-precedence. Only `infix` operators carry one. -/
+
 inductive Associativity where
   | nonAssoc
 deriving DecidableEq, Repr
 
-/-- An operator's fixity — equivalently, whether its token shape begins
-and/or ends with a recursive hole. Writing `nᵢ` for name-parts and `_` for
-holes:
 
-* `closed`  : `n₀ _ n₁ _ … _ nₖ`   — holes only *between* name-parts
-* `prefix`  : `n₀ _ n₁ _ … _ nₖ _` — extra *trailing* hole
-* `postfix` : `_ n₀ _ … _ nₖ`      — extra *leading* hole
-* `infix`   : `_ n₀ _ … _ nₖ _`    — both boundary holes, plus an associativity
--/
 inductive Fixity where
-  | closed
-  | infix (assoc : Associativity)
+| closed
+| prefx
+| postfx
+| infx (assoc : Associativity)
 deriving DecidableEq, Repr
 
-/-- The number of recursive holes a fixity contributes, given the number `k`
-of name-parts. A `closed` operator has `k - 1` interior holes; `prefix` and
-`postfix` add one boundary hole each; `infix` adds both. -/
-def Fixity.arity : Fixity → Nat → Nat
-  | .closed,  k => k - 1
-  | .infix _, k => k + 1
+inductive NonEmptyList (α : Type) where
+| last : α → NonEmptyList α
+| cons : α → NonEmptyList α → NonEmptyList α
 
-/-- A mixfix operator declaration: a fixity and a non-empty list of literal
-name-parts. The recursive holes are *not* stored — their count and placement
-follow from the fixity and `nameParts.length` (see `Fixity.arity`). An operator
-describes token *shape* only; it carries no semantics, and crucially no
-precedence — precedence is a *relative* ranking, so it lives on the `Grammar`
-(see `Grammar.tighter`). Associativity, by contrast, is intrinsic to the
-operator and rides along inside its `infix` `Fixity`. -/
+def NonEmptyList.app (l r : NonEmptyList α) : NonEmptyList α :=
+  match l with
+  | last x => .cons x r
+  | cons x xs => .cons x (xs.app r)
 
-inductive NonEmptyList (α : Type) : Type where
-| last (a : α) : NonEmptyList α
-| cons (a : α) (as : NonEmptyList α) : NonEmptyList α
+inductive Operator : Type where
+| closed : NonEmptyList Token → Operator
+--| prefix : NonEmptyList Token → Operator
+| infx : NonEmptyList Token → Operator
+--| postfix : NonEmptyList Token → Operator
 
-def NonEmptyList.head {α} (xs : NonEmptyList α) : α :=
-  match xs with
-  | .last a => a
-  | .cons a _ => a
-
-def NonEmptyList.predLength : NonEmptyList α → Nat
-  | .last _ => 0
-  | .cons _ as => 1 + as.predLength
-
-structure Operator where
-  fixity : Fixity
-  nameParts : NonEmptyList Token
-
-/-- The number of recursive holes (child trees) of an operator. -/
-def Operator.arity (o : Operator) : Nat :=
-  o.fixity.arity o.nameParts.predLength
 
 /-- Reachability through the `tighter` successor lists: `TighterEq t a b`
 holds when `b` can be reached from `a` by repeatedly stepping into `t`, i.e.
@@ -125,12 +98,6 @@ structure Grammar where
   tighter : Op → List Op
   tighter_wf : WellFounded (fun b a => b ∈ tighter a)
   lookup : Token → Option Op
-  lookup_spec : ∀ o tkn, (operator o).nameParts.head = tkn ↔ lookup tkn = some o
-
-/-- The fixity of a grammar operator. -/
-def Grammar.fixity (G : Grammar) (o : G.Op) : Fixity := (G.operator o).fixity
-
-/-- The arity (hole count) of a grammar operator. -/
-def Grammar.arity (G : Grammar) (o : G.Op) : Nat := (G.operator o).arity
+  --lookup_spec : ∀ o tkn, firstToken (operator o).2 = tkn ↔ lookup tkn = some o
 
 end LambdaLab.Parser.Playground3
