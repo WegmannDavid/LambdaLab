@@ -93,6 +93,8 @@ theorem Part.bodyTokens_parts (o : G.Op) :
   unfold Part.parts Operator.nameTokens
   cases G.operator o with
   | closed tkns => exact Part.bodyTokens_inner tkns
+  | prefx tkns =>
+      simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | infx tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
 

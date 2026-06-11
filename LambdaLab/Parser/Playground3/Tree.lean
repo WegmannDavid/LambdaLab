@@ -29,6 +29,7 @@ def Part.inner {G : Grammar} (parts : NonEmptyList Token) : List (Part G) :=
 def Part.parts {G : Grammar} (o : G.Op) : List (Part G) :=
   match G.operator o with
   | .closed tkns => Part.inner tkns
+  | .prefx  tkns => Part.inner tkns ++ [.hole (.tighter o)]
   | .infx   tkns => [.hole (.tighter o)] ++ Part.inner tkns ++ [.hole (.tighter o)]
 
 mutual

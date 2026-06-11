@@ -189,6 +189,7 @@ theorem Part.parts_ne_nil (o : G.Op) : Part.parts (G := G) o ≠ [] := by
   unfold Part.parts
   cases hop : G.operator o with
   | closed tkns => exact Part.inner_ne_nil tkns
+  | prefx tkns => simp
   | infx tkns => simp
 
 /-- Completeness of the candidate worklist: a parse found at a candidate's own

@@ -32,13 +32,14 @@ def NonEmptyList.toList : NonEmptyList α → List α
 
 inductive Operator : Type where
 | closed : NonEmptyList Token → Operator
---| prefix : NonEmptyList Token → Operator
+| prefx : NonEmptyList Token → Operator
 | infx : NonEmptyList Token → Operator
 --| postfix : NonEmptyList Token → Operator
 
 /-- The name-part tokens of an operator, in body order. -/
 def Operator.nameTokens : Operator → List Token
   | .closed tkns => tkns.toList
+  | .prefx tkns => tkns.toList
   | .infx tkns => tkns.toList
 
 

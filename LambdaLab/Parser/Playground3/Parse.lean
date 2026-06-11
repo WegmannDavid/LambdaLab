@@ -148,14 +148,20 @@ theorem partsMeasure_inner_eq_zero (tkns : NonEmptyList Token) :
   cases tkns <;> rfl
 
 /-- An operator body measures strictly below its own `tighterEq` level: a
-`closed` body starts with a `namePart` (measure `0`); an `infx` body starts with
-`.hole (.tighter a)` (measure `rank a · 4 + 2`), both `< rank a · 4 + 3`. -/
+`closed` or `prefx` body starts with a `namePart` (measure `0`); an `infx` body
+starts with `.hole (.tighter a)` (measure `rank a · 4 + 2`), both
+`< rank a · 4 + 3`. -/
 theorem partsMeasure_parts_lt (a : G.Op) :
     partsMeasure (Part.parts a) < Level.measure (Level.tighterEq a) := by
   unfold Part.parts
   cases h : G.operator a with
   | closed tkns =>
       rw [partsMeasure_inner_eq_zero]
+      simp only [Level.measure]; omega
+  | prefx tkns =>
+      have hz : partsMeasure (Part.inner (G := G) tkns ++ [.hole (.tighter a)]) = 0 := by
+        cases tkns <;> rfl
+      rw [hz]
       simp only [Level.measure]; omega
   | infx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
