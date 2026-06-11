@@ -191,6 +191,7 @@ theorem Part.parts_ne_nil (o : G.Op) : Part.parts (G := G) o ≠ [] := by
   | closed tkns => exact Part.inner_ne_nil tkns
   | prefx tkns => simp
   | infx tkns => simp
+  | postfx tkns => simp
 
 /-- Completeness of the candidate worklist: a parse found at a candidate's own
 `tighterEq` level survives, reindexed, into `parseExprList`'s concatenation. -/

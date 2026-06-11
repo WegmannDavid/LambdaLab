@@ -34,13 +34,14 @@ inductive Operator : Type where
 | closed : NonEmptyList Token → Operator
 | prefx : NonEmptyList Token → Operator
 | infx : NonEmptyList Token → Operator
---| postfix : NonEmptyList Token → Operator
+| postfx : NonEmptyList Token → Operator
 
 /-- The name-part tokens of an operator, in body order. -/
 def Operator.nameTokens : Operator → List Token
   | .closed tkns => tkns.toList
   | .prefx tkns => tkns.toList
   | .infx tkns => tkns.toList
+  | .postfx tkns => tkns.toList
 
 
 /-- Reachability through the `tighter` successor lists: `TighterEq t a b`

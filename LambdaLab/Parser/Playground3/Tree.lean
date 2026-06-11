@@ -31,6 +31,7 @@ def Part.parts {G : Grammar} (o : G.Op) : List (Part G) :=
   | .closed tkns => Part.inner tkns
   | .prefx  tkns => Part.inner tkns ++ [.hole (.tighter o)]
   | .infx   tkns => [.hole (.tighter o)] ++ Part.inner tkns ++ [.hole (.tighter o)]
+  | .postfx tkns => [.hole (.tighter o)] ++ Part.inner tkns
 
 mutual
   inductive Expr (G : Grammar) : Level G → Type where

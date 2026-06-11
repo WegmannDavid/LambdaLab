@@ -97,6 +97,8 @@ theorem Part.bodyTokens_parts (o : G.Op) :
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | infx tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
+  | postfx tkns =>
+      simp [Part.bodyTokens, Part.bodyTokens_inner]
 
 mutual
   /-- The number of applications of operator `o` in an expression. -/
