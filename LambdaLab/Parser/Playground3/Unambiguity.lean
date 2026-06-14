@@ -480,6 +480,29 @@ theorem Parts.flatten_head_of_namePart {o : G.Op} {rest : List (Part G)}
   cases hsh ▸ parts with
   | namePart tk q => exact Parts.flatten_head_namePart q
 
+/-- The leading token of any expression is the head of some operator reachable at
+the expression's level: for a closed/prefix top it is the operator's own head, for
+an infix/postfix top it descends into the (strictly tighter) left operand. -/
+theorem Expr.headTok_reach {l : Level G} (e : Expr G l) :
+    ∃ o', Level.condition l o' ∧ e.flatten.head? = some (G.operator o').head := by
+  match e with
+  | .op o c parts =>
+    rcases Part.parts_shape o with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
+    · exact ⟨o, c, by rw [Expr.flatten_op]; exact Parts.flatten_head_of_namePart parts hsh⟩
+    · rw [Expr.flatten_op, ← Parts.flatten_cast hsh parts]
+      cases hcp : hsh ▸ parts with
+      | hole e₀ q =>
+          rw [Parts.flatten_head_hole]
+          obtain ⟨o', hc', hh'⟩ := Expr.headTok_reach e₀
+          exact ⟨o', Level.condition_up c hc'.toTighterEq, hh'⟩
+  termination_by e.size
+  decreasing_by
+    simp only [Expr.size]
+    have hsz : parts.size = (Parts.hole e₀ q).size := by
+      rw [← hcp]; exact (Parts.size_cast hsh parts).symm
+    simp only [Parts.size] at hsz
+    omega
+
 /-! ### The isolated hard kernel
 
 Two **distinct** top operators cannot produce the same flattening with both
