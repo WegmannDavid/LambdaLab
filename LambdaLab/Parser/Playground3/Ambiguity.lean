@@ -58,6 +58,7 @@ distinct (the distinct-leading-tokens condition), yet the grammar is ambiguous. 
   loosest := [.mul]
   tighter := ambTighter
   tighter_wf := ambTighter_wf
+  isVar := fun _ => false
 
 /-- `n` as a loosest expression. -/
 def nL : Expr amb .loosest :=

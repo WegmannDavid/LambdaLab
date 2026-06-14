@@ -82,12 +82,21 @@ missing one.
 There is deliberately no token-`lookup` field: the parser keys on name-part
 tokens directly, and the unique-reading condition (distinct leading tokens) is
 *derived* from the user-facing `UniqueNameParts` certificate
-(`Unambiguity.heads_distinct`), not assumed here. -/
+(`Unambiguity.heads_distinct`), not assumed here.
+
+`isVar` recognizes *variable* (identifier) tokens — atoms that are not operator
+name parts. The parser admits any `isVar` token as a leaf `Expr.var` at every
+level. For unique parses, a separate certificate requires `isVar` tokens to be
+disjoint from operator name parts (so a token can't be read as both a variable
+and an operator), exactly as `UniqueNameParts` handles name-part collisions. -/
 structure Grammar where
   Op : Type
   operator : Op → Operator
   loosest : List Op
   tighter : Op → List Op
   tighter_wf : WellFounded (fun b a => b ∈ tighter a)
+  /-- Recognizes variable (identifier) tokens — leaf atoms, distinct from operator
+  name parts. -/
+  isVar : Token → Bool
 
 end LambdaLab.Parser.Playground3

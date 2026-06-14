@@ -72,6 +72,7 @@ changes — the body and hence the flattening are untouched. -/
 def Expr.reindex {l l' : Level G}
     (h : ∀ o, Level.condition l o → Level.condition l' o) : Expr G l → Expr G l'
   | .op o hc parts => .op o (h o hc) parts
+  | .var t hv => .var t hv
 
 /-! ## A `Nat` rank for the termination measure
 
@@ -170,6 +171,14 @@ theorem partsMeasure_parts_lt (a : G.Op) :
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
 
+/-- Parse a single variable leaf: if the next token is an identifier (`isVar`),
+emit `Expr.var` at the requested level (variables are valid atoms everywhere).
+Non-recursive, so it is termination-neutral wherever it is appended. -/
+def parseVar (l : Level G) : (tkns : List Token) → List (Expr G l × RightSublist tkns)
+  | [] => []
+  | t :: rest =>
+      if h : G.isVar t = true then [(Expr.var t h, RightSublist.cons t rest)] else []
+
 /-! ## The parser -/
 
 -- A couple of `decreasing_by` leaves unfold the level measures with a fixed
@@ -182,9 +191,11 @@ mutual
     | .loosest, tkns =>
         parseExprList .loosest G.loosest (fun c hc _o hco => ⟨c, hc, hco⟩)
           (fun _ hc => G.rank_lt_topRank hc) tkns
+        ++ parseVar .loosest tkns
     | .tighter a, tkns =>
         parseExprList (.tighter a) (G.tighter a) (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco)
           (fun _ hc => G.rank_lt hc) tkns
+        ++ parseVar (.tighter a) tkns
     | .tighterEq a, tkns =>
         (parseParts (Part.parts a) tkns).map
             (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G (.tighterEq a)), x.2))

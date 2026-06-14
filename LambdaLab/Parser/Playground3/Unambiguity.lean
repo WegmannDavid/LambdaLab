@@ -62,6 +62,9 @@ structure Grammar.UniqueNameParts (G : Grammar) : Prop where
   /-- A name part determines its operator. -/
   owner : ∀ o₁ o₂ : G.Op, ∀ t : Token,
     t ∈ (G.operator o₁).nameTokens → t ∈ (G.operator o₂).nameTokens → o₁ = o₂
+  /-- Variable tokens are disjoint from operator name parts, so a token cannot be
+  read as both a variable leaf and (part of) an operator. -/
+  varDisjoint : ∀ t : Token, G.isVar t = true → ∀ o : G.Op, t ∉ (G.operator o).nameTokens
 
 /-! ## Counting applications
 
@@ -104,6 +107,7 @@ mutual
   /-- The number of applications of operator `o` in an expression. -/
   def Expr.countApps [DecidableEq G.Op] (o : G.Op) {l : Level G} : Expr G l → Nat
     | .op o' _ parts => (if o' = o then 1 else 0) + parts.countApps o
+    | .var _ _ => 0
 
   /-- The number of applications of operator `o` in a body segment. -/
   def Parts.countApps [DecidableEq G.Op] (o : G.Op) {ps : List (Part G)} : Parts G ps → Nat
@@ -143,6 +147,10 @@ mutual
           exact List.count_eq_one_of_nodup_mem (h.nodup o') ht
         · rw [if_neg ho]
           exact List.count_eq_zero.mpr (fun hmem => ho (h.owner o' o t hmem ht))
+    | .var t' hv => by
+        rw [Expr.flatten_var, Expr.countApps]
+        have hne : t' ≠ t := by rintro rfl; exact h.varDisjoint _ hv o ht
+        simp [hne]
 
   /-- Body-segment version: token occurrences split into the segment's own
   name tokens plus the holes' contributions. -/
@@ -172,6 +180,10 @@ theorem arith_uniqueNameParts : arith.UniqueNameParts where
   owner o₁ o₂ t h₁ h₂ := by
     cases o₁ <;> cases o₂ <;>
       simp_all [symOp, Operator.nameTokens, NonEmptyList.toList]
+  varDisjoint t hvar o := by
+    intro hmem
+    have hnotin : t ∉ ["n", "(", ")", "+", "*", "-", "!"] := of_decide_eq_true hvar
+    exact hnotin (by cases o <;> simp_all [symOp, Operator.nameTokens, NonEmptyList.toList])
 
 /-- The ambiguous grammar of `Ambiguity.lean` fails the condition exactly at
 the reused `*`: it is a name part of both `wrap` and `mul`. -/
@@ -182,7 +194,7 @@ theorem amb_not_uniqueNameParts : ¬ amb.UniqueNameParts := fun h =>
 
 /-! ## Segmentation machinery (forest-free port of the spine `Stops` argument)
 
-Ported from `Playground2.Uniqueness`, but *without* its `tighter_disjoint` /
+Ported from `Playground.Uniqueness`, but *without* its `tighter_disjoint` /
 `loosest_disjoint` (forest) hypotheses: the jump encoding of `Expr` (it names its
 real top operator with a proof-irrelevant witness, recording no intermediate
 precedence node) collapses DAG diamonds to equal trees, so the cross-node cases
@@ -296,6 +308,7 @@ mutual
   theorem Expr.flatten_ne {l : Level G} (e : Expr G l) : e.flatten ≠ [] := by
     match e with
     | .op o _ parts => rw [Expr.flatten_op]; exact Parts.flatten_ne parts (Part.parts_ne_nil o)
+    | .var t _ => rw [Expr.flatten_var]; exact List.cons_ne_nil t []
 
   theorem Parts.flatten_ne {ps : List (Part G)} (p : Parts G ps) (hps : ps ≠ []) :
       p.flatten ≠ [] := by
@@ -349,6 +362,7 @@ this structural size does not, so the mutual recursion's descent is transparent.
 mutual
   def Expr.size {l : Level G} : Expr G l → Nat
     | .op _ _ p => 1 + p.size
+    | .var _ _ => 1
   def Parts.size {ps : List (Part G)} : Parts G ps → Nat
     | .nil => 0
     | .hole e p => 1 + e.size + p.size
@@ -480,29 +494,6 @@ theorem Parts.flatten_head_of_namePart {o : G.Op} {rest : List (Part G)}
   cases hsh ▸ parts with
   | namePart tk q => exact Parts.flatten_head_namePart q
 
-/-- The leading token of any expression is the head of some operator reachable at
-the expression's level: for a closed/prefix top it is the operator's own head, for
-an infix/postfix top it descends into the (strictly tighter) left operand. -/
-theorem Expr.headTok_reach {l : Level G} (e : Expr G l) :
-    ∃ o', Level.condition l o' ∧ e.flatten.head? = some (G.operator o').head := by
-  match e with
-  | .op o c parts =>
-    rcases Part.parts_shape o with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
-    · exact ⟨o, c, by rw [Expr.flatten_op]; exact Parts.flatten_head_of_namePart parts hsh⟩
-    · rw [Expr.flatten_op, ← Parts.flatten_cast hsh parts]
-      cases hcp : hsh ▸ parts with
-      | hole e₀ q =>
-          rw [Parts.flatten_head_hole]
-          obtain ⟨o', hc', hh'⟩ := Expr.headTok_reach e₀
-          exact ⟨o', Level.condition_up c hc'.toTighterEq, hh'⟩
-  termination_by e.size
-  decreasing_by
-    simp only [Expr.size]
-    have hsz : parts.size = (Parts.hole e₀ q).size := by
-      rw [← hcp]; exact (Parts.size_cast hsh parts).symm
-    simp only [Parts.size] at hsz
-    omega
-
 /-! ### The isolated hard kernel
 
 Two **distinct** top operators cannot produce the same flattening with both
@@ -567,6 +558,27 @@ theorem BodyOk.hole_stops (h : G.UniqueNameParts) {l : Level G} {o : G.Op}
       cases q with
       | namePart _ q' => exact Stops.tighter_of_head h (by simp [Parts.flatten_namePart, hsep])
 
+/-- A variable leaf and an operator application cannot share a flatten-prefix with
+both leftovers stopping the level. For a closed/prefix operator this is immediate
+from `varDisjoint` (the variable token would have to be the operator's head). For
+an infix/postfix operator the variable's single token is a strict prefix of the
+operand-led body, so it reduces to the same proper-prefix kernel as
+`topOp_unique_holeLed` (the remaining `sorry`). -/
+theorem udVarOp (h : G.UniqueNameParts) {l : Level G} {t : Token} (hv : G.isVar t = true)
+    {o : G.Op} (c : Level.condition l o) (p : Parts G (Part.parts o)) (s₁ s₂ : List Token)
+    (heq : (Expr.var (l := l) t hv).flatten ++ s₁ = (Expr.op o c p).flatten ++ s₂)
+    (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
+  rw [Expr.flatten_var, Expr.flatten_op] at heq
+  rcases Part.parts_shape o with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
+  · -- closed/prefix: the body leads with `o`'s head, so `t = o.head` — impossible.
+    have ht := congrArg List.head? heq
+    rw [head?_append_left (Parts.flatten_ne p (Part.parts_ne_nil o)),
+      Parts.flatten_head_of_namePart p hsh] at ht
+    simp only [List.cons_append, List.head?_cons, Option.some.injEq] at ht
+    exact h.varDisjoint t hv o (ht.symm ▸ Operator.head_mem (G.operator o))
+  · -- infix/postfix (operand-led): proper-prefix kernel residue.
+    sorry
+
 /-! ### Mutual prefix-form unique decomposition -/
 
 mutual
@@ -588,6 +600,14 @@ mutual
           subst ho
           rw [← hrec.1]
         · exact (topOp_unique h ho c₁ c₂ p₁ p₂ s₁ s₂ hpe hs₁ hs₂).elim
+    | .var t₁ hv₁, .var t₂ hv₂ =>
+        simp only [Expr.flatten_var, List.cons_append, List.cons.injEq] at heq
+        obtain ⟨rfl, hs⟩ := heq
+        exact ⟨rfl, hs⟩
+    | .op o₁ c₁ p₁, .var t₂ hv₂ =>
+        exact (udVarOp h hv₂ c₁ p₁ s₂ s₁ heq.symm hs₂ hs₁).elim
+    | .var t₁ hv₁, .op o₂ c₂ p₂ =>
+        exact (udVarOp h hv₁ c₂ p₂ s₁ s₂ heq hs₁ hs₂).elim
   termination_by e₁.size + e₂.size
   decreasing_by all_goals (simp only [Expr.size, Parts.size_cast]; omega)
 

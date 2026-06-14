@@ -36,6 +36,11 @@ def Part.parts {G : Grammar} (o : G.Op) : List (Part G) :=
 mutual
   inductive Expr (G : Grammar) : Level G → Type where
   | op : (o : G.Op) → Level.condition l o → Parts G (Part.parts o) → Expr G l
+  /-- A variable leaf: an identifier token (`G.isVar t`), valid at every level (a
+  maximally-tight atom, so no `Level.condition`). The `isVar` proof keeps `var t`
+  from masquerading as an operator atom (e.g. `var "n"` vs the `num` operator),
+  which would otherwise break `flatten`-injectivity. -/
+  | var : (t : Token) → G.isVar t = true → Expr G l
 
   inductive Parts (G : Grammar) : List (Part G) → Type where
   | nil : Parts G .nil
@@ -47,6 +52,7 @@ mutual
   def Expr.flatten (e : Expr G l) : List Token :=
     match e with
     |.op _ _ l => l.flatten
+    | .var t _ => [t]
 
   def Parts.flatten (l : Parts G shape) : List Token :=
     match l with

@@ -29,6 +29,9 @@ variable {G : Grammar}
 @[simp] theorem Expr.flatten_op {l : Level G} (o : G.Op) (hc : Level.condition l o)
     (parts : Parts G (Part.parts o)) : (Expr.op o hc parts).flatten = parts.flatten := rfl
 
+@[simp] theorem Expr.flatten_var {l : Level G} (t : Token) (hv : G.isVar t = true) :
+    (Expr.var (G := G) (l := l) t hv).flatten = [t] := rfl
+
 @[simp] theorem Parts.flatten_nil : (Parts.nil (G := G)).flatten = [] := rfl
 
 @[simp] theorem Parts.flatten_hole {l : Level G} {ps : List (Part G)}
@@ -41,7 +44,7 @@ variable {G : Grammar}
 @[simp] theorem Expr.flatten_reindex {l l' : Level G}
     (h : ∀ o, Level.condition l o → Level.condition l' o) (e : Expr G l) :
     (e.reindex h).flatten = e.flatten := by
-  cases e; rfl
+  cases e <;> rfl
 
 /-! ## `RightSublist` lemmas -/
 
@@ -50,6 +53,39 @@ variable {G : Grammar}
 
 @[simp] theorem RightSublist.list_trans {α : Type _} {l : List α}
     (s : RightSublist l) (r : RightSublist s.list) : (s.trans r).list = r.list := rfl
+
+/-! ## Variable-leaf parsing -/
+
+/-- Soundness of `parseVar`: a parsed variable consumes exactly its token. -/
+theorem parseVar_sound {l : Level G} {tkns : List Token} {x : Expr G l × RightSublist tkns}
+    (hx : x ∈ parseVar l tkns) : x.1.flatten ++ x.2.list = tkns := by
+  cases tkns with
+  | nil => simp [parseVar] at hx
+  | cons t rest =>
+      simp only [parseVar] at hx
+      split at hx
+      · rw [List.mem_singleton] at hx; subst hx; rfl
+      · simp at hx
+
+/-- Completeness of `parseVar`: an identifier token is parsed as a variable. -/
+theorem parseVar_complete {l : Level G} {t : Token} (hv : G.isVar t = true) (rest : List Token) :
+    (Expr.var t hv, RightSublist.cons t rest) ∈ parseVar l (t :: rest) := by
+  simp only [parseVar, dif_pos hv]
+  exact List.mem_singleton.mpr rfl
+
+/-- A variable is found at *every* level: directly for `loosest`/`tighter`, and via
+the fall-through for `tighterEq`. -/
+theorem mem_parseExpr_var {l : Level G} {t : Token} (hv : G.isVar t = true) (rest : List Token) :
+    (Expr.var t hv, RightSublist.cons t rest) ∈ parseExpr l (t :: rest) := by
+  cases l with
+  | loosest => rw [parseExpr]; exact List.mem_append_right _ (parseVar_complete hv rest)
+  | tighter a => rw [parseExpr]; exact List.mem_append_right _ (parseVar_complete hv rest)
+  | tighterEq a =>
+      rw [parseExpr]
+      refine List.mem_append_right _
+        (List.mem_map.mpr ⟨(Expr.var t hv, RightSublist.cons t rest), ?_, rfl⟩)
+      rw [parseExpr]
+      exact List.mem_append_right _ (parseVar_complete hv rest)
 
 /-! ## Soundness -/
 
@@ -74,11 +110,17 @@ theorem parse_sound_all :
     (motive3 := fun l cs h hrank tkns =>
       ∀ x ∈ parseExprList l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns)
   case _ => -- parseExpr .loosest
-    intro tkns ih
-    simpa [parseExpr] using ih
+    intro tkns ih x hx
+    rw [parseExpr] at hx
+    rcases List.mem_append.mp hx with hx | hx
+    · exact ih x hx
+    · exact parseVar_sound hx
   case _ => -- parseExpr (.tighter a)
-    intro a tkns ih
-    simpa [parseExpr] using ih
+    intro a tkns ih x hx
+    rw [parseExpr] at hx
+    rcases List.mem_append.mp hx with hx | hx
+    · exact ih x hx
+    · exact parseVar_sound hx
   case _ => -- parseExpr (.tighterEq a)
     intro a tkns ihParts ihTighter x hx
     rw [parseExpr] at hx
@@ -172,7 +214,7 @@ theorem parse_sound {tkns : List Token} {e : Expr G .loosest} (h : e ∈ parse t
 theorem Expr.reindex_irrel {l l' : Level G}
     (h h' : ∀ o, Level.condition l o → Level.condition l' o) (e : Expr G l) :
     e.reindex h = e.reindex h' := by
-  cases e; rfl
+  cases e <;> rfl
 
 /-- A strictly-tighter path decomposes into a first `tighter` step and a
 tighter-or-equal remainder. -/
@@ -279,9 +321,9 @@ theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a
         (l := .tighterEq b) (l' := .tighter a)
         (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
       rw [parseExpr]
-      exact parseExprList_complete (l := .tighter a) (G.tighter a)
+      exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
         (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
-        hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm
+        hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
     rw [parseExpr]
     exact List.mem_append_right _ (List.mem_map.mpr ⟨_, hmem2, rfl⟩)
 termination_by (sizeOf parts, G.rank a + 1)
@@ -304,17 +346,20 @@ theorem parseExpr_complete {l : Level G} (e : Expr G l) (tkns rest : List Token)
       obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath parts tkns rest heq
       refine ⟨r, hr, ?_⟩
       rw [parseExpr]
-      exact parseExprList_complete (l := .tighter a) (G.tighter a)
+      exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
         (fun _ hcc _o hco => Tighter.ofMemTighterEq hcc hco) (fun _ hcc => G.rank_lt hcc)
-        hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm
+        hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
   | .loosest, .op o hc parts, heq =>
       obtain ⟨a, ha, hpath⟩ := hc
       obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath parts tkns rest heq
       refine ⟨r, hr, ?_⟩
       rw [parseExpr]
-      exact parseExprList_complete (l := .loosest) G.loosest
+      exact List.mem_append_left _ (parseExprList_complete (l := .loosest) G.loosest
         (fun c hcc _o hco => ⟨c, hcc, hco⟩) (fun _ hcc => G.rank_lt_topRank hcc)
-        ha (fun _o hh => ⟨a, ha, hh⟩) hm
+        ha (fun _o hh => ⟨a, ha, hh⟩) hm)
+  | l, .var t hv, heq =>
+      subst heq
+      exact ⟨RightSublist.cons t rest, rfl, mem_parseExpr_var hv rest⟩
 termination_by (sizeOf e, 0)
 decreasing_by
   all_goals simp_wf

@@ -71,6 +71,8 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
   loosest := [.add]
   tighter := symTighter
   tighter_wf := symTighter_wf
+  -- Any token that is not one of `arith`'s reserved name parts is a variable.
+  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!"])
 
 /-! ## Running the parser
 
@@ -131,5 +133,22 @@ def run (tkns : List Token) : List (List Token) :=
 #eval run ["n", "!", "!"]                -- []
 -- …without parentheses: `( n ! ) !` → one tree.
 #eval run ["(", "n", "!", ")", "!"]      -- 4 × ["(", "n", "!", ")", "!"]
+
+/-! ### Variables
+
+Any token that is not a reserved name part (`isVar`) parses as a leaf variable, at
+any level — so identifiers mix freely with operators and literals. (A variable is a
+valid atom at *every* level, so the all-parses parser surfaces it once per level it
+descends through: each result list below is many equal copies of the one tree.) -/
+
+-- `x` → the variable leaf, as one tree.
+#eval run ["x"]
+-- `x + y` → variables as the operands of `+`.
+#eval run ["x", "+", "y"]
+-- `x + n * y` → a variable, the literal `n`, and operators together (x + (n * y)).
+#eval run ["x", "+", "n", "*", "y"]
+-- `- x` and `( x + y ) !` → variables under prefix / postfix / parens.
+#eval run ["-", "x"]
+#eval run ["(", "x", "+", "y", ")", "!"]
 
 end LambdaLab.Parser.Playground3
