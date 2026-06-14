@@ -4,8 +4,8 @@ import LambdaLab.Parser.Playground3.Verified
 # Distinct leading tokens do not give unambiguity
 
 A machine-checked obstruction for discharging `Grammar.Unambiguous`: the
-unique-reading condition sketched for `Grammar.lookup` (distinct *leading*
-tokens, so a token resolves to at most one operator) is **insufficient**.
+distinct-*leading*-tokens condition (a token resolves to at most one operator)
+is **insufficient**.
 
 The grammar `amb` below has three operators with pairwise-distinct leading
 tokens —
@@ -51,16 +51,13 @@ theorem ambTighter_wf : WellFounded (fun b a => b ∈ ambTighter a) :=
     (measure ambRank).wf
 
 /-- The counterexample grammar. Leading tokens `n`, `(`, `*` are pairwise
-distinct, so a `lookup` inverting them exists. -/
+distinct (the distinct-leading-tokens condition), yet the grammar is ambiguous. -/
 @[reducible] def amb : Grammar where
   Op := AmbOp
   operator := ambOperator
   loosest := [.mul]
   tighter := ambTighter
   tighter_wf := ambTighter_wf
-  lookup := fun t =>
-    if t = "n" then some .num else if t = "(" then some .wrap
-    else if t = "*" then some .mul else none
 
 /-- `n` as a loosest expression. -/
 def nL : Expr amb .loosest :=

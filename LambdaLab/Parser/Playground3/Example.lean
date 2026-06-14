@@ -64,17 +64,6 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
       cases x <;> cases y <;> simp_all [symTighter, symRank])
     (measure symRank).wf
 
-/-- Resolve a leading token to its operator (unused by the parser, which keys on
-name-parts directly; provided to populate the `Grammar`). -/
-def symLookup : Token → Option Sym
-  | "n" => some .num
-  | "(" => some .paren
-  | "+" => some .add
-  | "*" => some .mul
-  | "-" => some .neg
-  | "!" => some .fac
-  | _   => none
-
 /-- The arithmetic grammar. `@[reducible]` so `arith.Op` unfolds to `Sym`. -/
 @[reducible] def arith : Grammar where
   Op := Sym
@@ -82,7 +71,6 @@ def symLookup : Token → Option Sym
   loosest := [.add]
   tighter := symTighter
   tighter_wf := symTighter_wf
-  lookup := symLookup
 
 /-! ## Running the parser
 

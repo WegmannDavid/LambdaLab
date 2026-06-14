@@ -5,26 +5,9 @@ namespace LambdaLab.Parser.Playground3
 
 
 
-inductive Associativity where
-  | nonAssoc
-deriving DecidableEq, Repr
-
-
-inductive Fixity where
-| closed
-| prefx
-| postfx
-| infx (assoc : Associativity)
-deriving DecidableEq, Repr
-
 inductive NonEmptyList (α : Type) where
 | last : α → NonEmptyList α
 | cons : α → NonEmptyList α → NonEmptyList α
-
-def NonEmptyList.app (l r : NonEmptyList α) : NonEmptyList α :=
-  match l with
-  | last x => .cons x r
-  | cons x xs => .cons x (xs.app r)
 
 def NonEmptyList.toList : NonEmptyList α → List α
   | last x => [x]
@@ -72,8 +55,7 @@ theorem Tighter.toTighterEq {Op : Type} {t : Op → List Op} {a b : Op}
   | step hmem _ ih => exact TighterEq.step hmem ih
 
 /-- A grammar: an (abstract) operator-name type `Op`, the declaration of each
-operator, the precedence structure, and a `lookup` resolving a token to the
-operator it leads.
+operator, and the precedence structure.
 
 **Precedence** is a successor graph — a DAG. `tighter o` lists the operators
 *immediately* tighter than `o`; the full order is reachability
@@ -97,18 +79,15 @@ must be parenthesized relative to one another. Forcing it total — a single
 chain, one operator per rung, no ties — would be an *extra* field, not a
 missing one.
 
-`lookup_spec` is the well-formedness condition — `lookup` inverts
-`Operator.head`: a token resolves to `o` exactly when it is `o`'s leading
-name-part. Since `lookup` is a function, this also forces *distinct leading
-tokens* across operators — the unique-reading condition that lets a parser
-recover an operator from the token stream. -/
+There is deliberately no token-`lookup` field: the parser keys on name-part
+tokens directly, and the unique-reading condition (distinct leading tokens) is
+*derived* from the user-facing `UniqueNameParts` certificate
+(`Unambiguity.heads_distinct`), not assumed here. -/
 structure Grammar where
   Op : Type
   operator : Op → Operator
   loosest : List Op
   tighter : Op → List Op
   tighter_wf : WellFounded (fun b a => b ∈ tighter a)
-  lookup : Token → Option Op
-  --lookup_spec : ∀ o tkn, firstToken (operator o).2 = tkn ↔ lookup tkn = some o
 
 end LambdaLab.Parser.Playground3
