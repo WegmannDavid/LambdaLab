@@ -180,6 +180,366 @@ theorem amb_not_uniqueNameParts : ¬ amb.UniqueNameParts := fun h =>
     (by simp [ambOperator, Operator.nameTokens, NonEmptyList.toList])
     (by simp [ambOperator, Operator.nameTokens, NonEmptyList.toList]))
 
+/-! ## Segmentation machinery (forest-free port of the spine `Stops` argument)
+
+Ported from `Playground.Uniqueness`, but *without* its `tighter_disjoint` /
+`loosest_disjoint` (forest) hypotheses: the jump encoding of `Expr` (it names its
+real top operator with a proof-irrelevant witness, recording no intermediate
+precedence node) collapses DAG diamonds to equal trees, so the cross-node cases
+that forced the forest assumption in the spine simply do not arise here. What
+remains genuinely hard — determining the *top operator* of an infix expression
+from its token string — is isolated as the single `topOp_unique` axiom-shaped
+lemma below. Everything else uses only `UniqueNameParts` + `tighter_wf`. -/
+
+/-- First name token of a nonempty token list. -/
+def NonEmptyList.head {α : Type} : NonEmptyList α → α
+  | .last x => x
+  | .cons x _ => x
+
+theorem NonEmptyList.head_mem_toList {α : Type} (l : NonEmptyList α) : l.head ∈ l.toList := by
+  cases l with
+  | last x => simp [NonEmptyList.head, NonEmptyList.toList]
+  | cons x xs => simp [NonEmptyList.head, NonEmptyList.toList]
+
+/-- The leading name part of an operator. -/
+def Operator.head : Operator → Token
+  | .closed t => t.head
+  | .prefx t => t.head
+  | .infx t => t.head
+  | .postfx t => t.head
+
+theorem Operator.head_mem (o : Operator) : o.head ∈ o.nameTokens := by
+  cases o <;> exact NonEmptyList.head_mem_toList _
+
+theorem Operator.nameTokens_eq (o : Operator) :
+    o.nameTokens = o.head :: o.nameTokens.tail := by
+  cases o <;> rename_i t <;> cases t <;> rfl
+
+theorem mem_of_mem_tail {α} {l : List α} {t : α} (h : t ∈ l.tail) : t ∈ l := by
+  cases l with
+  | nil => simp at h
+  | cons x xs => simp only [List.tail_cons] at h; exact List.mem_cons_of_mem x h
+
+theorem head?_append_left {l s : List Token} (hl : l ≠ []) : (l ++ s).head? = l.head? := by
+  cases l with
+  | nil => exact absurd rfl hl
+  | cons x xs => rfl
+
+theorem head?_eq_of_prefix {l₁ l₂ s₁ s₂ : List Token}
+    (h : l₁ ++ s₁ = l₂ ++ s₂) (h₁ : l₁ ≠ []) (h₂ : l₂ ≠ []) : l₁.head? = l₂.head? := by
+  have : (l₁ ++ s₁).head? = (l₂ ++ s₂).head? := by rw [h]
+  rwa [head?_append_left h₁, head?_append_left h₂] at this
+
+/-! ### Reachability -/
+
+theorem TighterEq.trans {a b c : G.Op}
+    (h₁ : TighterEq G.tighter a b) (h₂ : TighterEq G.tighter b c) : TighterEq G.tighter a c := by
+  induction h₁ with
+  | refl => exact h₂
+  | step hmem _ ih => exact TighterEq.step hmem (ih h₂)
+
+theorem Tighter.trans {a b c : G.Op}
+    (h₁ : Tighter G.tighter a b) (h₂ : Tighter G.tighter b c) : Tighter G.tighter a c := by
+  induction h₁ with
+  | base hmem => exact Tighter.step hmem h₂
+  | step hmem _ ih => exact Tighter.step hmem (ih h₂)
+
+theorem Tighter.trans_tighterEq {a o o' : G.Op}
+    (h : Tighter G.tighter a o) (h' : TighterEq G.tighter o o') : Tighter G.tighter a o' := by
+  cases h'.toTighterOrEq with
+  | inl he => exact he ▸ h
+  | inr ht => exact h.trans ht
+
+/-- No cycle: an operator is unreachable from anything strictly tighter than it. -/
+theorem no_cycle {a b : G.Op} (h : b ∈ G.tighter a) : ¬ TighterEq G.tighter b a := by
+  suffices H : ∀ a b, b ∈ G.tighter a → TighterEq G.tighter b a → False from fun hr => H a b h hr
+  intro a
+  induction a using G.tighter_wf.induction with
+  | _ a ih =>
+    intro b hRba hreach
+    cases hreach with
+    | refl => exact ih a hRba a hRba TighterEq.refl
+    | step hRcb hca =>
+        rename_i c
+        exact ih b hRba c hRcb (hca.trans (TighterEq.step hRba TighterEq.refl))
+
+/-- The level condition is up-closed along `TighterEq`: reachability is transitive. -/
+theorem Level.condition_up {l : Level G} {o o' : G.Op}
+    (hc : Level.condition l o) (hT : TighterEq G.tighter o o') : Level.condition l o' := by
+  cases l with
+  | tighter a => exact Tighter.trans_tighterEq hc hT
+  | tighterEq a => exact TighterEq.trans hc hT
+  | loosest => obtain ⟨r, hr, hp⟩ := hc; exact ⟨r, hr, hp.trans hT⟩
+
+/-! ### Name parts determine operators -/
+
+theorem Grammar.UniqueNameParts.heads_distinct (h : G.UniqueNameParts) {o o' : G.Op}
+    (hne : o ≠ o') : (G.operator o).head ≠ (G.operator o').head := by
+  intro he
+  exact hne (h.owner o o' _ (Operator.head_mem _) (he ▸ Operator.head_mem _))
+
+/-- Every name part *after the leading one* is the head of no operator. -/
+theorem Grammar.UniqueNameParts.tail_notHead (h : G.UniqueNameParts) (a : G.Op) :
+    ∀ tk ∈ (G.operator a).nameTokens.tail, ∀ o : G.Op, (G.operator o).head ≠ tk := by
+  intro tk htk o he
+  have hmem_a : tk ∈ (G.operator a).nameTokens := mem_of_mem_tail htk
+  have hmem_o : tk ∈ (G.operator o).nameTokens := he ▸ Operator.head_mem _
+  have hoa : o = a := h.owner o a tk hmem_o hmem_a
+  subst hoa
+  have hnd := h.nodup o
+  rw [Operator.nameTokens_eq (G.operator o)] at hnd
+  exact (List.nodup_cons.mp hnd).1 (he.symm ▸ htk)
+
+/-! ### `flatten` is never empty -/
+
+mutual
+  theorem Expr.flatten_ne {l : Level G} (e : Expr G l) : e.flatten ≠ [] := by
+    match e with
+    | .op o _ parts => rw [Expr.flatten_op]; exact Parts.flatten_ne parts (Part.parts_ne_nil o)
+
+  theorem Parts.flatten_ne {ps : List (Part G)} (p : Parts G ps) (hps : ps ≠ []) :
+      p.flatten ≠ [] := by
+    match ps, p with
+    | [], _ => exact absurd rfl hps
+    | (.namePart _) :: _, .namePart _ _ => simp [Parts.flatten]
+    | (.hole _) :: _, .hole e _ =>
+        rw [Parts.flatten_hole]
+        exact fun hc => Expr.flatten_ne e (List.append_eq_nil_iff.mp hc).1
+end
+
+theorem Parts.flatten_head_inner {tkns : NonEmptyList Token} (p : Parts G (Part.inner tkns)) :
+    p.flatten.head? = some tkns.head :=
+  match tkns, p with
+  | .last _, .namePart _ _ => by simp [Parts.flatten, NonEmptyList.head]
+  | .cons _ _, .namePart _ _ => by simp [Parts.flatten, NonEmptyList.head]
+
+/-! ### `Stops` -/
+
+/-- The leftover `s` does not begin with a token that could continue an expression
+at level `l`: no operator satisfying `l`'s condition has its head there. -/
+def Stops (l : Level G) (s : List Token) : Prop :=
+  ∀ o : G.Op, Level.condition l o → s.head? ≠ some (G.operator o).head
+
+/-- A leftover that stops level `l` also stops any strictly-tighter level reachable
+through an `l`-operator `o`. -/
+theorem Stops.tighter {l : Level G} {o : G.Op} (hc : Level.condition l o)
+    {s : List Token} (hs : Stops l s) : Stops (Level.tighter o) s :=
+  fun o' (hT : Tighter G.tighter o o') => hs o' (Level.condition_up hc hT.toTighterEq)
+
+/-- A leftover that begins with no operator's head at all stops every level. -/
+theorem Stops.of_noHead {s : List Token} {tk : Token} (hhd : s.head? = some tk)
+    (hno : ∀ o : G.Op, (G.operator o).head ≠ tk) (l : Level G) : Stops l s :=
+  fun o _ hcon => hno o (by rw [hhd] at hcon; exact (Option.some.inj hcon).symm)
+
+/-- A leftover that begins with `o`'s own head stops every level *strictly tighter*
+than `o` (acyclicity: nothing tighter than `o` can reach `o`). -/
+theorem Stops.tighter_of_head (h : G.UniqueNameParts) {o : G.Op} {s : List Token}
+    (hhd : s.head? = some (G.operator o).head) : Stops (Level.tighter o) s := by
+  intro o' (hT : Tighter G.tighter o o') hcon
+  rw [hhd] at hcon
+  have heq : (G.operator o).head = (G.operator o').head := Option.some.inj hcon
+  have hoo : o = o' := Classical.byContradiction fun hne => h.heads_distinct hne heq
+  obtain ⟨b, hb, hpath⟩ := (hoo ▸ hT).destruct
+  exact no_cycle hb hpath
+
+/-! ### A level-erased size (termination measure ignoring the `Level` index)
+
+`sizeOf` on `Expr`/`Parts` counts the `Level` index, which omega cannot bound;
+this structural size does not, so the mutual recursion's descent is transparent. -/
+mutual
+  def Expr.size {l : Level G} : Expr G l → Nat
+    | .op _ _ p => 1 + p.size
+  def Parts.size {ps : List (Part G)} : Parts G ps → Nat
+    | .nil => 0
+    | .hole e p => 1 + e.size + p.size
+    | .namePart _ p => 1 + p.size
+end
+
+/-- `size`/`flatten` are invariant under reindexing the part-list (used to compare
+two bodies whose operators are equal without `subst`-ing the recursive call). -/
+theorem Parts.size_cast {ps qs : List (Part G)} (hpp : ps = qs) (p : Parts G ps) :
+    (hpp ▸ p).size = p.size := by cases hpp; rfl
+
+theorem Parts.flatten_cast {ps qs : List (Part G)} (hpp : ps = qs) (p : Parts G ps) :
+    (hpp ▸ p).flatten = p.flatten := by cases hpp; rfl
+
+/-! ### Body well-formedness invariant
+
+`BodyOk o ps` records, for a suffix `ps` of an operator body, exactly what the
+segmentation needs at each hole: a `loosest` hole is followed by a name token that
+heads no operator; a `tighter o` hole is either the last part (its operand's
+leftover is the caller's, stopped via `Stops.tighter`) or followed by `o`'s own
+head (the separator, stopped via acyclicity); holes never abut. Stated as an
+inductive (not a recursive `def`) so it is trivial to build and to `cases`. -/
+inductive BodyOk (o : G.Op) : List (Part G) → Prop where
+  | nil : BodyOk o []
+  | name {tk rest} : BodyOk o rest → BodyOk o (Part.namePart tk :: rest)
+  | holeLast {l'} : l' = Level.tighter o → BodyOk o [Part.hole l']
+  | holeLoosest {tk rest} : (∀ o' : G.Op, (G.operator o').head ≠ tk) →
+      BodyOk o (Part.namePart tk :: rest) →
+      BodyOk o (Part.hole Level.loosest :: Part.namePart tk :: rest)
+  | holeSep {tk rest} : tk = (G.operator o).head →
+      BodyOk o (Part.namePart tk :: rest) →
+      BodyOk o (Part.hole (Level.tighter o) :: Part.namePart tk :: rest)
+
+/-- `Part.inner` always leads with a name part: the first body token. -/
+theorem Part.inner_eq_cons (tkns : NonEmptyList Token) :
+    Part.inner (G := G) tkns = Part.namePart tkns.head :: (Part.inner tkns).tail := by
+  cases tkns with
+  | last t => rfl
+  | cons t ts => rfl
+
+/-- `Part.inner ++ suffix` likewise leads with the first body token. -/
+theorem Part.inner_app_cons (tkns : NonEmptyList Token) (suffix : List (Part G)) :
+    Part.inner tkns ++ suffix
+      = Part.namePart tkns.head :: ((Part.inner tkns).tail ++ suffix) := by
+  cases tkns with
+  | last t => rfl
+  | cons t ts => rfl
+
+/-- A name-part skeleton followed by an arbitrary (already-`BodyOk`) suffix is
+`BodyOk`: every internal `loosest` hole is followed by a non-leading name part of
+the operator (a non-head, via `hpr`), and the final name part connects to the
+suffix. -/
+theorem BodyOk_inner_app (o : G.Op) (tkns : NonEmptyList Token) (suffix : List (Part G))
+    (hpr : ∀ tk ∈ tkns.toList.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk)
+    (hsuf : BodyOk o suffix) : BodyOk o (Part.inner tkns ++ suffix) := by
+  induction tkns with
+  | last t => exact BodyOk.name hsuf
+  | cons t ts ih =>
+      have hih := ih (fun tk htk => hpr tk (mem_of_mem_tail htk))
+      show BodyOk o (Part.namePart t :: Part.hole Level.loosest :: (Part.inner ts ++ suffix))
+      refine BodyOk.name ?_
+      rw [Part.inner_app_cons ts suffix]
+      exact BodyOk.holeLoosest (hpr ts.head (NonEmptyList.head_mem_toList ts))
+        (by rw [← Part.inner_app_cons ts suffix]; exact hih)
+
+/-- Every operator body is `BodyOk` for its own operator. -/
+theorem BodyOk_parts (h : G.UniqueNameParts) (o : G.Op) : BodyOk o (Part.parts o) := by
+  unfold Part.parts
+  cases hop : G.operator o with
+  | closed tkns =>
+      have hpr : ∀ tk ∈ tkns.toList.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk := by
+        have ht := h.tail_notHead o; rw [hop] at ht; simpa [Operator.nameTokens] using ht
+      simpa using BodyOk_inner_app o tkns [] hpr BodyOk.nil
+  | prefx tkns =>
+      have hpr : ∀ tk ∈ tkns.toList.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk := by
+        have ht := h.tail_notHead o; rw [hop] at ht; simpa [Operator.nameTokens] using ht
+      exact BodyOk_inner_app o tkns [Part.hole (Level.tighter o)] hpr (BodyOk.holeLast rfl)
+  | infx tkns =>
+      have hpr : ∀ tk ∈ tkns.toList.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk := by
+        have ht := h.tail_notHead o; rw [hop] at ht; simpa [Operator.nameTokens] using ht
+      have hhead : tkns.head = (G.operator o).head := by rw [hop]; rfl
+      show BodyOk o (Part.hole (Level.tighter o) :: (Part.inner tkns ++ [Part.hole (Level.tighter o)]))
+      rw [Part.inner_app_cons tkns [Part.hole (Level.tighter o)]]
+      refine BodyOk.holeSep hhead ?_
+      rw [← Part.inner_app_cons tkns [Part.hole (Level.tighter o)]]
+      exact BodyOk_inner_app o tkns [Part.hole (Level.tighter o)] hpr (BodyOk.holeLast rfl)
+  | postfx tkns =>
+      have hpr : ∀ tk ∈ tkns.toList.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk := by
+        have ht := h.tail_notHead o; rw [hop] at ht; simpa [Operator.nameTokens] using ht
+      have hhead : tkns.head = (G.operator o).head := by rw [hop]; rfl
+      show BodyOk o (Part.hole (Level.tighter o) :: Part.inner tkns)
+      rw [Part.inner_eq_cons tkns]
+      refine BodyOk.holeSep hhead ?_
+      rw [← Part.inner_eq_cons tkns]
+      simpa using BodyOk_inner_app o tkns [] hpr BodyOk.nil
+
+/-! ### The isolated hard kernel
+
+The *only* remaining gap. Two **distinct** top operators cannot produce the same
+flattening with both leftovers stopping the level. The spine proof sidestepped
+this by reading the top operator off the leading token (true for the spine's
+`next`-recording encoding, with forest assumed); here, where an infix operator's
+leading token belongs to its left operand, it requires the Danielsson–Norell
+depth-0 / bracket-counting argument (roadmap in this file's header; foundation
+`count_flatten_expr` above). Forest-free. -/
+theorem topOp_unique (h : G.UniqueNameParts) {l : Level G} {o₁ o₂ : G.Op} (hne : o₁ ≠ o₂)
+    (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
+    (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
+    (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
+  sorry
+
+/-- The body tail after a hole is itself `BodyOk` (for the `udParts` recursion). -/
+theorem BodyOk.hole_tail {o : G.Op} {l' : Level G} {rest : List (Part G)}
+    (hok : BodyOk o (Part.hole l' :: rest)) : BodyOk o rest := by
+  cases hok with
+  | holeLast _ => exact BodyOk.nil
+  | holeLoosest _ hbody => exact hbody
+  | holeSep _ hbody => exact hbody
+
+/-- The operand of a hole has a `Stop`pable leftover: the `BodyOk` data pins
+exactly which mechanism applies (acyclicity for separators/last holes,
+unique-name-parts for inner holes). This is where the segmentation lives — all
+three cases are forest-free. -/
+theorem BodyOk.hole_stops (h : G.UniqueNameParts) {l : Level G} {o : G.Op}
+    (hco : Level.condition l o) {l' : Level G} {rest : List (Part G)}
+    (hok : BodyOk o (Part.hole l' :: rest)) (q : Parts G rest) {s : List Token}
+    (hs : Stops l s) : Stops l' (q.flatten ++ s) := by
+  cases hok with
+  | holeLast hl' =>
+      cases q
+      subst hl'
+      simpa only [Parts.flatten_nil, List.nil_append] using Stops.tighter hco hs
+  | holeLoosest hno hbody =>
+      cases q with
+      | namePart _ q' => exact Stops.of_noHead (by simp [Parts.flatten_namePart]) hno Level.loosest
+  | holeSep hsep hbody =>
+      cases q with
+      | namePart _ q' => exact Stops.tighter_of_head h (by simp [Parts.flatten_namePart, hsep])
+
+/-! ### Mutual prefix-form unique decomposition -/
+
+mutual
+  /-- Two expressions at the same level with a common flatten-prefix (both
+  leftovers stopping the level) are equal, with equal leftovers. The top operator
+  agrees by `topOp_unique`; the bodies then agree by `udParts`. -/
+  theorem udExpr (h : G.UniqueNameParts) {l : Level G} (e₁ e₂ : Expr G l)
+      (s₁ s₂ : List Token) (heq : e₁.flatten ++ s₁ = e₂.flatten ++ s₂)
+      (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : e₁ = e₂ ∧ s₁ = s₂ := by
+    match e₁, e₂ with
+    | .op o₁ c₁ p₁, .op o₂ c₂ p₂ =>
+        have hpe : p₁.flatten ++ s₁ = p₂.flatten ++ s₂ := by
+          simpa only [Expr.flatten_op] using heq
+        by_cases ho : o₁ = o₂
+        · have hpp : Part.parts o₁ = Part.parts o₂ := congrArg Part.parts ho
+          have hrec := udParts h o₂ c₂ (BodyOk_parts h o₂) (hpp ▸ p₁) p₂ s₁ s₂
+            (by rw [Parts.flatten_cast]; exact hpe) hs₁ hs₂
+          refine ⟨?_, hrec.2⟩
+          subst ho
+          rw [← hrec.1]
+        · exact (topOp_unique h ho c₁ c₂ p₁ p₂ s₁ s₂ hpe hs₁ hs₂).elim
+  termination_by e₁.size + e₂.size
+  decreasing_by all_goals (simp only [Expr.size, Parts.size_cast]; omega)
+
+  /-- Two operator bodies over the same `BodyOk` part-list with a common
+  flatten-prefix are equal, with equal leftovers. Walks the body front-to-back;
+  each hole's operand leftover is `Stop`ped using the `BodyOk` data, then the
+  operand is matched by `udExpr`. -/
+  theorem udParts (h : G.UniqueNameParts) {l : Level G} (o : G.Op) (hco : Level.condition l o)
+      {ps : List (Part G)} (hok : BodyOk o ps) (p₁ p₂ : Parts G ps) (s₁ s₂ : List Token)
+      (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) :
+      p₁ = p₂ ∧ s₁ = s₂ := by
+    match ps, p₁, p₂ with
+    | [], .nil, .nil => exact ⟨rfl, by simpa only [Parts.flatten_nil, List.nil_append] using heq⟩
+    | (.namePart tk) :: rest, .namePart _ q₁, .namePart _ q₂ =>
+        have hok' : BodyOk o rest := by cases hok with | name hb => exact hb
+        have heq' : q₁.flatten ++ s₁ = q₂.flatten ++ s₂ := by
+          simpa only [Parts.flatten_namePart, List.cons_append, List.cons.injEq, true_and] using heq
+        have hrec := udParts h o hco hok' q₁ q₂ s₁ s₂ heq' hs₁ hs₂
+        exact ⟨by rw [hrec.1], hrec.2⟩
+    | (.hole l') :: rest, .hole e₁ q₁, .hole e₂ q₂ =>
+        have heq' : e₁.flatten ++ (q₁.flatten ++ s₁) = e₂.flatten ++ (q₂.flatten ++ s₂) := by
+          simpa only [Parts.flatten_hole, List.append_assoc] using heq
+        have hst₁ := BodyOk.hole_stops h hco hok q₁ hs₁
+        have hst₂ := BodyOk.hole_stops h hco hok q₂ hs₂
+        have hrecE := udExpr h e₁ e₂ _ _ heq' hst₁ hst₂
+        have hrecP := udParts h o hco (BodyOk.hole_tail hok) q₁ q₂ s₁ s₂ hrecE.2 hs₁ hs₂
+        exact ⟨by rw [hrecE.1, hrecP.1], hrecP.2⟩
+  termination_by p₁.size + p₂.size
+  decreasing_by all_goals (simp only [Parts.size]; omega)
+end
+
 /-! ## The target theorem -/
 
 /-- **Unique name parts give unambiguity** (Danielsson–Norell §4, specialized
@@ -187,10 +547,15 @@ to the closed/non-assoc-infix fragment). Together with `parse_unique` this
 yields: for a grammar certified by `UniqueNameParts`, `parse` returns (copies
 of) at most one tree.
 
-Proof is future work — see the module docstring for the roadmap; the
-counterexample `amb_not_uniqueNameParts` shows the hypothesis is doing real
-work. -/
+The proof is the mutual prefix-form unique decomposition `udExpr`/`udParts`
+above (the forest-free port of the spine `Stops` argument). The *only*
+remaining gap is `topOp_unique`: that two distinct top operators cannot share a
+flattening — the Danielsson–Norell depth-0 / bracket-counting kernel, which the
+paper itself only sketches. The counterexample `amb_not_uniqueNameParts` shows
+the hypothesis is doing real work. -/
 theorem unambiguous_of_uniqueNameParts (h : G.UniqueNameParts) : G.Unambiguous := by
-  sorry
+  intro e₁ e₂ he
+  have heq : e₁.flatten ++ [] = e₂.flatten ++ [] := by simpa using he
+  exact (udExpr h e₁ e₂ [] [] heq (by intro o _; simp) (by intro o _; simp)).1
 
 end LambdaLab.Parser.Playground3
