@@ -152,7 +152,7 @@ theorem partsMeasure_inner_eq_zero (tkns : NonEmptyList Token) :
 `closed` or `prefx` body starts with a `namePart` (measure `0`); an `infx` or
 `postfx` body starts with `.hole (.tighter a)` (measure `rank a · 4 + 2`), all
 `< rank a · 4 + 3`. -/
-theorem partsMeasure_parts_lt (a : G.Op) :
+theorem partsMeasure_parts_lt (a : G.Op) (hne : G.operator a ≠ Operator.juxt) :
     partsMeasure (Part.parts a) < Level.measure (Level.tighterEq a) := by
   unfold Part.parts
   cases h : G.operator a with
@@ -167,6 +167,7 @@ theorem partsMeasure_parts_lt (a : G.Op) :
   | infx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
+  | juxt => exact absurd h hne
   | postfx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
@@ -178,6 +179,29 @@ def parseVar (l : Level G) : (tkns : List Token) → List (Expr G l × RightSubl
   | [] => []
   | t :: rest =>
       if h : G.isVar t = true then [(Expr.var t h, RightSublist.cons t rest)] else []
+
+/-- The body of a juxtaposition operator: a left operand (at `.tighterEq`, so it
+chains left-associatively) and an argument (at `.tighter`). No name tokens. -/
+theorem Part.parts_juxt {j : G.Op} (hj : G.operator j = Operator.juxt) :
+    Part.parts j = [Part.hole (Level.tighterEq j), Part.hole (Level.tighter j)] := by
+  unfold Part.parts; rw [hj]
+
+/-- Smart constructor for one application node `f x` (`Expr.op` over the
+juxtaposition operator `j`), hiding the dependent-`Part.parts` cast. -/
+def Expr.juxtApp {j : G.Op} (hj : G.operator j = Operator.juxt)
+    (f : Expr G (Level.tighterEq j)) (x : Expr G (Level.tighter j)) : Expr G (Level.tighterEq j) :=
+  Expr.op j TighterEq.refl ((Part.parts_juxt hj).symm ▸ Parts.hole f (Parts.hole x Parts.nil))
+
+/-- A `Bool` test for the juxtaposition operator (avoids needing `DecidableEq Op`). -/
+def Operator.isJuxt : Operator → Bool
+  | .juxt => true
+  | _     => false
+
+theorem Operator.eq_juxt {o : Operator} (h : o.isJuxt = true) : o = Operator.juxt := by
+  cases o <;> simp_all [Operator.isJuxt]
+
+theorem Operator.ne_juxt {o : Operator} (h : ¬ (o.isJuxt = true)) : o ≠ Operator.juxt :=
+  fun he => h (by rw [he]; rfl)
 
 /-! ## The parser -/
 
@@ -197,16 +221,19 @@ mutual
           (fun _ hc => G.rank_lt hc) tkns
         ++ parseVar (.tighter a) tkns
     | .tighterEq a, tkns =>
-        (parseParts (Part.parts a) tkns).map
-            (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G (.tighterEq a)), x.2))
-        ++ (parseExpr (.tighter a) tkns).map
-            (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
-                        (fun _ hh => Tighter.toTighterEq (show Tighter G.tighter a _ from hh)), x.2))
+        if hj : (G.operator a).isJuxt = true then
+          parseJuxt a (Operator.eq_juxt hj) tkns
+        else
+          (parseParts (Part.parts a) tkns).map
+              (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G (.tighterEq a)), x.2))
+          ++ (parseExpr (.tighter a) tkns).map
+              (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
+                          (fun _ hh => Tighter.toTighterEq (show Tighter G.tighter a _ from hh)), x.2))
   termination_by l tkns => (tkns.length, Level.measure l, 0)
   decreasing_by
     all_goals simp_wf
     all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (partsMeasure_parts_lt _))
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (partsMeasure_parts_lt _ (Operator.ne_juxt (by assumption))))
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure, Level.base]; omega))
 
   /-- Concatenate, with no first-commit, the parses contributed by each candidate
@@ -269,6 +296,41 @@ mutual
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by first | (simp only [partsMeasure]; omega) | omega))
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
       | exact Prod.Lex.left _ _ (by first | (simp only [List.length_cons]; omega) | omega)
+
+  /-- Parse an application chain `f x y …` **left-associatively by iteration** (not
+  left recursion): parse the leftmost atom at `.tighter j`, then fold further atoms
+  onto it. Returns every chain-prefix with its leftover, like the rest of the parser.
+  Sits at measure `rank j * 4 + 2`, between `.tighter j` (`+1`) and `.tighterEq j`
+  (`+3`), so the same-token descent into the leftmost atom strictly decreases. -/
+  def parseJuxt (j : G.Op) (hj : G.operator j = Operator.juxt) :
+      (tkns : List Token) → List (Expr G (Level.tighterEq j) × RightSublist tkns) :=
+    fun tkns =>
+      (parseExpr (Level.tighter j) tkns).flatMap (fun x =>
+        let lone : Expr G (Level.tighterEq j) :=
+          x.1.reindex (l := Level.tighter j) (l' := Level.tighterEq j)
+            (fun _o hh => Tighter.toTighterEq (show Tighter G.tighter j _o from hh))
+        (lone, x.2) :: (parseJuxtExtend j hj lone x.2.list).map (fun y => (y.1, x.2.trans y.2)))
+  termination_by tkns => (tkns.length, G.rank j * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+
+  /-- Fold one more argument atom onto an application accumulator, then recurse. -/
+  def parseJuxtExtend (j : G.Op) (hj : G.operator j = Operator.juxt)
+      (acc : Expr G (Level.tighterEq j)) :
+      (tkns : List Token) → List (Expr G (Level.tighterEq j) × RightSublist tkns) :=
+    fun tkns =>
+      (parseExpr (Level.tighter j) tkns).flatMap (fun x =>
+        let acc' : Expr G (Level.tighterEq j) := Expr.juxtApp hj acc x.1
+        (acc', x.2) :: (parseJuxtExtend j hj acc' x.2.list).map (fun y => (y.1, x.2.trans y.2)))
+  termination_by tkns => (tkns.length, G.rank j * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
 end
 
 /-- All full parses (consuming the entire input). For an unambiguous grammar

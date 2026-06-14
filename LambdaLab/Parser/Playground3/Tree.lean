@@ -32,6 +32,9 @@ def Part.parts {G : Grammar} (o : G.Op) : List (Part G) :=
   | .prefx  tkns => Part.inner tkns ++ [.hole (.tighter o)]
   | .infx   tkns => [.hole (.tighter o)] ++ Part.inner tkns ++ [.hole (.tighter o)]
   | .postfx tkns => [.hole (.tighter o)] ++ Part.inner tkns
+  -- juxtaposition `f x`: left operand at `.tighterEq o` (so application chains,
+  -- left-associatively), right operand (argument) at `.tighter o`. No name tokens.
+  | .juxt => [.hole (.tighterEq o), .hole (.tighter o)]
 
 mutual
   inductive Expr (G : Grammar) : Level G → Type where

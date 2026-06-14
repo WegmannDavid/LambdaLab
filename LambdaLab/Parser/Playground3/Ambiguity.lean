@@ -59,6 +59,7 @@ distinct (the distinct-leading-tokens condition), yet the grammar is ambiguous. 
   tighter := ambTighter
   tighter_wf := ambTighter_wf
   isVar := fun _ => false
+  juxtUnique := fun o₁ o₂ h₁ _ => by cases o₁ <;> simp [ambOperator] at h₁
 
 /-- `n` as a loosest expression. -/
 def nL : Expr amb .loosest :=

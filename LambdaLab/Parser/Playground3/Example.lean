@@ -24,9 +24,9 @@ namespace LambdaLab.Parser.Playground3
 
 open LambdaLab.Parser
 
-/-- Operator names. -/
+/-- Operator names. `app` is juxtaposition (function application). -/
 inductive Sym where
-  | num | paren | add | mul | neg | fac
+  | num | paren | add | mul | neg | fac | app
 deriving DecidableEq, Repr
 
 /-- Each operator's shape. -/
@@ -37,6 +37,7 @@ def symOp : Sym → Operator
   | .mul   => .infx (.last "*")
   | .neg   => .prefx (.last "-")
   | .fac   => .postfx (.last "!")
+  | .app   => .juxt
 
 /-- Immediately-tighter successors: `add → {mul, neg}`, `neg → mul`,
 `mul → fac`, `fac → {paren, num}`. Unary minus binds looser than `*` (so
@@ -50,11 +51,13 @@ def symTighter : Sym → List Sym
   | .add   => [.mul, .neg]
   | .neg   => [.mul]
   | .mul   => [.fac]
-  | .fac   => [.paren, .num]
+  | .fac   => [.app]
+  | .app   => [.paren, .num]
 
-/-- A rank witnessing acyclicity: higher = looser. -/
+/-- A rank witnessing acyclicity: higher = looser. Application sits just above the
+atoms (`paren`/`num`) and below every named operator. -/
 def symRank : Sym → Nat
-  | .num => 0 | .paren => 0 | .fac => 1 | .mul => 2 | .neg => 3 | .add => 4
+  | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .mul => 3 | .neg => 4 | .add => 5
 
 /-- `tighter` is well-founded: each step strictly drops the rank. -/
 theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
@@ -73,6 +76,7 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
   tighter_wf := symTighter_wf
   -- Any token that is not one of `arith`'s reserved name parts is a variable.
   isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!"])
+  juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [symOp]
 
 /-! ## Running the parser
 
@@ -150,5 +154,21 @@ descends through: each result list below is many equal copies of the one tree.) 
 -- `- x` and `( x + y ) !` → variables under prefix / postfix / parens.
 #eval run ["-", "x"]
 #eval run ["(", "x", "+", "y", ")", "!"]
+
+/-! ### Juxtaposition (application)
+
+Application binds tightest and associates left, so `f x y = (f x) y`, `f x + y =
+(f x) + y`, and `f (g x)` needs the parentheses. -/
+
+-- `f x` → one application.
+#eval run ["f", "x"]
+-- `f x y` → left-associated `(f x) y` (the only reading; the argument is an atom).
+#eval run ["f", "x", "y"]
+-- `f x + y` → `(f x) + y` (application tighter than `+`).
+#eval run ["f", "x", "+", "y"]
+-- `f (g x)` → application nested via parentheses.
+#eval run ["f", "(", "g", "x", ")"]
+-- `n x` → the literal `n` applied to variable `x` (both are atoms).
+#eval run ["n", "x"]
 
 end LambdaLab.Parser.Playground3

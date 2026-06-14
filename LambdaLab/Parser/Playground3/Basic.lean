@@ -18,6 +18,10 @@ inductive Operator : Type where
 | prefx : NonEmptyList Token → Operator
 | infx : NonEmptyList Token → Operator
 | postfx : NonEmptyList Token → Operator
+/-- Juxtaposition (function application by adjacency): a tokenless,
+left-associative, tightest-binding operator. A grammar has at most one (see
+`Grammar.juxtUnique`). -/
+| juxt : Operator
 
 /-- The name-part tokens of an operator, in body order. -/
 def Operator.nameTokens : Operator → List Token
@@ -25,6 +29,7 @@ def Operator.nameTokens : Operator → List Token
   | .prefx tkns => tkns.toList
   | .infx tkns => tkns.toList
   | .postfx tkns => tkns.toList
+  | .juxt => []
 
 
 /-- Reachability through the `tighter` successor lists: `TighterEq t a b`
@@ -98,5 +103,9 @@ structure Grammar where
   /-- Recognizes variable (identifier) tokens — leaf atoms, distinct from operator
   name parts. -/
   isVar : Token → Bool
+  /-- At most one operator is juxtaposition. Being tokenless, two juxtaposition
+  operators would be indistinguishable in the token stream; this pins it to one
+  (vacuously satisfied by grammars without juxtaposition). -/
+  juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
 
 end LambdaLab.Parser.Playground3
