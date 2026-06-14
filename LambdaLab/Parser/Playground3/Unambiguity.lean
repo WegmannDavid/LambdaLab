@@ -182,7 +182,7 @@ theorem amb_not_uniqueNameParts : ¬ amb.UniqueNameParts := fun h =>
 
 /-! ## Segmentation machinery (forest-free port of the spine `Stops` argument)
 
-Ported from `Playground.Uniqueness`, but *without* its `tighter_disjoint` /
+Ported from `Playground2.Uniqueness`, but *without* its `tighter_disjoint` /
 `loosest_disjoint` (forest) hypotheses: the jump encoding of `Expr` (it names its
 real top operator with a proof-irrelevant witness, recording no intermediate
 precedence node) collapses DAG diamonds to equal trees, so the cross-node cases
