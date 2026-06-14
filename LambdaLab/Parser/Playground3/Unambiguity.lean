@@ -445,20 +445,76 @@ theorem BodyOk_parts (h : G.UniqueNameParts) (o : G.Op) : BodyOk o (Part.parts o
       rw [← Part.inner_eq_cons tkns]
       simpa using BodyOk_inner_app o tkns [] hpr BodyOk.nil
 
+/-! ### Leading-token infrastructure
+
+The first token of a body's flattening. For a closed/prefix operator it is the
+operator's own head; for an infix/postfix operator it is the leading token of the
+left operand (which lies strictly tighter). -/
+
+@[simp] theorem Parts.flatten_head_namePart {tk : Token} {ps : List (Part G)} (q : Parts G ps) :
+    (Parts.namePart tk q).flatten.head? = some tk := by
+  rw [Parts.flatten_namePart]; rfl
+
+theorem Parts.flatten_head_hole {l : Level G} {ps : List (Part G)}
+    (e : Expr G l) (q : Parts G ps) : (Parts.hole e q).flatten.head? = e.flatten.head? := by
+  rw [Parts.flatten_hole, head?_append_left (Expr.flatten_ne e)]
+
+/-- An operator body either leads with the operator's own head (closed/prefix) or
+with an operand hole at level `tighter o` (infix/postfix). -/
+theorem Part.parts_shape (o : G.Op) :
+    (∃ rest, Part.parts o = Part.namePart (G.operator o).head :: rest)
+    ∨ (∃ rest, Part.parts o = Part.hole (Level.tighter o) :: rest) := by
+  unfold Part.parts Operator.head
+  cases G.operator o with
+  | closed tkns => exact Or.inl ⟨_, Part.inner_eq_cons tkns⟩
+  | prefx tkns => exact Or.inl ⟨_, Part.inner_app_cons tkns [Part.hole (Level.tighter o)]⟩
+  | infx tkns => exact Or.inr ⟨_, rfl⟩
+  | postfx tkns => exact Or.inr ⟨_, rfl⟩
+
+/-- For a name-token-leading body, the flattening's head is the operator's head. -/
+theorem Parts.flatten_head_of_namePart {o : G.Op} {rest : List (Part G)}
+    (parts : Parts G (Part.parts o))
+    (hsh : Part.parts o = Part.namePart (G.operator o).head :: rest) :
+    parts.flatten.head? = some (G.operator o).head := by
+  rw [← Parts.flatten_cast hsh parts]
+  cases hsh ▸ parts with
+  | namePart tk q => exact Parts.flatten_head_namePart q
+
 /-! ### The isolated hard kernel
 
-The *only* remaining gap. Two **distinct** top operators cannot produce the same
-flattening with both leftovers stopping the level. The spine proof sidestepped
-this by reading the top operator off the leading token (true for the spine's
-`next`-recording encoding, with forest assumed); here, where an infix operator's
-leading token belongs to its left operand, it requires the Danielsson–Norell
-depth-0 / bracket-counting argument (roadmap in this file's header; foundation
-`count_flatten_expr` above). Forest-free. -/
+Two **distinct** top operators cannot produce the same flattening with both
+leftovers stopping the level.
+
+`topOp_unique` below dispatches on operator shape. The case where **both** bodies
+lead with a name token (closed/prefix) is discharged here: their flattenings share
+a leading token, which is each operator's head, so `heads_distinct` forces
+`o₁ = o₂`. The remaining case — at least one operator is infix/postfix, so its
+leading token belongs to a strictly-tighter left operand rather than the operator
+itself — is `topOp_unique_holeLed`. That is the genuine Danielsson–Norell depth-0
+/ bracket-counting kernel (roadmap in this file's header; foundation
+`count_flatten_expr`); the paper only sketches it. Forest-free. -/
+theorem topOp_unique_holeLed (h : G.UniqueNameParts) {l : Level G} {o₁ o₂ : G.Op}
+    (hne : o₁ ≠ o₂) (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
+    (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
+    (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂)
+    (hhole : (∃ rest, Part.parts o₁ = Part.hole (Level.tighter o₁) :: rest)
+           ∨ (∃ rest, Part.parts o₂ = Part.hole (Level.tighter o₂) :: rest)) : False := by
+  sorry
+
 theorem topOp_unique (h : G.UniqueNameParts) {l : Level G} {o₁ o₂ : G.Op} (hne : o₁ ≠ o₂)
     (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
     (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
     (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
-  sorry
+  rcases Part.parts_shape o₁ with hsh₁ | hsh₁
+  · rcases Part.parts_shape o₂ with hsh₂ | hsh₂
+    · -- both bodies lead with a name token: equal heads ⇒ o₁ = o₂
+      obtain ⟨_, hsh₁⟩ := hsh₁; obtain ⟨_, hsh₂⟩ := hsh₂
+      have hh := head?_eq_of_prefix heq (Parts.flatten_ne p₁ (Part.parts_ne_nil o₁))
+        (Parts.flatten_ne p₂ (Part.parts_ne_nil o₂))
+      rw [Parts.flatten_head_of_namePart p₁ hsh₁, Parts.flatten_head_of_namePart p₂ hsh₂] at hh
+      exact hne (Classical.byContradiction fun hc => h.heads_distinct hc (Option.some.inj hh))
+    · exact topOp_unique_holeLed h hne c₁ c₂ p₁ p₂ s₁ s₂ heq hs₁ hs₂ (Or.inr hsh₂)
+  · exact topOp_unique_holeLed h hne c₁ c₂ p₁ p₂ s₁ s₂ heq hs₁ hs₂ (Or.inl hsh₁)
 
 /-- The body tail after a hole is itself `BodyOk` (for the `udParts` recursion). -/
 theorem BodyOk.hole_tail {o : G.Op} {l' : Level G} {rest : List (Part G)}
