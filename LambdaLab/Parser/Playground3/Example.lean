@@ -34,7 +34,7 @@ deriving DecidableEq, Repr
 def symOp : Sym → Operator
   | .num   => .closed (.last "n")
   | .paren => .closed (.cons "(" (.last ")"))
-  | .add   => .infx (.last "+")
+  | .add   => .infxl (.last "+")
   | .mul   => .infx (.last "*")
   | .pow   => .infxr (.last "^")
   | .neg   => .prefx (.last "-")
@@ -188,5 +188,18 @@ x ^ (y ^ z)` and `n * x ^ y = n * (x ^ y)`. -/
 #eval run ["n", "*", "x", "^", "y"]
 -- `x ^ y * z` → `(x ^ y) * z`.
 #eval run ["x", "^", "y", "*", "z"]
+
+/-! ### Left-associative `+`
+
+`+` (`add`) is left-associative, so `x + y + z = (x + y) + z` (the only reading:
+the right operand is strictly tighter, so a `+` cannot sit there unparenthesized).
+Mixed with the right-assoc `^`: `x + y ^ z = x + (y ^ z)`. -/
+
+-- `x + y + z` → left-associated `(x + y) + z`.
+#eval run ["x", "+", "y", "+", "z"]
+-- `x + y + z + w` → `((x + y) + z) + w`.
+#eval run ["x", "+", "y", "+", "z", "+", "w"]
+-- `x + y ^ z` → `x + (y ^ z)` (`^` tighter than `+`).
+#eval run ["x", "+", "y", "^", "z"]
 
 end LambdaLab.Parser.Playground3

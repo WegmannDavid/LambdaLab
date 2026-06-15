@@ -99,6 +99,43 @@ theorem Expr.op_juxt_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
   obtain ⟨f, x, hfx⟩ := Expr.juxt_parts_eq hj parts
   exact ⟨f, x, by rw [hfx]; unfold Expr.juxtApp; congr 1⟩
 
+/-! ## Left-associative-infix plumbing (mirrors the juxtaposition helpers) -/
+
+/-- A left-assoc body's tail (operator tokens + right operand) is nonempty. -/
+theorem Part.parts_infxl_tail_ne {o : G.Op} (hl : (G.operator o).isInfxl = true) :
+    (Part.parts o).tail ≠ [] := by
+  cases hop : G.operator o with
+  | infxl tkns => unfold Part.parts; rw [hop]; cases tkns <;> simp
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
+/-- The body of a left-assoc `Expr.op` node decomposes as its chaining left
+operand `acc` and the tail (parsed segment). -/
+theorem Expr.infxl_parts_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (parts : Parts G (Part.parts o)) :
+    ∃ (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Part.parts o).tail),
+      parts = (Part.parts_infxl_cons hl).symm ▸ Parts.hole acc tail := by
+  have hpe := Part.parts_infxl_cons hl
+  have hq : parts = hpe.symm ▸ (hpe ▸ parts) := (Parts.cast_symm hpe parts).symm
+  generalize hpe ▸ parts = q at hq
+  match q, hq with
+  | Parts.hole acc tail, hq => exact ⟨acc, tail, hq⟩
+
+/-- A left-assoc fold step flattens to `acc.flatten ++ tail.flatten`. -/
+@[simp] theorem Expr.flatten_infxlApp {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Part.parts o).tail) :
+    (Expr.infxlApp hl acc tail).flatten = acc.flatten ++ tail.flatten := by
+  have h : (Expr.infxlApp hl acc tail).flatten
+      = ((Part.parts_infxl_cons hl).symm ▸ Parts.hole acc tail).flatten := rfl
+  rw [h, Parts.flatten_cast, Parts.flatten_hole]
+
+/-- Any left-assoc `Expr.op` node is a fold step `infxlApp acc tail`. -/
+theorem Expr.op_infxl_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (hc : TighterEq G.tighter o o) (parts : Parts G (Part.parts o)) :
+    ∃ (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Part.parts o).tail),
+      (Expr.op o hc parts : Expr G (Level.tighterEq o)) = Expr.infxlApp hl acc tail := by
+  obtain ⟨acc, tail, hat⟩ := Expr.infxl_parts_eq hl parts
+  exact ⟨acc, tail, by rw [hat]; unfold Expr.infxlApp; congr 1⟩
+
 /-! ## `RightSublist` lemmas -/
 
 @[simp] theorem RightSublist.list_cons {α : Type _} (a : α) (l : List α) :
@@ -143,14 +180,33 @@ theorem mem_parseExpr_var {l : Level G} {t : Token} (hv : G.isVar t = true) (res
           ⟨(Expr.var t hv, RightSublist.cons t rest), ?_, List.mem_cons_self⟩
         rw [parseExpr]
         exact List.mem_append_right _ (parseVar_complete hv rest)
-      · -- non-juxt level: the variable falls through to the strictly-tighter level
-        simp only [dif_neg hj]
-        refine List.mem_append_right _
-          (List.mem_map.mpr ⟨(Expr.var t hv, RightSublist.cons t rest), ?_, rfl⟩)
-        rw [parseExpr]
-        exact List.mem_append_right _ (parseVar_complete hv rest)
+      · simp only [dif_neg hj]
+        by_cases hl : (G.operator a).isInfxl = true
+        · -- left-assoc level: the variable is the lone leftmost operand
+          simp only [dif_pos hl]
+          rw [parseInfixL]
+          refine List.mem_flatMap.mpr
+            ⟨(Expr.var t hv, RightSublist.cons t rest), ?_, List.mem_cons_self⟩
+          rw [parseExpr]
+          exact List.mem_append_right _ (parseVar_complete hv rest)
+        · -- non-left-recursive level: the variable falls through to strictly-tighter
+          simp only [dif_neg hl]
+          refine List.mem_append_right _
+            (List.mem_map.mpr ⟨(Expr.var t hv, RightSublist.cons t rest), ?_, rfl⟩)
+          rw [parseExpr]
+          exact List.mem_append_right _ (parseVar_complete hv rest)
 
 /-! ## Soundness -/
+
+/-- At a juxtaposition level, `parseExpr` *is* `parseJuxt`. -/
+theorem parseExpr_juxt_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
+    (tkns : List Token) : parseExpr (Level.tighterEq j) tkns = parseJuxt j hj tkns := by
+  rw [parseExpr, dif_pos (show (G.operator j).isJuxt = true by rw [hj]; rfl)]
+
+/-- At a left-associative level, `parseExpr` *is* `parseInfixL`. -/
+theorem parseExpr_infxl_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (tkns : List Token) : parseExpr (Level.tighterEq o) tkns = parseInfixL o hl tkns := by
+  rw [parseExpr, dif_neg (by simp [Operator.not_isJuxt_of_isInfxl hl]), dif_pos hl]
 
 /-- Joint soundness of the five mutual parser functions: every returned pair
 `(tree, leftover)` satisfies `tree.flatten ++ leftover.list = tkns` (for the two
@@ -162,6 +218,11 @@ theorem parse_sound_all :
         ∀ x ∈ parseExpr l tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (ps : List (Part G)) (tkns : List Token),
         ∀ x ∈ parseParts ps tkns, x.1.flatten ++ x.2.list = tkns)
+  ∧ (∀ (o : G.Op) (hl : (G.operator o).isInfxl = true) (tkns : List Token),
+        ∀ x ∈ parseInfixL o hl tkns, x.1.flatten ++ x.2.list = tkns)
+  ∧ (∀ (o : G.Op) (hl : (G.operator o).isInfxl = true)
+        (acc : Expr G (Level.tighterEq o)) (tkns : List Token),
+        ∀ x ∈ parseInfixLExtend o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
   ∧ (∀ (j : G.Op) (hj : G.operator j = Operator.juxt) (tkns : List Token),
         ∀ x ∈ parseJuxt j hj tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (j : G.Op) (hj : G.operator j = Operator.juxt)
@@ -176,11 +237,15 @@ theorem parse_sound_all :
       ∀ x ∈ parseExpr l tkns, x.1.flatten ++ x.2.list = tkns)
     (motive2 := fun ps tkns =>
       ∀ x ∈ parseParts ps tkns, x.1.flatten ++ x.2.list = tkns)
-    (motive3 := fun j hj tkns =>
+    (motive3 := fun o hl tkns =>
+      ∀ x ∈ parseInfixL o hl tkns, x.1.flatten ++ x.2.list = tkns)
+    (motive4 := fun o hl acc tkns =>
+      ∀ x ∈ parseInfixLExtend o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
+    (motive5 := fun j hj tkns =>
       ∀ x ∈ parseJuxt j hj tkns, x.1.flatten ++ x.2.list = tkns)
-    (motive4 := fun j hj acc tkns =>
+    (motive6 := fun j hj acc tkns =>
       ∀ x ∈ parseJuxtExtend j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
-    (motive5 := fun l cs h hrank tkns =>
+    (motive7 := fun l cs h hrank tkns =>
       ∀ x ∈ parseExprList l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns)
   case _ => -- parseExpr .loosest
     intro tkns ih x hx
@@ -196,13 +261,16 @@ theorem parse_sound_all :
     · exact parseVar_sound hx
   case _ => -- parseExpr (.tighterEq a), juxt branch
     intro a tkns hj ihJuxt x hx
-    rw [parseExpr] at hx
-    simp only [dif_pos hj] at hx
+    rw [parseExpr_juxt_eq (Operator.eq_juxt hj)] at hx
     exact ihJuxt x hx
-  case _ => -- parseExpr (.tighterEq a), non-juxt branch
-    intro a tkns hnj ihParts ihTighter x hx
+  case _ => -- parseExpr (.tighterEq a), left-assoc branch
+    intro a tkns _hnj hl ihInfxl x hx
+    rw [parseExpr_infxl_eq hl] at hx
+    exact ihInfxl x hx
+  case _ => -- parseExpr (.tighterEq a), non-left-recursive branch
+    intro a tkns hnj hnl ihParts ihTighter x hx
     rw [parseExpr] at hx
-    simp only [dif_neg hnj] at hx
+    simp only [dif_neg hnj, dif_neg hnl] at hx
     rcases List.mem_append.mp hx with hx | hx
     · obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
       simpa using ihParts y hy
@@ -251,6 +319,36 @@ theorem parse_sound_all :
     have h1 := ihExpr w hw
     have h2 := ihInner w z hz
     simp only [Parts.flatten_hole, RightSublist.list_trans, List.append_assoc, h2, h1]
+  case _ => -- parseInfixL
+    intro o hl tkns ihExt ihTighter x hx
+    rw [parseInfixL] at hx
+    obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
+    rcases List.mem_cons.mp hx with rfl | hx
+    · -- x is the lone leftmost operand, reindexed
+      have := ihTighter p hp
+      simpa [Expr.flatten_reindex] using this
+    · -- x continues the chain through parseInfixLExtend
+      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+      have h4 := ihExt p z hz
+      have h1 := ihTighter p hp
+      simp only [Expr.flatten_reindex] at h4
+      simp only [RightSublist.list_trans]
+      rw [h4, h1]
+  case _ => -- parseInfixLExtend
+    intro o hl acc tkns ihExt ihParts x hx
+    rw [parseInfixLExtend] at hx
+    obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
+    rcases List.mem_cons.mp hx with rfl | hx
+    · -- x folds one tail-segment onto the accumulator
+      have h1 := ihParts p hp
+      simp only [Expr.flatten_infxlApp, List.append_assoc, h1]
+    · -- x continues the chain
+      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+      have h4 := ihExt p z hz
+      have h1 := ihParts p hp
+      simp only [Expr.flatten_infxlApp, List.append_assoc] at h4
+      rw [h1] at h4
+      simpa [RightSublist.list_trans] using h4
   case _ => -- parseJuxt
     intro j hj tkns ihExt ihTighter x hx
     rw [parseJuxt] at hx
@@ -342,14 +440,10 @@ theorem Part.parts_ne_nil (o : G.Op) : Part.parts (G := G) o ≠ [] := by
   | closed tkns => exact Part.inner_ne_nil tkns
   | prefx tkns => simp
   | infx tkns => simp
+  | infxl tkns => simp
   | infxr tkns => simp
   | juxt => simp
   | postfx tkns => simp
-
-/-- At a juxtaposition level, `parseExpr` *is* `parseJuxt`. -/
-theorem parseExpr_juxt_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (tkns : List Token) : parseExpr (Level.tighterEq j) tkns = parseJuxt j hj tkns := by
-  rw [parseExpr, dif_pos (show (G.operator j).isJuxt = true by rw [hj]; rfl)]
 
 /-- Extend an established `parseJuxtExtend` result by folding on one more argument:
 if `(f, rf)` is reachable and `x` parses from `rf`'s leftover, then `juxtApp f x`
@@ -424,6 +518,78 @@ theorem parseJuxt_cont {j : G.Op} (hj : G.operator j = Operator.juxt)
     refine List.mem_flatMap.mpr ⟨p, hp, ?_⟩
     apply List.mem_cons_of_mem
     exact List.mem_map.mpr ⟨(Expr.juxtApp hj z.1 x, r'), hm', rfl⟩
+
+/-- Extend an established `parseInfixLExtend` result by one more `∘ rhs` segment
+(a `parseParts` of the body tail). Mirrors `parseJuxtExtend_cont`. -/
+theorem parseInfixLExtend_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (acc : Expr G (Level.tighterEq o)) (tkns : List Token)
+    (f : Expr G (Level.tighterEq o)) (rf : RightSublist tkns)
+    (hf : (f, rf) ∈ parseInfixLExtend o hl acc tkns)
+    (tp : Parts G (Part.parts o).tail) (rt : RightSublist rf.list)
+    (ht : (tp, rt) ∈ parseParts (Part.parts o).tail rf.list) :
+    ∃ r : RightSublist tkns, r.list = rt.list ∧
+      (Expr.infxlApp hl f tp, r) ∈ parseInfixLExtend o hl acc tkns := by
+  rw [parseInfixLExtend] at hf
+  obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
+  rcases List.mem_cons.mp hf with heq | hmap
+  · rw [Prod.mk.injEq] at heq
+    obtain ⟨hfeq, hrfeq⟩ := heq
+    subst hfeq; subst hrfeq
+    refine ⟨p.2.trans rt, rfl, ?_⟩
+    rw [parseInfixLExtend]
+    refine List.mem_flatMap.mpr ⟨p, hp, ?_⟩
+    apply List.mem_cons_of_mem
+    apply List.mem_map.mpr
+    refine ⟨(Expr.infxlApp hl (Expr.infxlApp hl acc p.1) tp, rt), ?_, rfl⟩
+    rw [parseInfixLExtend]
+    exact List.mem_flatMap.mpr ⟨(tp, rt), ht, List.mem_cons_self⟩
+  · obtain ⟨z, hz, heq⟩ := List.mem_map.mp hmap
+    rw [Prod.mk.injEq] at heq
+    obtain ⟨hfeq, hrfeq⟩ := heq
+    subst hfeq; subst hrfeq
+    obtain ⟨r', hr', hm'⟩ :=
+      parseInfixLExtend_cont hl (Expr.infxlApp hl acc p.1) p.2.list z.1 z.2 hz tp rt ht
+    refine ⟨p.2.trans r', hr', ?_⟩
+    rw [parseInfixLExtend]
+    refine List.mem_flatMap.mpr ⟨p, hp, ?_⟩
+    apply List.mem_cons_of_mem
+    exact List.mem_map.mpr ⟨(Expr.infxlApp hl z.1 tp, r'), hm', rfl⟩
+  termination_by tkns.length
+  decreasing_by exact p.2.length_lt
+
+/-- The same extension step lifted to `parseInfixL`. Mirrors `parseJuxt_cont`. -/
+theorem parseInfixL_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    {tkns : List Token} {f : Expr G (Level.tighterEq o)} {rf : RightSublist tkns}
+    (hf : (f, rf) ∈ parseInfixL o hl tkns)
+    {tp : Parts G (Part.parts o).tail} {rt : RightSublist rf.list}
+    (ht : (tp, rt) ∈ parseParts (Part.parts o).tail rf.list) :
+    ∃ r : RightSublist tkns, r.list = rt.list ∧
+      (Expr.infxlApp hl f tp, r) ∈ parseInfixL o hl tkns := by
+  rw [parseInfixL] at hf
+  obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
+  rcases List.mem_cons.mp hf with heq | hmap
+  · rw [Prod.mk.injEq] at heq
+    obtain ⟨hfeq, hrfeq⟩ := heq
+    subst hfeq; subst hrfeq
+    refine ⟨p.2.trans rt, rfl, ?_⟩
+    rw [parseInfixL]
+    refine List.mem_flatMap.mpr ⟨p, hp, ?_⟩
+    apply List.mem_cons_of_mem
+    apply List.mem_map.mpr
+    refine ⟨(Expr.infxlApp hl _ tp, rt), ?_, rfl⟩
+    rw [parseInfixLExtend]
+    exact List.mem_flatMap.mpr ⟨(tp, rt), ht, List.mem_cons_self⟩
+  · obtain ⟨z, hz, heq⟩ := List.mem_map.mp hmap
+    rw [Prod.mk.injEq] at heq
+    obtain ⟨hfeq, hrfeq⟩ := heq
+    subst hfeq; subst hrfeq
+    obtain ⟨r', hr', hm'⟩ :=
+      parseInfixLExtend_cont hl _ p.2.list z.1 z.2 hz tp rt ht
+    refine ⟨p.2.trans r', hr', ?_⟩
+    rw [parseInfixL]
+    refine List.mem_flatMap.mpr ⟨p, hp, ?_⟩
+    apply List.mem_cons_of_mem
+    exact List.mem_map.mpr ⟨(Expr.infxlApp hl z.1 tp, r'), hm', rfl⟩
 
 /-- Completeness of the candidate worklist: a parse found at a candidate's own
 `tighterEq` level survives, reindexed, into `parseExprList`'s concatenation. -/
@@ -523,25 +689,47 @@ theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a
           hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
       rw [parseExpr_juxt_eq haj, parseJuxt]
       exact List.mem_flatMap.mpr ⟨_, hmem, List.mem_cons_self⟩
-  · -- non-juxt level
-    rcases hpath.toTighterOrEq with heqa | hT
-    · obtain ⟨r, hr, hm⟩ := parseParts_complete parts (Part.parts_ne_nil o) tkns rest heq
-      subst heqa
-      refine ⟨r, hr, ?_⟩
-      rw [parseExpr, dif_neg ha]
-      exact List.mem_append_left _ (List.mem_map.mpr ⟨(parts, r), hm, rfl⟩)
-    · obtain ⟨b, hb, hpath'⟩ := hT.destruct
-      obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
-      refine ⟨r, hr, ?_⟩
-      have hmem2 : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
-          (l := .tighterEq b) (l' := .tighter a)
-          (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
-        rw [parseExpr]
-        exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
-          (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
-          hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
-      rw [parseExpr, dif_neg ha]
-      exact List.mem_append_right _ (List.mem_map.mpr ⟨_, hmem2, rfl⟩)
+  · by_cases hl : (G.operator a).isInfxl = true
+    · -- left-associative level
+      rcases hpath.toTighterOrEq with heqa | hT
+      · -- the node is the fold step itself
+        obtain ⟨r, hr, hm⟩ := parseInfixL_complete (heqa ▸ hl) parts tkns rest heq
+        refine ⟨r, hr, ?_⟩
+        subst heqa
+        rw [parseExpr_infxl_eq hl]
+        exact hm
+      · -- strictly-tighter node: a lone leftmost operand of the chain
+        obtain ⟨b, hb, hpath'⟩ := hT.destruct
+        obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
+        refine ⟨r, hr, ?_⟩
+        have hmem : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
+            (l := .tighterEq b) (l' := .tighter a)
+            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
+          rw [parseExpr]
+          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
+            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
+            hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
+        rw [parseExpr_infxl_eq hl, parseInfixL]
+        exact List.mem_flatMap.mpr ⟨_, hmem, List.mem_cons_self⟩
+    · -- non-left-recursive level
+      rcases hpath.toTighterOrEq with heqa | hT
+      · obtain ⟨r, hr, hm⟩ := parseParts_complete parts (Part.parts_ne_nil o) tkns rest heq
+        subst heqa
+        refine ⟨r, hr, ?_⟩
+        rw [parseExpr, dif_neg ha, dif_neg hl]
+        exact List.mem_append_left _ (List.mem_map.mpr ⟨(parts, r), hm, rfl⟩)
+      · obtain ⟨b, hb, hpath'⟩ := hT.destruct
+        obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
+        refine ⟨r, hr, ?_⟩
+        have hmem2 : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
+            (l := .tighterEq b) (l' := .tighter a)
+            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
+          rw [parseExpr]
+          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
+            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
+            hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
+        rw [parseExpr, dif_neg ha, dif_neg hl]
+        exact List.mem_append_right _ (List.mem_map.mpr ⟨_, hmem2, rfl⟩)
 termination_by (sizeOf parts, G.rank a + 1)
 decreasing_by
   all_goals simp_wf
@@ -577,6 +765,36 @@ decreasing_by
     have hsz : sizeOf parts = sizeOf (Parts.hole f (Parts.hole x Parts.nil)) := by
       rw [hfx, Parts.sizeOf_cast]
     rw [hsz, Parts.hole.sizeOf_spec, Parts.hole.sizeOf_spec]
+    omega
+
+/-- Completeness of `parseInfixL`: a left-assoc fold node `Expr.op o _ parts` is
+found by the iterative chain parser. The left operand `acc` and the parsed tail
+`tail` are found by `parseExpr` / `parseParts` (smaller bodies), then
+`parseInfixL_cont` folds them. Mirrors `parseJuxt_complete`. -/
+theorem parseInfixL_complete {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (parts : Parts G (Part.parts o)) (tkns rest : List Token)
+    (heq : tkns = (Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o)).flatten ++ rest) :
+    ∃ r : RightSublist tkns, r.list = rest ∧
+      ((Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o)), r) ∈ parseInfixL o hl tkns := by
+  obtain ⟨acc, tail, hat⟩ := Expr.infxl_parts_eq hl parts
+  have hop : (Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o))
+      = Expr.infxlApp hl acc tail := by rw [hat]; unfold Expr.infxlApp; congr 1
+  rw [hop] at heq ⊢
+  rw [Expr.flatten_infxlApp] at heq
+  obtain ⟨racc, hracc, hmacc⟩ :=
+    parseExpr_complete acc tkns (tail.flatten ++ rest) (by rw [heq, List.append_assoc])
+  rw [parseExpr_infxl_eq hl] at hmacc
+  obtain ⟨rt, hrt, hmt⟩ :=
+    parseParts_complete tail (Part.parts_infxl_tail_ne hl) racc.list rest (by rw [hracc])
+  obtain ⟨r, hr, hm⟩ := parseInfixL_cont hl hmacc hmt
+  exact ⟨r, by rw [hr, hrt], hm⟩
+termination_by (sizeOf parts, 0)
+decreasing_by
+  all_goals simp_wf
+  all_goals
+    refine Prod.Lex.left _ _ ?_
+    have hsz : sizeOf parts = sizeOf (Parts.hole acc tail) := by rw [hat, Parts.sizeOf_cast]
+    rw [hsz, Parts.hole.sizeOf_spec]
     omega
 
 /-- Completeness of `parseExpr`: every `e : Expr G l` is found on its own

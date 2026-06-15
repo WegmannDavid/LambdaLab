@@ -148,11 +148,19 @@ theorem partsMeasure_inner_eq_zero (tkns : NonEmptyList Token) :
     partsMeasure (Part.inner (G := G) tkns) = 0 := by
   cases tkns <;> rfl
 
+/-- The **left-recursive** operators — body leads with a `.tighterEq` operand
+hole — which `parseParts` cannot handle (no token is consumed before recursing):
+juxtaposition and left-associative infix. Parsed by a fold instead. -/
+def Operator.leftRec : Operator → Bool
+  | .juxt    => true
+  | .infxl _ => true
+  | _        => false
+
 /-- An operator body measures strictly below its own `tighterEq` level: a
 `closed` or `prefx` body starts with a `namePart` (measure `0`); an `infx` or
 `postfx` body starts with `.hole (.tighter a)` (measure `rank a · 4 + 2`), all
 `< rank a · 4 + 3`. -/
-theorem partsMeasure_parts_lt (a : G.Op) (hne : G.operator a ≠ Operator.juxt) :
+theorem partsMeasure_parts_lt (a : G.Op) (hne : (G.operator a).leftRec = false) :
     partsMeasure (Part.parts a) < Level.measure (Level.tighterEq a) := by
   unfold Part.parts
   cases h : G.operator a with
@@ -167,10 +175,11 @@ theorem partsMeasure_parts_lt (a : G.Op) (hne : G.operator a ≠ Operator.juxt) 
   | infx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
+  | infxl tkns => rw [h, Operator.leftRec] at hne; exact absurd hne (by simp)
   | infxr tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
-  | juxt => exact absurd h hne
+  | juxt => rw [h, Operator.leftRec] at hne; exact absurd hne (by simp)
   | postfx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
@@ -206,6 +215,43 @@ theorem Operator.eq_juxt {o : Operator} (h : o.isJuxt = true) : o = Operator.jux
 theorem Operator.ne_juxt {o : Operator} (h : ¬ (o.isJuxt = true)) : o ≠ Operator.juxt :=
   fun he => h (by rw [he]; rfl)
 
+/-- A `Bool` test for left-associative infix. -/
+def Operator.isInfxl : Operator → Bool
+  | .infxl _ => true
+  | _        => false
+
+/-- Left-assoc and juxtaposition are distinct shapes. -/
+theorem Operator.not_isJuxt_of_isInfxl {o : Operator} (h : o.isInfxl = true) :
+    o.isJuxt = false := by cases o <;> simp_all [Operator.isInfxl, Operator.isJuxt]
+
+/-- Neither juxt nor left-assoc ⇒ not left-recursive (so `parseParts` applies). -/
+theorem Operator.leftRec_eq_false {o : Operator}
+    (hj : ¬ o.isJuxt = true) (hl : ¬ o.isInfxl = true) : o.leftRec = false := by
+  cases o <;> simp_all [Operator.isJuxt, Operator.isInfxl, Operator.leftRec]
+
+/-- A left-assoc body splits as its (chaining) left operand hole and the tail
+(operator tokens + strictly-tighter right operand). -/
+theorem Part.parts_infxl_cons {o : G.Op} (hl : (G.operator o).isInfxl = true) :
+    Part.parts o = Part.hole (Level.tighterEq o) :: (Part.parts o).tail := by
+  cases hop : G.operator o with
+  | infxl tkns => unfold Part.parts; rw [hop]; rfl
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
+/-- The tail of a left-assoc body leads with a name token, so it consumes one
+before recursing (`partsMeasure = 0`) — the fold's termination. -/
+theorem partsMeasure_infxl_tail {o : G.Op} (hl : (G.operator o).isInfxl = true) :
+    partsMeasure (Part.parts o).tail = 0 := by
+  cases hop : G.operator o with
+  | infxl tkns => unfold Part.parts; rw [hop]; cases tkns <;> rfl
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
+/-- Smart constructor for one left-assoc fold step `(acc) ∘ rhs` (`Expr.op` over a
+left-assoc operator `o`), hiding the dependent-`Part.parts` cast. -/
+def Expr.infxlApp {o : G.Op} (hl : (G.operator o).isInfxl = true)
+    (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Part.parts o).tail) :
+    Expr G (Level.tighterEq o) :=
+  Expr.op o TighterEq.refl ((Part.parts_infxl_cons hl).symm ▸ Parts.hole acc tail)
+
 /-! ## The parser -/
 
 -- A couple of `decreasing_by` leaves unfold the level measures with a fixed
@@ -226,6 +272,8 @@ mutual
     | .tighterEq a, tkns =>
         if hj : (G.operator a).isJuxt = true then
           parseJuxt a (Operator.eq_juxt hj) tkns
+        else if hl : (G.operator a).isInfxl = true then
+          parseInfixL a hl tkns
         else
           (parseParts (Part.parts a) tkns).map
               (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G (.tighterEq a)), x.2))
@@ -236,7 +284,8 @@ mutual
   decreasing_by
     all_goals simp_wf
     all_goals first
-      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (partsMeasure_parts_lt _ (Operator.ne_juxt (by assumption))))
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _
+          (partsMeasure_parts_lt _ (Operator.leftRec_eq_false (by assumption) (by assumption))))
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure, Level.base]; omega))
 
   /-- Concatenate, with no first-commit, the parses contributed by each candidate
@@ -334,6 +383,41 @@ mutual
     all_goals first
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+
+  /-- Parse a left-associative chain `a ∘ b ∘ c …` by iteration (not left
+  recursion): parse the leftmost operand at `.tighter o`, then fold further
+  `∘ rhs` segments. Mirrors `parseJuxt`; sits at the same measure `rank o * 4 + 2`. -/
+  def parseInfixL (o : G.Op) (hl : (G.operator o).isInfxl = true) :
+      (tkns : List Token) → List (Expr G (Level.tighterEq o) × RightSublist tkns) :=
+    fun tkns =>
+      (parseExpr (Level.tighter o) tkns).flatMap (fun x =>
+        let lone : Expr G (Level.tighterEq o) :=
+          x.1.reindex (l := Level.tighter o) (l' := Level.tighterEq o)
+            (fun _o hh => Tighter.toTighterEq (show Tighter G.tighter o _o from hh))
+        (lone, x.2) :: (parseInfixLExtend o hl lone x.2.list).map (fun y => (y.1, x.2.trans y.2)))
+  termination_by tkns => (tkns.length, G.rank o * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+
+  /-- Fold one more `∘ rhs` segment onto a left-assoc accumulator, then recurse.
+  The segment is the body tail (operator tokens + right operand at `.tighter o`),
+  parsed by `parseParts`; it leads with a name token, so it consumes ≥1 token. -/
+  def parseInfixLExtend (o : G.Op) (hl : (G.operator o).isInfxl = true)
+      (acc : Expr G (Level.tighterEq o)) :
+      (tkns : List Token) → List (Expr G (Level.tighterEq o) × RightSublist tkns) :=
+    fun tkns =>
+      (parseParts (Part.parts o).tail tkns).flatMap (fun tp =>
+        let acc' : Expr G (Level.tighterEq o) := Expr.infxlApp hl acc tp.1
+        (acc', tp.2) :: (parseInfixLExtend o hl acc' tp.2.list).map (fun y => (y.1, tp.2.trans y.2)))
+  termination_by tkns => (tkns.length, G.rank o * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by rw [partsMeasure_infxl_tail hl]; omega))
+      | exact Prod.Lex.left _ _ (by have := tp.2.length_lt; omega)
 end
 
 /-- All full parses (consuming the entire input). For an unambiguous grammar

@@ -125,6 +125,8 @@ theorem Part.bodyTokens_parts (o : G.Op) :
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | infx tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
+  | infxl tkns =>
+      simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | infxr tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | juxt => rfl
@@ -247,6 +249,7 @@ def Operator.head : Operator → Token
   | .closed t => t.head
   | .prefx t => t.head
   | .infx t => t.head
+  | .infxl t => t.head
   | .infxr t => t.head
   | .postfx t => t.head
   | .juxt => ""
@@ -487,6 +490,7 @@ theorem BodyOk_parts (h : G.UniqueNameParts) (hnj : G.NonAssoc) (o : G.Op) :
       refine BodyOk.holeSep hhead ?_
       rw [← Part.inner_eq_cons tkns]
       simpa using BodyOk_inner_app o tkns [] hpr BodyOk.nil
+  | infxl tkns => exact absurd (hnj o) (by rw [hop]; simp [Operator.simple])
   | infxr tkns => exact absurd (hnj o) (by rw [hop]; simp [Operator.simple])
   | juxt => exact absurd hop (hnj.ne_juxt o)
 
@@ -504,9 +508,9 @@ theorem Parts.flatten_head_hole {l : Level G} {ps : List (Part G)}
     (e : Expr G l) (q : Parts G ps) : (Parts.hole e q).flatten.head? = e.flatten.head? := by
   rw [Parts.flatten_hole, head?_append_left (Expr.flatten_ne e)]
 
-/-- An operator body either leads with the operator's own head (closed/prefix) or
-with an operand hole at level `tighter o` (infix/postfix). -/
-theorem Part.parts_shape (o : G.Op) (hj : G.operator o ≠ Operator.juxt) :
+/-- A `simple` operator body either leads with the operator's own head
+(closed/prefix) or with an operand hole at level `tighter o` (infix/postfix). -/
+theorem Part.parts_shape (o : G.Op) (hs : (G.operator o).simple = true) :
     (∃ rest, Part.parts o = Part.namePart (G.operator o).head :: rest)
     ∨ (∃ rest, Part.parts o = Part.hole (Level.tighter o) :: rest) := by
   unfold Part.parts Operator.head
@@ -514,8 +518,9 @@ theorem Part.parts_shape (o : G.Op) (hj : G.operator o ≠ Operator.juxt) :
   | closed tkns => exact Or.inl ⟨_, Part.inner_eq_cons tkns⟩
   | prefx tkns => exact Or.inl ⟨_, Part.inner_app_cons tkns [Part.hole (Level.tighter o)]⟩
   | infx tkns => exact Or.inr ⟨_, rfl⟩
-  | infxr tkns => exact Or.inr ⟨_, rfl⟩
-  | juxt => exact absurd hop hj
+  | infxl tkns => rw [hop] at hs; simp [Operator.simple] at hs
+  | infxr tkns => rw [hop] at hs; simp [Operator.simple] at hs
+  | juxt => rw [hop] at hs; simp [Operator.simple] at hs
   | postfx tkns => exact Or.inr ⟨_, rfl⟩
 
 /-- For a name-token-leading body, the flattening's head is the operator's head. -/
@@ -554,8 +559,8 @@ theorem topOp_unique (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} {o
     (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
     (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
     (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
-  rcases Part.parts_shape o₁ (hnj.ne_juxt o₁) with hsh₁ | hsh₁
-  · rcases Part.parts_shape o₂ (hnj.ne_juxt o₂) with hsh₂ | hsh₂
+  rcases Part.parts_shape o₁ (hnj o₁) with hsh₁ | hsh₁
+  · rcases Part.parts_shape o₂ (hnj o₂) with hsh₂ | hsh₂
     · -- both bodies lead with a name token: equal heads ⇒ o₁ = o₂
       obtain ⟨_, hsh₁⟩ := hsh₁; obtain ⟨_, hsh₂⟩ := hsh₂
       have hh := head?_eq_of_prefix heq (Parts.flatten_ne p₁ (Part.parts_ne_nil o₁))
@@ -605,7 +610,7 @@ theorem udVarOp (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} {t : To
     (heq : (Expr.var (l := l) t hv).flatten ++ s₁ = (Expr.op o c p).flatten ++ s₂)
     (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
   rw [Expr.flatten_var, Expr.flatten_op] at heq
-  rcases Part.parts_shape o (hnj.ne_juxt o) with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
+  rcases Part.parts_shape o (hnj o) with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
   · -- closed/prefix: the body leads with `o`'s head, so `t = o.head` — impossible.
     have ht := congrArg List.head? heq
     rw [head?_append_left (Parts.flatten_ne p (Part.parts_ne_nil o)),

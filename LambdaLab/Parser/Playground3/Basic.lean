@@ -19,6 +19,11 @@ inductive Operator : Type where
 /-- Non-associative infix: both operands strictly tighter, so it does not nest
 unparenthesized. -/
 | infx : NonEmptyList Token → Operator
+/-- Left-associative infix (`a ∘ b ∘ c = (a ∘ b) ∘ c`): the left operand is at
+`.tighterEq` (chains), the right is strictly tighter. Its body is left-recursive
+(leading `.tighterEq` hole), so it is parsed by an iterative fold (like `juxt`),
+not `parseParts`. -/
+| infxl : NonEmptyList Token → Operator
 /-- Right-associative infix (`a ∘ b ∘ c = a ∘ (b ∘ c)`): the right operand is at
 `.tighterEq` (chains), the left is strictly tighter. The trailing recursion
 consumes the operator token first, so the ordinary `parseParts` handles it. -/
@@ -34,6 +39,7 @@ def Operator.nameTokens : Operator → List Token
   | .closed tkns => tkns.toList
   | .prefx tkns => tkns.toList
   | .infx tkns => tkns.toList
+  | .infxl tkns => tkns.toList
   | .infxr tkns => tkns.toList
   | .postfx tkns => tkns.toList
   | .juxt => []
