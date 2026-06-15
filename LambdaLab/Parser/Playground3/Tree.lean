@@ -31,6 +31,8 @@ def Part.parts {G : Grammar} (o : G.Op) : List (Part G) :=
   | .closed tkns => Part.inner tkns
   | .prefx  tkns => Part.inner tkns ++ [.hole (.tighter o)]
   | .infx   tkns => [.hole (.tighter o)] ++ Part.inner tkns ++ [.hole (.tighter o)]
+  -- right-assoc: the right operand chains (`.tighterEq`), left is strictly tighter.
+  | .infxr  tkns => [.hole (.tighter o)] ++ Part.inner tkns ++ [.hole (.tighterEq o)]
   | .postfx tkns => [.hole (.tighter o)] ++ Part.inner tkns
   -- juxtaposition `f x`: left operand at `.tighterEq o` (so application chains,
   -- left-associatively), right operand (argument) at `.tighter o`. No name tokens.

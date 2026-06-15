@@ -342,6 +342,7 @@ theorem Part.parts_ne_nil (o : G.Op) : Part.parts (G := G) o ≠ [] := by
   | closed tkns => exact Part.inner_ne_nil tkns
   | prefx tkns => simp
   | infx tkns => simp
+  | infxr tkns => simp
   | juxt => simp
   | postfx tkns => simp
 

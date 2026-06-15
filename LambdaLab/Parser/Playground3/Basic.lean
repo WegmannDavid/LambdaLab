@@ -16,7 +16,13 @@ def NonEmptyList.toList : NonEmptyList α → List α
 inductive Operator : Type where
 | closed : NonEmptyList Token → Operator
 | prefx : NonEmptyList Token → Operator
+/-- Non-associative infix: both operands strictly tighter, so it does not nest
+unparenthesized. -/
 | infx : NonEmptyList Token → Operator
+/-- Right-associative infix (`a ∘ b ∘ c = a ∘ (b ∘ c)`): the right operand is at
+`.tighterEq` (chains), the left is strictly tighter. The trailing recursion
+consumes the operator token first, so the ordinary `parseParts` handles it. -/
+| infxr : NonEmptyList Token → Operator
 | postfx : NonEmptyList Token → Operator
 /-- Juxtaposition (function application by adjacency): a tokenless,
 left-associative, tightest-binding operator. A grammar has at most one (see
@@ -28,6 +34,7 @@ def Operator.nameTokens : Operator → List Token
   | .closed tkns => tkns.toList
   | .prefx tkns => tkns.toList
   | .infx tkns => tkns.toList
+  | .infxr tkns => tkns.toList
   | .postfx tkns => tkns.toList
   | .juxt => []
 

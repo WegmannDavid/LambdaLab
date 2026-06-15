@@ -24,9 +24,10 @@ namespace LambdaLab.Parser.Playground3
 
 open LambdaLab.Parser
 
-/-- Operator names. `app` is juxtaposition (function application). -/
+/-- Operator names. `app` is juxtaposition (function application); `pow` is the
+right-associative `^`. -/
 inductive Sym where
-  | num | paren | add | mul | neg | fac | app
+  | num | paren | add | mul | pow | neg | fac | app
 deriving DecidableEq, Repr
 
 /-- Each operator's shape. -/
@@ -35,6 +36,7 @@ def symOp : Sym → Operator
   | .paren => .closed (.cons "(" (.last ")"))
   | .add   => .infx (.last "+")
   | .mul   => .infx (.last "*")
+  | .pow   => .infxr (.last "^")
   | .neg   => .prefx (.last "-")
   | .fac   => .postfx (.last "!")
   | .app   => .juxt
@@ -50,14 +52,16 @@ def symTighter : Sym → List Sym
   | .paren => []
   | .add   => [.mul, .neg]
   | .neg   => [.mul]
-  | .mul   => [.fac]
+  | .mul   => [.pow]
+  | .pow   => [.fac]
   | .fac   => [.app]
   | .app   => [.paren, .num]
 
 /-- A rank witnessing acyclicity: higher = looser. Application sits just above the
 atoms (`paren`/`num`) and below every named operator. -/
 def symRank : Sym → Nat
-  | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .mul => 3 | .neg => 4 | .add => 5
+  | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .pow => 3
+  | .mul => 4 | .neg => 5 | .add => 6
 
 /-- `tighter` is well-founded: each step strictly drops the rank. -/
 theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
@@ -75,7 +79,7 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
   tighter := symTighter
   tighter_wf := symTighter_wf
   -- Any token that is not one of `arith`'s reserved name parts is a variable.
-  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!"])
+  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^"])
   juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [symOp]
 
 /-! ## Running the parser
@@ -170,5 +174,19 @@ Application binds tightest and associates left, so `f x y = (f x) y`, `f x + y =
 #eval run ["f", "(", "g", "x", ")"]
 -- `n x` → the literal `n` applied to variable `x` (both are atoms).
 #eval run ["n", "x"]
+
+/-! ### Right-associative `^`
+
+`^` (`pow`) is right-associative and binds tighter than `*`, so `x ^ y ^ z =
+x ^ (y ^ z)` and `n * x ^ y = n * (x ^ y)`. -/
+
+-- `x ^ y` → one parse.
+#eval run ["x", "^", "y"]
+-- `x ^ y ^ z` → right-associated `x ^ (y ^ z)` (the only reading).
+#eval run ["x", "^", "y", "^", "z"]
+-- `n * x ^ y` → `n * (x ^ y)` (`^` tighter than `*`).
+#eval run ["n", "*", "x", "^", "y"]
+-- `x ^ y * z` → `(x ^ y) * z`.
+#eval run ["x", "^", "y", "*", "z"]
 
 end LambdaLab.Parser.Playground3

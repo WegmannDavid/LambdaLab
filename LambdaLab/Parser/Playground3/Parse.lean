@@ -167,6 +167,9 @@ theorem partsMeasure_parts_lt (a : G.Op) (hne : G.operator a ≠ Operator.juxt) 
   | infx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
       omega
+  | infxr tkns =>
+      simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]
+      omega
   | juxt => exact absurd h hne
   | postfx tkns =>
       simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]

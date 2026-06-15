@@ -50,12 +50,30 @@ open LambdaLab.Parser
 
 variable {G : Grammar}
 
-/-- A grammar with no juxtaposition operator. The token-based unambiguity
-certificate below covers exactly this fragment: juxtaposition is *tokenless*, so
-the leading-token / bracket-counting machinery (`Operator.head`, `BodyOk`,
-`Stops`) has nothing to grip on. Juxtaposition uniqueness (one juxt operator,
-left-associative) is a separate argument, out of scope here. -/
-def Grammar.NoJuxt (G : Grammar) : Prop := ∀ o : G.Op, G.operator o ≠ Operator.juxt
+/-- An operator the token-based certificate can handle: a fixed name-token
+skeleton with *both* operands strictly tighter — `closed` / `prefx` / `infx` /
+`postfx`. Excluded: the tokenless `juxt` and the associative `infxl` / `infxr`
+(their `.tighterEq` operand holes put no separator token where `Stops`/`BodyOk`
+need one). -/
+def Operator.simple : Operator → Bool
+  | .closed _ => true
+  | .prefx _  => true
+  | .infx _   => true
+  | .postfx _ => true
+  | _         => false
+
+/-- A grammar all of whose operators are `simple`. The token-based unambiguity
+certificate below covers exactly this fragment: juxtaposition is tokenless and
+the associative infixes are left- or right-recursive, so the leading-token /
+bracket-counting machinery (`Operator.head`, `BodyOk`, `Stops`) has nothing to
+grip on for them. Their uniqueness (juxt/`infxl` left-assoc, `infxr` right-assoc)
+is a separate argument, out of scope here. -/
+def Grammar.NonAssoc (G : Grammar) : Prop := ∀ o : G.Op, (G.operator o).simple = true
+
+/-- A `simple` operator is in particular not juxtaposition. -/
+theorem Grammar.NonAssoc.ne_juxt {G : Grammar} (h : G.NonAssoc) (o : G.Op) :
+    G.operator o ≠ Operator.juxt := by
+  intro he; have := h o; rw [he] at this; simp [Operator.simple] at this
 
 /-! ## The condition -/
 
@@ -106,6 +124,8 @@ theorem Part.bodyTokens_parts (o : G.Op) :
   | prefx tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | infx tkns =>
+      simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
+  | infxr tkns =>
       simp [Part.bodyTokens, Part.bodyTokens_append, Part.bodyTokens_inner]
   | juxt => rfl
   | postfx tkns =>
@@ -190,7 +210,7 @@ theorem arith_uniqueNameParts : arith.UniqueNameParts where
       simp_all [symOp, Operator.nameTokens, NonEmptyList.toList]
   varDisjoint t hvar o := by
     intro hmem
-    have hnotin : t ∉ ["n", "(", ")", "+", "*", "-", "!"] := of_decide_eq_true hvar
+    have hnotin : t ∉ ["n", "(", ")", "+", "*", "-", "!", "^"] := of_decide_eq_true hvar
     exact hnotin (by cases o <;> simp_all [symOp, Operator.nameTokens, NonEmptyList.toList])
 
 /-- The ambiguous grammar of `Ambiguity.lean` fails the condition exactly at
@@ -222,11 +242,12 @@ theorem NonEmptyList.head_mem_toList {α : Type} (l : NonEmptyList α) : l.head 
   | cons x xs => simp [NonEmptyList.head, NonEmptyList.toList]
 
 /-- The leading name part of an operator (junk for the tokenless `juxt`, which is
-excluded from the token-based machinery by `Grammar.NoJuxt`). -/
+excluded from the token-based machinery by `Grammar.NonAssoc`). -/
 def Operator.head : Operator → Token
   | .closed t => t.head
   | .prefx t => t.head
   | .infx t => t.head
+  | .infxr t => t.head
   | .postfx t => t.head
   | .juxt => ""
 
@@ -295,21 +316,21 @@ theorem Level.condition_up {l : Level G} {o o' : G.Op}
 
 /-! ### Name parts determine operators -/
 
-theorem Grammar.UniqueNameParts.heads_distinct (h : G.UniqueNameParts) (hnj : G.NoJuxt)
+theorem Grammar.UniqueNameParts.heads_distinct (h : G.UniqueNameParts) (hnj : G.NonAssoc)
     {o o' : G.Op} (hne : o ≠ o') : (G.operator o).head ≠ (G.operator o').head := by
   intro he
-  exact hne (h.owner o o' _ (Operator.head_mem _ (hnj o)) (he ▸ Operator.head_mem _ (hnj o')))
+  exact hne (h.owner o o' _ (Operator.head_mem _ (hnj.ne_juxt o)) (he ▸ Operator.head_mem _ (hnj.ne_juxt o')))
 
 /-- Every name part *after the leading one* is the head of no operator. -/
-theorem Grammar.UniqueNameParts.tail_notHead (h : G.UniqueNameParts) (hnj : G.NoJuxt) (a : G.Op) :
+theorem Grammar.UniqueNameParts.tail_notHead (h : G.UniqueNameParts) (hnj : G.NonAssoc) (a : G.Op) :
     ∀ tk ∈ (G.operator a).nameTokens.tail, ∀ o : G.Op, (G.operator o).head ≠ tk := by
   intro tk htk o he
   have hmem_a : tk ∈ (G.operator a).nameTokens := mem_of_mem_tail htk
-  have hmem_o : tk ∈ (G.operator o).nameTokens := he ▸ Operator.head_mem _ (hnj o)
+  have hmem_o : tk ∈ (G.operator o).nameTokens := he ▸ Operator.head_mem _ (hnj.ne_juxt o)
   have hoa : o = a := h.owner o a tk hmem_o hmem_a
   subst hoa
   have hnd := h.nodup o
-  rw [Operator.nameTokens_eq (G.operator o) (hnj o)] at hnd
+  rw [Operator.nameTokens_eq (G.operator o) (hnj.ne_juxt o)] at hnd
   exact (List.nodup_cons.mp hnd).1 (he.symm ▸ htk)
 
 /-! ### `flatten` is never empty -/
@@ -356,7 +377,7 @@ theorem Stops.of_noHead {s : List Token} {tk : Token} (hhd : s.head? = some tk)
 
 /-- A leftover that begins with `o`'s own head stops every level *strictly tighter*
 than `o` (acyclicity: nothing tighter than `o` can reach `o`). -/
-theorem Stops.tighter_of_head (h : G.UniqueNameParts) (hnj : G.NoJuxt) {o : G.Op} {s : List Token}
+theorem Stops.tighter_of_head (h : G.UniqueNameParts) (hnj : G.NonAssoc) {o : G.Op} {s : List Token}
     (hhd : s.head? = some (G.operator o).head) : Stops (Level.tighter o) s := by
   intro o' (hT : Tighter G.tighter o o') hcon
   rw [hhd] at hcon
@@ -436,7 +457,7 @@ theorem BodyOk_inner_app (o : G.Op) (tkns : NonEmptyList Token) (suffix : List (
         (by rw [← Part.inner_app_cons ts suffix]; exact hih)
 
 /-- Every operator body is `BodyOk` for its own operator. -/
-theorem BodyOk_parts (h : G.UniqueNameParts) (hnj : G.NoJuxt) (o : G.Op) :
+theorem BodyOk_parts (h : G.UniqueNameParts) (hnj : G.NonAssoc) (o : G.Op) :
     BodyOk o (Part.parts o) := by
   unfold Part.parts
   cases hop : G.operator o with
@@ -466,7 +487,8 @@ theorem BodyOk_parts (h : G.UniqueNameParts) (hnj : G.NoJuxt) (o : G.Op) :
       refine BodyOk.holeSep hhead ?_
       rw [← Part.inner_eq_cons tkns]
       simpa using BodyOk_inner_app o tkns [] hpr BodyOk.nil
-  | juxt => exact absurd hop (hnj o)
+  | infxr tkns => exact absurd (hnj o) (by rw [hop]; simp [Operator.simple])
+  | juxt => exact absurd hop (hnj.ne_juxt o)
 
 /-! ### Leading-token infrastructure
 
@@ -492,6 +514,7 @@ theorem Part.parts_shape (o : G.Op) (hj : G.operator o ≠ Operator.juxt) :
   | closed tkns => exact Or.inl ⟨_, Part.inner_eq_cons tkns⟩
   | prefx tkns => exact Or.inl ⟨_, Part.inner_app_cons tkns [Part.hole (Level.tighter o)]⟩
   | infx tkns => exact Or.inr ⟨_, rfl⟩
+  | infxr tkns => exact Or.inr ⟨_, rfl⟩
   | juxt => exact absurd hop hj
   | postfx tkns => exact Or.inr ⟨_, rfl⟩
 
@@ -517,7 +540,7 @@ leading token belongs to a strictly-tighter left operand rather than the operato
 itself — is `topOp_unique_holeLed`. That is the genuine Danielsson–Norell depth-0
 / bracket-counting kernel (roadmap in this file's header; foundation
 `count_flatten_expr`); the paper only sketches it. Forest-free. -/
-theorem topOp_unique_holeLed (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G}
+theorem topOp_unique_holeLed (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G}
     {o₁ o₂ : G.Op}
     (hne : o₁ ≠ o₂) (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
     (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
@@ -526,13 +549,13 @@ theorem topOp_unique_holeLed (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level
            ∨ (∃ rest, Part.parts o₂ = Part.hole (Level.tighter o₂) :: rest)) : False := by
   sorry
 
-theorem topOp_unique (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G} {o₁ o₂ : G.Op}
+theorem topOp_unique (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} {o₁ o₂ : G.Op}
     (hne : o₁ ≠ o₂)
     (c₁ : Level.condition l o₁) (c₂ : Level.condition l o₂)
     (p₁ : Parts G (Part.parts o₁)) (p₂ : Parts G (Part.parts o₂)) (s₁ s₂ : List Token)
     (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
-  rcases Part.parts_shape o₁ (hnj o₁) with hsh₁ | hsh₁
-  · rcases Part.parts_shape o₂ (hnj o₂) with hsh₂ | hsh₂
+  rcases Part.parts_shape o₁ (hnj.ne_juxt o₁) with hsh₁ | hsh₁
+  · rcases Part.parts_shape o₂ (hnj.ne_juxt o₂) with hsh₂ | hsh₂
     · -- both bodies lead with a name token: equal heads ⇒ o₁ = o₂
       obtain ⟨_, hsh₁⟩ := hsh₁; obtain ⟨_, hsh₂⟩ := hsh₂
       have hh := head?_eq_of_prefix heq (Parts.flatten_ne p₁ (Part.parts_ne_nil o₁))
@@ -554,7 +577,7 @@ theorem BodyOk.hole_tail {o : G.Op} {l' : Level G} {rest : List (Part G)}
 exactly which mechanism applies (acyclicity for separators/last holes,
 unique-name-parts for inner holes). This is where the segmentation lives — all
 three cases are forest-free. -/
-theorem BodyOk.hole_stops (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G} {o : G.Op}
+theorem BodyOk.hole_stops (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} {o : G.Op}
     (hco : Level.condition l o) {l' : Level G} {rest : List (Part G)}
     (hok : BodyOk o (Part.hole l' :: rest)) (q : Parts G rest) {s : List Token}
     (hs : Stops l s) : Stops l' (q.flatten ++ s) := by
@@ -576,19 +599,19 @@ from `varDisjoint` (the variable token would have to be the operator's head). Fo
 an infix/postfix operator the variable's single token is a strict prefix of the
 operand-led body, so it reduces to the same proper-prefix kernel as
 `topOp_unique_holeLed` (the remaining `sorry`). -/
-theorem udVarOp (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G} {t : Token}
+theorem udVarOp (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} {t : Token}
     (hv : G.isVar t = true)
     {o : G.Op} (c : Level.condition l o) (p : Parts G (Part.parts o)) (s₁ s₂ : List Token)
     (heq : (Expr.var (l := l) t hv).flatten ++ s₁ = (Expr.op o c p).flatten ++ s₂)
     (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : False := by
   rw [Expr.flatten_var, Expr.flatten_op] at heq
-  rcases Part.parts_shape o (hnj o) with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
+  rcases Part.parts_shape o (hnj.ne_juxt o) with ⟨rest, hsh⟩ | ⟨rest, hsh⟩
   · -- closed/prefix: the body leads with `o`'s head, so `t = o.head` — impossible.
     have ht := congrArg List.head? heq
     rw [head?_append_left (Parts.flatten_ne p (Part.parts_ne_nil o)),
       Parts.flatten_head_of_namePart p hsh] at ht
     simp only [List.cons_append, List.head?_cons, Option.some.injEq] at ht
-    exact h.varDisjoint t hv o (ht.symm ▸ Operator.head_mem (G.operator o) (hnj o))
+    exact h.varDisjoint t hv o (ht.symm ▸ Operator.head_mem (G.operator o) (hnj.ne_juxt o))
   · -- infix/postfix (operand-led): proper-prefix kernel residue.
     sorry
 
@@ -598,7 +621,7 @@ mutual
   /-- Two expressions at the same level with a common flatten-prefix (both
   leftovers stopping the level) are equal, with equal leftovers. The top operator
   agrees by `topOp_unique`; the bodies then agree by `udParts`. -/
-  theorem udExpr (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G} (e₁ e₂ : Expr G l)
+  theorem udExpr (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} (e₁ e₂ : Expr G l)
       (s₁ s₂ : List Token) (heq : e₁.flatten ++ s₁ = e₂.flatten ++ s₂)
       (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) : e₁ = e₂ ∧ s₁ = s₂ := by
     match e₁, e₂ with
@@ -628,7 +651,7 @@ mutual
   flatten-prefix are equal, with equal leftovers. Walks the body front-to-back;
   each hole's operand leftover is `Stop`ped using the `BodyOk` data, then the
   operand is matched by `udExpr`. -/
-  theorem udParts (h : G.UniqueNameParts) (hnj : G.NoJuxt) {l : Level G} (o : G.Op)
+  theorem udParts (h : G.UniqueNameParts) (hnj : G.NonAssoc) {l : Level G} (o : G.Op)
       (hco : Level.condition l o)
       {ps : List (Part G)} (hok : BodyOk o ps) (p₁ p₂ : Parts G ps) (s₁ s₂ : List Token)
       (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) (hs₁ : Stops l s₁) (hs₂ : Stops l s₂) :
@@ -667,11 +690,11 @@ flattening — the Danielsson–Norell depth-0 / bracket-counting kernel, which 
 paper itself only sketches. The counterexample `amb_not_uniqueNameParts` shows
 the hypothesis is doing real work.
 
-The `NoJuxt` hypothesis confines this to the token-based fragment: the
+The `NonAssoc` hypothesis confines this to the token-based fragment: the
 tokenless juxtaposition operator carries no leading token for `Stops`/`BodyOk`
 to key on, so its (separate, left-associativity) uniqueness argument is out of
 scope here. -/
-theorem unambiguous_of_uniqueNameParts (h : G.UniqueNameParts) (hnj : G.NoJuxt) :
+theorem unambiguous_of_uniqueNameParts (h : G.UniqueNameParts) (hnj : G.NonAssoc) :
     G.Unambiguous := by
   intro e₁ e₂ he
   have heq : e₁.flatten ++ [] = e₂.flatten ++ [] := by simpa using he
