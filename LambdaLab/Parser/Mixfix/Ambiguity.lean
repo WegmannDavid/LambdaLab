@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Playground3.Verified
+import LambdaLab.Parser.Mixfix.Verified
 
 /-!
 # Distinct leading tokens do not give unambiguity
@@ -26,7 +26,7 @@ exclude this — e.g.: **a name-part token immediately following a hole at level
 `arith` this holds: `)` follows `paren`'s hole and names no infix).
 -/
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
@@ -99,4 +99,4 @@ theorem wrapped_ne : wrapped nL nMulN ≠ wrapped nMulN nL := by
 theorem amb_not_unambiguous : ¬ amb.Unambiguous := fun h =>
   wrapped_ne (h _ _ (wrapped_left_flatten.trans wrapped_right_flatten.symm))
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix

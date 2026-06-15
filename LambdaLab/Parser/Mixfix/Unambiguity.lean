@@ -1,6 +1,6 @@
-import LambdaLab.Parser.Playground3.Verified
-import LambdaLab.Parser.Playground3.Example
-import LambdaLab.Parser.Playground3.Ambiguity
+import LambdaLab.Parser.Mixfix.Verified
+import LambdaLab.Parser.Mixfix.Example
+import LambdaLab.Parser.Mixfix.Ambiguity
 
 /-!
 # Sufficient conditions for unambiguity: unique name parts
@@ -44,7 +44,7 @@ fragment, on top of `count_flatten_expr`:
    contradicting `tighter_wf`.
 -/
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
@@ -705,4 +705,4 @@ theorem unambiguous_of_uniqueNameParts (h : G.UniqueNameParts) (hnj : G.NonAssoc
   have heq : e₁.flatten ++ [] = e₂.flatten ++ [] := by simpa using he
   exact (udExpr h hnj e₁ e₂ [] [] heq (by intro o _; simp) (by intro o _; simp)).1
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix

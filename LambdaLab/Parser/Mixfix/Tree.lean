@@ -1,6 +1,6 @@
-import LambdaLab.Parser.Playground3.Basic
+import LambdaLab.Parser.Mixfix.Basic
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 

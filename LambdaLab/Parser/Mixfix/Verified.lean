@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Playground3.Parse
+import LambdaLab.Parser.Mixfix.Parse
 
 /-!
 # Correctness of the `Part`/`Parts` parser
@@ -18,7 +18,7 @@ Three properties on top of `Parse.lean`'s termination:
   `Unambiguous` for a concrete grammar class is a separate (hard) problem.
 -/
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
@@ -863,4 +863,4 @@ theorem parse_unique (hG : G.Unambiguous) {tkns : List Token}
     e₁ = e₂ :=
   hG e₁ e₂ ((parse_sound h₁).trans (parse_sound h₂).symm)
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix

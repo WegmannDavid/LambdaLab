@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Playground3.Parse
+import LambdaLab.Parser.Mixfix.Parse
 
 /-!
 # A concrete grammar exercising the `Part`/`Parts` parser
@@ -20,7 +20,7 @@ bottom run the parser and re-flatten each parse — well-formed inputs
 round-trip to themselves, malformed inputs yield no full parse.
 -/
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
@@ -202,4 +202,4 @@ Mixed with the right-assoc `^`: `x + y ^ z = x + (y ^ z)`. -/
 -- `x + y ^ z` → `x + (y ^ z)` (`^` tighter than `+`).
 #eval run ["x", "+", "y", "^", "z"]
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix

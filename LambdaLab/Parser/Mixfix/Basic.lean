@@ -1,7 +1,7 @@
 import LambdaLab.Parser.Basic
 
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 
 
@@ -121,4 +121,4 @@ structure Grammar where
   (vacuously satisfied by grammars without juxtaposition). -/
   juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix

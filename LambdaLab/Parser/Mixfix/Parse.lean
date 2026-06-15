@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Playground3.Tree
+import LambdaLab.Parser.Mixfix.Tree
 
 /-!
 # Parser for the `Part`/`Parts` parse-tree model (all parses)
@@ -39,7 +39,7 @@ triple `(tkns.length, levelMeasure, list-length)`:
 No correctness proofs (soundness / completeness / uniqueness) — only termination.
 -/
 
-namespace LambdaLab.Parser.Playground3
+namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
@@ -425,4 +425,4 @@ this is a singleton (or empty). -/
 def parse (tkns : List Token) : List (Expr G .loosest) :=
   (parseExpr (G := G) .loosest tkns).filterMap (fun x => if x.2.list = [] then some x.1 else none)
 
-end LambdaLab.Parser.Playground3
+end LambdaLab.Parser.Mixfix
