@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Typing
-import LambdaLab.Stlc.Named.Unification
+import LambdaLab.Stlc.Named.Typing.Unification
 
 /-!
 # Generic properties of named-variable typing

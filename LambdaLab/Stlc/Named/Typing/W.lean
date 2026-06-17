@@ -1,6 +1,6 @@
 import LambdaLab.Stlc.Named.Typing
-import LambdaLab.Stlc.Named.Unification
-import LambdaLab.Stlc.Named.Properties
+import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Substitution.Unification.Soundness
 import LambdaLab.Substitution.Unification.MGU
 import LambdaLab.Language.Basic

@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.Named.Properties
+import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Stlc.DeBruijn.Reducibility
 
 /-!

@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.Named.Properties
+import LambdaLab.Stlc.Named.Typing.Properties
 
 /-!
 # Subject reduction (named-variable variant), via the de Bruijn translation

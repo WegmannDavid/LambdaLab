@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.W
+import LambdaLab.Stlc.Named.Typing.W
 import LambdaLab.Stlc.Named.Eval
 import LambdaLab.Language.Basic
 

@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Normalization
+import LambdaLab.Stlc.Named.Typing.Normalization
 
 /-!
 # Total normalizer (named variant)
