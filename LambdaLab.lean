@@ -13,14 +13,14 @@ import LambdaLab.Stlc.DeBruijn.Preservation
 import LambdaLab.Stlc.DeBruijn.Confluence
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step
-import LambdaLab.Stlc.Named.MStep
+import LambdaLab.Stlc.Named.Step.MStep
 import LambdaLab.Stlc.Named.Typing
 import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.Named.Confluence
+import LambdaLab.Stlc.Named.Step.Confluence
 import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
-import LambdaLab.Stlc.Named.Eval
+import LambdaLab.Stlc.Named.Step.Eval
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.W

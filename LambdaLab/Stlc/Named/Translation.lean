@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.MStep
+import LambdaLab.Stlc.Named.Step.MStep
 import LambdaLab.Stlc.Named.Typing
 import LambdaLab.Stlc.DeBruijn.MStep
 import LambdaLab.Stlc.DeBruijn.Substitution
