@@ -12,9 +12,9 @@ import LambdaLab.Stlc.DeBruijn.Properties
 import LambdaLab.Stlc.DeBruijn.Preservation
 import LambdaLab.Stlc.DeBruijn.Confluence
 import LambdaLab.Stlc.Named.Basic
-import LambdaLab.Stlc.Named.Step
+import LambdaLab.Stlc.Named.Step.Basic
 import LambdaLab.Stlc.Named.Step.MStep
-import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Stlc.Named.Translation
 import LambdaLab.Stlc.Named.Step.Confluence

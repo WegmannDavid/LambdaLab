@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Step
+import LambdaLab.Stlc.Named.Step.Basic
 
 /-!
 # Multi-step reduction (named)

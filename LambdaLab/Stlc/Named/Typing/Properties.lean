@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Typing
+import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 
 /-!
