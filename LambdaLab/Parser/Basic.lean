@@ -55,7 +55,33 @@ theorem length_lt {l : List α} (r : RightSublist l) : r.list.length < l.length 
 
 end RightSublist
 
-abbrev Parser (α : Type) := (tkn : List Token) → Option (List (α × RightSublist tkn))
+/-- An **all-parses** parser: every parse of a prefix of the input, each with the
+strict suffix left over (an empty list means "no parse"). -/
+abbrev Parser.{u} (α : Type u) := (tkn : List Token) → List (α × RightSublist tkn)
+
+/-- A **verified parser**: an all-parses `parse` bundled with its correctness, so
+it can be embedded as a hole in another language (`Mixfix.InnerHole.sub`) without
+that language having to know how it works — only that it is sound and complete.
+Universe-polymorphic so a grammar's own parse trees (`Expr.{u}`, in `Type (u+1)`)
+can themselves be embedded as a `VerifiedParser.{u+1}` (`Grammar.toVerifiedParser`).
+
+* `sound` — every parse consumes exactly the tokens its result flattens to.
+* `complete` — every result is found on its own flattening (for any right
+  extension `rest`, leaving exactly `rest`).
+
+These are the `mem_parse_iff` interface; any `Mixfix` grammar supplies them via a
+`toVerifiedParser` adapter, and a hand-written parser can too. -/
+structure VerifiedParser.{u} where
+  /-- The parse-tree type this parser produces. -/
+  Result : Type u
+  /-- The token string a result flattens to. -/
+  flatten : Result → List Token
+  /-- All parses of a prefix of the input. -/
+  parse : Parser Result
+  sound : ∀ (tkns : List Token) (x : Result × RightSublist tkns),
+            x ∈ parse tkns → flatten x.1 ++ x.2.list = tkns
+  complete : ∀ (r : Result) (tkns rest : List Token), tkns = flatten r ++ rest →
+               ∃ s : RightSublist tkns, s.list = rest ∧ (r, s) ∈ parse tkns
 
 
 end LambdaLab.Parser

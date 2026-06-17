@@ -36,7 +36,7 @@ deriving DecidableEq, Repr
 
 def ambOperator : AmbOp → Operator
   | .num  => .closed (.last "n")
-  | .wrap => .closed (.cons "(" (.cons "*" (.last ")")))
+  | .wrap => .closed (.cons "(" .loosest (.cons "*" .loosest (.last ")")))
   | .mul  => .infx (.last "*")
 
 def ambTighter : AmbOp → List AmbOp
@@ -52,7 +52,7 @@ theorem ambTighter_wf : WellFounded (fun b a => b ∈ ambTighter a) :=
 
 /-- The counterexample grammar. Leading tokens `n`, `(`, `*` are pairwise
 distinct (the distinct-leading-tokens condition), yet the grammar is ambiguous. -/
-@[reducible] def amb : Grammar where
+@[reducible] def amb : Grammar.{0} where
   Op := AmbOp
   operator := ambOperator
   loosest := [.mul]

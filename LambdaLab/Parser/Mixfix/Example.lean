@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Mixfix.Parse
+import LambdaLab.Parser.Mixfix.Verified
 
 /-!
 # A concrete grammar exercising the `Part`/`Parts` parser
@@ -25,21 +25,36 @@ namespace LambdaLab.Parser.Mixfix
 open LambdaLab.Parser
 
 /-- Operator names. `app` is juxtaposition (function application); `pow` is the
-right-associative `^`. -/
+right-associative `^`; `lam` is the binder `\lambda x . _`. -/
 inductive Sym where
-  | num | paren | add | mul | pow | neg | fac | app
+  | num | paren | add | mul | pow | neg | fac | app | lam
 deriving DecidableEq, Repr
 
-/-- Each operator's shape. -/
+/-- A trivial sub-grammar with **no operators** — its parser is just `parseVar`,
+so it accepts exactly one variable. Used as the *binder language* of `lam`: the
+hole `\lambda ‹here› .` is parsed by this grammar, so only a variable fits. -/
+def varGrammar : Grammar.{0} where
+  Op := Empty
+  operator := fun e => e.elim
+  loosest := []
+  tighter := fun e => e.elim
+  tighter_wf := ⟨fun e => e.elim⟩
+  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."])
+  juxtUnique := fun e => e.elim
+
+/-- Each operator's shape. `lam`'s binder hole is `varGrammar` (a *different*
+language), embedded via `toVerifiedParser`; its body is the ordinary recursive
+operand. -/
 def symOp : Sym → Operator
   | .num   => .closed (.last "n")
-  | .paren => .closed (.cons "(" (.last ")"))
+  | .paren => .closed (.cons "(" .loosest (.last ")"))
   | .add   => .infxl (.last "+")
   | .mul   => .infx (.last "*")
   | .pow   => .infxr (.last "^")
   | .neg   => .prefx (.last "-")
   | .fac   => .postfx (.last "!")
   | .app   => .juxt
+  | .lam   => .prefx (.cons "\\lambda" (.sub varGrammar.toVerifiedParser) (.last "."))
 
 /-- Immediately-tighter successors: `add → {mul, neg}`, `neg → mul`,
 `mul → fac`, `fac → {paren, num}`. Unary minus binds looser than `*` (so
@@ -56,12 +71,14 @@ def symTighter : Sym → List Sym
   | .pow   => [.fac]
   | .fac   => [.app]
   | .app   => [.paren, .num]
+  -- `\lambda x . body`: the body is any add-or-tighter expression.
+  | .lam   => [.add]
 
 /-- A rank witnessing acyclicity: higher = looser. Application sits just above the
 atoms (`paren`/`num`) and below every named operator. -/
 def symRank : Sym → Nat
   | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .pow => 3
-  | .mul => 4 | .neg => 5 | .add => 6
+  | .mul => 4 | .neg => 5 | .add => 6 | .lam => 7
 
 /-- `tighter` is well-founded: each step strictly drops the rank. -/
 theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
@@ -75,11 +92,11 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
 @[reducible] def arith : Grammar where
   Op := Sym
   operator := symOp
-  loosest := [.add]
+  loosest := [.add, .lam]
   tighter := symTighter
   tighter_wf := symTighter_wf
   -- Any token that is not one of `arith`'s reserved name parts is a variable.
-  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^"])
+  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."])
   juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [symOp]
 
 /-! ## Running the parser
@@ -201,5 +218,28 @@ Mixed with the right-assoc `^`: `x + y ^ z = x + (y ^ z)`. -/
 #eval run ["x", "+", "y", "+", "z", "+", "w"]
 -- `x + y ^ z` → `x + (y ^ z)` (`^` tighter than `+`).
 #eval run ["x", "+", "y", "^", "z"]
+
+/-! ### Binder `\lambda x . body` (a hole parsed by **another grammar**)
+
+`lam`'s binder hole is `varGrammar` embedded via `toVerifiedParser` — a genuinely
+different language (no operators), so position (1) of `\lambda (1) . (2)` accepts
+**exactly one variable**, while the body (2) is the ordinary recursive `arith`
+operand (any term). This is the multi-grammar feature: an operator hole parsed by
+another `VerifiedParser`. Like the other prefixes (`- _`), the body is *strictly
+tighter*, so a bare lambda body can't itself be a lambda — nesting needs parens
+(exactly as `- - n` needs `- (- n)`). -/
+
+-- `\lambda x . x` → the identity; `x` is bound (parsed by `varGrammar`), body is `x`.
+#eval run ["\\lambda", "x", ".", "x"]
+-- `\lambda x . x + n` → body is the term `x + n`.
+#eval run ["\\lambda", "x", ".", "x", "+", "n"]
+-- `(\lambda x . x) y` → a parenthesised lambda applied to `y`.
+#eval run ["(", "\\lambda", "x", ".", "x", ")", "y"]
+-- `\lambda f . ( \lambda x . f x )` → nested lambda via parentheses.
+#eval run ["\\lambda", "f", ".", "(", "\\lambda", "x", ".", "f", "x", ")"]
+-- malformed: the binder must be a variable, not the literal `n` → no parse.
+#eval run ["\\lambda", "n", ".", "x"]
+-- malformed: the binder must be a *single* variable, not an application → no parse.
+#eval run ["\\lambda", "f", "x", ".", "y"]
 
 end LambdaLab.Parser.Mixfix
