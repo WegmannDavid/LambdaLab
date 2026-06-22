@@ -8,57 +8,52 @@ namespace LambdaLab.Parser.Mixfix
 An operator's name is a non-empty sequence of name tokens. Between each
 consecutive pair of tokens sits an **interior hole**, which is either recursive
 (`loosest`, parsing the host language — the previous, default behaviour) or
-parsed by **another language**, a `VerifiedParser` (`LambdaLab/Parser/Basic.lean`).
+parsed by **another language**, a `LosslessParser` (`LambdaLab/Parser/Basic.lean`).
 
-`VerifiedParser` is grammar-agnostic (it mentions only `Token`, `RightSublist`,
+`LosslessParser` is grammar-agnostic (it mentions only `Token`, `RightSublist`,
 and its own result type), so embedding one does **not** create a
 `Grammar → Operator → … → Grammar` type cycle: `Grammar` stays a plain
 `structure`, and `Expr` keeps `G` as a parameter (the sub-tree stored at such a
 hole is the bundle's own `Result`, never `Expr G'`). A `Grammar` plugs in via a
-`toVerifiedParser` adapter (in `Verified.lean`); a binder is an interior hole
+`toLosslessParser` adapter (in `Verified.lean`); a binder is an interior hole
 `sub varParser` admitting exactly one variable. -/
-
-/-- An interior hole of an operator name: recursive (`loosest`) or another
-language (a `VerifiedParser.{u}`, whose result type lives in `Type u`). -/
-inductive InnerHole.{u} where
-  | loosest : InnerHole
-  | sub : VerifiedParser.{u} → InnerHole
 
 /-- An operator name: a non-empty token sequence with an `InnerHole` between each
 consecutive pair of tokens. A plain operator uses `.loosest` for every interior
-hole (the previous behaviour); a sub-parser hole uses `.sub`. -/
-inductive Notation.{u} where
-  | last : Token → Notation
-  | cons : Token → InnerHole.{u} → Notation → Notation
+hole (the previous behaviour); a sub-parser hole uses `.sub s` for a registry
+reference `s : Sub`. -/
+inductive Notation (Ent : Type) where
+  | last : Token → Notation Ent
+  | cons : Token → Ent → Notation Ent → Notation Ent
 
 /-- The name tokens of a `Notation`, in order. -/
-def Notation.toTokens.{u} : Notation.{u} → List Token
+def Notation.toTokens {Ent : Type} : Notation Ent → List Token
   | .last t        => [t]
   | .cons t _ rest => t :: rest.toTokens
 
-inductive Operator.{u} where
-| closed : Notation.{u} → Operator
-| prefx : Notation.{u} → Operator
+inductive Operator (Ent : Type) where
+| closed : Notation Ent → Operator Ent
+| prefx : Notation Ent → Operator Ent
 /-- Non-associative infix: both operands strictly tighter, so it does not nest
 unparenthesized. -/
-| infx : Notation.{u} → Operator
+| infx : Notation Ent → Operator Ent
 /-- Left-associative infix (`a ∘ b ∘ c = (a ∘ b) ∘ c`): the left operand is at
 `.tighterEq` (chains), the right is strictly tighter. Its body is left-recursive
 (leading `.tighterEq` hole), so it is parsed by an iterative fold (like `juxt`),
 not `parseParts`. -/
-| infxl : Notation.{u} → Operator
+| infxl : Notation Ent → Operator Ent
 /-- Right-associative infix (`a ∘ b ∘ c = a ∘ (b ∘ c)`): the right operand is at
 `.tighterEq` (chains), the left is strictly tighter. The trailing recursion
 consumes the operator token first, so the ordinary `parseParts` handles it. -/
-| infxr : Notation.{u} → Operator
-| postfx : Notation.{u} → Operator
+| infxr : Notation Ent → Operator Ent
+| postfx : Notation Ent → Operator Ent
 /-- Juxtaposition (function application by adjacency): a tokenless,
 left-associative, tightest-binding operator. A grammar has at most one (see
 `Grammar.juxtUnique`). -/
-| juxt : Operator
+| juxt : Operator Ent
 
 /-- The name-part tokens of an operator, in body order. -/
-def Operator.nameTokens.{u} : Operator.{u} → List Token
+def Operator.nameTokens {Ent : Type} : Operator Ent → List Token
   | .closed n => n.toTokens
   | .prefx n => n.toTokens
   | .infx n => n.toTokens
@@ -130,9 +125,11 @@ name parts. The parser admits any `isVar` token as a leaf `Expr.var` at every
 level. For unique parses, a separate certificate requires `isVar` tokens to be
 disjoint from operator name parts (so a token can't be read as both a variable
 and an operator), exactly as `UniqueNameParts` handles name-part collisions. -/
-structure Grammar.{u} where
+structure Entry (Ent : Type) where
   Op : Type
-  operator : Op → Operator.{u}
+  /-- Registry index for embedded sub-language parsers (e.g. binders). An
+  operator's `.sub s` hole references an element `s : Sub`. -/
+  operator : Op → Operator Ent
   loosest : List Op
   tighter : Op → List Op
   tighter_wf : WellFounded (fun b a => b ∈ tighter a)
@@ -143,5 +140,10 @@ structure Grammar.{u} where
   operators would be indistinguishable in the token stream; this pins it to one
   (vacuously satisfied by grammars without juxtaposition). -/
   juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
+
+structure Grammar where
+  Ent : Type
+  entry : Ent → Entry Ent
+  -- no start symbol, the start symbol is choosen when deriving the parser
 
 end LambdaLab.Parser.Mixfix

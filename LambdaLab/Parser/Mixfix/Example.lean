@@ -1,67 +1,34 @@
-import LambdaLab.Parser.Mixfix.Verified
+import LambdaLab.Parser.Mixfix.Parse
 
 /-!
-# A concrete grammar exercising the `Part`/`Parts` parser
+# A concrete grammar exercising the multi-entry parser
 
-A tiny arithmetic grammar over the full (`closed` / `prefx` / `infx` /
-`postfx`) operator model:
+A tiny arithmetic grammar as a two-`Entry` family: a `term` entry with the full
+operator model (`closed`/`prefx`/`infx`/`postfx`/`infxl`/`infxr`/`juxt`), and a
+`var` entry (no operators) used as the binder language of `lam` — referenced as
+an ordinary cross-entry hole `\lambda ‹var› . _`.
 
-* `num`   — the constant `n`        (closed, tightest)
-* `paren` — `( _ )`                  (closed)
-* `add`   — `_ + _`                  (loosest)
-* `mul`   — `_ * _`                  (tighter than `add`)
-* `neg`   — `- _`                    (prefix, between `add` and `mul`)
-* `fac`   — `_ !`                    (postfix, between `mul` and the atoms)
-
-Precedence DAG (loosest → tightest): `add → {mul, neg}`, `neg → mul`,
-`mul → fac`, `fac → {paren, num}`, so `n + n * n` groups as `n + (n * n)`,
-`- n * n` as `- (n * n)`, and `n ! * n` as `(n !) * n`. The `#eval`s at the
-bottom run the parser and re-flatten each parse — well-formed inputs
-round-trip to themselves, malformed inputs yield no full parse.
+Precedence (in `term`): `add → {mul, neg}`, `neg → mul`, `mul → pow`, `pow → fac`,
+`fac → app`, `app → {paren, num}`; `lam` is loosest. The `#eval`s run the parser
+at the `term` entry and re-flatten each parse.
 -/
 
 namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
-/-- Operator names. `app` is juxtaposition (function application); `pow` is the
-right-associative `^`; `lam` is the binder `\lambda x . _`. -/
+/-- The two classes of expressions: ordinary terms, and the binder sub-language. -/
+inductive Ent where | term | var
+  deriving DecidableEq, Repr
+
+/-- Operator names of the `term` entry. -/
 inductive Sym where
   | num | paren | add | mul | pow | neg | fac | app | lam
-deriving DecidableEq, Repr
+  deriving DecidableEq, Repr
 
-/-- A trivial sub-grammar with **no operators** — its parser is just `parseVar`,
-so it accepts exactly one variable. Used as the *binder language* of `lam`: the
-hole `\lambda ‹here› .` is parsed by this grammar, so only a variable fits. -/
-def varGrammar : Grammar.{0} where
-  Op := Empty
-  operator := fun e => e.elim
-  loosest := []
-  tighter := fun e => e.elim
-  tighter_wf := ⟨fun e => e.elim⟩
-  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."])
-  juxtUnique := fun e => e.elim
+def reserved : List Token := ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."]
 
-/-- Each operator's shape. `lam`'s binder hole is `varGrammar` (a *different*
-language), embedded via `toVerifiedParser`; its body is the ordinary recursive
-operand. -/
-def symOp : Sym → Operator
-  | .num   => .closed (.last "n")
-  | .paren => .closed (.cons "(" .loosest (.last ")"))
-  | .add   => .infxl (.last "+")
-  | .mul   => .infx (.last "*")
-  | .pow   => .infxr (.last "^")
-  | .neg   => .prefx (.last "-")
-  | .fac   => .postfx (.last "!")
-  | .app   => .juxt
-  | .lam   => .prefx (.cons "\\lambda" (.sub varGrammar.toVerifiedParser) (.last "."))
-
-/-- Immediately-tighter successors: `add → {mul, neg}`, `neg → mul`,
-`mul → fac`, `fac → {paren, num}`. Unary minus binds looser than `*` (so
-`- n * n` is `- (n * n)`); factorial binds tighter than `*` (so `n ! * n` is
-`(n !) * n`). Both unary operators are non-assoc — the operand hole is
-*strictly* tighter — so neither nests unparenthesized: `- - n` and `n ! !`
-need parentheses. -/
+/-- Immediately-tighter successors within `term`. -/
 def symTighter : Sym → List Sym
   | .num   => []
   | .paren => []
@@ -71,16 +38,12 @@ def symTighter : Sym → List Sym
   | .pow   => [.fac]
   | .fac   => [.app]
   | .app   => [.paren, .num]
-  -- `\lambda x . body`: the body is any add-or-tighter expression.
   | .lam   => [.add]
 
-/-- A rank witnessing acyclicity: higher = looser. Application sits just above the
-atoms (`paren`/`num`) and below every named operator. -/
 def symRank : Sym → Nat
   | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .pow => 3
   | .mul => 4 | .neg => 5 | .add => 6 | .lam => 7
 
-/-- `tighter` is well-founded: each step strictly drops the rank. -/
 theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
   Subrelation.wf
     (r := fun x y => symRank x < symRank y)
@@ -88,158 +51,62 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
       cases x <;> cases y <;> simp_all [symTighter, symRank])
     (measure symRank).wf
 
-/-- The arithmetic grammar. `@[reducible]` so `arith.Op` unfolds to `Sym`. -/
-@[reducible] def arith : Grammar where
+/-- Each `term` operator's shape. `paren`'s interior hole recurses into `term`;
+`lam`'s binder hole references the `var` entry. -/
+def symOp : Sym → Operator Ent
+  | .num   => .closed (.last "n")
+  | .paren => .closed (.cons "(" .term (.last ")"))
+  | .add   => .infxl (.last "+")
+  | .mul   => .infx (.last "*")
+  | .pow   => .infxr (.last "^")
+  | .neg   => .prefx (.last "-")
+  | .fac   => .postfx (.last "!")
+  | .app   => .juxt
+  | .lam   => .prefx (.cons "\\lambda" .var (.last "."))
+
+/-- The `term` entry. -/
+def termEntry : Entry Ent where
   Op := Sym
   operator := symOp
   loosest := [.add, .lam]
   tighter := symTighter
   tighter_wf := symTighter_wf
-  -- Any token that is not one of `arith`'s reserved name parts is a variable.
-  isVar := fun t => decide (t ∉ ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."])
+  isVar := fun t => decide (t ∉ reserved)
   juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [symOp]
 
-/-! ## Running the parser
+/-- The `var` entry: no operators, only identifiers. -/
+def varEntry : Entry Ent where
+  Op := Empty
+  operator := fun e => e.elim
+  loosest := []
+  tighter := fun e => e.elim
+  tighter_wf := ⟨fun e => e.elim⟩
+  isVar := fun t => decide (t ∉ reserved)
+  juxtUnique := fun e => e.elim
 
-`parse` returns every full parse as an `Expr`; we map `Expr.flatten` over the
-results so the output is `Repr`-able and we can eyeball the round-trip. -/
+/-- The arithmetic grammar, as a family of the two entries. -/
+def arith : Grammar where
+  Ent := Ent
+  entry := fun | .term => termEntry | .var => varEntry
 
-/-- All full-parse flattenings of an input under `arith`. -/
+/-! ## Running the parser -/
+
+/-- All full-parse flattenings of an input, parsed at the `term` entry. -/
 def run (tkns : List Token) : List (List Token) :=
-  (parse (G := arith) tkns).map Expr.flatten
+  (parse (G := arith) .term tkns).map Expr.flatten
 
--- NOTE on multiplicities: `add → {mul, neg} → mul` is a *diamond*, so the
--- parser reaches `mul`-and-below both directly and through `neg`, finding the
--- same tree several times. All copies are equal (`Expr` stores the level
--- condition as an irrelevant `Prop`) — `parse` is a multiset of parses, and
--- uniqueness (`parse_unique`) is "all members equal", not `length ≤ 1`.
-
--- `n` → one tree, twice (diamond).
-#eval run ["n"]                          -- [["n"], ["n"]]
--- `n + n` → one tree, 2×2 copies (diamond per operand).
-#eval run ["n", "+", "n"]                -- 4 × ["n", "+", "n"]
--- `n + n * n` → one tree (mul binds tighter).
-#eval run ["n", "+", "n", "*", "n"]      -- 4 × ["n", "+", "n", "*", "n"]
--- `( n + n )` → one tree.
-#eval run ["(", "n", "+", "n", ")"]      -- 8 × ["(", "n", "+", "n", ")"]
--- `( n + n ) * n` → one tree.
-#eval run ["(", "n", "+", "n", ")", "*", "n"]
--- malformed: dangling `+` → no full parse.
+#eval run ["n"]                          -- 2 × ["n"]
+#eval run ["n", "+", "n"]                -- ["n", "+", "n"]
+#eval run ["n", "+", "n", "*", "n"]
+#eval run ["(", "n", "+", "n", ")"]
 #eval run ["n", "+"]                     -- []
--- malformed: unmatched `(` → no full parse.
-#eval run ["(", "n"]                     -- []
-
-/-! ### Prefix operator `- _` -/
-
--- `- n` → one parse.
-#eval run ["-", "n"]                     -- [["-", "n"]]
--- `- n + n` → one tree, grouping `(- n) + n` (neg ∈ tighter add).
-#eval run ["-", "n", "+", "n"]           -- 2 × ["-", "n", "+", "n"]
--- `n + - n` → one tree.
-#eval run ["n", "+", "-", "n"]           -- 2 × ["n", "+", "-", "n"]
--- `- n * n` → one parse, grouping `- (n * n)` (mul ∈ tighter neg, and neg is
--- no valid operand of mul).
-#eval run ["-", "n", "*", "n"]           -- [["-", "n", "*", "n"]]
--- `- - n` → no parse: the operand hole is *strictly* tighter, so the
--- non-assoc prefix doesn't nest…
-#eval run ["-", "-", "n"]                -- []
--- …without parentheses: `- ( - n )` → one parse.
-#eval run ["-", "(", "-", "n", ")"]      -- [["-", "(", "-", "n", ")"]]
-
-/-! ### Postfix operator `_ !` -/
-
--- `n !` → one tree.
-#eval run ["n", "!"]                     -- 2 × ["n", "!"]
--- `n ! * n` → one tree, grouping `(n !) * n` (fac ∈ tighter mul).
-#eval run ["n", "!", "*", "n"]           -- 2 × ["n", "!", "*", "n"]
--- `- n !` → one tree, grouping `- (n !)`.
-#eval run ["-", "n", "!"]                -- [["-", "n", "!"]]
--- `n ! !` → no parse: non-assoc postfix doesn't nest…
-#eval run ["n", "!", "!"]                -- []
--- …without parentheses: `( n ! ) !` → one tree.
-#eval run ["(", "n", "!", ")", "!"]      -- 4 × ["(", "n", "!", ")", "!"]
-
-/-! ### Variables
-
-Any token that is not a reserved name part (`isVar`) parses as a leaf variable, at
-any level — so identifiers mix freely with operators and literals. (A variable is a
-valid atom at *every* level, so the all-parses parser surfaces it once per level it
-descends through: each result list below is many equal copies of the one tree.) -/
-
--- `x` → the variable leaf, as one tree.
-#eval run ["x"]
--- `x + y` → variables as the operands of `+`.
-#eval run ["x", "+", "y"]
--- `x + n * y` → a variable, the literal `n`, and operators together (x + (n * y)).
-#eval run ["x", "+", "n", "*", "y"]
--- `- x` and `( x + y ) !` → variables under prefix / postfix / parens.
-#eval run ["-", "x"]
-#eval run ["(", "x", "+", "y", ")", "!"]
-
-/-! ### Juxtaposition (application)
-
-Application binds tightest and associates left, so `f x y = (f x) y`, `f x + y =
-(f x) + y`, and `f (g x)` needs the parentheses. -/
-
--- `f x` → one application.
-#eval run ["f", "x"]
--- `f x y` → left-associated `(f x) y` (the only reading; the argument is an atom).
-#eval run ["f", "x", "y"]
--- `f x + y` → `(f x) + y` (application tighter than `+`).
-#eval run ["f", "x", "+", "y"]
--- `f (g x)` → application nested via parentheses.
-#eval run ["f", "(", "g", "x", ")"]
--- `n x` → the literal `n` applied to variable `x` (both are atoms).
-#eval run ["n", "x"]
-
-/-! ### Right-associative `^`
-
-`^` (`pow`) is right-associative and binds tighter than `*`, so `x ^ y ^ z =
-x ^ (y ^ z)` and `n * x ^ y = n * (x ^ y)`. -/
-
--- `x ^ y` → one parse.
-#eval run ["x", "^", "y"]
--- `x ^ y ^ z` → right-associated `x ^ (y ^ z)` (the only reading).
-#eval run ["x", "^", "y", "^", "z"]
--- `n * x ^ y` → `n * (x ^ y)` (`^` tighter than `*`).
-#eval run ["n", "*", "x", "^", "y"]
--- `x ^ y * z` → `(x ^ y) * z`.
-#eval run ["x", "^", "y", "*", "z"]
-
-/-! ### Left-associative `+`
-
-`+` (`add`) is left-associative, so `x + y + z = (x + y) + z` (the only reading:
-the right operand is strictly tighter, so a `+` cannot sit there unparenthesized).
-Mixed with the right-assoc `^`: `x + y ^ z = x + (y ^ z)`. -/
-
--- `x + y + z` → left-associated `(x + y) + z`.
-#eval run ["x", "+", "y", "+", "z"]
--- `x + y + z + w` → `((x + y) + z) + w`.
-#eval run ["x", "+", "y", "+", "z", "+", "w"]
--- `x + y ^ z` → `x + (y ^ z)` (`^` tighter than `+`).
-#eval run ["x", "+", "y", "^", "z"]
-
-/-! ### Binder `\lambda x . body` (a hole parsed by **another grammar**)
-
-`lam`'s binder hole is `varGrammar` embedded via `toVerifiedParser` — a genuinely
-different language (no operators), so position (1) of `\lambda (1) . (2)` accepts
-**exactly one variable**, while the body (2) is the ordinary recursive `arith`
-operand (any term). This is the multi-grammar feature: an operator hole parsed by
-another `VerifiedParser`. Like the other prefixes (`- _`), the body is *strictly
-tighter*, so a bare lambda body can't itself be a lambda — nesting needs parens
-(exactly as `- - n` needs `- (- n)`). -/
-
--- `\lambda x . x` → the identity; `x` is bound (parsed by `varGrammar`), body is `x`.
-#eval run ["\\lambda", "x", ".", "x"]
--- `\lambda x . x + n` → body is the term `x + n`.
-#eval run ["\\lambda", "x", ".", "x", "+", "n"]
--- `(\lambda x . x) y` → a parenthesised lambda applied to `y`.
+#eval run ["-", "n"]
+#eval run ["-", "n", "*", "n"]           -- - (n * n)
+#eval run ["n", "!"]
+#eval run ["n", "!", "*", "n"]           -- (n !) * n
+#eval run ["x"]                          -- a variable leaf
+#eval run ["f", "x", "y"]                -- application f x y
+#eval run ["\\lambda", "x", ".", "x"]    -- binder parsed by the `var` entry
 #eval run ["(", "\\lambda", "x", ".", "x", ")", "y"]
--- `\lambda f . ( \lambda x . f x )` → nested lambda via parentheses.
-#eval run ["\\lambda", "f", ".", "(", "\\lambda", "x", ".", "f", "x", ")"]
--- malformed: the binder must be a variable, not the literal `n` → no parse.
-#eval run ["\\lambda", "n", ".", "x"]
--- malformed: the binder must be a *single* variable, not an application → no parse.
-#eval run ["\\lambda", "f", "x", ".", "y"]
 
 end LambdaLab.Parser.Mixfix

@@ -1,7 +1,7 @@
 import LambdaLab.Parser.Mixfix.Parse
 
 /-!
-# Correctness of the `Part`/`Parts` parser
+# Correctness of the multi-entry `Part`/`Parts` parser
 
 Three properties on top of `Parse.lean`'s termination:
 
@@ -10,12 +10,17 @@ Three properties on top of `Parse.lean`'s termination:
   parser's own functional induction principle (`parseExpr.mutual_induct`).
 * **Completeness** (`parseExpr_complete`, `parse_complete`) — every expression
   is found: `e ∈ parse e.flatten`. Proved by mutual induction on `Expr`/`Parts`
-  with an inner descent along the `TighterEq` path (measured by `Grammar.rank`).
+  with an inner descent along the `TighterEq` path (measured by `Entry.rank`).
 * **Uniqueness** (`parse_unique`) — reduced to `Grammar.Unambiguous`, the
   grammar-level property that flattening is injective on loosest expressions.
   Soundness pins every full parse's flattening to the input, so unambiguity
   collapses the result list to (copies of) a single tree. Discharging
   `Unambiguous` for a concrete grammar class is a separate (hard) problem.
+
+Everything is threaded through an **entry index** `e : G.Ent`: `parseExpr`,
+`Expr`, the precedence levels, the ranks, and the operator bodies all live at a
+chosen entry. Cross-entry holes are an ordinary recursive call at the referenced
+entry's loosest level, so no extra machinery is needed.
 -/
 
 namespace LambdaLab.Parser.Mixfix
@@ -26,29 +31,27 @@ variable {G : Grammar}
 
 /-! ## Flattening lemmas -/
 
-@[simp] theorem Expr.flatten_op {l : Level G} (o : G.Op) (hc : Level.condition l o)
-    (parts : Parts G (Operator.body o)) : (Expr.op o hc parts).flatten = parts.flatten := rfl
+@[simp] theorem Expr.flatten_op {e : G.Ent} {l : Level (G.entry e)} (o : (G.entry e).Op)
+    (hc : Level.condition l o) (parts : Parts G (Operator.body e o)) :
+    (Expr.op o hc parts).flatten = parts.flatten := rfl
 
-@[simp] theorem Expr.flatten_var {l : Level G} (t : Token) (hv : G.isVar t = true) :
-    (Expr.var (G := G) (l := l) t hv).flatten = [t] := rfl
+@[simp] theorem Expr.flatten_var {e : G.Ent} {l : Level (G.entry e)} (t : Token)
+    (hv : (G.entry e).isVar t = true) :
+    (Expr.var (G := G) (e := e) (l := l) t hv).flatten = [t] := rfl
 
 @[simp] theorem Parts.flatten_nil : (Parts.nil (G := G)).flatten = [] := rfl
 
-@[simp] theorem Parts.flatten_hole {l : Level G} {ps : List (Part G)}
-    (e : Expr G l) (p : Parts G ps) : (Parts.hole e p).flatten = e.flatten ++ p.flatten := rfl
+@[simp] theorem Parts.flatten_hole {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
+    (ex : Expr G e l) (p : Parts G ps) : (Parts.hole ex p).flatten = ex.flatten ++ p.flatten := rfl
 
 @[simp] theorem Parts.flatten_namePart {ps : List (Part G)} (tk : Token) (p : Parts G ps) :
     (Parts.namePart tk p).flatten = tk :: p.flatten := rfl
 
-@[simp] theorem Parts.flatten_subHole {ps : List (Part G)} (sp : VerifiedParser)
-    (res : sp.Result) (p : Parts G ps) :
-    (Parts.subHole sp res p).flatten = sp.flatten res ++ p.flatten := rfl
-
 /-- Reindexing only swaps the level-condition proof; the flattening is untouched. -/
-@[simp] theorem Expr.flatten_reindex {l l' : Level G}
-    (h : ∀ o, Level.condition l o → Level.condition l' o) (e : Expr G l) :
-    (e.reindex h).flatten = e.flatten := by
-  cases e <;> rfl
+@[simp] theorem Expr.flatten_reindex {e : G.Ent} {l l' : Level (G.entry e)}
+    (h : ∀ o, Level.condition l o → Level.condition l' o) (ex : Expr G e l) :
+    (ex.reindex h).flatten = ex.flatten := by
+  cases ex <;> rfl
 
 /-! ## Juxtaposition plumbing
 
@@ -77,9 +80,9 @@ theorem Parts.cast_symm {shape shape' : List (Part G)} (h : shape = shape')
 argument `x` (modulo the `Operator.body_juxt` transport). The witness equation is
 phrased on the *body* so it can drive both the application rewrite and the
 `sizeOf` termination measure. -/
-theorem Expr.juxt_parts_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (parts : Parts G (Operator.body j)) :
-    ∃ (f : Expr G (Level.tighterEq j)) (x : Expr G (Level.tighter j)),
+theorem Expr.juxt_parts_eq {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (parts : Parts G (Operator.body e j)) :
+    ∃ (f : Expr G e (Level.tighterEq j)) (x : Expr G e (Level.tighter j)),
       parts = (Operator.body_juxt hj).symm ▸ Parts.hole f (Parts.hole x Parts.nil) := by
   have hpe := Operator.body_juxt hj
   have hq : parts = hpe.symm ▸ (hpe ▸ parts) := (Parts.cast_symm hpe parts).symm
@@ -88,35 +91,38 @@ theorem Expr.juxt_parts_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
   | Parts.hole f (Parts.hole x Parts.nil), hq => exact ⟨f, x, hq⟩
 
 /-- An application node `juxtApp f x` flattens to `f.flatten ++ x.flatten`. -/
-@[simp] theorem Expr.flatten_juxtApp {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (f : Expr G (Level.tighterEq j)) (x : Expr G (Level.tighter j)) :
+@[simp] theorem Expr.flatten_juxtApp {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    (f : Expr G e (Level.tighterEq j)) (x : Expr G e (Level.tighter j)) :
     (Expr.juxtApp hj f x).flatten = f.flatten ++ x.flatten := by
   have h : (Expr.juxtApp hj f x).flatten
       = ((Operator.body_juxt hj).symm ▸ Parts.hole f (Parts.hole x Parts.nil)).flatten := rfl
   rw [h, Parts.flatten_cast]; simp [Parts.flatten]
 
 /-- Any juxt `Expr.op` node is an application `juxtApp f x`. -/
-theorem Expr.op_juxt_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (hc : TighterEq G.tighter j j) (parts : Parts G (Operator.body j)) :
-    ∃ (f : Expr G (Level.tighterEq j)) (x : Expr G (Level.tighter j)),
-      (Expr.op j hc parts : Expr G (Level.tighterEq j)) = Expr.juxtApp hj f x := by
+theorem Expr.op_juxt_eq {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    (hc : TighterEq (G.entry e).tighter j j) (parts : Parts G (Operator.body e j)) :
+    ∃ (f : Expr G e (Level.tighterEq j)) (x : Expr G e (Level.tighter j)),
+      (Expr.op j hc parts : Expr G e (Level.tighterEq j)) = Expr.juxtApp hj f x := by
   obtain ⟨f, x, hfx⟩ := Expr.juxt_parts_eq hj parts
   exact ⟨f, x, by rw [hfx]; unfold Expr.juxtApp; congr 1⟩
 
 /-! ## Left-associative-infix plumbing (mirrors the juxtaposition helpers) -/
 
 /-- A left-assoc body's tail (operator tokens + right operand) is nonempty. -/
-theorem Operator.body_infxl_tail_ne {o : G.Op} (hl : (G.operator o).isInfxl = true) :
-    (Operator.body o).tail ≠ [] := by
-  cases hop : G.operator o with
+theorem Operator.body_infxl_tail_ne {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) :
+    (Operator.body e o).tail ≠ [] := by
+  cases hop : (G.entry e).operator o with
   | infxl tkns => unfold Operator.body; rw [hop]; cases tkns <;> simp
   | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
 
 /-- The body of a left-assoc `Expr.op` node decomposes as its chaining left
 operand `acc` and the tail (parsed segment). -/
-theorem Expr.infxl_parts_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (parts : Parts G (Operator.body o)) :
-    ∃ (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Operator.body o).tail),
+theorem Expr.infxl_parts_eq {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (parts : Parts G (Operator.body e o)) :
+    ∃ (acc : Expr G e (Level.tighterEq o)) (tail : Parts G (Operator.body e o).tail),
       parts = (Operator.body_infxl_cons hl).symm ▸ Parts.hole acc tail := by
   have hpe := Operator.body_infxl_cons hl
   have hq : parts = hpe.symm ▸ (hpe ▸ parts) := (Parts.cast_symm hpe parts).symm
@@ -125,18 +131,20 @@ theorem Expr.infxl_parts_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
   | Parts.hole acc tail, hq => exact ⟨acc, tail, hq⟩
 
 /-- A left-assoc fold step flattens to `acc.flatten ++ tail.flatten`. -/
-@[simp] theorem Expr.flatten_infxlApp {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Operator.body o).tail) :
+@[simp] theorem Expr.flatten_infxlApp {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true)
+    (acc : Expr G e (Level.tighterEq o)) (tail : Parts G (Operator.body e o).tail) :
     (Expr.infxlApp hl acc tail).flatten = acc.flatten ++ tail.flatten := by
   have h : (Expr.infxlApp hl acc tail).flatten
       = ((Operator.body_infxl_cons hl).symm ▸ Parts.hole acc tail).flatten := rfl
   rw [h, Parts.flatten_cast, Parts.flatten_hole]
 
 /-- Any left-assoc `Expr.op` node is a fold step `infxlApp acc tail`. -/
-theorem Expr.op_infxl_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (hc : TighterEq G.tighter o o) (parts : Parts G (Operator.body o)) :
-    ∃ (acc : Expr G (Level.tighterEq o)) (tail : Parts G (Operator.body o).tail),
-      (Expr.op o hc parts : Expr G (Level.tighterEq o)) = Expr.infxlApp hl acc tail := by
+theorem Expr.op_infxl_eq {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true)
+    (hc : TighterEq (G.entry e).tighter o o) (parts : Parts G (Operator.body e o)) :
+    ∃ (acc : Expr G e (Level.tighterEq o)) (tail : Parts G (Operator.body e o).tail),
+      (Expr.op o hc parts : Expr G e (Level.tighterEq o)) = Expr.infxlApp hl acc tail := by
   obtain ⟨acc, tail, hat⟩ := Expr.infxl_parts_eq hl parts
   exact ⟨acc, tail, by rw [hat]; unfold Expr.infxlApp; congr 1⟩
 
@@ -151,8 +159,9 @@ theorem Expr.op_infxl_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
 /-! ## Variable-leaf parsing -/
 
 /-- Soundness of `parseVar`: a parsed variable consumes exactly its token. -/
-theorem parseVar_sound {l : Level G} {tkns : List Token} {x : Expr G l × RightSublist tkns}
-    (hx : x ∈ parseVar l tkns) : x.1.flatten ++ x.2.list = tkns := by
+theorem parseVar_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List Token}
+    {x : Expr G e l × RightSublist tkns} (hx : x ∈ parseVar e l tkns) :
+    x.1.flatten ++ x.2.list = tkns := by
   cases tkns with
   | nil => simp [parseVar] at hx
   | cons t rest =>
@@ -162,21 +171,23 @@ theorem parseVar_sound {l : Level G} {tkns : List Token} {x : Expr G l × RightS
       · simp at hx
 
 /-- Completeness of `parseVar`: an identifier token is parsed as a variable. -/
-theorem parseVar_complete {l : Level G} {t : Token} (hv : G.isVar t = true) (rest : List Token) :
-    (Expr.var t hv, RightSublist.cons t rest) ∈ parseVar l (t :: rest) := by
+theorem parseVar_complete {e : G.Ent} {l : Level (G.entry e)} {t : Token}
+    (hv : (G.entry e).isVar t = true) (rest : List Token) :
+    (Expr.var t hv, RightSublist.cons t rest) ∈ parseVar e l (t :: rest) := by
   simp only [parseVar, dif_pos hv]
   exact List.mem_singleton.mpr rfl
 
 /-- A variable is found at *every* level: directly for `loosest`/`tighter`, and via
 the fall-through for `tighterEq`. -/
-theorem mem_parseExpr_var {l : Level G} {t : Token} (hv : G.isVar t = true) (rest : List Token) :
-    (Expr.var t hv, RightSublist.cons t rest) ∈ parseExpr l (t :: rest) := by
+theorem mem_parseExpr_var {e : G.Ent} {l : Level (G.entry e)} {t : Token}
+    (hv : (G.entry e).isVar t = true) (rest : List Token) :
+    (Expr.var t hv, RightSublist.cons t rest) ∈ parseExpr e l (t :: rest) := by
   cases l with
   | loosest => rw [parseExpr]; exact List.mem_append_right _ (parseVar_complete hv rest)
   | tighter a => rw [parseExpr]; exact List.mem_append_right _ (parseVar_complete hv rest)
   | tighterEq a =>
       rw [parseExpr]
-      by_cases hj : (G.operator a).isJuxt = true
+      by_cases hj : ((G.entry e).operator a).isJuxt = true
       · -- juxt level: the variable is the lone leftmost atom of an application chain
         simp only [dif_pos hj]
         rw [parseJuxt]
@@ -185,7 +196,7 @@ theorem mem_parseExpr_var {l : Level G} {t : Token} (hv : G.isVar t = true) (res
         rw [parseExpr]
         exact List.mem_append_right _ (parseVar_complete hv rest)
       · simp only [dif_neg hj]
-        by_cases hl : (G.operator a).isInfxl = true
+        by_cases hl : ((G.entry e).operator a).isInfxl = true
         · -- left-assoc level: the variable is the lone leftmost operand
           simp only [dif_pos hl]
           rw [parseInfixL]
@@ -203,76 +214,85 @@ theorem mem_parseExpr_var {l : Level G} {t : Token} (hv : G.isVar t = true) (res
 /-! ## Soundness -/
 
 /-- At a juxtaposition level, `parseExpr` *is* `parseJuxt`. -/
-theorem parseExpr_juxt_eq {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (tkns : List Token) : parseExpr (Level.tighterEq j) tkns = parseJuxt j hj tkns := by
-  rw [parseExpr, dif_pos (show (G.operator j).isJuxt = true by rw [hj]; rfl)]
+theorem parseExpr_juxt_eq {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (tkns : List Token) :
+    parseExpr e (Level.tighterEq j) tkns = parseJuxt e j hj tkns := by
+  rw [parseExpr, dif_pos (show ((G.entry e).operator j).isJuxt = true by rw [hj]; rfl)]
 
 /-- At a left-associative level, `parseExpr` *is* `parseInfixL`. -/
-theorem parseExpr_infxl_eq {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (tkns : List Token) : parseExpr (Level.tighterEq o) tkns = parseInfixL o hl tkns := by
+theorem parseExpr_infxl_eq {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (tkns : List Token) :
+    parseExpr e (Level.tighterEq o) tkns = parseInfixL e o hl tkns := by
   rw [parseExpr, dif_neg (by simp [Operator.not_isJuxt_of_isInfxl hl]), dif_pos hl]
 
-/-- Joint soundness of the five mutual parser functions: every returned pair
+/-- Joint soundness of the seven mutual parser functions: every returned pair
 `(tree, leftover)` satisfies `tree.flatten ++ leftover.list = tkns` (for the two
-juxtaposition folds, with the accumulator's flattening prepended). One
-application of the parser's functional induction principle; each case is
-list-membership bookkeeping. -/
+folds, with the accumulator's flattening prepended). One application of the
+parser's functional induction principle; each case is list-membership
+bookkeeping.
+
+The conjunction is in `parseExpr.mutual_induct` motive order (a canonical order,
+*not* the textual mutual order): `parseExpr`, `parseParts`, `parseInfixL`,
+`parseInfixLExtend`, `parseJuxt`, `parseJuxtExtend`, `parseExprList`. Everything
+is threaded through the entry index `e : G.Ent`. -/
 theorem parse_sound_all :
-    (∀ (l : Level G) (tkns : List Token),
-        ∀ x ∈ parseExpr l tkns, x.1.flatten ++ x.2.list = tkns)
+    (∀ (e : G.Ent) (l : Level (G.entry e)) (tkns : List Token),
+        ∀ x ∈ parseExpr e l tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (ps : List (Part G)) (tkns : List Token),
         ∀ x ∈ parseParts ps tkns, x.1.flatten ++ x.2.list = tkns)
-  ∧ (∀ (o : G.Op) (hl : (G.operator o).isInfxl = true) (tkns : List Token),
-        ∀ x ∈ parseInfixL o hl tkns, x.1.flatten ++ x.2.list = tkns)
-  ∧ (∀ (o : G.Op) (hl : (G.operator o).isInfxl = true)
-        (acc : Expr G (Level.tighterEq o)) (tkns : List Token),
-        ∀ x ∈ parseInfixLExtend o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
-  ∧ (∀ (j : G.Op) (hj : G.operator j = Operator.juxt) (tkns : List Token),
-        ∀ x ∈ parseJuxt j hj tkns, x.1.flatten ++ x.2.list = tkns)
-  ∧ (∀ (j : G.Op) (hj : G.operator j = Operator.juxt)
-        (acc : Expr G (Level.tighterEq j)) (tkns : List Token),
-        ∀ x ∈ parseJuxtExtend j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
-  ∧ ∀ (l : Level G) (cs : List G.Op)
-      (h : ∀ c ∈ cs, ∀ o, TighterEq G.tighter c o → Level.condition l o)
-      (hrank : ∀ c ∈ cs, G.rank c < Level.base l) (tkns : List Token),
-      ∀ x ∈ parseExprList l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns := by
+  ∧ (∀ (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
+        (tkns : List Token),
+        ∀ x ∈ parseInfixL e o hl tkns, x.1.flatten ++ x.2.list = tkns)
+  ∧ (∀ (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
+        (acc : Expr G e (Level.tighterEq o)) (tkns : List Token),
+        ∀ x ∈ parseInfixLExtend e o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
+  ∧ (∀ (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
+        (tkns : List Token),
+        ∀ x ∈ parseJuxt e j hj tkns, x.1.flatten ++ x.2.list = tkns)
+  ∧ (∀ (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
+        (acc : Expr G e (Level.tighterEq j)) (tkns : List Token),
+        ∀ x ∈ parseJuxtExtend e j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
+  ∧ ∀ (e : G.Ent) (l : Level (G.entry e)) (cs : List (G.entry e).Op)
+      (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
+      (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l) (tkns : List Token),
+      ∀ x ∈ parseExprList e l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns := by
   apply parseExpr.mutual_induct
-    (motive1 := fun l tkns =>
-      ∀ x ∈ parseExpr l tkns, x.1.flatten ++ x.2.list = tkns)
+    (motive1 := fun e l tkns =>
+      ∀ x ∈ parseExpr e l tkns, x.1.flatten ++ x.2.list = tkns)
     (motive2 := fun ps tkns =>
       ∀ x ∈ parseParts ps tkns, x.1.flatten ++ x.2.list = tkns)
-    (motive3 := fun o hl tkns =>
-      ∀ x ∈ parseInfixL o hl tkns, x.1.flatten ++ x.2.list = tkns)
-    (motive4 := fun o hl acc tkns =>
-      ∀ x ∈ parseInfixLExtend o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
-    (motive5 := fun j hj tkns =>
-      ∀ x ∈ parseJuxt j hj tkns, x.1.flatten ++ x.2.list = tkns)
-    (motive6 := fun j hj acc tkns =>
-      ∀ x ∈ parseJuxtExtend j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
-    (motive7 := fun l cs h hrank tkns =>
-      ∀ x ∈ parseExprList l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns)
+    (motive3 := fun e o hl tkns =>
+      ∀ x ∈ parseInfixL e o hl tkns, x.1.flatten ++ x.2.list = tkns)
+    (motive4 := fun e o hl acc tkns =>
+      ∀ x ∈ parseInfixLExtend e o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
+    (motive5 := fun e j hj tkns =>
+      ∀ x ∈ parseJuxt e j hj tkns, x.1.flatten ++ x.2.list = tkns)
+    (motive6 := fun e j hj acc tkns =>
+      ∀ x ∈ parseJuxtExtend e j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
+    (motive7 := fun e l cs h hrank tkns =>
+      ∀ x ∈ parseExprList e l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns)
   case _ => -- parseExpr .loosest
-    intro tkns ih x hx
+    intro e tkns ih x hx
     rw [parseExpr] at hx
     rcases List.mem_append.mp hx with hx | hx
     · exact ih x hx
     · exact parseVar_sound hx
   case _ => -- parseExpr (.tighter a)
-    intro a tkns ih x hx
+    intro e a tkns ih x hx
     rw [parseExpr] at hx
     rcases List.mem_append.mp hx with hx | hx
     · exact ih x hx
     · exact parseVar_sound hx
   case _ => -- parseExpr (.tighterEq a), juxt branch
-    intro a tkns hj ihJuxt x hx
+    intro e a tkns hj ihJuxt x hx
     rw [parseExpr_juxt_eq (Operator.eq_juxt hj)] at hx
     exact ihJuxt x hx
   case _ => -- parseExpr (.tighterEq a), left-assoc branch
-    intro a tkns _hnj hl ihInfxl x hx
+    intro e a tkns _hnj hl ihInfxl x hx
     rw [parseExpr_infxl_eq hl] at hx
     exact ihInfxl x hx
   case _ => -- parseExpr (.tighterEq a), non-left-recursive branch
-    intro a tkns hnj hnl ihParts ihTighter x hx
+    intro e a tkns hnj hnl ihParts ihTighter x hx
     rw [parseExpr] at hx
     simp only [dif_neg hnj, dif_neg hnl] at hx
     rcases List.mem_append.mp hx with hx | hx
@@ -297,16 +317,11 @@ theorem parse_sound_all :
     intro tk x hx
     rw [parseParts] at hx
     simp at hx
-  case _ => -- parseParts [hole l]
-    intro l tkns ih x hx
+  case _ => -- parseParts [hole eh lh]
+    intro eh lh tkns ih x hx
     rw [parseParts] at hx
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
     simpa using ih y hy
-  case _ => -- parseParts [subHole sp]
-    intro sp tkns x hx
-    rw [parseParts] at hx
-    obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
-    simpa using sp.sound tkns y hy
   case _ => -- parseParts (namePart tk :: y :: rest') (tk :: ts)
     intro y rest' t ts ih x hx
     rw [parseParts, if_pos rfl] at hx
@@ -320,88 +335,72 @@ theorem parse_sound_all :
     intro tk y rest' x hx
     rw [parseParts] at hx
     simp at hx
-  case _ => -- parseParts (hole l :: y :: rest')
-    intro l y rest' tkns ihInner ihExpr x hx
+  case _ => -- parseParts (hole eh lh :: y :: rest')
+    intro eh lh y rest' tkns ihInner ihExpr x hx
     rw [parseParts] at hx
     obtain ⟨w, hw, hx⟩ := List.mem_flatMap.mp hx
     obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
     have h1 := ihExpr w hw
     have h2 := ihInner w z hz
     simp only [Parts.flatten_hole, RightSublist.list_trans, List.append_assoc, h2, h1]
-  case _ => -- parseParts (subHole sp :: y :: rest')
-    intro sp y rest' tkns ihInner x hx
-    rw [parseParts] at hx
-    obtain ⟨w, hw, hx⟩ := List.mem_flatMap.mp hx
-    obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
-    have h1 := sp.sound tkns w hw
-    have h2 := ihInner w z hz
-    simp only [Parts.flatten_subHole, RightSublist.list_trans, List.append_assoc, h2, h1]
   case _ => -- parseInfixL
-    intro o hl tkns ihExt ihTighter x hx
+    intro e o hl tkns ihExt ihTighter x hx
     rw [parseInfixL] at hx
     obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
     rcases List.mem_cons.mp hx with rfl | hx
-    · -- x is the lone leftmost operand, reindexed
-      have := ihTighter p hp
+    · have := ihTighter p hp
       simpa [Expr.flatten_reindex] using this
-    · -- x continues the chain through parseInfixLExtend
-      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+    · obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
       have h4 := ihExt p z hz
       have h1 := ihTighter p hp
       simp only [Expr.flatten_reindex] at h4
       simp only [RightSublist.list_trans]
       rw [h4, h1]
   case _ => -- parseInfixLExtend
-    intro o hl acc tkns ihExt ihParts x hx
+    intro e o hl acc tkns ihExt ihParts x hx
     rw [parseInfixLExtend] at hx
     obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
     rcases List.mem_cons.mp hx with rfl | hx
-    · -- x folds one tail-segment onto the accumulator
-      have h1 := ihParts p hp
+    · have h1 := ihParts p hp
       simp only [Expr.flatten_infxlApp, List.append_assoc, h1]
-    · -- x continues the chain
-      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+    · obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
       have h4 := ihExt p z hz
       have h1 := ihParts p hp
       simp only [Expr.flatten_infxlApp, List.append_assoc] at h4
       rw [h1] at h4
       simpa [RightSublist.list_trans] using h4
   case _ => -- parseJuxt
-    intro j hj tkns ihExt ihTighter x hx
+    intro e j hj tkns ihExt ihTighter x hx
     rw [parseJuxt] at hx
     obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
     rcases List.mem_cons.mp hx with rfl | hx
-    · -- x is the lone leftmost atom, reindexed
-      have := ihTighter p hp
+    · have := ihTighter p hp
       simpa [Expr.flatten_reindex] using this
-    · -- x continues the chain through parseJuxtExtend
-      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+    · obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
       have h4 := ihExt p z hz
       have h1 := ihTighter p hp
       simp only [Expr.flatten_reindex] at h4
       simp only [RightSublist.list_trans]
       rw [h4, h1]
   case _ => -- parseJuxtExtend
-    intro j hj acc tkns ihExt ihTighter x hx
+    intro e j hj acc tkns ihExt ihTighter x hx
     rw [parseJuxtExtend] at hx
     obtain ⟨p, hp, hx⟩ := List.mem_flatMap.mp hx
     rcases List.mem_cons.mp hx with rfl | hx
-    · -- x folds one argument onto the accumulator
-      have h1 := ihTighter p hp
+    · have h1 := ihTighter p hp
       simp only [Expr.flatten_juxtApp, List.append_assoc, h1]
-    · -- x continues the chain
-      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
+    · obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
       have h4 := ihExt p z hz
       have h1 := ihTighter p hp
       simp only [Expr.flatten_juxtApp, List.append_assoc] at h4
       rw [h1] at h4
       simpa [RightSublist.list_trans] using h4
   case _ => -- parseExprList l []
-    intro l tkns _ _ _ _ x hx
+    intro e l tkns _ _ _ _ x hx
     rw [parseExprList] at hx
     simp at hx
   case _ => -- parseExprList l (c :: rest)
-    intro l tkns c rest h hrank _ _ ihExpr ihRest x hx
+    intro e l tkns c rest h hrank _ _ ihExpr ihRest x hx
     rw [parseExprList] at hx
     rcases List.mem_append.mp hx with hx | hx
     · obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
@@ -410,10 +409,10 @@ theorem parse_sound_all :
 
 /-- Soundness of `parseExpr`: a parse at level `l` flattens back to exactly the
 consumed prefix. -/
-theorem parseExpr_sound {l : Level G} {tkns : List Token}
-    {x : Expr G l × RightSublist tkns} (hx : x ∈ parseExpr l tkns) :
+theorem parseExpr_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List Token}
+    {x : Expr G e l × RightSublist tkns} (hx : x ∈ parseExpr e l tkns) :
     x.1.flatten ++ x.2.list = tkns :=
-  parse_sound_all.1 l tkns x hx
+  parse_sound_all.1 e l tkns x hx
 
 /-- Soundness of `parseParts`. -/
 theorem parseParts_sound {ps : List (Part G)} {tkns : List Token}
@@ -422,8 +421,8 @@ theorem parseParts_sound {ps : List (Part G)} {tkns : List Token}
   parse_sound_all.2.1 ps tkns x hx
 
 /-- Soundness of `parse`: a full parse flattens back to the whole input. -/
-theorem parse_sound {tkns : List Token} {e : Expr G .loosest} (h : e ∈ parse tkns) :
-    e.flatten = tkns := by
+theorem parse_sound {e : G.Ent} {tkns : List Token} {ex : Expr G e .loosest}
+    (h : ex ∈ parse e tkns) : ex.flatten = tkns := by
   unfold parse at h
   obtain ⟨x, hx, hfm⟩ := List.mem_filterMap.mp h
   split at hfm
@@ -435,10 +434,10 @@ theorem parse_sound {tkns : List Token} {e : Expr G .loosest} (h : e ∈ parse t
 /-! ## Completeness -/
 
 /-- Reindexing is independent of the supplied weakening proof. -/
-theorem Expr.reindex_irrel {l l' : Level G}
-    (h h' : ∀ o, Level.condition l o → Level.condition l' o) (e : Expr G l) :
-    e.reindex h = e.reindex h' := by
-  cases e <;> rfl
+theorem Expr.reindex_irrel {e : G.Ent} {l l' : Level (G.entry e)}
+    (h h' : ∀ o, Level.condition l o → Level.condition l' o) (ex : Expr G e l) :
+    ex.reindex h = ex.reindex h' := by
+  cases ex <;> rfl
 
 /-- A strictly-tighter path decomposes into a first `tighter` step and a
 tighter-or-equal remainder. -/
@@ -448,12 +447,14 @@ theorem Tighter.destruct {Op : Type} {t : Op → List Op} {a o : Op} (h : Tighte
   | base hmem => exact ⟨o, hmem, TighterEq.refl⟩
   | step hmem hT => exact ⟨_, hmem, hT.toTighterEq⟩
 
-theorem Notation.toParts_ne_nil (tkns : Notation) : Notation.toParts (G := G) tkns ≠ [] := by
+theorem Notation.toParts_ne_nil (tkns : Notation G.Ent) :
+    Notation.toParts (G := G) tkns ≠ [] := by
   cases tkns <;> simp [Notation.toParts]
 
-theorem Operator.body_ne_nil (o : G.Op) : Operator.body (G := G) o ≠ [] := by
+theorem Operator.body_ne_nil {e : G.Ent} (o : (G.entry e).Op) :
+    Operator.body e o ≠ [] := by
   unfold Operator.body
-  cases hop : G.operator o with
+  cases hop : (G.entry e).operator o with
   | closed tkns => exact Notation.toParts_ne_nil tkns
   | prefx tkns => simp
   | infx tkns => simp
@@ -465,14 +466,15 @@ theorem Operator.body_ne_nil (o : G.Op) : Operator.body (G := G) o ≠ [] := by
 /-- Extend an established `parseJuxtExtend` result by folding on one more argument:
 if `(f, rf)` is reachable and `x` parses from `rf`'s leftover, then `juxtApp f x`
 is reachable with the same leftover as `x`. By recursion on the token list. -/
-theorem parseJuxtExtend_cont {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (acc : Expr G (Level.tighterEq j)) (tkns : List Token)
-    (f : Expr G (Level.tighterEq j)) (rf : RightSublist tkns)
-    (hf : (f, rf) ∈ parseJuxtExtend j hj acc tkns)
-    (x : Expr G (Level.tighter j)) (rx : RightSublist rf.list)
-    (hx : (x, rx) ∈ parseExpr (Level.tighter j) rf.list) :
+theorem parseJuxtExtend_cont {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    (acc : Expr G e (Level.tighterEq j)) (tkns : List Token)
+    (f : Expr G e (Level.tighterEq j)) (rf : RightSublist tkns)
+    (hf : (f, rf) ∈ parseJuxtExtend e j hj acc tkns)
+    (x : Expr G e (Level.tighter j)) (rx : RightSublist rf.list)
+    (hx : (x, rx) ∈ parseExpr e (Level.tighter j) rf.list) :
     ∃ r : RightSublist tkns, r.list = rx.list ∧
-      (Expr.juxtApp hj f x, r) ∈ parseJuxtExtend j hj acc tkns := by
+      (Expr.juxtApp hj f x, r) ∈ parseJuxtExtend e j hj acc tkns := by
   rw [parseJuxtExtend] at hf
   obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
   rcases List.mem_cons.mp hf with heq | hmap
@@ -503,13 +505,14 @@ theorem parseJuxtExtend_cont {j : G.Op} (hj : G.operator j = Operator.juxt)
 
 /-- The same extension step lifted to `parseJuxt`: a chain prefix `(f, rf)` plus an
 argument `x` parsed from its leftover yields the extended chain `juxtApp f x`. -/
-theorem parseJuxt_cont {j : G.Op} (hj : G.operator j = Operator.juxt)
-    {tkns : List Token} {f : Expr G (Level.tighterEq j)} {rf : RightSublist tkns}
-    (hf : (f, rf) ∈ parseJuxt j hj tkns)
-    {x : Expr G (Level.tighter j)} {rx : RightSublist rf.list}
-    (hx : (x, rx) ∈ parseExpr (Level.tighter j) rf.list) :
+theorem parseJuxt_cont {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    {tkns : List Token} {f : Expr G e (Level.tighterEq j)} {rf : RightSublist tkns}
+    (hf : (f, rf) ∈ parseJuxt e j hj tkns)
+    {x : Expr G e (Level.tighter j)} {rx : RightSublist rf.list}
+    (hx : (x, rx) ∈ parseExpr e (Level.tighter j) rf.list) :
     ∃ r : RightSublist tkns, r.list = rx.list ∧
-      (Expr.juxtApp hj f x, r) ∈ parseJuxt j hj tkns := by
+      (Expr.juxtApp hj f x, r) ∈ parseJuxt e j hj tkns := by
   rw [parseJuxt] at hf
   obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
   rcases List.mem_cons.mp hf with heq | hmap
@@ -538,14 +541,15 @@ theorem parseJuxt_cont {j : G.Op} (hj : G.operator j = Operator.juxt)
 
 /-- Extend an established `parseInfixLExtend` result by one more `∘ rhs` segment
 (a `parseParts` of the body tail). Mirrors `parseJuxtExtend_cont`. -/
-theorem parseInfixLExtend_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (acc : Expr G (Level.tighterEq o)) (tkns : List Token)
-    (f : Expr G (Level.tighterEq o)) (rf : RightSublist tkns)
-    (hf : (f, rf) ∈ parseInfixLExtend o hl acc tkns)
-    (tp : Parts G (Operator.body o).tail) (rt : RightSublist rf.list)
-    (ht : (tp, rt) ∈ parseParts (Operator.body o).tail rf.list) :
+theorem parseInfixLExtend_cont {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true)
+    (acc : Expr G e (Level.tighterEq o)) (tkns : List Token)
+    (f : Expr G e (Level.tighterEq o)) (rf : RightSublist tkns)
+    (hf : (f, rf) ∈ parseInfixLExtend e o hl acc tkns)
+    (tp : Parts G (Operator.body e o).tail) (rt : RightSublist rf.list)
+    (ht : (tp, rt) ∈ parseParts (Operator.body e o).tail rf.list) :
     ∃ r : RightSublist tkns, r.list = rt.list ∧
-      (Expr.infxlApp hl f tp, r) ∈ parseInfixLExtend o hl acc tkns := by
+      (Expr.infxlApp hl f tp, r) ∈ parseInfixLExtend e o hl acc tkns := by
   rw [parseInfixLExtend] at hf
   obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
   rcases List.mem_cons.mp hf with heq | hmap
@@ -575,13 +579,14 @@ theorem parseInfixLExtend_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
   decreasing_by exact p.2.length_lt
 
 /-- The same extension step lifted to `parseInfixL`. Mirrors `parseJuxt_cont`. -/
-theorem parseInfixL_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    {tkns : List Token} {f : Expr G (Level.tighterEq o)} {rf : RightSublist tkns}
-    (hf : (f, rf) ∈ parseInfixL o hl tkns)
-    {tp : Parts G (Operator.body o).tail} {rt : RightSublist rf.list}
-    (ht : (tp, rt) ∈ parseParts (Operator.body o).tail rf.list) :
+theorem parseInfixL_cont {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true)
+    {tkns : List Token} {f : Expr G e (Level.tighterEq o)} {rf : RightSublist tkns}
+    (hf : (f, rf) ∈ parseInfixL e o hl tkns)
+    {tp : Parts G (Operator.body e o).tail} {rt : RightSublist rf.list}
+    (ht : (tp, rt) ∈ parseParts (Operator.body e o).tail rf.list) :
     ∃ r : RightSublist tkns, r.list = rt.list ∧
-      (Expr.infxlApp hl f tp, r) ∈ parseInfixL o hl tkns := by
+      (Expr.infxlApp hl f tp, r) ∈ parseInfixL e o hl tkns := by
   rw [parseInfixL] at hf
   obtain ⟨p, hp, hf⟩ := List.mem_flatMap.mp hf
   rcases List.mem_cons.mp hf with heq | hmap
@@ -610,21 +615,21 @@ theorem parseInfixL_cont {o : G.Op} (hl : (G.operator o).isInfxl = true)
 
 /-- Completeness of the candidate worklist: a parse found at a candidate's own
 `tighterEq` level survives, reindexed, into `parseExprList`'s concatenation. -/
-theorem parseExprList_complete {l : Level G} (cs : List G.Op)
-    (h : ∀ c ∈ cs, ∀ o, TighterEq G.tighter c o → Level.condition l o)
-    (hrank : ∀ c ∈ cs, G.rank c < Level.base l)
-    {c : G.Op} (hc : c ∈ cs)
+theorem parseExprList_complete {e : G.Ent} {l : Level (G.entry e)} (cs : List (G.entry e).Op)
+    (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
+    (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l)
+    {c : (G.entry e).Op} (hc : c ∈ cs)
     (hcond : ∀ o, Level.condition (Level.tighterEq c) o → Level.condition l o)
-    {tkns : List Token} {e : Expr G (.tighterEq c)} {r : RightSublist tkns}
-    (hmem : (e, r) ∈ parseExpr (.tighterEq c) tkns) :
-    (e.reindex hcond, r) ∈ parseExprList l cs h hrank tkns := by
+    {tkns : List Token} {ex : Expr G e (.tighterEq c)} {r : RightSublist tkns}
+    (hmem : (ex, r) ∈ parseExpr e (.tighterEq c) tkns) :
+    (ex.reindex hcond, r) ∈ parseExprList e l cs h hrank tkns := by
   induction cs with
   | nil => cases hc
   | cons c' rest ih =>
       rw [parseExprList]
       rcases List.mem_cons.mp hc with rfl | hc'
       · exact List.mem_append_left _ (List.mem_map.mpr
-          ⟨(e, r), hmem, congrArg (fun t => (t, r)) (Expr.reindex_irrel _ hcond e)⟩)
+          ⟨(ex, r), hmem, congrArg (fun t => (t, r)) (Expr.reindex_irrel _ hcond ex)⟩)
       · exact List.mem_append_right _ (ih _ _ hc')
 
 mutual
@@ -645,12 +650,12 @@ theorem parseParts_complete {ps : List (Part G)} (p : Parts G ps) (hps : ps ≠ 
       refine ⟨.cons tk rest, rfl, ?_⟩
       rw [parseParts, if_pos rfl]
       exact List.mem_singleton.mpr rfl
-  | [.hole l], .hole e .nil, heq =>
+  | [.hole _ _], .hole ex .nil, heq =>
       simp only [Parts.flatten_hole, Parts.flatten_nil, List.append_nil] at heq
-      obtain ⟨r, hr, hm⟩ := parseExpr_complete e tkns rest heq
+      obtain ⟨r, hr, hm⟩ := parseExpr_complete ex tkns rest heq
       refine ⟨r, hr, ?_⟩
       rw [parseParts]
-      exact List.mem_map.mpr ⟨(e, r), hm, rfl⟩
+      exact List.mem_map.mpr ⟨(ex, r), hm, rfl⟩
   | .namePart tk :: y :: rest', .namePart _ p', heq =>
       simp only [Parts.flatten_namePart, List.cons_append] at heq
       subst heq
@@ -659,29 +664,15 @@ theorem parseParts_complete {ps : List (Part G)} (p : Parts G ps) (hps : ps ≠ 
       refine ⟨(RightSublist.cons tk (p'.flatten ++ rest)).trans r₂, by simp [hr₂], ?_⟩
       rw [parseParts, if_pos rfl]
       exact List.mem_map.mpr ⟨(p', r₂), hm₂, rfl⟩
-  | .hole l :: y :: rest', .hole e p', heq =>
+  | .hole _ _ :: y :: rest', .hole ex p', heq =>
       simp only [Parts.flatten_hole, List.append_assoc] at heq
       obtain ⟨r₁, hr₁, hm₁⟩ :=
-        parseExpr_complete e tkns (p'.flatten ++ rest) heq
+        parseExpr_complete ex tkns (p'.flatten ++ rest) heq
       obtain ⟨r₂, hr₂, hm₂⟩ :=
         parseParts_complete p' (List.cons_ne_nil y rest') r₁.list rest hr₁
       refine ⟨r₁.trans r₂, by simp [hr₂], ?_⟩
       rw [parseParts]
-      exact List.mem_flatMap.mpr ⟨(e, r₁), hm₁, List.mem_map.mpr ⟨(p', r₂), hm₂, rfl⟩⟩
-  | [.subHole sp], .subHole _ res .nil, heq =>
-      simp only [Parts.flatten_subHole, Parts.flatten_nil, List.append_nil] at heq
-      obtain ⟨s, hs, hm⟩ := sp.complete res tkns rest heq
-      refine ⟨s, hs, ?_⟩
-      rw [parseParts]
-      exact List.mem_map.mpr ⟨(res, s), hm, rfl⟩
-  | .subHole sp :: y :: rest', .subHole _ res p', heq =>
-      simp only [Parts.flatten_subHole, List.append_assoc] at heq
-      obtain ⟨r₁, hr₁, hm₁⟩ := sp.complete res tkns (p'.flatten ++ rest) heq
-      obtain ⟨r₂, hr₂, hm₂⟩ :=
-        parseParts_complete p' (List.cons_ne_nil y rest') r₁.list rest hr₁
-      refine ⟨r₁.trans r₂, by simp [hr₂], ?_⟩
-      rw [parseParts]
-      exact List.mem_flatMap.mpr ⟨(res, r₁), hm₁, List.mem_map.mpr ⟨(p', r₂), hm₂, rfl⟩⟩
+      exact List.mem_flatMap.mpr ⟨(ex, r₁), hm₁, List.mem_map.mpr ⟨(p', r₂), hm₂, rfl⟩⟩
 termination_by (sizeOf p, 0)
 decreasing_by
   all_goals simp_wf
@@ -692,14 +683,15 @@ either the path is trivial and the operator's own body parse applies, or it
 factors through an immediately-tighter candidate, whose rank is smaller. A
 juxtaposition level routes through `parseJuxt` instead (`parseJuxt_complete` for
 the application node itself, a lone leftmost atom for a strictly-tighter node). -/
-theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a o)
-    (parts : Parts G (Operator.body o)) (tkns rest : List Token)
+theorem parseExpr_tighterEq_complete {e : G.Ent} {a o : (G.entry e).Op}
+    (hpath : TighterEq (G.entry e).tighter a o)
+    (parts : Parts G (Operator.body e o)) (tkns rest : List Token)
     (heq : tkns = parts.flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
-      ((Expr.op o hpath parts : Expr G (.tighterEq a)), r) ∈ parseExpr (.tighterEq a) tkns := by
-  by_cases ha : (G.operator a).isJuxt = true
+      ((Expr.op o hpath parts : Expr G e (.tighterEq a)), r) ∈ parseExpr e (.tighterEq a) tkns := by
+  by_cases ha : ((G.entry e).operator a).isJuxt = true
   · -- juxtaposition level
-    have haj : G.operator a = Operator.juxt := Operator.eq_juxt ha
+    have haj : (G.entry e).operator a = Operator.juxt := Operator.eq_juxt ha
     rcases hpath.toTighterOrEq with heqa | hT
     · -- the node is the application itself
       obtain ⟨r, hr, hm⟩ := parseJuxt_complete (heqa ▸ haj) parts tkns rest heq
@@ -711,16 +703,16 @@ theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a
       obtain ⟨b, hb, hpath'⟩ := hT.destruct
       obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
       refine ⟨r, hr, ?_⟩
-      have hmem : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
+      have hmem : ((Expr.op o hpath' parts : Expr G e (.tighterEq b)).reindex
           (l := .tighterEq b) (l' := .tighter a)
-          (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
+          (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr e (.tighter a) tkns := by
         rw [parseExpr]
-        exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
-          (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
+        exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) ((G.entry e).tighter a)
+          (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => (G.entry e).rank_lt hc)
           hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
       rw [parseExpr_juxt_eq haj, parseJuxt]
       exact List.mem_flatMap.mpr ⟨_, hmem, List.mem_cons_self⟩
-  · by_cases hl : (G.operator a).isInfxl = true
+  · by_cases hl : ((G.entry e).operator a).isInfxl = true
     · -- left-associative level
       rcases hpath.toTighterOrEq with heqa | hT
       · -- the node is the fold step itself
@@ -733,12 +725,12 @@ theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a
         obtain ⟨b, hb, hpath'⟩ := hT.destruct
         obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
         refine ⟨r, hr, ?_⟩
-        have hmem : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
+        have hmem : ((Expr.op o hpath' parts : Expr G e (.tighterEq b)).reindex
             (l := .tighterEq b) (l' := .tighter a)
-            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
+            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr e (.tighter a) tkns := by
           rw [parseExpr]
-          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
-            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
+          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) ((G.entry e).tighter a)
+            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => (G.entry e).rank_lt hc)
             hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
         rw [parseExpr_infxl_eq hl, parseInfixL]
         exact List.mem_flatMap.mpr ⟨_, hmem, List.mem_cons_self⟩
@@ -752,33 +744,35 @@ theorem parseExpr_tighterEq_complete {a o : G.Op} (hpath : TighterEq G.tighter a
       · obtain ⟨b, hb, hpath'⟩ := hT.destruct
         obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath' parts tkns rest heq
         refine ⟨r, hr, ?_⟩
-        have hmem2 : ((Expr.op o hpath' parts : Expr G (.tighterEq b)).reindex
+        have hmem2 : ((Expr.op o hpath' parts : Expr G e (.tighterEq b)).reindex
             (l := .tighterEq b) (l' := .tighter a)
-            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr (.tighter a) tkns := by
+            (fun _o hh => Tighter.ofMemTighterEq hb hh), r) ∈ parseExpr e (.tighter a) tkns := by
           rw [parseExpr]
-          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
-            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => G.rank_lt hc)
+          exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) ((G.entry e).tighter a)
+            (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco) (fun _ hc => (G.entry e).rank_lt hc)
             hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
         rw [parseExpr, dif_neg ha, dif_neg hl]
         exact List.mem_append_right _ (List.mem_map.mpr ⟨_, hmem2, rfl⟩)
-termination_by (sizeOf parts, G.rank a + 1)
+termination_by (sizeOf parts, (G.entry e).rank a + 1)
 decreasing_by
   all_goals simp_wf
   all_goals first
-    | exact Prod.Lex.right _ (by have := G.rank_lt hb; omega)
+    | exact Prod.Lex.right _ (by have := (G.entry e).rank_lt hb; omega)
     | exact Prod.Lex.right _ (by omega)
 
 /-- Completeness of `parseJuxt`: an application node `Expr.op j _ parts` (`j`
 juxtaposition) is found by the iterative chain parser. The left operand `f` and
 argument `x` are parsed by `parseExpr` (smaller bodies), then `parseJuxt_cont`
 folds them — so the recursion is on the operator body, not the assembled tree. -/
-theorem parseJuxt_complete {j : G.Op} (hj : G.operator j = Operator.juxt)
-    (parts : Parts G (Operator.body j)) (tkns rest : List Token)
-    (heq : tkns = (Expr.op j TighterEq.refl parts : Expr G (Level.tighterEq j)).flatten ++ rest) :
+theorem parseJuxt_complete {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    (parts : Parts G (Operator.body e j)) (tkns rest : List Token)
+    (heq : tkns = (Expr.op j TighterEq.refl parts : Expr G e (Level.tighterEq j)).flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
-      ((Expr.op j TighterEq.refl parts : Expr G (Level.tighterEq j)), r) ∈ parseJuxt j hj tkns := by
+      ((Expr.op j TighterEq.refl parts : Expr G e (Level.tighterEq j)), r)
+        ∈ parseJuxt e j hj tkns := by
   obtain ⟨f, x, hfx⟩ := Expr.juxt_parts_eq hj parts
-  have hop : (Expr.op j TighterEq.refl parts : Expr G (Level.tighterEq j))
+  have hop : (Expr.op j TighterEq.refl parts : Expr G e (Level.tighterEq j))
       = Expr.juxtApp hj f x := by rw [hfx]; unfold Expr.juxtApp; congr 1
   rw [hop] at heq ⊢
   rw [Expr.flatten_juxtApp] at heq
@@ -802,13 +796,15 @@ decreasing_by
 found by the iterative chain parser. The left operand `acc` and the parsed tail
 `tail` are found by `parseExpr` / `parseParts` (smaller bodies), then
 `parseInfixL_cont` folds them. Mirrors `parseJuxt_complete`. -/
-theorem parseInfixL_complete {o : G.Op} (hl : (G.operator o).isInfxl = true)
-    (parts : Parts G (Operator.body o)) (tkns rest : List Token)
-    (heq : tkns = (Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o)).flatten ++ rest) :
+theorem parseInfixL_complete {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true)
+    (parts : Parts G (Operator.body e o)) (tkns rest : List Token)
+    (heq : tkns = (Expr.op o TighterEq.refl parts : Expr G e (Level.tighterEq o)).flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
-      ((Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o)), r) ∈ parseInfixL o hl tkns := by
+      ((Expr.op o TighterEq.refl parts : Expr G e (Level.tighterEq o)), r)
+        ∈ parseInfixL e o hl tkns := by
   obtain ⟨acc, tail, hat⟩ := Expr.infxl_parts_eq hl parts
-  have hop : (Expr.op o TighterEq.refl parts : Expr G (Level.tighterEq o))
+  have hop : (Expr.op o TighterEq.refl parts : Expr G e (Level.tighterEq o))
       = Expr.infxlApp hl acc tail := by rw [hat]; unfold Expr.infxlApp; congr 1
   rw [hop] at heq ⊢
   rw [Expr.flatten_infxlApp] at heq
@@ -828,12 +824,12 @@ decreasing_by
     rw [hsz, Parts.hole.sizeOf_spec]
     omega
 
-/-- Completeness of `parseExpr`: every `e : Expr G l` is found on its own
+/-- Completeness of `parseExpr`: every `ex : Expr G e l` is found on its own
 flattening (any right-extension `rest`), leaving exactly `rest`. -/
-theorem parseExpr_complete {l : Level G} (e : Expr G l) (tkns rest : List Token)
-    (heq : tkns = e.flatten ++ rest) :
-    ∃ r : RightSublist tkns, r.list = rest ∧ (e, r) ∈ parseExpr l tkns := by
-  match l, e, heq with
+theorem parseExpr_complete {e : G.Ent} {l : Level (G.entry e)} (ex : Expr G e l)
+    (tkns rest : List Token) (heq : tkns = ex.flatten ++ rest) :
+    ∃ r : RightSublist tkns, r.list = rest ∧ (ex, r) ∈ parseExpr e l tkns := by
+  match l, ex, heq with
   | .tighterEq a, .op o hc parts, heq =>
       exact parseExpr_tighterEq_complete hc parts tkns rest heq
   | .tighter a, .op o hc parts, heq =>
@@ -841,21 +837,21 @@ theorem parseExpr_complete {l : Level G} (e : Expr G l) (tkns rest : List Token)
       obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath parts tkns rest heq
       refine ⟨r, hr, ?_⟩
       rw [parseExpr]
-      exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) (G.tighter a)
-        (fun _ hcc _o hco => Tighter.ofMemTighterEq hcc hco) (fun _ hcc => G.rank_lt hcc)
+      exact List.mem_append_left _ (parseExprList_complete (l := .tighter a) ((G.entry e).tighter a)
+        (fun _ hcc _o hco => Tighter.ofMemTighterEq hcc hco) (fun _ hcc => (G.entry e).rank_lt hcc)
         hb (fun _o hh => Tighter.ofMemTighterEq hb hh) hm)
   | .loosest, .op o hc parts, heq =>
       obtain ⟨a, ha, hpath⟩ := hc
       obtain ⟨r, hr, hm⟩ := parseExpr_tighterEq_complete hpath parts tkns rest heq
       refine ⟨r, hr, ?_⟩
       rw [parseExpr]
-      exact List.mem_append_left _ (parseExprList_complete (l := .loosest) G.loosest
-        (fun c hcc _o hco => ⟨c, hcc, hco⟩) (fun _ hcc => G.rank_lt_topRank hcc)
+      exact List.mem_append_left _ (parseExprList_complete (l := .loosest) (G.entry e).loosest
+        (fun c hcc _o hco => ⟨c, hcc, hco⟩) (fun _ hcc => (G.entry e).rank_lt_topRank hcc)
         ha (fun _o hh => ⟨a, ha, hh⟩) hm)
   | l, .var t hv, heq =>
       subst heq
       exact ⟨RightSublist.cons t rest, rfl, mem_parseExpr_var hv rest⟩
-termination_by (sizeOf e, 0)
+termination_by (sizeOf ex, 0)
 decreasing_by
   all_goals simp_wf
   all_goals exact Prod.Lex.left _ _ (by first | (simp; omega) | omega)
@@ -864,46 +860,33 @@ end
 
 /-- Completeness of `parse`: every loosest expression is a full parse of its
 own flattening. -/
-theorem parse_complete (e : Expr G .loosest) : e ∈ parse e.flatten := by
-  obtain ⟨r, hr, hm⟩ := parseExpr_complete e e.flatten [] (by simp)
+theorem parse_complete {e : G.Ent} (ex : Expr G e .loosest) : ex ∈ parse e ex.flatten := by
+  obtain ⟨r, hr, hm⟩ := parseExpr_complete ex ex.flatten [] (by simp)
   unfold parse
-  exact List.mem_filterMap.mpr ⟨(e, r), hm, by simp [hr]⟩
+  exact List.mem_filterMap.mpr ⟨(ex, r), hm, by simp [hr]⟩
 
 /-- The full characterization of `parse` as a set: its members are exactly the
 loosest expressions flattening to the input. (Soundness + completeness.) -/
-theorem mem_parse_iff {tkns : List Token} {e : Expr G .loosest} :
-    e ∈ parse tkns ↔ e.flatten = tkns :=
-  ⟨parse_sound, fun h => h ▸ parse_complete e⟩
-
-/-- Package a Mixfix grammar `G` as a `VerifiedParser`, so it can be embedded as a
-sub-language hole in **another** grammar (`InnerHole.sub`). It parses prefixes at
-`G`'s loosest level; `parseExpr_sound`/`parseExpr_complete` supply the interface.
-Universe-polymorphic: `G : Grammar.{u}` (trees `Expr G _ : Type (u+1)`) becomes a
-`VerifiedParser.{u+1}`, so embedding strictly raises the universe — a finite
-hierarchy of languages (e.g. variables ⊂ types ⊂ terms), no self-embedding. -/
-def Grammar.toVerifiedParser.{u} (G : Grammar.{u}) : VerifiedParser.{u+1} where
-  Result := Expr G .loosest
-  flatten := Expr.flatten
-  parse := fun tkns => parseExpr (G := G) .loosest tkns
-  sound := fun _ _ hx => parseExpr_sound hx
-  complete := fun r tkns rest heq => parseExpr_complete r tkns rest heq
+theorem mem_parse_iff {e : G.Ent} {tkns : List Token} {ex : Expr G e .loosest} :
+    ex ∈ parse e tkns ↔ ex.flatten = tkns :=
+  ⟨parse_sound, fun h => h ▸ parse_complete ex⟩
 
 /-! ## Uniqueness -/
 
-/-- A grammar is **unambiguous** when flattening is injective on loosest
-expressions: no token string is the flattening of two distinct trees. This is a
-property of the *grammar*, not the parser — by `mem_parse_iff` the parser
-returns exactly the trees flattening to the input, so unambiguity is precisely
-what collapses the result list to copies of a single tree. Discharging it for a
-concrete grammar (class) is a separate problem. -/
-def Grammar.Unambiguous (G : Grammar) : Prop :=
-  ∀ (e₁ e₂ : Expr G .loosest), e₁.flatten = e₂.flatten → e₁ = e₂
+/-- A grammar entry `e` is **unambiguous** when flattening is injective on its
+loosest expressions: no token string is the flattening of two distinct trees.
+This is a property of the *grammar*, not the parser — by `mem_parse_iff` the
+parser returns exactly the trees flattening to the input, so unambiguity is
+precisely what collapses the result list to copies of a single tree. Discharging
+it for a concrete grammar (class) is a separate problem. -/
+def Grammar.Unambiguous (G : Grammar) (e : G.Ent) : Prop :=
+  ∀ (e₁ e₂ : Expr G e .loosest), e₁.flatten = e₂.flatten → e₁ = e₂
 
-/-- Uniqueness of full parses, conditional on grammar unambiguity: any two
-members of `parse tkns` are equal (the list may still contain duplicates when
+/-- Uniqueness of full parses, conditional on entry unambiguity: any two
+members of `parse e tkns` are equal (the list may still contain duplicates when
 the precedence DAG reaches an operator along several paths). -/
-theorem parse_unique (hG : G.Unambiguous) {tkns : List Token}
-    {e₁ e₂ : Expr G .loosest} (h₁ : e₁ ∈ parse tkns) (h₂ : e₂ ∈ parse tkns) :
+theorem parse_unique {e : G.Ent} (hG : G.Unambiguous e) {tkns : List Token}
+    {e₁ e₂ : Expr G e .loosest} (h₁ : e₁ ∈ parse e tkns) (h₂ : e₂ ∈ parse e tkns) :
     e₁ = e₂ :=
   hG e₁ e₂ ((parse_sound h₁).trans (parse_sound h₂).symm)
 

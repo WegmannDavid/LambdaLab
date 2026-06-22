@@ -4,84 +4,75 @@ namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
-/-- A precedence *level*: the constraint placed on a tree's top operator. -/
-inductive Level.{u} (G : Grammar.{u}) : Type where
-| tighter   : G.Op → Level G
-| tighterEq : G.Op → Level G
-| loosest   : Level G
+/-- A precedence *level* within a single entry `E`: the constraint placed on a
+tree's top operator. -/
+inductive Level {Ent : Type} (E : Entry Ent) : Type where
+| tighter   : E.Op → Level E
+| tighterEq : E.Op → Level E
+| loosest   : Level E
 
-/-- The predicate a top operator `b` must satisfy to inhabit level `l`. -/
-def Level.condition.{u} {G : Grammar.{u}} (l : Level G) : G.Op → Prop :=
+/-- The predicate a top operator `b` must satisfy to inhabit level `l` of `E`. -/
+def Level.condition {Ent : Type} {E : Entry Ent} (l : Level E) : E.Op → Prop :=
   match l with
-  | Level.tighter a   => fun b => Tighter G.tighter a b
-  | Level.tighterEq a => fun b => TighterEq G.tighter a b
-  | Level.loosest     => fun b => ∃ a, a ∈ G.loosest ∧ TighterEq G.tighter a b
+  | Level.tighter a   => fun b => Tighter E.tighter a b
+  | Level.tighterEq a => fun b => TighterEq E.tighter a b
+  | Level.loosest     => fun b => ∃ a, a ∈ E.loosest ∧ TighterEq E.tighter a b
 
-inductive Part.{u} (G : Grammar.{u}) where
-| hole     : Level G → Part G
-| namePart : Token   → Part G
-/-- A hole parsed by another language (a `VerifiedParser`). -/
-| subHole  : VerifiedParser.{u} → Part G
+/-- A piece of an operator's body: a literal name token, or a **hole** referencing
+an entry `e` of the grammar at a precedence level within that entry. The hole is
+filled by an `Expr` of entry `e` — recursive (`e` the host entry) or cross-entry
+(`e` a different class of expressions) are the *same* construct. -/
+inductive Part (G : Grammar) where
+| namePart : Token → Part G
+| hole     : (e : G.Ent) → Level (G.entry e) → Part G
 
-/-- An interior hole lowers to a recursive `loosest` hole or a `subHole`. -/
-def InnerHole.toPart.{u} {G : Grammar.{u}} : InnerHole.{u} → Part G
-  | .loosest => .hole Level.loosest
-  | .sub sp  => .subHole sp
+/-- Lower a `Notation` to its parts: a `namePart` per token; each interior hole
+references its entry `e'` parsed at that entry's `loosest` level. -/
+def Notation.toParts {G : Grammar} : Notation G.Ent → List (Part G)
+  | .last tkn         => [.namePart tkn]
+  | .cons tkn e' rest => [.namePart tkn, .hole e' Level.loosest] ++ rest.toParts
 
-/-- Lower an operator `Notation` to its parts: a `namePart` per token, with each
-interior hole lowered by `InnerHole.toPart` (recursive `loosest` or a `subHole`). -/
-def Notation.toParts.{u} {G : Grammar.{u}} : Notation.{u} → List (Part G)
-  | .last tkn        => [.namePart tkn]
-  | .cons tkn h rest => [.namePart tkn, h.toPart] ++ rest.toParts
-
-/-- The lowered body of operator `o`: the `Part` list its tree fills in. -/
-def Operator.body.{u} {G : Grammar.{u}} (o : G.Op) : List (Part G) :=
-  match G.operator o with
+/-- The lowered body of operator `o` of entry `e`: the notation's parts, wrapped
+by the fixity's leading/trailing operand holes — which reference the **host**
+entry `e` at strictly- or loosely-tighter levels (where precedence lives). -/
+def Operator.body {G : Grammar} (e : G.Ent) (o : (G.entry e).Op) : List (Part G) :=
+  match (G.entry e).operator o with
   | .closed n => Notation.toParts n
-  | .prefx  n => Notation.toParts n ++ [.hole (.tighter o)]
-  | .infx   n => [.hole (.tighter o)] ++ Notation.toParts n ++ [.hole (.tighter o)]
-  -- left-assoc: the left operand chains (`.tighterEq`), right is strictly tighter.
-  -- Left-recursive (leading `.tighterEq` hole) ⇒ parsed by a fold, like `juxt`.
-  | .infxl  n => [.hole (.tighterEq o)] ++ Notation.toParts n ++ [.hole (.tighter o)]
-  -- right-assoc: the right operand chains (`.tighterEq`), left is strictly tighter.
-  | .infxr  n => [.hole (.tighter o)] ++ Notation.toParts n ++ [.hole (.tighterEq o)]
-  | .postfx n => [.hole (.tighter o)] ++ Notation.toParts n
-  -- juxtaposition `f x`: left operand at `.tighterEq o` (so application chains,
-  -- left-associatively), right operand (argument) at `.tighter o`. No name tokens.
-  | .juxt => [.hole (.tighterEq o), .hole (.tighter o)]
+  | .prefx  n => Notation.toParts n ++ [.hole e (.tighter o)]
+  | .infx   n => [.hole e (.tighter o)] ++ Notation.toParts n ++ [.hole e (.tighter o)]
+  | .infxl  n => [.hole e (.tighterEq o)] ++ Notation.toParts n ++ [.hole e (.tighter o)]
+  | .infxr  n => [.hole e (.tighter o)] ++ Notation.toParts n ++ [.hole e (.tighterEq o)]
+  | .postfx n => [.hole e (.tighter o)] ++ Notation.toParts n
+  | .juxt => [.hole e (.tighterEq o), .hole e (.tighter o)]
 
 mutual
-  -- `Type (u+1)`: a `subHole` stores the sub-parser's `Result : Type u`, so the
-  -- tree family lives one universe up. `G` stays a *parameter* — the sub-tree is
-  -- the bundle's own `Result`, never `Expr G'`, so no cross-grammar indexing.
-  -- Universe-polymorphic so a grammar's own trees can be embedded as a
-  -- `VerifiedParser.{u+1}` (`Grammar.toVerifiedParser`).
-  inductive Expr.{u} (G : Grammar.{u}) : Level G → Type (u+1) where
-  | op : (o : G.Op) → Level.condition l o → Parts G (Operator.body o) → Expr G l
-  /-- A variable leaf: an identifier token (`G.isVar t`), valid at every level (a
-  maximally-tight atom, so no `Level.condition`). The `isVar` proof keeps `var t`
-  from masquerading as an operator atom (e.g. `var "n"` vs the `num` operator),
-  which would otherwise break `flatten`-injectivity. -/
-  | var : (t : Token) → G.isVar t = true → Expr G l
+  /-- A parse tree of entry `e` at level `l`. No universe bump: a hole stores an
+  `Expr` of the referenced entry, never a raw `Type`. -/
+  inductive Expr (G : Grammar) : (e : G.Ent) → Level (G.entry e) → Type where
+  | op {e : G.Ent} {l : Level (G.entry e)} (o : (G.entry e).Op) :
+      Level.condition l o → Parts G (Operator.body e o) → Expr G e l
+  /-- A variable leaf: an identifier token (`(G.entry e).isVar`), valid at every
+  level of its entry. -/
+  | var {e : G.Ent} {l : Level (G.entry e)} (t : Token) :
+      (G.entry e).isVar t = true → Expr G e l
 
-  inductive Parts.{u} (G : Grammar.{u}) : List (Part G) → Type (u+1) where
-  | nil : Parts G .nil
-  | hole : Expr G l → Parts G ps → Parts G ((.hole l)::ps)
-  | namePart : (tkn : Token) → Parts G ps → Parts G ((.namePart tkn)::ps)
-  /-- A sub-language hole: stores the sub-parser's own result. -/
-  | subHole : (sp : VerifiedParser.{u}) → sp.Result → Parts G ps → Parts G ((.subHole sp)::ps)
+  inductive Parts (G : Grammar) : List (Part G) → Type where
+  | nil : Parts G []
+  | namePart {ps} (tkn : Token) : Parts G ps → Parts G ((.namePart tkn) :: ps)
+  | hole {e : G.Ent} {l : Level (G.entry e)} {ps} :
+      Expr G e l → Parts G ps → Parts G ((.hole e l) :: ps)
 end
 
 mutual
-  def Expr.flatten.{u} {G : Grammar.{u}} {l : Level G} (e : Expr G l) : List Token :=
-    match e with
-    |.op _ _ l => l.flatten
-    | .var t _ => [t]
+  def Expr.flatten {G : Grammar} {e : G.Ent} {l : Level (G.entry e)} :
+      Expr G e l → List Token
+    | .op _ _ ps => ps.flatten
+    | .var t _   => [t]
 
-  def Parts.flatten.{u} {G : Grammar.{u}} {shape : List (Part G)} (l : Parts G shape) : List Token :=
-    match l with
-    | .nil => []
-    | .hole e ps => e.flatten ++ ps.flatten
-    | .namePart tkn ps => [tkn] ++ ps.flatten
-    | .subHole sp res ps => sp.flatten res ++ ps.flatten
+  def Parts.flatten {G : Grammar} {shape : List (Part G)} : Parts G shape → List Token
+    | .nil             => []
+    | .namePart tkn ps => tkn :: ps.flatten
+    | .hole ex ps      => ex.flatten ++ ps.flatten
 end
+
+end LambdaLab.Parser.Mixfix
