@@ -42,6 +42,8 @@ def reserved : List Token := ["(", ")", "\\lambda", "."]
 accepts exactly one variable. Parses the `x` in `\lambda x .`. -/
 def varGrammar : Grammar.{0} where
   Op := Empty
+  Sub := Empty
+  subParser := fun e => e.elim
   operator := fun e => e.elim
   loosest := []
   tighter := fun e => e.elim
@@ -50,12 +52,12 @@ def varGrammar : Grammar.{0} where
   juxtUnique := fun e => e.elim
 
 /-- Each operator's shape. `lam`'s binder hole is `varGrammar` (a different
-language, embedded via `toVerifiedParser`); its body is the ordinary recursive
+language, embedded via `toLosslessParser`); its body is the ordinary recursive
 operand. -/
-def symOp : Sym → Operator
+def symOp : Sym → Operator Unit
   | .paren => .closed (.cons "(" .loosest (.last ")"))
   | .app   => .juxt
-  | .lam   => .prefx (.cons "\\lambda" (.sub varGrammar.toVerifiedParser) (.last "."))
+  | .lam   => .prefx (.cons "\\lambda" (.sub ()) (.last "."))
 
 /-- Precedence DAG: `lam → app → paren`. -/
 def symTighter : Sym → List Sym
@@ -77,6 +79,8 @@ theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
 /-- The STLC surface grammar. `@[reducible]` so `stlc.Op` unfolds to `Sym`. -/
 @[reducible] def stlc : Grammar where
   Op := Sym
+  Sub := Unit
+  subParser := fun _ => ⟨_, varGrammar.toLosslessParser⟩
   operator := symOp
   loosest := [.lam]
   tighter := symTighter

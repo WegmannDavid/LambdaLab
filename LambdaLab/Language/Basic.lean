@@ -1,5 +1,7 @@
 import LambdaLab.Substitution.Basic
+import LambdaLab.Parser.Basic
 import Std.Data.HashMap
+
 
 /-!
 # Language interface
@@ -86,6 +88,7 @@ inductive ElaborationResult {Ty Term : Type}
 
 /-! ## The language interface -/
 
+
 /-- A complete object-language interface. Bundles syntax (`Ty`, `Term`),
 the declarative typing relation (`HasType`), the algorithmic inferrer
 (`elaborate`), and the evaluator (`eval`). -/
@@ -124,6 +127,9 @@ structure Language : Type 1 where
   /-- Evaluate a well-typed term. Taking the derivation as input keeps
   this function total — only well-typed terms are reducible. -/
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
+
+  pTy : Parser.LosslessParser Token Ty
+  pTerm : Parser.LosslessParser Token Term
 
 attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
 

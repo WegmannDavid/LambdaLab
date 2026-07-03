@@ -34,7 +34,7 @@ inductive AmbOp where
   | num | wrap | mul
 deriving DecidableEq, Repr
 
-def ambOperator : AmbOp → Operator
+def ambOperator : AmbOp → Operator Empty
   | .num  => .closed (.last "n")
   | .wrap => .closed (.cons "(" .loosest (.cons "*" .loosest (.last ")")))
   | .mul  => .infx (.last "*")
@@ -54,6 +54,8 @@ theorem ambTighter_wf : WellFounded (fun b a => b ∈ ambTighter a) :=
 distinct (the distinct-leading-tokens condition), yet the grammar is ambiguous. -/
 @[reducible] def amb : Grammar.{0} where
   Op := AmbOp
+  Sub := Empty
+  subParser := fun e => e.elim
   operator := ambOperator
   loosest := [.mul]
   tighter := ambTighter

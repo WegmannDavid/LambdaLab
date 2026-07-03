@@ -55,7 +55,7 @@ skeleton with *both* operands strictly tighter — `closed` / `prefx` / `infx` /
 `postfx`. Excluded: the tokenless `juxt` and the associative `infxl` / `infxr`
 (their `.tighterEq` operand holes put no separator token where `Stops`/`BodyOk`
 need one). -/
-def Operator.simple : Operator → Bool
+def Operator.simple {Sub : Type} : Operator Sub → Bool
   | .closed _ => true
   | .prefx _  => true
   | .infx _   => true
@@ -111,7 +111,7 @@ theorem Part.bodyTokens_append (ps qs : List (Part G)) :
   | nil => rfl
   | cons p ps ih => cases p <;> simp [Part.bodyTokens, ih]
 
-theorem Part.bodyTokens_inner (tkns : Notation) :
+theorem Part.bodyTokens_inner (tkns : Notation G.Sub) :
     Part.bodyTokens (G := G) (Notation.toParts tkns) = tkns.toTokens := by
   induction tkns with
   | last t => rfl
@@ -202,13 +202,13 @@ mutual
         rw [Parts.flatten_namePart, List.count_cons, count_flatten_parts h ht p',
           Part.bodyTokens, List.count_cons, Parts.countApps]
         omega
-    | _, .subHole sp res p' => by
+    | _, .subHole s res p' => by
         rw [Parts.flatten_subHole, List.count_append, count_flatten_parts h ht p',
           Parts.countApps, Part.bodyTokens]
         -- A host name token `t` does not occur in an embedded sub-grammar's
         -- output (token-disjointness between the host and the embedded language).
         -- This interface condition for embedded-grammar uniqueness is future work.
-        have hsub : (sp.flatten res).count t = 0 := sorry
+        have hsub : ((G.subParser s).2.flatten res).count t = 0 := sorry
         omega
 end
 
@@ -249,18 +249,18 @@ from its token string — is isolated as the single `topOp_unique` axiom-shaped
 lemma below. Everything else uses only `UniqueNameParts` + `tighter_wf`. -/
 
 /-- First name token of a nonempty token list. -/
-def Notation.head : Notation → Token
+def Notation.head {Sub : Type} : Notation Sub → Token
   | .last x => x
   | .cons x _ _ => x
 
-theorem Notation.head_mem_toTokens (l : Notation) : l.head ∈ l.toTokens := by
+theorem Notation.head_mem_toTokens {Sub : Type} (l : Notation Sub) : l.head ∈ l.toTokens := by
   cases l with
   | last x => simp [Notation.head, Notation.toTokens]
   | cons x h xs => simp [Notation.head, Notation.toTokens]
 
 /-- The leading name part of an operator (junk for the tokenless `juxt`, which is
 excluded from the token-based machinery by `Grammar.NonAssoc`). -/
-def Operator.head : Operator → Token
+def Operator.head {Sub : Type} : Operator Sub → Token
   | .closed t => t.head
   | .prefx t => t.head
   | .infx t => t.head
@@ -269,10 +269,10 @@ def Operator.head : Operator → Token
   | .postfx t => t.head
   | .juxt => ""
 
-theorem Operator.head_mem (o : Operator) (hj : o ≠ Operator.juxt) : o.head ∈ o.nameTokens := by
+theorem Operator.head_mem {Sub : Type} (o : Operator Sub) (hj : o ≠ Operator.juxt) : o.head ∈ o.nameTokens := by
   cases o <;> first | exact Notation.head_mem_toTokens _ | exact absurd rfl hj
 
-theorem Operator.nameTokens_eq (o : Operator) (hj : o ≠ Operator.juxt) :
+theorem Operator.nameTokens_eq {Sub : Type} (o : Operator Sub) (hj : o ≠ Operator.juxt) :
     o.nameTokens = o.head :: o.nameTokens.tail := by
   cases o <;> first | (rename_i t; cases t <;> rfl) | exact absurd rfl hj
 
@@ -367,14 +367,14 @@ mutual
     | (.hole _) :: _, .hole e _ =>
         rw [Parts.flatten_hole]
         exact fun hc => Expr.flatten_ne e (List.append_eq_nil_iff.mp hc).1
-    | (.subHole _) :: _, .subHole sp res _ =>
+    | (.subHole _) :: _, .subHole s res _ =>
         rw [Parts.flatten_subHole]
         -- a sub-parser's result flattens to a nonempty token list (it consumes
         -- ≥1 token) — an interface guarantee for embedded grammars, future work.
-        exact fun hc => (show sp.flatten res ≠ [] from sorry) (List.append_eq_nil_iff.mp hc).1
+        exact fun hc => (show (G.subParser s).2.flatten res ≠ [] from sorry) (List.append_eq_nil_iff.mp hc).1
 end
 
-theorem Parts.flatten_head_inner {tkns : Notation} (p : Parts G (Notation.toParts tkns)) :
+theorem Parts.flatten_head_inner {tkns : Notation G.Sub} (p : Parts G (Notation.toParts tkns)) :
     p.flatten.head? = some tkns.head :=
   match tkns, p with
   | .last _, .namePart _ _ => by simp [Parts.flatten, Notation.head]
@@ -449,14 +449,14 @@ inductive BodyOk (o : G.Op) : List (Part G) → Prop where
       BodyOk o (Part.hole (Level.tighter o) :: Part.namePart tk :: rest)
 
 /-- `Notation.toParts` always leads with a name part: the first body token. -/
-theorem Notation.toParts_eq_cons (tkns : Notation) :
+theorem Notation.toParts_eq_cons (tkns : Notation G.Sub) :
     Notation.toParts (G := G) tkns = Part.namePart tkns.head :: (Notation.toParts tkns).tail := by
   cases tkns with
   | last t => rfl
   | cons t ts => rfl
 
 /-- `Notation.toParts ++ suffix` likewise leads with the first body token. -/
-theorem Notation.toParts_app_cons (tkns : Notation) (suffix : List (Part G)) :
+theorem Notation.toParts_app_cons (tkns : Notation G.Sub) (suffix : List (Part G)) :
     Notation.toParts tkns ++ suffix
       = Part.namePart tkns.head :: ((Notation.toParts tkns).tail ++ suffix) := by
   cases tkns with
@@ -467,7 +467,7 @@ theorem Notation.toParts_app_cons (tkns : Notation) (suffix : List (Part G)) :
 `BodyOk`: every internal `loosest` hole is followed by a non-leading name part of
 the operator (a non-head, via `hpr`), and the final name part connects to the
 suffix. -/
-theorem BodyOk_inner_app (o : G.Op) (tkns : Notation) (suffix : List (Part G))
+theorem BodyOk_inner_app (o : G.Op) (tkns : Notation G.Sub) (suffix : List (Part G))
     (hpr : ∀ tk ∈ tkns.toTokens.tail, ∀ o' : G.Op, (G.operator o').head ≠ tk)
     (hsuf : BodyOk o suffix) : BodyOk o (Notation.toParts tkns ++ suffix) := by
   induction tkns with
