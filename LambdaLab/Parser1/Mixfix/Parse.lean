@@ -367,19 +367,21 @@ token-level `parse`, so each result **consumes the entire input** — the return
 `rest` is future work; this suffices for a top-level parse and for the round-trip
 against `render` on full inputs.) -/
 
-/-- Build a token from a run of chars known to be separator-free. -/
-def mkTok {sep : Char → Bool} (l : List Char) (h : ∀ c ∈ l, sep c = false) : Token sep :=
-  ⟨String.ofList l, fun c hc => h c (by simpa using hc)⟩
+/-- Build a token from a **nonempty** run of chars known to be separator-free. -/
+def mkTok {sep : Char → Bool} (l : List Char) (h : ∀ c ∈ l, sep c = false) (hne : l ≠ []) :
+    Token sep :=
+  ⟨String.ofList l, fun c hc => h c (by simpa using hc), by simpa using hne⟩
 
 /-- Accumulate the current token's chars (`cur`, all non-separators), flushing on
 each separator. The proof `h` maintains that `cur` is separator-free, so each flush
 yields a genuine `Token sep`. -/
 def tokenizeAux (sep : Char → Bool) :
     (cur : List Char) → (∀ c ∈ cur, sep c = false) → List Char → List (Token sep)
-  | cur, h, []      => if cur.isEmpty then [] else [mkTok cur h]
+  | cur, h, []      => if hce : cur.isEmpty = true then [] else [mkTok cur h (by simpa using hce)]
   | cur, h, c :: cs =>
       if hc : sep c = true then
-        (if cur.isEmpty then [] else [mkTok cur h]) ++ tokenizeAux sep [] (by simp) cs
+        (if hce : cur.isEmpty = true then [] else [mkTok cur h (by simpa using hce)]) ++
+          tokenizeAux sep [] (by simp) cs
       else
         tokenizeAux sep (cur ++ [c])
           (by intro c' hc'

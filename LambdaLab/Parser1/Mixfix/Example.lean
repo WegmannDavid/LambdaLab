@@ -18,7 +18,8 @@ open LambdaLab.Parser1
 def arithSep : Char → Bool := fun c => c == ' '
 
 /-- A separator-free token literal — the sep-free proof is discharged by `decide`. -/
-def tk (s : String) (h : ∀ c ∈ s.toList, arithSep c = false := by decide) : Token arithSep :=
+def tk (s : String) (h : (∀ c ∈ s.toList, arithSep c = false) ∧ s.toList ≠ [] := by decide) :
+    Token arithSep :=
   ⟨s, h⟩
 
 /-- Operators of the single entry: `( _ )`, application, and `_ + _`. -/
@@ -60,6 +61,7 @@ def pEntry : Entry arithSep Unit where
 def arith : Grammar where
   Ent := Unit
   isSep := arithSep
+  sepWitness := ⟨' ', by decide⟩
   entry := fun _ => pEntry
 
 /-- A single space, as a nonempty separator run of `arith`. -/

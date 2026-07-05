@@ -6,11 +6,12 @@ namespace LambdaLab.Parser1.Mixfix
 /-- A predicate-restricted string. -/
 abbrev Restricted (P : String → Prop) : Type := { s : String // P s }
 
-/-- A **token** for the separator predicate `sep`: a string containing **no**
-separator character. Every maximal separator-free run of the char stream is one of
-these, and since a token can't contain a separator, a rendered token stream always
-re-splits back into the same tokens. -/
-abbrev Token (sep : Char → Bool) : Type := Restricted (fun s => ∀ c ∈ s.toList, sep c = false)
+/-- A **token** for the separator predicate `sep`: a **nonempty** string containing
+**no** separator character. Nonemptiness ensures a rendered token can't vanish, so a
+rendered token stream always re-splits back into the same tokens (needed for
+`parse_complete`). -/
+abbrev Token (sep : Char → Bool) : Type :=
+  Restricted (fun s => (∀ c ∈ s.toList, sep c = false) ∧ s.toList ≠ [])
 
 /-! ## Operator names with configurable interior holes
 
@@ -157,6 +158,11 @@ structure Grammar where
   of these), and hence the token alphabet (`Token isSep` — strings containing none
   of these). -/
   isSep : Char → Bool
+  /-- A distinguished separator character, witnessing that the separator alphabet is
+  **nonempty**. Any grammar that tokenizes owns a separator, so this costs nothing —
+  and it makes `Sep G` canonically inhabited, so the render witness needs no external
+  default (`dflt`) threaded through it. -/
+  sepWitness : { c : Char // isSep c = true }
   entry : Ent → Entry isSep Ent
   -- no start symbol, the start symbol is choosen when deriving the parser
 
@@ -175,8 +181,26 @@ structure NESep (G : Grammar) where
   head : Sep G
   tail : List (Sep G)
 
+/-- A separator run as a plain (nonempty) list of separators. -/
+def NESep.toList {G : Grammar} (s : NESep G) : List (Sep G) := s.head :: s.tail
+
 /-- The characters of a separator run, in order. -/
 def NESep.toChars {G : Grammar} (s : NESep G) : List Char :=
   s.head.val :: s.tail.map (·.val)
+
+/-- Promote a possibly-empty separator run to a `NESep`, falling back to the
+grammar's canonical `sepWitness` when empty. On valid input the fallback is dead
+code (internal gaps always carry a separator); it makes the render witness a total
+function with no threaded default. -/
+def mkNESep {G : Grammar} : List (Sep G) → NESep G
+  | []        => ⟨G.sepWitness, []⟩
+  | c :: rest => ⟨c, rest⟩
+
+/-- On a nonempty run, `mkNESep` is the identity (the fallback is untouched). -/
+theorem mkNESep_toList_of_ne {G : Grammar} {l : List (Sep G)} (h : l ≠ []) :
+    (mkNESep l).toList = l := by
+  cases l with
+  | nil => exact absurd rfl h
+  | cons c rest => rfl
 
 end LambdaLab.Parser1.Mixfix
