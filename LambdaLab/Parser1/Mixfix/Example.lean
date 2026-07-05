@@ -73,7 +73,8 @@ def spacePolicy : Policy arith where
   State := Unit
   initial := ()
   traverse    := fun e o s => Layout.const spaceSep s (Operator.body e o)
-  traverseVar := fun _ _ _ => ([], [])
+  traverseVar := fun _ _ s => ([], s)
+  trail       := fun _ => []
 
 /-- Parse a source string at the single entry, render every parse back under
 `spacePolicy`, and show the resulting strings — a full char round-trip. -/

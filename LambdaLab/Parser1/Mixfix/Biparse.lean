@@ -29,10 +29,12 @@ def readSeps {G : Grammar} : List Char → List (Sep G)
 
 /-- Read the telescope tail off the remaining input: each gap is the actual
 separator run there (promoted to `NESep` via the grammar's `sepWitness`); each
-continuation drops the rendered part's chars. -/
+continuation drops the rendered part's chars. The `[]` case just returns the
+remaining state — no right edge (trailing seps are the next token's gap, or
+`trail`). -/
 def cursorTail {G : Grammar} :
     List Char → (ps : List (Part G)) → LayoutTail G (List Char) ps
-  | remaining, []      => let ss := readSeps (G := G) remaining; (ss, remaining.drop ss.length)
+  | remaining, []      => remaining
   | remaining, _ :: ps =>
       let gap := readSeps remaining
       let remAfter := remaining.drop gap.length
@@ -42,25 +44,23 @@ def cursorTail {G : Grammar} :
 edge. -/
 def cursorLayout {G : Grammar} :
     List Char → (ps : List (Part G)) → Layout G (List Char) ps
-  | remaining, []      => let ss := readSeps (G := G) remaining; (ss, remaining.drop ss.length)
+  | remaining, []      => remaining
   | remaining, _ :: ps =>
       let edge := readSeps remaining
       let remAfter := remaining.drop edge.length
       (edge, remAfter, fun r => cursorTail (remAfter.drop r.length) ps)
 
-/-- The cursor witness policy: `State` is the remaining input. A variable's right
-edge is nonempty only when the rest of the input is entirely separators (i.e. it is
-the whole tree, so those are trailing whitespace); otherwise the parent's gaps
-already surround it, so it is `[]`. -/
+/-- The cursor witness policy: `State` is the remaining input. Each gap/leading run
+is the actual `readSeps` there; a rendered part advances the state past its chars;
+the global `trail` is whatever separators remain at the end. -/
 def cursorPolicy {G : Grammar} (input : List Char) : Policy G where
   State       := List Char
   initial     := input
   traverse    := fun e o remaining => cursorLayout remaining (Operator.body e o)
   traverseVar := fun _ t remaining =>
-    let leftEdge   := readSeps remaining
-    let afterToken := (remaining.drop leftEdge.length).drop t.val.toList.length
-    let afterSeps  := readSeps afterToken
-    (leftEdge, if afterSeps.length = afterToken.length then afterSeps else [])
+    let leftEdge := readSeps remaining
+    (leftEdge, (remaining.drop leftEdge.length).drop t.val.toList.length)
+  trail       := fun remaining => readSeps remaining
 
 /-! ### `readSeps` characterisation
 
