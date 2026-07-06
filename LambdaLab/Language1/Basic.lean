@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Biparser
+import LambdaLab.Parser.Basic
 
 namespace LambdaLab.Language1
 

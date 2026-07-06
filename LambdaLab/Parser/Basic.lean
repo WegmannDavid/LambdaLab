@@ -56,4 +56,41 @@ end RightSublist
 strict suffix left over (an empty list means "no parse"). -/
 abbrev Parser (α : Type u) (β : Type w) := (input : List α) → List (β × RightSublist input)
 
+/-- A **truncating biparser**: a `parse` paired with a single concrete `render`, where
+the result `β` is a **lossy** image of the surface syntax (parens dropped, annotations
+quotiented), so only *one* coherence law survives.
+
+The rendering **policy is packaged in** rather than exposed as a type parameter, so
+`render : β → List α` is a single concrete printer (a policy was chosen when the
+biparser was built) and the structure stays universe-flat — this is what lets it sit
+as a field in a `Language` without bumping its universe. `parse` recovers `β`.
+`parse_complete` (renderer soundness) holds unconditionally — every rendering parses
+back to its value, leaving exactly `rest`. But `render_complete` (parser soundness) is
+**dropped**: the parser accepts strings — e.g. redundantly parenthesized ones — that
+`render` never emits (it produces only the minimally-parenthesized canonical form), so
+the consumed tokens `s.pre` aren't reproduced in general. This is the print→parse
+direction only, and it is exactly what a `Grammar` + `ReverseInterp` + a chosen policy
+supplies (see `Parser.Mixfix.ReverseInterp.toTruncatingBiparser`). The lossless,
+policy-indexed `Biparser` (both laws) lives in `Parser.Biparser`. -/
+structure TruncatingBiparser (α : Type u) (β : Type w) where
+  /-- Render a value to its **minimally-parenthesized** concrete form (fixed policy). -/
+  render : β → List α
+  /-- All parses of a prefix of the input, each truncated to a value. -/
+  parse : Parser α β
+  /-- **Renderer soundness**: every rendering parses back. For any value `b` and
+  continuation `rest`, parsing `render b ++ rest` finds `b`, leaving exactly `rest`.
+  (No `render_complete`: `render` reaches only the canonical form.) -/
+  parse_complete :
+    ∀ (b : β) (rest : List α),
+      ∃ s : RightSublist (render b ++ rest),
+        s.list = rest ∧ (b, s) ∈ parse (render b ++ rest)
+
+/-- **Print-then-parse recovers the value** for a truncating biparser: rendering `b`
+and parsing back yields `b` as a full parse (empty leftover). -/
+theorem TruncatingBiparser.roundTrip {α : Type u} {β : Type w}
+    (tp : TruncatingBiparser α β) (b : β) :
+    ∃ s : RightSublist (tp.render b), s.list = [] ∧ (b, s) ∈ tp.parse (tp.render b) := by
+  have heq : tp.render b ++ [] = tp.render b := List.append_nil _
+  exact heq ▸ tp.parse_complete b []
+
 end LambdaLab.Parser
