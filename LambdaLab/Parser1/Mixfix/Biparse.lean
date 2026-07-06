@@ -38,7 +38,7 @@ def cursorTail {G : Grammar} :
   | remaining, _ :: ps =>
       let gap := readSeps remaining
       let remAfter := remaining.drop gap.length
-      (mkNESep gap, remAfter, fun r => cursorTail (remAfter.drop r.length) ps)
+      (mkNESep gap, remAfter, fun s _ => cursorTail s ps)
 
 /-- Like `cursorTail`, but the first separator run is the (possibly-empty) left
 edge. -/
@@ -48,14 +48,16 @@ def cursorLayout {G : Grammar} :
   | remaining, _ :: ps =>
       let edge := readSeps remaining
       let remAfter := remaining.drop edge.length
-      (edge, remAfter, fun r => cursorTail (remAfter.drop r.length) ps)
+      (edge, remAfter, fun s _ => cursorTail s ps)
 
 /-- The cursor witness policy: `State` is the remaining input. Each gap/leading run
-is the actual `readSeps` there; a rendered part advances the state past its chars;
+is the actual `readSeps` there; the render threads the actual remaining input into
+each continuation (`step` drops a token, a hole subtree returns its own leftover);
 the global `trail` is whatever separators remain at the end. -/
 def cursorPolicy {G : Grammar} (input : List Char) : Policy G where
   State       := List Char
   initial     := input
+  step        := fun remaining t => remaining.drop t.val.toList.length
   traverse    := fun e o remaining => cursorLayout remaining (Operator.body e o)
   traverseVar := fun _ t remaining =>
     let leftEdge := readSeps remaining
@@ -406,14 +408,146 @@ theorem freBodyReassemble_lead {G : Grammar} (toks : List (Token G.isSep)) (inpu
     simp only [freBodyReassemble, freBody, hs0, List.length_nil, List.drop_zero,
       List.map_nil, List.nil_append, List.append_assoc]
 
-/-- **Heart of `render_complete`**: the cursor witness reproduces the input. Reduces
-to a tokenizer-inverse characterisation (`input` = tokens interleaved with the
-separator runs `readSeps` recovers) plus an induction that `render` walks `ex` in
-lockstep with that cursor, using `ex.flatten = tokenize G input` (`parse_sound`). -/
+/-! ### Cursor-render reduction lemmas
+
+Each unfolds one step of `Expr.render`/`Parts.render`/`Parts.renderTail` **under the
+cursor policy specifically** — keeping `cursorLayout`/`cursorTail` folded rather than
+destructured, so `rw` can fire them (the generic `Parts.render.eq_*` equations do not,
+because the token appears in a type index of the dependent match). All hold by `rfl`. -/
+theorem rE_op {G : Grammar} (input : List Char) {e : G.Ent} {l : Level (G.entry e)}
+    (o : (G.entry e).Op) (cond : Level.condition l o)
+    (parts : Parts G (Operator.body e o)) (state : List Char) :
+    Expr.render (cursorPolicy input) state e (.op o cond parts)
+    = Parts.render (cursorPolicy input) (Operator.body e o) (cursorLayout state (Operator.body e o)) parts := rfl
+theorem rE_var {G : Grammar} (input : List Char) {e : G.Ent} {l : Level (G.entry e)}
+    (t : Token G.isSep) (hv : (G.entry e).isVar t = true) (state : List Char) :
+    Expr.render (cursorPolicy input) state e (.var (l := l) t hv)
+    = ((readSeps (G := G) state).map (·.val) ++ t.val.toList,
+       (state.drop (readSeps (G := G) state).length).drop t.val.toList.length) := rfl
+theorem rP_nil {G : Grammar} (input : List Char) (state : List Char) :
+    Parts.render (cursorPolicy input) ([] : List (Part G)) (cursorLayout state []) .nil = ([], state) := rfl
+theorem rP_namePart {G : Grammar} (input : List Char) {ps : List (Part G)}
+    (tk : Token G.isSep) (rest : Parts G ps) (state : List Char) :
+    Parts.render (cursorPolicy input) (.namePart tk :: ps) (cursorLayout state (.namePart tk :: ps)) (.namePart tk rest)
+    = ((readSeps (G := G) state).map (·.val) ++ tk.val.toList
+        ++ (Parts.renderTail (cursorPolicy input) ps (cursorTail ((state.drop (readSeps (G := G) state).length).drop tk.val.toList.length) ps) rest).1,
+       (Parts.renderTail (cursorPolicy input) ps (cursorTail ((state.drop (readSeps (G := G) state).length).drop tk.val.toList.length) ps) rest).2) := rfl
+theorem rP_hole {G : Grammar} (input : List Char) {e' : G.Ent} {l' : Level (G.entry e')}
+    {ps : List (Part G)} (ex' : Expr G e' l') (rest : Parts G ps) (state : List Char) :
+    Parts.render (cursorPolicy input) (.hole e' l' :: ps) (cursorLayout state (.hole e' l' :: ps)) (.hole ex' rest)
+    = ((readSeps (G := G) state).map (·.val)
+        ++ (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').1
+        ++ (Parts.renderTail (cursorPolicy input) ps (cursorTail (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').2 ps) rest).1,
+       (Parts.renderTail (cursorPolicy input) ps (cursorTail (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').2 ps) rest).2) := rfl
+theorem rT_nil {G : Grammar} (input : List Char) (state : List Char) :
+    Parts.renderTail (cursorPolicy input) ([] : List (Part G)) (cursorTail state []) .nil = ([], state) := rfl
+theorem rT_namePart {G : Grammar} (input : List Char) {ps : List (Part G)}
+    (tk : Token G.isSep) (rest : Parts G ps) (state : List Char) :
+    Parts.renderTail (cursorPolicy input) (.namePart tk :: ps) (cursorTail state (.namePart tk :: ps)) (.namePart tk rest)
+    = ((mkNESep (readSeps (G := G) state)).toChars ++ tk.val.toList
+        ++ (Parts.renderTail (cursorPolicy input) ps (cursorTail ((state.drop (readSeps (G := G) state).length).drop tk.val.toList.length) ps) rest).1,
+       (Parts.renderTail (cursorPolicy input) ps (cursorTail ((state.drop (readSeps (G := G) state).length).drop tk.val.toList.length) ps) rest).2) := rfl
+theorem rT_hole {G : Grammar} (input : List Char) {e' : G.Ent} {l' : Level (G.entry e')}
+    {ps : List (Part G)} (ex' : Expr G e' l') (rest : Parts G ps) (state : List Char) :
+    Parts.renderTail (cursorPolicy input) (.hole e' l' :: ps) (cursorTail state (.hole e' l' :: ps)) (.hole ex' rest)
+    = ((mkNESep (readSeps (G := G) state)).toChars
+        ++ (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').1
+        ++ (Parts.renderTail (cursorPolicy input) ps (cursorTail (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').2 ps) rest).1,
+       (Parts.renderTail (cursorPolicy input) ps (cursorTail (Expr.render (cursorPolicy input) (state.drop (readSeps (G := G) state).length) e' ex').2 ps) rest).2) := rfl
+
+/-! Every `Expr` flattens to a **nonempty** token list — needed so the hole cases below
+can pull the leading separator run out of a subtree's first token (`freBody_lead`). -/
+mutual
+theorem Expr.flatten_ne_nil {G : Grammar} {e : G.Ent} {l : Level (G.entry e)}
+    (ex : Expr G e l) : ex.flatten ≠ [] :=
+  match ex with
+  | .op o _ parts => by simp only [Expr.flatten]; exact Parts.flatten_ne_nil parts (Operator.body_ne_nil o)
+  | .var t _ => by simp [Expr.flatten]
+theorem Parts.flatten_ne_nil {G : Grammar} {shape : List (Part G)}
+    (parts : Parts G shape) (hne : shape ≠ []) : parts.flatten ≠ [] :=
+  match parts with
+  | .nil => absurd rfl hne
+  | .namePart tk rest => by simp [Parts.flatten]
+  | .hole ex rest => by simp only [Parts.flatten]; exact List.append_ne_nil_of_left_ne_nil (Expr.flatten_ne_nil ex) _
+end
+
+/-- After dropping a maximal separator run there is no separator left to read. -/
+theorem hs0_of {G : Grammar} (state : List Char) :
+    readSeps (G := G) (state.drop (readSeps (G := G) state).length) = [] := by
+  rw [readSeps_drop]; exact readSeps_dropWhile state
+
+/-- `freBody_lead` for a nonempty (rather than explicitly `cons`) token list. -/
+theorem freBody_lead_ne {G : Grammar} (toks : List (Token G.isSep)) (state : List Char)
+    (hne : toks ≠ []) (hs0 : readSeps (G := G) (state.drop (readSeps (G := G) state).length) = []) :
+    freBody toks state =
+      ((readSeps (G := G) state).map (·.val) ++ (freBody toks (state.drop (readSeps (G := G) state).length)).1,
+       (freBody toks (state.drop (readSeps (G := G) state).length)).2) := by
+  obtain ⟨t, ts, rfl⟩ := List.exists_cons_of_ne_nil hne; exact freBody_lead t ts state hs0
+
+/-- `freBodyTail_lead` for a nonempty (rather than explicitly `cons`) token list. -/
+theorem freBodyTail_lead_ne {G : Grammar} (toks : List (Token G.isSep)) (state : List Char)
+    (hne : toks ≠ []) (hs0 : readSeps (G := G) (state.drop (readSeps (G := G) state).length) = []) :
+    freBodyTail toks state =
+      ((mkNESep (readSeps (G := G) state)).toList.map (·.val) ++ (freBody toks (state.drop (readSeps (G := G) state).length)).1,
+       (freBody toks (state.drop (readSeps (G := G) state).length)).2) := by
+  obtain ⟨t, ts, rfl⟩ := List.exists_cons_of_ne_nil hne; exact freBodyTail_lead t ts state hs0
+
+/-! **The lockstep lemma**: rendering a subtree under `cursorPolicy input` from `state`
+reproduces exactly the `freBody` reassembly of its flattened tokens over `state` — the
+cursor consumes `state` in the same order the tokenizer laid it down. State is threaded
+by *actual consumption* (`step` for tokens, the subtree's returned remainder for holes),
+so no validity hypothesis on `state` is needed; the leading-run bookkeeping is discharged
+by `freBody_append`/`freBody_lead` in the hole cases. -/
+mutual
+theorem render_expr {G : Grammar} (input : List Char) {e : G.Ent} {l : Level (G.entry e)}
+    (ex : Expr G e l) (state : List Char) :
+    Expr.render (cursorPolicy input) state e ex = freBody ex.flatten state :=
+  match ex with
+  | .op o _ parts => by rw [rE_op]; exact render_parts input parts state
+  | .var t hv => by rw [rE_var]; simp [Expr.flatten, freBody, freBodyTail]
+theorem render_parts {G : Grammar} (input : List Char) {ps : List (Part G)}
+    (parts : Parts G ps) (state : List Char) :
+    Parts.render (cursorPolicy input) ps (cursorLayout state ps) parts = freBody parts.flatten state :=
+  match parts with
+  | .nil => by rw [rP_nil]; rfl
+  | .namePart tk rest => by rw [rP_namePart, render_tail input rest]; rfl
+  | .hole ex' rest => by
+      rw [rP_hole, render_expr input ex' _, render_tail input rest, Parts.flatten,
+          freBody_append _ _ _ (Expr.flatten_ne_nil ex'),
+          freBody_lead_ne _ state (Expr.flatten_ne_nil ex') (hs0_of state)]
+      simp only [List.append_assoc]; rfl
+theorem render_tail {G : Grammar} (input : List Char) {ps : List (Part G)}
+    (parts : Parts G ps) (state : List Char) :
+    Parts.renderTail (cursorPolicy input) ps (cursorTail state ps) parts = freBodyTail parts.flatten state :=
+  match parts with
+  | .nil => by rw [rT_nil]; rfl
+  | .namePart tk rest => by rw [rT_namePart, render_tail input rest]; rfl
+  | .hole ex' rest => by
+      rw [rT_hole, render_expr input ex' _, render_tail input rest, Parts.flatten,
+          freBodyTail_append, freBodyTail_lead_ne _ state (Expr.flatten_ne_nil ex') (hs0_of state)]
+      simp only [List.append_assoc, NESep.toChars, NESep.toList, List.map_cons]; rfl
+end
+
+theorem cP_initial {G : Grammar} (input : List Char) : (cursorPolicy (G := G) input).initial = input := rfl
+theorem cP_trail {G : Grammar} (input : List Char) :
+    (cursorPolicy (G := G) input).trail = fun r => readSeps (G := G) r := rfl
+
+/-- Under the cursor policy, top-level `renderExpr` is exactly the `freBody`
+reassembly of the tree's flattened tokens over the whole input. -/
+theorem render_eq_freBodyReassemble {G : Grammar} (input : List Char) {e : G.Ent}
+    (ex : Expr G e .loosest) :
+    renderExpr ex (cursorPolicy input) = freBodyReassemble ex.flatten input := by
+  simp only [renderExpr, cP_initial, cP_trail, render_expr input ex input, freBodyReassemble]
+
+/-- **Heart of `render_complete`**: the cursor witness reproduces the input. `renderExpr`
+under `cursorPolicy` is the `freBody` reassembly of the tree's tokens
+(`render_eq_freBodyReassemble`); those tokens are `tokenize G input` (`parse_sound`); and
+reassembling a tokenization is the identity (`freBody_tokenize`). -/
 theorem cursor_render {G : Grammar} (input : List Char)
     {e : G.Ent} (ex : Expr G e .loosest) (h : ex ∈ parse e (tokenize G input)) :
     renderExpr ex (cursorPolicy input) = input := by
-  sorry
+  rw [render_eq_freBodyReassemble, parse_sound h]
+  exact freBody_tokenize G input.length input (Nat.le_refl _)
 
 /-- The mixfix biparser at start entry `e`: parse chars into a loosest tree, render
 a tree back to chars under a `Policy G`. -/

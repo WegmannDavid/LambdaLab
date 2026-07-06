@@ -72,6 +72,7 @@ internal gap. -/
 def spacePolicy : Policy arith where
   State := Unit
   initial := ()
+  step        := fun s _ => s
   traverse    := fun e o s => Layout.const spaceSep s (Operator.body e o)
   traverseVar := fun _ _ s => ([], s)
   trail       := fun _ => []

@@ -28,29 +28,34 @@ Indexed by the body `ps` (`= Operator.body e o`), so it lines up part-for-part w
 gaps. -/
 def LayoutTail (G : Grammar) (State : Type) : List (Part G) → Type
   | []      => State
-  | _ :: ps => NESep G × State × (List Char → LayoutTail G State ps)
+  | _ :: ps => NESep G × State × (State → List Char → LayoutTail G State ps)
 
 /-- The full telescope: like `LayoutTail` but the first separator (before the first
 part) is the possibly-empty **left edge**. There is no right edge: the separators
 after a part are always the *next* part's gap (single owner), and the very last
-trailing run is the global `Policy.trail`. -/
+trailing run is the global `Policy.trail`.
+
+Each continuation is fed **two** things: the `State` *after* the previous part
+(threaded by actual consumption — a token's `step`, or a hole subtree's own return),
+and the previous part's **rendered chars** (for output-driven layout choices). The
+two concerns are separate, so state threading never depends on rendered length. -/
 def Layout (G : Grammar) (State : Type) : List (Part G) → Type
   | []      => State
-  | _ :: ps => List (Sep G) × State × (List Char → LayoutTail G State ps)
+  | _ :: ps => List (Sep G) × State × (State → List Char → LayoutTail G State ps)
 
 /-- The uniform tail: every gap `sep`, the constant state `st` at every part
-(continuations ignore the rendered chars). -/
+(continuations ignore both the threaded state and the rendered chars). -/
 def LayoutTail.const {G : Grammar} {State : Type} (sep : NESep G) (st : State) :
     (ps : List (Part G)) → LayoutTail G State ps
   | []      => st
-  | _ :: ps => (sep, st, fun _ => LayoutTail.const sep st ps)
+  | _ :: ps => (sep, st, fun _ _ => LayoutTail.const sep st ps)
 
 /-- The uniform telescope: empty left edge, every internal gap `sep`, the constant
 state `st` everywhere. The building block for a stateless single-separator policy. -/
 def Layout.const {G : Grammar} {State : Type} (sep : NESep G) (st : State) :
     (ps : List (Part G)) → Layout G State ps
   | []      => st
-  | _ :: ps => ([], st, fun _ => LayoutTail.const sep st ps)
+  | _ :: ps => ([], st, fun _ _ => LayoutTail.const sep st ps)
 
 /-- A rendering **policy**: a user-chosen `State`, an `initial` state, and a
 `traverse` that lays out an operator node's body as the state-threading telescope
@@ -60,6 +65,8 @@ owner (a token's leading gap), so nothing is double-counted. -/
 structure Policy (G : Grammar) where
   State    : Type
   initial  : State
+  /-- Advance the state past a rendered **name-part token** (the input it consumes). -/
+  step     : State → Token G.isSep → State
   traverse : (e : G.Ent) → (o : (G.entry e).Op) → State →
     Layout G State (Operator.body e o)
   /-- For a variable leaf: its possibly-empty **leading** separator run, and the
@@ -83,18 +90,19 @@ mutual
         (leftEdge.map (·.val) ++ t.val.toList, state')
 
   /-- Render a body from its first part: emit the left edge, render the part, feed
-  its rendered chars into the continuation, and continue. -/
+  the state **after** it (a token's `step`, or the hole subtree's own returned state)
+  and its rendered chars into the continuation, and continue. -/
   def Parts.render {G : Grammar} (policy : Policy G) :
       (ps : List (Part G)) → Layout G policy.State ps → Parts G ps →
       List Char × policy.State
     | [],                    st,                _                 => ([], st)
-    | .namePart _ :: psTail, (leftEdge, _, k),  .namePart tk prest =>
+    | .namePart _ :: psTail, (leftEdge, st, k), .namePart tk prest =>
         let r := tk.val.toList
-        let (rest, st') := Parts.renderTail policy psTail (k r) prest
+        let (rest, st') := Parts.renderTail policy psTail (k (policy.step st tk) r) prest
         (leftEdge.map (·.val) ++ r ++ rest, st')
     | .hole e' _ :: psTail,  (leftEdge, st, k), .hole ex prest =>
-        let r := (Expr.render policy st e' ex).1
-        let (rest, st') := Parts.renderTail policy psTail (k r) prest
+        let (r, stAfter) := Expr.render policy st e' ex
+        let (rest, st') := Parts.renderTail policy psTail (k stAfter r) prest
         (leftEdge.map (·.val) ++ r ++ rest, st')
 
   /-- Render the remaining parts: each gap is a nonempty `NESep`. -/
@@ -102,13 +110,13 @@ mutual
       (ps : List (Part G)) → LayoutTail G policy.State ps → Parts G ps →
       List Char × policy.State
     | [],                    st,            _                 => ([], st)
-    | .namePart _ :: psTail, (gap, _, k),   .namePart tk prest =>
+    | .namePart _ :: psTail, (gap, st, k),  .namePart tk prest =>
         let r := tk.val.toList
-        let (rest, st') := Parts.renderTail policy psTail (k r) prest
+        let (rest, st') := Parts.renderTail policy psTail (k (policy.step st tk) r) prest
         (gap.toChars ++ r ++ rest, st')
     | .hole e' _ :: psTail,  (gap, st, k),  .hole ex prest =>
-        let r := (Expr.render policy st e' ex).1
-        let (rest, st') := Parts.renderTail policy psTail (k r) prest
+        let (r, stAfter) := Expr.render policy st e' ex
+        let (rest, st') := Parts.renderTail policy psTail (k stAfter r) prest
         (gap.toChars ++ r ++ rest, st')
 end
 
