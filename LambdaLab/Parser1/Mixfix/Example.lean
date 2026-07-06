@@ -77,10 +77,13 @@ def spacePolicy : Policy arith where
   traverseVar := fun _ _ s => ([], s)
   trail       := fun _ => []
 
-/-- Parse a source string at the single entry, render every parse back under
-`spacePolicy`, and show the resulting strings — a full char round-trip. -/
+/-- Parse a source string at the single entry, keep the **full** parses (empty
+char-level leftover — `parseChars` is now a prefix parser, so it also returns partial
+parses of every shorter prefix), render each back under `spacePolicy`, and show the
+resulting strings — a full char round-trip. -/
 def roundTrip (s : String) : List String :=
-  (parseChars (G := arith) () s.toList).map (fun r => String.ofList (renderExpr r.1 spacePolicy))
+  (((parseChars (G := arith) () s.toList).filter (fun r => r.2.list.isEmpty)).map
+    (fun r => String.ofList (renderExpr r.1 spacePolicy))).eraseDups
 
 #eval roundTrip "x"              -- ["x"]
 #eval roundTrip "f x"            -- application

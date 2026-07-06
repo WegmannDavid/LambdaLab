@@ -361,11 +361,12 @@ def parse (e : G.Ent) (tkns : List (Token G.isSep)) : List (Expr G e .loosest) :
 /-! ## Char-level front end
 
 `tokenize` splits a char stream into tokens on maximal separator runs (`isSep`),
-dropping the separators. `parseChars` tokenizes the whole input and runs the
-token-level `parse`, so each result **consumes the entire input** — the returned
-`RightSublist` has empty leftover. (A prefix-parsing char front end that leaves a
-`rest` is future work; this suffices for a top-level parse and for the round-trip
-against `render` on full inputs.) -/
+dropping the separators. `parseChars` is a **prefix** parser: for every nonempty
+char prefix of the input it tokenizes that prefix *by itself* and takes every full
+token-level parse, leaving the rest of the input as the char-level leftover. This
+is what `Biparser.parse_complete` needs (a parse of `render e p ++ rest` that stops
+after `render e p`, leaving `rest`); tokenizing the prefix in isolation avoids any
+boundary merge with the leftover. -/
 
 /-- Build a token from a **nonempty** run of chars known to be separator-free. -/
 def mkTok {sep : Char → Bool} (l : List Char) (h : ∀ c ∈ l, sep c = false) (hne : l ≠ []) :
@@ -394,12 +395,17 @@ def tokenizeAux (sep : Char → Bool) :
 def tokenize (G : Grammar) (cs : List Char) : List (Token G.isSep) :=
   tokenizeAux G.isSep [] (by simp) cs
 
-/-- Char-level parser: tokenize the whole input, then take every full token-level
-parse. Each consumes the entire input (empty leftover). -/
+/-- Char-level **prefix** parser: for every nonempty prefix `pre` of the input,
+tokenize `pre` alone and take every full token-level parse of it, leaving the rest
+of the input as the char-level leftover. Tokenizing the prefix *by itself* avoids
+any boundary merge with the leftover. -/
 def parseChars (e : G.Ent) : (input : List Char) → List (Expr G e .loosest × RightSublist input)
   | []        => []
   | c :: cs   =>
-      (parse (G := G) e (tokenize G (c :: cs))).map
-        (fun ex => (ex, ⟨[], c :: cs, by simp, by simp⟩))
+      (List.range (c :: cs).length).flatMap (fun n =>
+        (parse (G := G) e (tokenize G ((c :: cs).take (n + 1)))).map
+          (fun ex => (ex, ⟨(c :: cs).drop (n + 1), (c :: cs).take (n + 1),
+            by rw [List.take_succ_cons]; simp,
+            List.take_append_drop (n + 1) (c :: cs)⟩)))
 
 end LambdaLab.Parser1.Mixfix

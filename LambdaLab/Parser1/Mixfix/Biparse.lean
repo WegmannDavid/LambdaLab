@@ -5,10 +5,12 @@ import LambdaLab.Parser1.Mixfix.Verified
 /-!
 # Assembling the mixfix `Biparser`
 
-`biparser` bundles the char-level `parseChars` (tokenize + token parse) with the
-policy-driven `renderExpr` into a `Biparser Char (Policy G) (Expr G e .loosest)`.
-The two coherence laws (`render_complete`, `parse_complete`) are left as `sorry`
-for now — the definitions come first.
+`biparser` bundles the char-level prefix `parseChars` (tokenize + token parse) with
+the policy-driven `renderExpr` into a `Biparser Char (Policy G) (Expr G e .loosest)`.
+Both coherence laws are proved: `render_complete` from `cursor_render` (the cursor
+policy reproduces the input), `parse_complete` from `char_parse_complete`
+(`tokenize (renderExpr ex p) = ex.flatten` for every policy, plus membership in the
+prefix parser). The biparser depends only on `propext`/`Classical.choice`/`Quot.sound`.
 -/
 
 namespace LambdaLab.Parser1.Mixfix
@@ -549,8 +551,194 @@ theorem cursor_render {G : Grammar} (input : List Char)
   rw [render_eq_freBodyReassemble, parse_sound h]
   exact freBody_tokenize G input.length input (Nat.le_refl _)
 
+/-! ### `parse_complete`: `tokenize (renderExpr ex p) = ex.flatten`, then membership
+in the prefix parser.
+
+The render half above only needed the *cursor* policy; `parse_complete` must hold for
+**every** policy `p`, so it goes through `tokenize (renderExpr ex p) = ex.flatten`. The
+key is that a rendered gap is always a nonempty separator run (`NESep`) and tokens are
+nonempty and separator-free, so re-tokenizing a rendering recovers exactly the flattened
+tokens — no two tokens ever merge. -/
+
+/-- General (policy-agnostic) one-step reductions of `Parts.render`/`Parts.renderTail`,
+holding by `rfl` with the layout kept as an explicit tuple (so `simp`/`rw` can fire them
+past the dependent match). -/
+theorem render_namePart_eq {G : Grammar} (policy : Policy G) {ps : List (Part G)}
+    (leftEdge : List (Sep G)) (st : policy.State) (k : policy.State → List Char → LayoutTail G policy.State ps)
+    (tk : Token G.isSep) (rest : Parts G ps) :
+    Parts.render policy (.namePart tk :: ps) (leftEdge, st, k) (.namePart tk rest)
+    = (leftEdge.map (·.val) ++ tk.val.toList ++ (Parts.renderTail policy ps (k (policy.step st tk) tk.val.toList) rest).1,
+       (Parts.renderTail policy ps (k (policy.step st tk) tk.val.toList) rest).2) := rfl
+theorem render_hole_eq {G : Grammar} (policy : Policy G) {e' : G.Ent} {l' : Level (G.entry e')}
+    {ps : List (Part G)} (leftEdge : List (Sep G)) (st : policy.State)
+    (k : policy.State → List Char → LayoutTail G policy.State ps) (ex' : Expr G e' l') (rest : Parts G ps) :
+    Parts.render policy (.hole e' l' :: ps) (leftEdge, st, k) (.hole ex' rest)
+    = (leftEdge.map (·.val) ++ (Expr.render policy st e' ex').1
+        ++ (Parts.renderTail policy ps (k (Expr.render policy st e' ex').2 (Expr.render policy st e' ex').1) rest).1,
+       (Parts.renderTail policy ps (k (Expr.render policy st e' ex').2 (Expr.render policy st e' ex').1) rest).2) := rfl
+theorem renderTail_namePart_eq {G : Grammar} (policy : Policy G) {ps : List (Part G)}
+    (gap : NESep G) (st : policy.State) (k : policy.State → List Char → LayoutTail G policy.State ps)
+    (tk : Token G.isSep) (rest : Parts G ps) :
+    Parts.renderTail policy (.namePart tk :: ps) (gap, st, k) (.namePart tk rest)
+    = (gap.toChars ++ tk.val.toList ++ (Parts.renderTail policy ps (k (policy.step st tk) tk.val.toList) rest).1,
+       (Parts.renderTail policy ps (k (policy.step st tk) tk.val.toList) rest).2) := rfl
+theorem renderTail_hole_eq {G : Grammar} (policy : Policy G) {e' : G.Ent} {l' : Level (G.entry e')}
+    {ps : List (Part G)} (gap : NESep G) (st : policy.State)
+    (k : policy.State → List Char → LayoutTail G policy.State ps) (ex' : Expr G e' l') (rest : Parts G ps) :
+    Parts.renderTail policy (.hole e' l' :: ps) (gap, st, k) (.hole ex' rest)
+    = (gap.toChars ++ (Expr.render policy st e' ex').1
+        ++ (Parts.renderTail policy ps (k (Expr.render policy st e' ex').2 (Expr.render policy st e' ex').1) rest).1,
+       (Parts.renderTail policy ps (k (Expr.render policy st e' ex').2 (Expr.render policy st e' ex').1) rest).2) := rfl
+theorem render_nil_eq {G : Grammar} (policy : Policy G) (st : Layout G policy.State []) :
+    Parts.render policy [] st Parts.nil = ([], st) := rfl
+theorem renderTail_nil_eq {G : Grammar} (policy : Policy G) (st : LayoutTail G policy.State []) :
+    Parts.renderTail policy [] st Parts.nil = ([], st) := rfl
+
+/-- A separator run's chars are just its list-of-separators mapped to chars. -/
+theorem NESep.toChars_eq_map {G : Grammar} (s : NESep G) : s.toChars = s.toList.map (·.val) := rfl
+
+/-- A `renderTail` fragment starts with its (nonempty) gap — a separator — so nothing
+non-separator leads it; used to satisfy `tokenize_token`'s "suffix starts with a
+separator" side condition at every part boundary. -/
+theorem renderTail_head_sep {G : Grammar} (policy : Policy G) {ps : List (Part G)}
+    (tail : LayoutTail G policy.State ps) (parts : Parts G ps) :
+    (Parts.renderTail policy ps tail parts).1.takeWhile (fun c => !G.isSep c) = [] := by
+  cases parts with
+  | nil => rfl
+  | namePart tk rest =>
+      obtain ⟨gap, st, k⟩ := tail
+      rw [renderTail_namePart_eq, NESep.toChars]
+      simp [List.takeWhile_cons, gap.head.2]
+  | hole ex' rest =>
+      obtain ⟨gap, st, k⟩ := tail
+      rw [renderTail_hole_eq, NESep.toChars]
+      simp [List.takeWhile_cons, gap.head.2]
+
+/-- **The tokenizer-inverse invariant**: for any policy, rendering a subtree then
+tokenizing (with any separator-led `suffix` appended) recovers the subtree's flattened
+tokens followed by the tokenization of `suffix`. Every internal gap is `NESep`
+(nonempty) and every token is nonempty/sep-free, so no boundary merge occurs. Proved by
+the render recursion (`Expr.render.induct`) — the arbitrary layouts are fine because
+their edges are typed `Sep`/`NESep`, hence always separators. -/
+theorem tokenize_render_INV {G : Grammar} (policy : Policy G) :
+    ∀ (state : policy.State) (e : G.Ent) {l : Level (G.entry e)} (ex : Expr G e l) (suffix : List Char),
+      suffix.takeWhile (fun c => !G.isSep c) = [] →
+      tokenize G ((Expr.render policy state e ex).1 ++ suffix) = ex.flatten ++ tokenize G suffix := by
+  apply Expr.render.induct (policy := policy)
+    (motive_2 := fun ps lay parts => ∀ (suffix : List Char),
+      suffix.takeWhile (fun c => !G.isSep c) = [] →
+      tokenize G ((Parts.render policy ps lay parts).1 ++ suffix) = parts.flatten ++ tokenize G suffix)
+    (motive_3 := fun ps tail parts => ∀ (suffix : List Char),
+      suffix.takeWhile (fun c => !G.isSep c) = [] →
+      tokenize G ((Parts.renderTail policy ps tail parts).1 ++ suffix) = parts.flatten ++ tokenize G suffix)
+  · -- op
+    intro e a state o cond parts ih suffix hsuf
+    simpa [Expr.render, Expr.flatten] using ih suffix hsuf
+  · -- var
+    intro e a state t hvar leftEdge state' heq suffix hsuf
+    simp only [Expr.render, heq, Expr.flatten]
+    rw [List.append_assoc, tokenize_sep_prefix, tokenize_token t suffix hsuf, List.singleton_append]
+  · -- Parts.render nil
+    intro st t suffix hsuf
+    cases t; rw [render_nil_eq]; simp [Parts.flatten]
+  · -- Parts.render namePart
+    intro tk psTail leftEdge st k prest r rest st' heq_rt m3 suffix hsuf
+    have er : r = tk.val.toList := rfl
+    rw [er] at heq_rt m3
+    have h1 : rest.takeWhile (fun c => !G.isSep c) = [] := by
+      have := renderTail_head_sep policy (k (policy.step st tk) tk.val.toList) prest
+      rw [heq_rt] at this; exact this
+    have hcond := takeWhile_append_nil (fun c => !G.isSep c) rest suffix h1 hsuf
+    have hm3 := m3 suffix hsuf; rw [heq_rt] at hm3
+    simp only [render_namePart_eq, heq_rt, Parts.flatten, List.append_assoc]
+    rw [tokenize_sep_prefix, tokenize_token tk _ hcond, hm3, List.cons_append]
+  · -- Parts.render hole
+    intro e' a psTail leftEdge st k ex prest rest st' heq_r rest1 st'1 heq_rt m1 m3 suffix hsuf
+    have h2 : rest1.takeWhile (fun c => !G.isSep c) = [] := by
+      have := renderTail_head_sep policy (k st' rest) prest
+      rw [heq_rt] at this; exact this
+    have hcond := takeWhile_append_nil (fun c => !G.isSep c) rest1 suffix h2 hsuf
+    have hm1 := m1 (rest1 ++ suffix) hcond; rw [heq_r] at hm1
+    have hm3 := m3 suffix hsuf; rw [heq_rt] at hm3
+    simp only [render_hole_eq, heq_r, heq_rt, Parts.flatten, List.append_assoc]
+    rw [tokenize_sep_prefix, hm1, hm3]
+  · -- Parts.renderTail nil
+    intro st t suffix hsuf
+    cases t; rw [renderTail_nil_eq]; simp [Parts.flatten]
+  · -- Parts.renderTail namePart
+    intro tk psTail gap st k prest r rest st' heq_rt m3 suffix hsuf
+    have er : r = tk.val.toList := rfl
+    rw [er] at heq_rt m3
+    have h1 : rest.takeWhile (fun c => !G.isSep c) = [] := by
+      have := renderTail_head_sep policy (k (policy.step st tk) tk.val.toList) prest
+      rw [heq_rt] at this; exact this
+    have hcond := takeWhile_append_nil (fun c => !G.isSep c) rest suffix h1 hsuf
+    have hm3 := m3 suffix hsuf; rw [heq_rt] at hm3
+    simp only [renderTail_namePart_eq, heq_rt, Parts.flatten, NESep.toChars_eq_map, List.append_assoc]
+    rw [tokenize_sep_prefix, tokenize_token tk _ hcond, hm3, List.cons_append]
+  · -- Parts.renderTail hole
+    intro e' a psTail gap st k ex prest rest st' heq_r rest1 st'1 heq_rt m1 m3 suffix hsuf
+    have h2 : rest1.takeWhile (fun c => !G.isSep c) = [] := by
+      have := renderTail_head_sep policy (k st' rest) prest
+      rw [heq_rt] at this; exact this
+    have hcond := takeWhile_append_nil (fun c => !G.isSep c) rest1 suffix h2 hsuf
+    have hm1 := m1 (rest1 ++ suffix) hcond; rw [heq_r] at hm1
+    have hm3 := m3 suffix hsuf; rw [heq_rt] at hm3
+    simp only [renderTail_hole_eq, heq_r, heq_rt, Parts.flatten, NESep.toChars_eq_map, List.append_assoc]
+    rw [tokenize_sep_prefix, hm1, hm3]
+
+/-- A trailing/leading separator run tokenizes away (its chars are all separators). -/
+theorem sepRun_takeWhile_nil {G : Grammar} (run : List (Sep G)) :
+    (run.map (·.val)).takeWhile (fun c => !G.isSep c) = [] := by
+  cases run with
+  | nil => rfl
+  | cons s run' => simp [List.map_cons, List.takeWhile_cons, s.2]
+
+/-- **Re-tokenizing a rendering recovers the flattened tokens**, for *any* policy. -/
+theorem tokenize_renderExpr {G : Grammar} {e : G.Ent} (ex : Expr G e .loosest) (p : Policy G) :
+    tokenize G (renderExpr ex p) = ex.flatten := by
+  simp only [renderExpr]
+  rw [tokenize_render_INV p _ _ ex _ (sepRun_takeWhile_nil _)]
+  rw [show (p.trail (Expr.render p p.initial e ex).2).map (·.val)
+        = ((p.trail (Expr.render p p.initial e ex).2).map (·.val)) ++ [] from (List.append_nil _).symm,
+     tokenize_sep_prefix, tokenize_nil G [] rfl, List.append_nil]
+
+/-- Membership in the prefix `parseChars`: a token-level parse of the `n+1`-char prefix
+lifts to a char-level parse leaving the rest. -/
+theorem mem_parseChars {G : Grammar} {e : G.Ent} {input : List Char} {n : Nat}
+    {ex : Expr G e .loosest} (hn : n < input.length)
+    (hex : ex ∈ parse e (tokenize G (input.take (n + 1)))) :
+    (ex, (⟨input.drop (n + 1), input.take (n + 1),
+      by cases input with | nil => simp at hn | cons c cs => simp [List.take_succ_cons],
+      List.take_append_drop (n + 1) input⟩ : RightSublist input)) ∈ parseChars e input := by
+  cases input with
+  | nil => simp at hn
+  | cons c cs =>
+    simp only [parseChars, List.mem_flatMap, List.mem_range, List.mem_map]
+    exact ⟨n, hn, ex, hex, rfl⟩
+
+/-- **Parser completeness / renderer soundness** for the char biparser: every rendering
+`renderExpr ex p` (then any `rest`) parses back to `ex`, leaving exactly `rest`. -/
+theorem char_parse_complete {G : Grammar} {e : G.Ent} (ex : Expr G e .loosest) (p : Policy G)
+    (rest : List Char) :
+    ∃ s : RightSublist (renderExpr ex p ++ rest),
+      s.list = rest ∧ (ex, s) ∈ parseChars e (renderExpr ex p ++ rest) := by
+  have htok : tokenize G (renderExpr ex p) = ex.flatten := tokenize_renderExpr ex p
+  have hne : renderExpr ex p ≠ [] := fun h =>
+    Expr.flatten_ne_nil ex (by rw [← htok, h]; exact tokenize_nil G [] rfl)
+  have hpos : 0 < (renderExpr ex p).length := List.length_pos_iff.mpr hne
+  have hlt : (renderExpr ex p).length - 1 < (renderExpr ex p ++ rest).length := by
+    rw [List.length_append]; omega
+  have hex : ex ∈ parse e
+      (tokenize G ((renderExpr ex p ++ rest).take ((renderExpr ex p).length - 1 + 1))) := by
+    rw [Nat.sub_add_cancel hpos, List.take_left, htok]; exact parse_complete ex
+  refine ⟨_, ?_, mem_parseChars hlt hex⟩
+  show (renderExpr ex p ++ rest).drop ((renderExpr ex p).length - 1 + 1) = rest
+  rw [Nat.sub_add_cancel hpos, List.drop_left]
+
 /-- The mixfix biparser at start entry `e`: parse chars into a loosest tree, render
-a tree back to chars under a `Policy G`. -/
+a tree back to chars under a `Policy G`. Both coherence laws are now proved —
+`render_complete` from `cursor_render`, `parse_complete` from `char_parse_complete`. -/
 def biparser {G : Grammar} {e : G.Ent} : Biparser Char (Policy G) (Expr G e .loosest) where
   render          := renderExpr
   parse           := parseChars e
@@ -559,18 +747,13 @@ def biparser {G : Grammar} {e : G.Ent} : Biparser Char (Policy G) (Expr G e .loo
     cases input with
     | nil => simp [parseChars] at hmem
     | cons c cs =>
-      simp only [parseChars, List.mem_map] at hmem
-      obtain ⟨ex', hex', heq⟩ := hmem
+      simp only [parseChars, List.mem_flatMap, List.mem_map, List.mem_range] at hmem
+      obtain ⟨n, hn, ex', hex', heq⟩ := hmem
       obtain ⟨rfl, rfl⟩ := Prod.mk.injEq _ _ _ _ ▸ heq
-      -- Witness is the cursor policy at the consumed prefix; the equation is
-      -- `cursor_render`. No `dflt` needed — `mkNESep` falls back to `G.sepWitness`.
-      exact ⟨cursorPolicy (c :: cs), cursor_render (c :: cs) ex' hex'⟩
-  parse_complete := by
-    intro ex p rest
-    -- `parseChars` only returns *full* parses (`s.list = []`), so the required `s` with
-    -- `s.list = rest` cannot exist when `rest ≠ []`. This law is UNPROVABLE until
-    -- `parseChars` is rewritten as a prefix parser (leaving a char-level leftover).
-    sorry
+      -- Witness is the cursor policy at the consumed prefix; the equation is `cursor_render`.
+      exact ⟨cursorPolicy ((c :: cs).take (n + 1)),
+        cursor_render ((c :: cs).take (n + 1)) ex' hex'⟩
+  parse_complete := char_parse_complete
 
 /-- The **token-level** mixfix biparser: `parse` is the precedence parser, `render`
 is `flatten`, and there is nothing to choose (`Policy := Unit`). Both laws hold
