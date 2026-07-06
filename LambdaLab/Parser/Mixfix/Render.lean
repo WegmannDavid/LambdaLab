@@ -126,4 +126,21 @@ def renderExpr {G : Grammar} {e : G.Ent} (ex : Expr G e .loosest) (policy : Poli
   let (chars, st) := Expr.render policy policy.initial e ex
   chars ++ (policy.trail st).map (·.val)
 
+/-- The one-character separator run consisting of the grammar's canonical
+`sepWitness` — the minimal legal gap. -/
+def NESep.witness (G : Grammar) : NESep G := ⟨G.sepWitness, []⟩
+
+/-- The **default policy**: stateless, no leading/trailing whitespace, and a single
+`sepWitness` character in every internal gap. Works for any grammar (every grammar
+owns a `sepWitness`), and renders each tree to its most compact legal form. -/
+def defaultPolicy (G : Grammar) : Policy G where
+  State       := Unit
+  initial     := ()
+  step        := fun s _ => s
+  traverse    := fun e o s => Layout.const (NESep.witness G) s (Operator.body e o)
+  traverseVar := fun _ _ s => ([], s)
+  trail       := fun _ => []
+
+instance (G : Grammar) : Inhabited (Policy G) := ⟨defaultPolicy G⟩
+
 end LambdaLab.Parser.Mixfix
