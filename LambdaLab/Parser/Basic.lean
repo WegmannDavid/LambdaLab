@@ -117,35 +117,37 @@ theorem Biparser.roundTrip {α : Type u} {Policy : Type v} {β : Type w}
 image of the surface syntax (parens dropped, annotations quotiented), so only *one*
 of the two laws survives.
 
-`render` still chooses a concrete surface form via a `Policy`, and `parse` recovers
-`β`. `parse_complete` (renderer soundness) holds unconditionally — every rendering
-parses back to its value, leaving exactly `rest`. But `render_complete` (parser
-soundness) is **dropped**: the parser accepts strings — e.g. redundantly
-parenthesized ones — that `render` never emits (`render` always produces the
-minimally-parenthesized canonical form), so no policy reproduces the consumed tokens
-`s.pre` in general. This is the print→parse direction only, and it is exactly what a
-`Grammar` + `ReverseInterp` supplies: `render = renderExpr ∘ lift`,
-`parse = truncate ∘ parseChars`, with the law from `truncate_lift` + the lossless
-`Biparser.parse_complete`. -/
-structure TruncatingBiparser (α : Type u) (Policy : Type v) (β : Type w) where
-  /-- Render a value to its **minimally-parenthesized** concrete form under a policy. -/
-  render : Renderer β Policy α
+The rendering **policy is packaged in** rather than exposed as a type parameter, so
+`render : β → List α` is a single concrete printer (a policy was chosen when the
+biparser was built) and the structure stays universe-flat — this is what lets it sit
+as a field in a `Language` without bumping its universe. `parse` recovers `β`.
+`parse_complete` (renderer soundness) holds unconditionally — every rendering parses
+back to its value, leaving exactly `rest`. But `render_complete` (parser soundness) is
+**dropped**: the parser accepts strings — e.g. redundantly parenthesized ones — that
+`render` never emits (it produces only the minimally-parenthesized canonical form), so
+the consumed tokens `s.pre` aren't reproduced in general. This is the print→parse
+direction only, and it is exactly what a `Grammar` + `ReverseInterp` + a chosen policy
+supplies: `render = renderExpr · policy ∘ lift`, `parse = truncate ∘ parseChars`, with
+the law from `truncate_lift` + the lossless `Biparser.parse_complete`. -/
+structure TruncatingBiparser (α : Type u) (β : Type w) where
+  /-- Render a value to its **minimally-parenthesized** concrete form (fixed policy). -/
+  render : β → List α
   /-- All parses of a prefix of the input, each truncated to a value. -/
   parse : Parser α β
-  /-- **Renderer soundness**: every rendering parses back. For any value `b`, policy
-  `p`, and continuation `rest`, parsing `render b p ++ rest` finds `b`, leaving
-  exactly `rest`. (No `render_complete`: `render` reaches only the canonical form.) -/
+  /-- **Renderer soundness**: every rendering parses back. For any value `b` and
+  continuation `rest`, parsing `render b ++ rest` finds `b`, leaving exactly `rest`.
+  (No `render_complete`: `render` reaches only the canonical form.) -/
   parse_complete :
-    ∀ (b : β) (p : Policy) (rest : List α),
-      ∃ s : RightSublist (render b p ++ rest),
-        s.list = rest ∧ (b, s) ∈ parse (render b p ++ rest)
+    ∀ (b : β) (rest : List α),
+      ∃ s : RightSublist (render b ++ rest),
+        s.list = rest ∧ (b, s) ∈ parse (render b ++ rest)
 
 /-- **Print-then-parse recovers the value** for a truncating biparser: rendering `b`
 and parsing back yields `b` as a full parse (empty leftover). -/
-theorem TruncatingBiparser.roundTrip {α : Type u} {Policy : Type v} {β : Type w}
-    (tp : TruncatingBiparser α Policy β) (b : β) (p : Policy) :
-    ∃ s : RightSublist (tp.render b p), s.list = [] ∧ (b, s) ∈ tp.parse (tp.render b p) := by
-  have heq : tp.render b p ++ [] = tp.render b p := List.append_nil _
-  exact heq ▸ tp.parse_complete b p []
+theorem TruncatingBiparser.roundTrip {α : Type u} {β : Type w}
+    (tp : TruncatingBiparser α β) (b : β) :
+    ∃ s : RightSublist (tp.render b), s.list = [] ∧ (b, s) ∈ tp.parse (tp.render b) := by
+  have heq : tp.render b ++ [] = tp.render b := List.append_nil _
+  exact heq ▸ tp.parse_complete b []
 
 end LambdaLab.Parser
