@@ -1,3 +1,4 @@
+import LambdaLab.Parser.Biparser
 import LambdaLab.Parser.Mixfix.Render
 import LambdaLab.Parser.Mixfix.Parse
 import LambdaLab.Parser.Mixfix.Verified
