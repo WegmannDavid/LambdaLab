@@ -22,7 +22,7 @@ solves them. (The annotations are otherwise "don't cares".)
 
 namespace LambdaLab.Stlc.Named.Syntax
 
-open LambdaLab.Parser.Mixfix
+open LambdaLab.ParserOld.Mixfix
 
 /-- The bound-variable name of a `varGrammar` parse — always a `var` leaf, since
 `varGrammar` has no operators. -/

@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Syntax.Truncate
-import LambdaLab.Parser.Basic
+import LambdaLab.ParserOld.Basic
 
 /-!
 # The STLC term parser as a `TruncatingParser`
@@ -20,8 +20,8 @@ identifier string), so `render` is a right inverse of `parse` only on the
 
 namespace LambdaLab.Stlc.Named.Syntax
 
-open LambdaLab.Parser
-open LambdaLab.Parser.Mixfix
+open LambdaLab.ParserOld
+open LambdaLab.ParserOld.Mixfix
 
 /-- Canonical pretty-printer: variables bare, applications and lambdas fully
 parenthesized (so every compound is unambiguously delimited and re-parses). The

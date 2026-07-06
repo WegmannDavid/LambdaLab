@@ -1,112 +1,97 @@
-import LambdaLab.Parser.Mixfix.Parse
+import LambdaLab.Parser.Mixfix.Biparse
 
 /-!
-# A concrete grammar exercising the multi-entry parser
+# A tiny grammar exercising the char-level biparser
 
-A tiny arithmetic grammar as a two-`Entry` family: a `term` entry with the full
-operator model (`closed`/`prefx`/`infx`/`postfx`/`infxl`/`infxr`/`juxt`), and a
-`var` entry (no operators) used as the binder language of `lam` — referenced as
-an ordinary cross-entry hole `\lambda ‹var› . _`.
-
-Precedence (in `term`): `add → {mul, neg}`, `neg → mul`, `mul → pow`, `pow → fac`,
-`fac → app`, `app → {paren, num}`; `lam` is loosest. The `#eval`s run the parser
-at the `term` entry and re-flatten each parse.
+One entry (`Unit`) with three operators — parentheses, application (`juxt`), and a
+left-assoc `+` — over an alphabet where the only separator is the space. Tokens are
+now separator-free by construction (`Token arithSep`), so each name-part literal
+carries a `by decide` proof (via the `tk` helper). A trivial single-space `Policy`
+lets us `#eval` a full char round-trip.
 -/
 
 namespace LambdaLab.Parser.Mixfix
 
 open LambdaLab.Parser
 
-/-- The two classes of expressions: ordinary terms, and the binder sub-language. -/
-inductive Ent where | term | var
+/-- Space is the only separator. -/
+def arithSep : Char → Bool := fun c => c == ' '
+
+/-- A separator-free token literal — the sep-free proof is discharged by `decide`. -/
+def tk (s : String) (h : (∀ c ∈ s.toList, arithSep c = false) ∧ s.toList ≠ [] := by decide) :
+    Token arithSep :=
+  ⟨s, h⟩
+
+/-- Operators of the single entry: `( _ )`, application, and `_ + _`. -/
+inductive PSym | paren | app | plus
   deriving DecidableEq, Repr
 
-/-- Operator names of the `term` entry. -/
-inductive Sym where
-  | num | paren | add | mul | pow | neg | fac | app | lam
-  deriving DecidableEq, Repr
+def preserved : List (Token arithSep) := [tk "(", tk ")", tk "+"]
 
-def reserved : List Token := ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."]
-
-/-- Immediately-tighter successors within `term`. -/
-def symTighter : Sym → List Sym
-  | .num   => []
+def psymTighter : PSym → List PSym
+  | .plus  => [.app]
+  | .app   => [.paren]
   | .paren => []
-  | .add   => [.mul, .neg]
-  | .neg   => [.mul]
-  | .mul   => [.pow]
-  | .pow   => [.fac]
-  | .fac   => [.app]
-  | .app   => [.paren, .num]
-  | .lam   => [.add]
 
-def symRank : Sym → Nat
-  | .num => 0 | .paren => 0 | .app => 1 | .fac => 2 | .pow => 3
-  | .mul => 4 | .neg => 5 | .add => 6 | .lam => 7
+def psymRank : PSym → Nat
+  | .paren => 0 | .app => 1 | .plus => 2
 
-theorem symTighter_wf : WellFounded (fun b a => b ∈ symTighter a) :=
+theorem psymTighter_wf : WellFounded (fun b a => b ∈ psymTighter a) :=
   Subrelation.wf
-    (r := fun x y => symRank x < symRank y)
-    (fun {x y} (h : x ∈ symTighter y) => by
-      cases x <;> cases y <;> simp_all [symTighter, symRank])
-    (measure symRank).wf
+    (r := fun x y => psymRank x < psymRank y)
+    (fun {x y} (h : x ∈ psymTighter y) => by
+      cases x <;> cases y <;> simp_all [psymTighter, psymRank])
+    (measure psymRank).wf
 
-/-- Each `term` operator's shape. `paren`'s interior hole recurses into `term`;
-`lam`'s binder hole references the `var` entry. -/
-def symOp : Sym → Operator Ent
-  | .num   => .closed (.last "n")
-  | .paren => .closed (.cons "(" .term (.last ")"))
-  | .add   => .infxl (.last "+")
-  | .mul   => .infx (.last "*")
-  | .pow   => .infxr (.last "^")
-  | .neg   => .prefx (.last "-")
-  | .fac   => .postfx (.last "!")
+def psymOp : PSym → Operator arithSep Unit
+  | .paren => .closed (.cons (tk "(") () (.last (tk ")")))
   | .app   => .juxt
-  | .lam   => .prefx (.cons "\\lambda" .var (.last "."))
+  | .plus  => .infxl (.last (tk "+"))
 
-/-- The `term` entry. -/
-def termEntry : Entry Ent where
-  Op := Sym
-  operator := symOp
-  loosest := [.add, .lam]
-  tighter := symTighter
-  tighter_wf := symTighter_wf
-  isVar := fun t => decide (t ∉ reserved)
-  juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [symOp]
+def pEntry : Entry arithSep Unit where
+  Op := PSym
+  operator := psymOp
+  loosest := [.plus]
+  tighter := psymTighter
+  tighter_wf := psymTighter_wf
+  isVar := fun t => decide (t ∉ preserved)
+  juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [psymOp]
 
-/-- The `var` entry: no operators, only identifiers. -/
-def varEntry : Entry Ent where
-  Op := Empty
-  operator := fun e => e.elim
-  loosest := []
-  tighter := fun e => e.elim
-  tighter_wf := ⟨fun e => e.elim⟩
-  isVar := fun t => decide (t ∉ reserved)
-  juxtUnique := fun e => e.elim
-
-/-- The arithmetic grammar, as a family of the two entries. -/
+/-- The grammar: one entry, space is the only separator. -/
 def arith : Grammar where
-  Ent := Ent
-  entry := fun | .term => termEntry | .var => varEntry
+  Ent := Unit
+  isSep := arithSep
+  sepWitness := ⟨' ', by decide⟩
+  entry := fun _ => pEntry
 
-/-! ## Running the parser -/
+/-- A single space, as a nonempty separator run of `arith`. -/
+def spaceSep : NESep arith := ⟨⟨' ', by decide⟩, []⟩
 
-/-- All full-parse flattenings of an input, parsed at the `term` entry. -/
-def run (tkns : List Token) : List (List Token) :=
-  (parse (G := arith) .term tkns).map Expr.flatten
+/-- The trivial policy: stateless, no edges anywhere, a single space at every
+internal gap. -/
+def spacePolicy : Policy arith where
+  State := Unit
+  initial := ()
+  step        := fun s _ => s
+  traverse    := fun e o s => Layout.const spaceSep s (Operator.body e o)
+  traverseVar := fun _ _ s => ([], s)
+  trail       := fun _ => []
 
-#eval run ["n"]                          -- 2 × ["n"]
-#eval run ["n", "+", "n"]                -- ["n", "+", "n"]
-#eval run ["n", "+", "n", "*", "n"]
-#eval run ["(", "n", "+", "n", ")"]
-#eval run ["n", "+"]                     -- []
-#eval run ["-", "n"]
-#eval run ["-", "n", "*", "n"]           -- - (n * n)
-#eval run ["n", "!"]
-#eval run ["n", "!", "*", "n"]           -- (n !) * n
-#eval run ["x"]                          -- a variable leaf
-#eval run ["f", "x", "y"]                -- application f x y
-#eval run ["\\lambda", "x", ".", "x"]    -- binder parsed by the `var` entry
-#eval run ["(", "\\lambda", "x", ".", "x", ")", "y"]
+/-- Parse a source string at the single entry, keep the **full** parses (empty
+char-level leftover — `parseChars` is now a prefix parser, so it also returns partial
+parses of every shorter prefix), render each back under `spacePolicy`, and show the
+resulting strings — a full char round-trip. -/
+def roundTrip (s : String) : List String :=
+  (((parseChars (G := arith) () s.toList).filter (fun r => r.2.list.isEmpty)).map
+    (fun r => String.ofList (renderExpr r.1 spacePolicy))).eraseDups
+
+#eval roundTrip "x"              -- ["x"]
+#eval roundTrip "f x"            -- application
+#eval roundTrip "f x y"          -- left-assoc application
+#eval roundTrip "a + b"          -- infix +
+#eval roundTrip "a + b + c"      -- left-assoc +
+#eval roundTrip "( f x )"        -- parentheses preserved
+#eval roundTrip "a + f x"        -- + looser than application
+#eval roundTrip "f x  +  y"      -- extra spaces collapse to canonical
 
 end LambdaLab.Parser.Mixfix

@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Mixfix.Tree
+import LambdaLab.ParserOld.Mixfix.Tree
 
 /-!
 # Parser for the multi-entry `Part`/`Parts` model (all parses)
@@ -15,9 +15,9 @@ rank manufactured from `tighter_wf`.
 No correctness proofs — only termination.
 -/
 
-namespace LambdaLab.Parser.Mixfix
+namespace LambdaLab.ParserOld.Mixfix
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 
 variable {G : Grammar}
 
@@ -57,15 +57,15 @@ theorem le_foldr_max {l : List Nat} {x : Nat} (h : x ∈ l) : x ≤ l.foldr Nat.
       · exact Nat.le_trans (ih h') (Nat.le_max_right _ _)
 
 /-- A `Nat` rank derived from an entry's well-founded `tighter` graph. -/
-def Entry.rank {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) (a : E.Op) : Nat :=
+def Entry.rank {Ent : Type} (E : Entry Ent) (a : E.Op) : Nat :=
   E.tighter_wf.fix (C := fun _ => Nat)
     (fun a ih => ((E.tighter a).attach.map (fun b => ih b.1 b.2 + 1)).foldr Nat.max 0) a
 
-theorem Entry.rank_eq {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) (a : E.Op) :
+theorem Entry.rank_eq {Ent : Type} (E : Entry Ent) (a : E.Op) :
     E.rank a = ((E.tighter a).attach.map (fun b => E.rank b.1 + 1)).foldr Nat.max 0 :=
   WellFounded.fix_eq _ _ _
 
-theorem Entry.rank_lt {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) {a b : E.Op} (h : b ∈ E.tighter a) :
+theorem Entry.rank_lt {Ent : Type} (E : Entry Ent) {a b : E.Op} (h : b ∈ E.tighter a) :
     E.rank b < E.rank a := by
   rw [E.rank_eq a]
   have hmem : E.rank b + 1 ∈ (E.tighter a).attach.map (fun c => E.rank c.1 + 1) :=
@@ -73,9 +73,9 @@ theorem Entry.rank_lt {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) {a 
   have := le_foldr_max hmem
   omega
 
-def Entry.topRank {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) : Nat := (E.loosest.map E.rank).foldr Nat.max 0 + 1
+def Entry.topRank {Ent : Type} (E : Entry Ent) : Nat := (E.loosest.map E.rank).foldr Nat.max 0 + 1
 
-theorem Entry.rank_lt_topRank {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) {r : E.Op} (h : r ∈ E.loosest) :
+theorem Entry.rank_lt_topRank {Ent : Type} (E : Entry Ent) {r : E.Op} (h : r ∈ E.loosest) :
     E.rank r < E.topRank := by
   have hmem : E.rank r ∈ E.loosest.map E.rank := List.mem_map.mpr ⟨r, h, rfl⟩
   have := le_foldr_max hmem
@@ -83,13 +83,13 @@ theorem Entry.rank_lt_topRank {sep : Char → Bool} {Ent : Type} (E : Entry sep 
   omega
 
 /-- The looseness base of a level (the candidate-worklist's measure). -/
-def Level.base {sep : Char → Bool} {Ent : Type} {E : Entry sep Ent} : Level E → Nat
+def Level.base {Ent : Type} {E : Entry Ent} : Level E → Nat
   | .loosest     => E.topRank
   | .tighter a   => E.rank a
   | .tighterEq a => E.rank a
 
 /-- The secondary termination measure of a level: `base · 4 + phase`. -/
-def Level.measure {sep : Char → Bool} {Ent : Type} {E : Entry sep Ent} : Level E → Nat
+def Level.measure {Ent : Type} {E : Entry Ent} : Level E → Nat
   | .loosest     => E.topRank * 4 + 1
   | .tighter a   => E.rank a * 4 + 1
   | .tighterEq a => E.rank a * 4 + 3
@@ -100,13 +100,13 @@ def partsMeasure {G : Grammar} : List (Part G) → Nat
   | .hole _ l :: _ => Level.measure l + 1
   | _              => 0
 
-theorem partsMeasure_inner_eq_zero (n : Notation G.isSep G.Ent) :
+theorem partsMeasure_inner_eq_zero (n : Notation G.Ent) :
     partsMeasure (Notation.toParts (G := G) n) = 0 := by
   cases n <;> rfl
 
 /-- The **left-recursive** operators (body leads with a `.tighterEq` hole): juxt
 and left-assoc infix. Parsed by a fold instead of `parseParts`. -/
-def Operator.leftRec {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+def Operator.leftRec {Ent : Type} : Operator Ent → Bool
   | .juxt    => true
   | .infxl _ => true
   | _        => false
@@ -139,7 +139,7 @@ theorem partsMeasure_parts_lt (e : G.Ent) (a : (G.entry e).Op)
 
 /-- Parse a single variable leaf at entry `e`, level `l`. -/
 def parseVar (e : G.Ent) (l : Level (G.entry e)) :
-    (tkns : List (Token G.isSep)) → List (Expr G e l × RightSublist tkns)
+    (tkns : List Token) → List (Expr G e l × RightSublist tkns)
   | [] => []
   | t :: rest =>
       if h : (G.entry e).isVar t = true then [(Expr.var t h, RightSublist.cons t rest)] else []
@@ -156,24 +156,24 @@ def Expr.juxtApp {e : G.Ent} {j : (G.entry e).Op} (hj : (G.entry e).operator j =
     Expr G e (Level.tighterEq j) :=
   Expr.op j TighterEq.refl ((Operator.body_juxt hj).symm ▸ Parts.hole f (Parts.hole x Parts.nil))
 
-def Operator.isJuxt {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+def Operator.isJuxt {Ent : Type} : Operator Ent → Bool
   | .juxt => true
   | _     => false
 
-theorem Operator.eq_juxt {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent} (h : o.isJuxt = true) :
+theorem Operator.eq_juxt {Ent : Type} {o : Operator Ent} (h : o.isJuxt = true) :
     o = Operator.juxt := by cases o <;> simp_all [Operator.isJuxt]
 
-theorem Operator.ne_juxt {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent} (h : ¬ (o.isJuxt = true)) :
+theorem Operator.ne_juxt {Ent : Type} {o : Operator Ent} (h : ¬ (o.isJuxt = true)) :
     o ≠ Operator.juxt := fun he => h (by rw [he]; rfl)
 
-def Operator.isInfxl {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+def Operator.isInfxl {Ent : Type} : Operator Ent → Bool
   | .infxl _ => true
   | _        => false
 
-theorem Operator.not_isJuxt_of_isInfxl {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent} (h : o.isInfxl = true) :
+theorem Operator.not_isJuxt_of_isInfxl {Ent : Type} {o : Operator Ent} (h : o.isInfxl = true) :
     o.isJuxt = false := by cases o <;> simp_all [Operator.isInfxl, Operator.isJuxt]
 
-theorem Operator.leftRec_eq_false {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent}
+theorem Operator.leftRec_eq_false {Ent : Type} {o : Operator Ent}
     (hj : ¬ o.isJuxt = true) (hl : ¬ o.isInfxl = true) : o.leftRec = false := by
   cases o <;> simp_all [Operator.isJuxt, Operator.isInfxl, Operator.leftRec]
 
@@ -204,7 +204,7 @@ def Expr.infxlApp {e : G.Ent} {o : (G.entry e).Op} (hl : ((G.entry e).operator o
 set_option linter.unusedSimpArgs false in
 mutual
   /-- All parses of an expression of entry `e` constrained to level `l`. -/
-  def parseExpr : (e : G.Ent) → (l : Level (G.entry e)) → (tkns : List (Token G.isSep)) →
+  def parseExpr : (e : G.Ent) → (l : Level (G.entry e)) → (tkns : List Token) →
       List (Expr G e l × RightSublist tkns)
     | e, .loosest, tkns =>
         parseExprList e .loosest (G.entry e).loosest (fun c hc _o hco => ⟨c, hc, hco⟩)
@@ -239,7 +239,7 @@ mutual
   def parseExprList (e : G.Ent) (l : Level (G.entry e)) (cs : List (G.entry e).Op)
       (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
       (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l) :
-      (tkns : List (Token G.isSep)) → List (Expr G e l × RightSublist tkns) :=
+      (tkns : List Token) → List (Expr G e l × RightSublist tkns) :=
     fun tkns =>
       match cs, h, hrank with
       | [], _, _ => []
@@ -262,7 +262,7 @@ mutual
 
   /-- Parse an operator body `ps` left-to-right: match each `namePart`, recurse
   into `parseExpr` at each `hole`'s (entry, level). -/
-  def parseParts : (ps : List (Part G)) → (tkns : List (Token G.isSep)) →
+  def parseParts : (ps : List (Part G)) → (tkns : List Token) →
       List (Parts G ps × RightSublist tkns)
     | [], _ => []
     | [.namePart tk], tkns =>
@@ -293,7 +293,7 @@ mutual
 
   /-- Parse an application chain `f x y …` left-associatively by iteration. -/
   def parseJuxt (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt) :
-      (tkns : List (Token G.isSep)) → List (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
+      (tkns : List Token) → List (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
     fun tkns =>
       (parseExpr e (Level.tighter j) tkns).flatMap (fun x =>
         let lone : Expr G e (Level.tighterEq j) :=
@@ -310,7 +310,7 @@ mutual
   /-- Fold one more argument atom onto an application accumulator. -/
   def parseJuxtExtend (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
       (acc : Expr G e (Level.tighterEq j)) :
-      (tkns : List (Token G.isSep)) → List (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
+      (tkns : List Token) → List (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
     fun tkns =>
       (parseExpr e (Level.tighter j) tkns).flatMap (fun x =>
         let acc' : Expr G e (Level.tighterEq j) := Expr.juxtApp hj acc x.1
@@ -324,7 +324,7 @@ mutual
 
   /-- Parse a left-associative chain `a ∘ b ∘ c …` by iteration. -/
   def parseInfixL (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true) :
-      (tkns : List (Token G.isSep)) → List (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
+      (tkns : List Token) → List (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
     fun tkns =>
       (parseExpr e (Level.tighter o) tkns).flatMap (fun x =>
         let lone : Expr G e (Level.tighterEq o) :=
@@ -341,7 +341,7 @@ mutual
   /-- Fold one more `∘ rhs` segment onto a left-assoc accumulator. -/
   def parseInfixLExtend (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
       (acc : Expr G e (Level.tighterEq o)) :
-      (tkns : List (Token G.isSep)) → List (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
+      (tkns : List Token) → List (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
     fun tkns =>
       (parseParts (Operator.body e o).tail tkns).flatMap (fun tp =>
         let acc' : Expr G e (Level.tighterEq o) := Expr.infxlApp hl acc tp.1
@@ -355,57 +355,7 @@ mutual
 end
 
 /-- All full parses of `tkns` at start entry `e` (consuming the entire input). -/
-def parse (e : G.Ent) (tkns : List (Token G.isSep)) : List (Expr G e .loosest) :=
+def parse (e : G.Ent) (tkns : List Token) : List (Expr G e .loosest) :=
   (parseExpr (G := G) e .loosest tkns).filterMap (fun x => if x.2.list = [] then some x.1 else none)
 
-/-! ## Char-level front end
-
-`tokenize` splits a char stream into tokens on maximal separator runs (`isSep`),
-dropping the separators. `parseChars` is a **prefix** parser: for every nonempty
-char prefix of the input it tokenizes that prefix *by itself* and takes every full
-token-level parse, leaving the rest of the input as the char-level leftover. This
-is what `Biparser.parse_complete` needs (a parse of `render e p ++ rest` that stops
-after `render e p`, leaving `rest`); tokenizing the prefix in isolation avoids any
-boundary merge with the leftover. -/
-
-/-- Build a token from a **nonempty** run of chars known to be separator-free. -/
-def mkTok {sep : Char → Bool} (l : List Char) (h : ∀ c ∈ l, sep c = false) (hne : l ≠ []) :
-    Token sep :=
-  ⟨String.ofList l, fun c hc => h c (by simpa using hc), by simpa using hne⟩
-
-/-- Accumulate the current token's chars (`cur`, all non-separators), flushing on
-each separator. The proof `h` maintains that `cur` is separator-free, so each flush
-yields a genuine `Token sep`. -/
-def tokenizeAux (sep : Char → Bool) :
-    (cur : List Char) → (∀ c ∈ cur, sep c = false) → List Char → List (Token sep)
-  | cur, h, []      => if hce : cur.isEmpty = true then [] else [mkTok cur h (by simpa using hce)]
-  | cur, h, c :: cs =>
-      if hc : sep c = true then
-        (if hce : cur.isEmpty = true then [] else [mkTok cur h (by simpa using hce)]) ++
-          tokenizeAux sep [] (by simp) cs
-      else
-        tokenizeAux sep (cur ++ [c])
-          (by intro c' hc'
-              rcases List.mem_append.mp hc' with h' | h'
-              · exact h c' h'
-              · simp only [List.mem_singleton] at h'; subst h'; simpa using hc) cs
-  termination_by _ _ cs => cs.length
-
-/-- Split a char stream into tokens on `G.isSep`, dropping separator runs. -/
-def tokenize (G : Grammar) (cs : List Char) : List (Token G.isSep) :=
-  tokenizeAux G.isSep [] (by simp) cs
-
-/-- Char-level **prefix** parser: for every nonempty prefix `pre` of the input,
-tokenize `pre` alone and take every full token-level parse of it, leaving the rest
-of the input as the char-level leftover. Tokenizing the prefix *by itself* avoids
-any boundary merge with the leftover. -/
-def parseChars (e : G.Ent) : (input : List Char) → List (Expr G e .loosest × RightSublist input)
-  | []        => []
-  | c :: cs   =>
-      (List.range (c :: cs).length).flatMap (fun n =>
-        (parse (G := G) e (tokenize G ((c :: cs).take (n + 1)))).map
-          (fun ex => (ex, ⟨(c :: cs).drop (n + 1), (c :: cs).take (n + 1),
-            by rw [List.take_succ_cons]; simp,
-            List.take_append_drop (n + 1) (c :: cs)⟩)))
-
-end LambdaLab.Parser.Mixfix
+end LambdaLab.ParserOld.Mixfix

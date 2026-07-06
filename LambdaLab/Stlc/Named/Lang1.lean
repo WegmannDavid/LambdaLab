@@ -20,7 +20,7 @@ round-trip `complete` is `sorry`. This is scaffolding to exercise the vernacular
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 open LambdaLab.Language1
 
 /-- Tokens that may not be read as a term variable / binder name: the term

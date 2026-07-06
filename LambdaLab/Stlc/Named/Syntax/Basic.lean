@@ -1,5 +1,5 @@
-import LambdaLab.Parser.Mixfix.Verified
-import LambdaLab.Parser.Tokenizer
+import LambdaLab.ParserOld.Mixfix.Verified
+import LambdaLab.ParserOld.Tokenizer
 
 /-!
 # Surface syntax of named STLC: the mixfix grammar + derived parser
@@ -26,8 +26,8 @@ Lifting this needs a loosest-body / right-associative prefix in the parser core.
 
 namespace LambdaLab.Stlc.Named.Syntax
 
-open LambdaLab.Parser
-open LambdaLab.Parser.Mixfix
+open LambdaLab.ParserOld
+open LambdaLab.ParserOld.Mixfix
 
 /-- Surface operators of STLC. Variables are leaves (any non-reserved token),
 not operators. -/

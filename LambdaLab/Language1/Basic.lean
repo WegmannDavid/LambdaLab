@@ -1,14 +1,14 @@
-import LambdaLab.Parser.Basic
+import LambdaLab.ParserOld.Basic
 
 namespace LambdaLab.Language1
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 
 structure Language where
   Tm : Type
   Ty : Type
 
-  pTm : LambdaLab.Parser.TruncatingParser Token Tm
-  pTy : LambdaLab.Parser.TruncatingParser Token Ty
+  pTm : LambdaLab.ParserOld.TruncatingParser Token Tm
+  pTy : LambdaLab.ParserOld.TruncatingParser Token Ty
 
 end LambdaLab.Language1

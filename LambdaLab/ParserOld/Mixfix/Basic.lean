@@ -1,17 +1,7 @@
-import LambdaLab.Parser.Basic
+import LambdaLab.ParserOld.Basic
 
 
-namespace LambdaLab.Parser.Mixfix
-
-/-- A predicate-restricted string. -/
-abbrev Restricted (P : String → Prop) : Type := { s : String // P s }
-
-/-- A **token** for the separator predicate `sep`: a **nonempty** string containing
-**no** separator character. Nonemptiness ensures a rendered token can't vanish, so a
-rendered token stream always re-splits back into the same tokens (needed for
-`parse_complete`). -/
-abbrev Token (sep : Char → Bool) : Type :=
-  Restricted (fun s => (∀ c ∈ s.toList, sep c = false) ∧ s.toList ≠ [])
+namespace LambdaLab.ParserOld.Mixfix
 
 /-! ## Operator names with configurable interior holes
 
@@ -32,38 +22,38 @@ hole is the bundle's own `Result`, never `Expr G'`). A `Grammar` plugs in via a
 consecutive pair of tokens. A plain operator uses `.loosest` for every interior
 hole (the previous behaviour); a sub-parser hole uses `.sub s` for a registry
 reference `s : Sub`. -/
-inductive Notation (sep : Char → Bool) (Ent : Type) where
-  | last : Token sep → Notation sep Ent
-  | cons : Token sep → Ent → Notation sep Ent → Notation sep Ent
+inductive Notation (Ent : Type) where
+  | last : Token → Notation Ent
+  | cons : Token → Ent → Notation Ent → Notation Ent
 
 /-- The name tokens of a `Notation`, in order. -/
-def Notation.toTokens {sep : Char → Bool} {Ent : Type} : Notation sep Ent → List (Token sep)
+def Notation.toTokens {Ent : Type} : Notation Ent → List Token
   | .last t        => [t]
   | .cons t _ rest => t :: rest.toTokens
 
-inductive Operator (sep : Char → Bool) (Ent : Type) where
-| closed : Notation sep Ent → Operator sep Ent
-| prefx : Notation sep Ent → Operator sep Ent
+inductive Operator (Ent : Type) where
+| closed : Notation Ent → Operator Ent
+| prefx : Notation Ent → Operator Ent
 /-- Non-associative infix: both operands strictly tighter, so it does not nest
 unparenthesized. -/
-| infx : Notation sep Ent → Operator sep Ent
+| infx : Notation Ent → Operator Ent
 /-- Left-associative infix (`a ∘ b ∘ c = (a ∘ b) ∘ c`): the left operand is at
 `.tighterEq` (chains), the right is strictly tighter. Its body is left-recursive
 (leading `.tighterEq` hole), so it is parsed by an iterative fold (like `juxt`),
 not `parseParts`. -/
-| infxl : Notation sep Ent → Operator sep Ent
+| infxl : Notation Ent → Operator Ent
 /-- Right-associative infix (`a ∘ b ∘ c = a ∘ (b ∘ c)`): the right operand is at
 `.tighterEq` (chains), the left is strictly tighter. The trailing recursion
 consumes the operator token first, so the ordinary `parseParts` handles it. -/
-| infxr : Notation sep Ent → Operator sep Ent
-| postfx : Notation sep Ent → Operator sep Ent
+| infxr : Notation Ent → Operator Ent
+| postfx : Notation Ent → Operator Ent
 /-- Juxtaposition (function application by adjacency): a tokenless,
 left-associative, tightest-binding operator. A grammar has at most one (see
 `Grammar.juxtUnique`). -/
-| juxt : Operator sep Ent
+| juxt : Operator Ent
 
 /-- The name-part tokens of an operator, in body order. -/
-def Operator.nameTokens {sep : Char → Bool} {Ent : Type} : Operator sep Ent → List (Token sep)
+def Operator.nameTokens {Ent : Type} : Operator Ent → List Token
   | .closed n => n.toTokens
   | .prefx n => n.toTokens
   | .infx n => n.toTokens
@@ -135,16 +125,17 @@ name parts. The parser admits any `isVar` token as a leaf `Expr.var` at every
 level. For unique parses, a separate certificate requires `isVar` tokens to be
 disjoint from operator name parts (so a token can't be read as both a variable
 and an operator), exactly as `UniqueNameParts` handles name-part collisions. -/
-structure Entry (sep : Char → Bool) (Ent : Type) where
+structure Entry (Ent : Type) where
   Op : Type
-  /-- The declaration of each operator (its fixity and name/notation). -/
-  operator : Op → Operator sep Ent
+  /-- Registry index for embedded sub-language parsers (e.g. binders). An
+  operator's `.sub s` hole references an element `s : Sub`. -/
+  operator : Op → Operator Ent
   loosest : List Op
   tighter : Op → List Op
   tighter_wf : WellFounded (fun b a => b ∈ tighter a)
   /-- Recognizes variable (identifier) tokens — leaf atoms, distinct from operator
   name parts. -/
-  isVar : Token sep → Bool
+  isVar : Token → Bool
   /-- At most one operator is juxtaposition. Being tokenless, two juxtaposition
   operators would be indistinguishable in the token stream; this pins it to one
   (vacuously satisfied by grammars without juxtaposition). -/
@@ -152,55 +143,7 @@ structure Entry (sep : Char → Bool) (Ent : Type) where
 
 structure Grammar where
   Ent : Type
-  /-- Which characters are **separators** (whitespace). A lexical, whole-grammar
-  notion — every entry shares it. It defines: how the char stream tokenizes (split
-  on maximal separator runs), what a valid inter-token separator is (a nonempty run
-  of these), and hence the token alphabet (`Token isSep` — strings containing none
-  of these). -/
-  isSep : Char → Bool
-  /-- A distinguished separator character, witnessing that the separator alphabet is
-  **nonempty**. Any grammar that tokenizes owns a separator, so this costs nothing —
-  and it makes `Sep G` canonically inhabited, so the render witness needs no external
-  default (`dflt`) threaded through it. -/
-  sepWitness : { c : Char // isSep c = true }
-  entry : Ent → Entry isSep Ent
+  entry : Ent → Entry Ent
   -- no start symbol, the start symbol is choosen when deriving the parser
 
-/-- A character `G` treats as a **separator** (whitespace). -/
-def Sep (G : Grammar) : Type := { c : Char // G.isSep c = true }
-
-/-- A **nonempty separator run** for `G`: one or more separator characters — the
-valid form of an inter-token gap, and what a rendering `Policy` emits between the
-parts of an operator body.
-
-Derived entirely from `G.isSep`: if a grammar declares *no* separator character
-(`isSep = fun _ => false`), then `Sep G` — and hence `NESep G` — is empty, so the
-grammar can't emit the separators its own tokens require and simply can't be
-rendered. That's the policy author's problem to avoid, not something enforced. -/
-structure NESep (G : Grammar) where
-  head : Sep G
-  tail : List (Sep G)
-
-/-- A separator run as a plain (nonempty) list of separators. -/
-def NESep.toList {G : Grammar} (s : NESep G) : List (Sep G) := s.head :: s.tail
-
-/-- The characters of a separator run, in order. -/
-def NESep.toChars {G : Grammar} (s : NESep G) : List Char :=
-  s.head.val :: s.tail.map (·.val)
-
-/-- Promote a possibly-empty separator run to a `NESep`, falling back to the
-grammar's canonical `sepWitness` when empty. On valid input the fallback is dead
-code (internal gaps always carry a separator); it makes the render witness a total
-function with no threaded default. -/
-def mkNESep {G : Grammar} : List (Sep G) → NESep G
-  | []        => ⟨G.sepWitness, []⟩
-  | c :: rest => ⟨c, rest⟩
-
-/-- On a nonempty run, `mkNESep` is the identity (the fallback is untouched). -/
-theorem mkNESep_toList_of_ne {G : Grammar} {l : List (Sep G)} (h : l ≠ []) :
-    (mkNESep l).toList = l := by
-  cases l with
-  | nil => exact absurd rfl h
-  | cons c rest => rfl
-
-end LambdaLab.Parser.Mixfix
+end LambdaLab.ParserOld.Mixfix

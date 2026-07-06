@@ -11,7 +11,7 @@ is left as `sorry` — this is scaffolding, not a verified parser.
 
 namespace LambdaLab.Language1
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 
 /-- Consume the exact token `t` at the head of `l` (if present). Returns a
 `RightSublist` of the *given* `l`, so callers compose with `.trans` cleanly. -/

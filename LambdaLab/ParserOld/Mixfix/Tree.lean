@@ -1,19 +1,18 @@
-import LambdaLab.Parser.Mixfix.Basic
+import LambdaLab.ParserOld.Mixfix.Basic
 
-namespace LambdaLab.Parser.Mixfix
+namespace LambdaLab.ParserOld.Mixfix
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 
 /-- A precedence *level* within a single entry `E`: the constraint placed on a
 tree's top operator. -/
-inductive Level {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) : Type where
+inductive Level {Ent : Type} (E : Entry Ent) : Type where
 | tighter   : E.Op → Level E
 | tighterEq : E.Op → Level E
 | loosest   : Level E
 
 /-- The predicate a top operator `b` must satisfy to inhabit level `l` of `E`. -/
-def Level.condition {sep : Char → Bool} {Ent : Type} {E : Entry sep Ent} (l : Level E) :
-    E.Op → Prop :=
+def Level.condition {Ent : Type} {E : Entry Ent} (l : Level E) : E.Op → Prop :=
   match l with
   | Level.tighter a   => fun b => Tighter E.tighter a b
   | Level.tighterEq a => fun b => TighterEq E.tighter a b
@@ -24,12 +23,12 @@ an entry `e` of the grammar at a precedence level within that entry. The hole is
 filled by an `Expr` of entry `e` — recursive (`e` the host entry) or cross-entry
 (`e` a different class of expressions) are the *same* construct. -/
 inductive Part (G : Grammar) where
-| namePart : Token G.isSep → Part G
+| namePart : Token → Part G
 | hole     : (e : G.Ent) → Level (G.entry e) → Part G
 
 /-- Lower a `Notation` to its parts: a `namePart` per token; each interior hole
 references its entry `e'` parsed at that entry's `loosest` level. -/
-def Notation.toParts {G : Grammar} : Notation G.isSep G.Ent → List (Part G)
+def Notation.toParts {G : Grammar} : Notation G.Ent → List (Part G)
   | .last tkn         => [.namePart tkn]
   | .cons tkn e' rest => [.namePart tkn, .hole e' Level.loosest] ++ rest.toParts
 
@@ -54,26 +53,26 @@ mutual
       Level.condition l o → Parts G (Operator.body e o) → Expr G e l
   /-- A variable leaf: an identifier token (`(G.entry e).isVar`), valid at every
   level of its entry. -/
-  | var {e : G.Ent} {l : Level (G.entry e)} (t : Token G.isSep) :
+  | var {e : G.Ent} {l : Level (G.entry e)} (t : Token) :
       (G.entry e).isVar t = true → Expr G e l
 
   inductive Parts (G : Grammar) : List (Part G) → Type where
   | nil : Parts G []
-  | namePart {ps} (tkn : Token G.isSep) : Parts G ps → Parts G ((.namePart tkn) :: ps)
+  | namePart {ps} (tkn : Token) : Parts G ps → Parts G ((.namePart tkn) :: ps)
   | hole {e : G.Ent} {l : Level (G.entry e)} {ps} :
       Expr G e l → Parts G ps → Parts G ((.hole e l) :: ps)
 end
 
 mutual
   def Expr.flatten {G : Grammar} {e : G.Ent} {l : Level (G.entry e)} :
-      Expr G e l → List (Token G.isSep)
+      Expr G e l → List Token
     | .op _ _ ps => ps.flatten
     | .var t _   => [t]
 
-  def Parts.flatten {G : Grammar} {shape : List (Part G)} : Parts G shape → List (Token G.isSep)
+  def Parts.flatten {G : Grammar} {shape : List (Part G)} : Parts G shape → List Token
     | .nil             => []
     | .namePart tkn ps => tkn :: ps.flatten
     | .hole ex ps      => ex.flatten ++ ps.flatten
 end
 
-end LambdaLab.Parser.Mixfix
+end LambdaLab.ParserOld.Mixfix

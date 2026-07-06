@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Mixfix.Parse
+import LambdaLab.ParserOld.Mixfix.Parse
 
 /-!
 # Correctness of the multi-entry `Part`/`Parts` parser
@@ -23,9 +23,9 @@ chosen entry. Cross-entry holes are an ordinary recursive call at the referenced
 entry's loosest level, so no extra machinery is needed.
 -/
 
-namespace LambdaLab.Parser.Mixfix
+namespace LambdaLab.ParserOld.Mixfix
 
-open LambdaLab.Parser
+open LambdaLab.ParserOld
 
 variable {G : Grammar}
 
@@ -35,7 +35,7 @@ variable {G : Grammar}
     (hc : Level.condition l o) (parts : Parts G (Operator.body e o)) :
     (Expr.op o hc parts).flatten = parts.flatten := rfl
 
-@[simp] theorem Expr.flatten_var {e : G.Ent} {l : Level (G.entry e)} (t : Token G.isSep)
+@[simp] theorem Expr.flatten_var {e : G.Ent} {l : Level (G.entry e)} (t : Token)
     (hv : (G.entry e).isVar t = true) :
     (Expr.var (G := G) (e := e) (l := l) t hv).flatten = [t] := rfl
 
@@ -44,7 +44,7 @@ variable {G : Grammar}
 @[simp] theorem Parts.flatten_hole {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
     (ex : Expr G e l) (p : Parts G ps) : (Parts.hole ex p).flatten = ex.flatten ++ p.flatten := rfl
 
-@[simp] theorem Parts.flatten_namePart {ps : List (Part G)} (tk : Token G.isSep) (p : Parts G ps) :
+@[simp] theorem Parts.flatten_namePart {ps : List (Part G)} (tk : Token) (p : Parts G ps) :
     (Parts.namePart tk p).flatten = tk :: p.flatten := rfl
 
 /-- Reindexing only swaps the level-condition proof; the flattening is untouched. -/
@@ -159,7 +159,7 @@ theorem Expr.op_infxl_eq {e : G.Ent} {o : (G.entry e).Op}
 /-! ## Variable-leaf parsing -/
 
 /-- Soundness of `parseVar`: a parsed variable consumes exactly its token. -/
-theorem parseVar_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List (Token G.isSep)}
+theorem parseVar_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List Token}
     {x : Expr G e l × RightSublist tkns} (hx : x ∈ parseVar e l tkns) :
     x.1.flatten ++ x.2.list = tkns := by
   cases tkns with
@@ -171,16 +171,16 @@ theorem parseVar_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List (Token G
       · simp at hx
 
 /-- Completeness of `parseVar`: an identifier token is parsed as a variable. -/
-theorem parseVar_complete {e : G.Ent} {l : Level (G.entry e)} {t : Token G.isSep}
-    (hv : (G.entry e).isVar t = true) (rest : List (Token G.isSep)) :
+theorem parseVar_complete {e : G.Ent} {l : Level (G.entry e)} {t : Token}
+    (hv : (G.entry e).isVar t = true) (rest : List Token) :
     (Expr.var t hv, RightSublist.cons t rest) ∈ parseVar e l (t :: rest) := by
   simp only [parseVar, dif_pos hv]
   exact List.mem_singleton.mpr rfl
 
 /-- A variable is found at *every* level: directly for `loosest`/`tighter`, and via
 the fall-through for `tighterEq`. -/
-theorem mem_parseExpr_var {e : G.Ent} {l : Level (G.entry e)} {t : Token G.isSep}
-    (hv : (G.entry e).isVar t = true) (rest : List (Token G.isSep)) :
+theorem mem_parseExpr_var {e : G.Ent} {l : Level (G.entry e)} {t : Token}
+    (hv : (G.entry e).isVar t = true) (rest : List Token) :
     (Expr.var t hv, RightSublist.cons t rest) ∈ parseExpr e l (t :: rest) := by
   cases l with
   | loosest => rw [parseExpr]; exact List.mem_append_right _ (parseVar_complete hv rest)
@@ -215,13 +215,13 @@ theorem mem_parseExpr_var {e : G.Ent} {l : Level (G.entry e)} {t : Token G.isSep
 
 /-- At a juxtaposition level, `parseExpr` *is* `parseJuxt`. -/
 theorem parseExpr_juxt_eq {e : G.Ent} {j : (G.entry e).Op}
-    (hj : (G.entry e).operator j = Operator.juxt) (tkns : List (Token G.isSep)) :
+    (hj : (G.entry e).operator j = Operator.juxt) (tkns : List Token) :
     parseExpr e (Level.tighterEq j) tkns = parseJuxt e j hj tkns := by
   rw [parseExpr, dif_pos (show ((G.entry e).operator j).isJuxt = true by rw [hj]; rfl)]
 
 /-- At a left-associative level, `parseExpr` *is* `parseInfixL`. -/
 theorem parseExpr_infxl_eq {e : G.Ent} {o : (G.entry e).Op}
-    (hl : ((G.entry e).operator o).isInfxl = true) (tkns : List (Token G.isSep)) :
+    (hl : ((G.entry e).operator o).isInfxl = true) (tkns : List Token) :
     parseExpr e (Level.tighterEq o) tkns = parseInfixL e o hl tkns := by
   rw [parseExpr, dif_neg (by simp [Operator.not_isJuxt_of_isInfxl hl]), dif_pos hl]
 
@@ -236,25 +236,25 @@ The conjunction is in `parseExpr.mutual_induct` motive order (a canonical order,
 `parseInfixLExtend`, `parseJuxt`, `parseJuxtExtend`, `parseExprList`. Everything
 is threaded through the entry index `e : G.Ent`. -/
 theorem parse_sound_all :
-    (∀ (e : G.Ent) (l : Level (G.entry e)) (tkns : List (Token G.isSep)),
+    (∀ (e : G.Ent) (l : Level (G.entry e)) (tkns : List Token),
         ∀ x ∈ parseExpr e l tkns, x.1.flatten ++ x.2.list = tkns)
-  ∧ (∀ (ps : List (Part G)) (tkns : List (Token G.isSep)),
+  ∧ (∀ (ps : List (Part G)) (tkns : List Token),
         ∀ x ∈ parseParts ps tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
-        (tkns : List (Token G.isSep)),
+        (tkns : List Token),
         ∀ x ∈ parseInfixL e o hl tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
-        (acc : Expr G e (Level.tighterEq o)) (tkns : List (Token G.isSep)),
+        (acc : Expr G e (Level.tighterEq o)) (tkns : List Token),
         ∀ x ∈ parseInfixLExtend e o hl acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
   ∧ (∀ (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
-        (tkns : List (Token G.isSep)),
+        (tkns : List Token),
         ∀ x ∈ parseJuxt e j hj tkns, x.1.flatten ++ x.2.list = tkns)
   ∧ (∀ (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
-        (acc : Expr G e (Level.tighterEq j)) (tkns : List (Token G.isSep)),
+        (acc : Expr G e (Level.tighterEq j)) (tkns : List Token),
         ∀ x ∈ parseJuxtExtend e j hj acc tkns, x.1.flatten ++ x.2.list = acc.flatten ++ tkns)
   ∧ ∀ (e : G.Ent) (l : Level (G.entry e)) (cs : List (G.entry e).Op)
       (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
-      (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l) (tkns : List (Token G.isSep)),
+      (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l) (tkns : List Token),
       ∀ x ∈ parseExprList e l cs h hrank tkns, x.1.flatten ++ x.2.list = tkns := by
   apply parseExpr.mutual_induct
     (motive1 := fun e l tkns =>
@@ -409,19 +409,19 @@ theorem parse_sound_all :
 
 /-- Soundness of `parseExpr`: a parse at level `l` flattens back to exactly the
 consumed prefix. -/
-theorem parseExpr_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List (Token G.isSep)}
+theorem parseExpr_sound {e : G.Ent} {l : Level (G.entry e)} {tkns : List Token}
     {x : Expr G e l × RightSublist tkns} (hx : x ∈ parseExpr e l tkns) :
     x.1.flatten ++ x.2.list = tkns :=
   parse_sound_all.1 e l tkns x hx
 
 /-- Soundness of `parseParts`. -/
-theorem parseParts_sound {ps : List (Part G)} {tkns : List (Token G.isSep)}
+theorem parseParts_sound {ps : List (Part G)} {tkns : List Token}
     {x : Parts G ps × RightSublist tkns} (hx : x ∈ parseParts ps tkns) :
     x.1.flatten ++ x.2.list = tkns :=
   parse_sound_all.2.1 ps tkns x hx
 
 /-- Soundness of `parse`: a full parse flattens back to the whole input. -/
-theorem parse_sound {e : G.Ent} {tkns : List (Token G.isSep)} {ex : Expr G e .loosest}
+theorem parse_sound {e : G.Ent} {tkns : List Token} {ex : Expr G e .loosest}
     (h : ex ∈ parse e tkns) : ex.flatten = tkns := by
   unfold parse at h
   obtain ⟨x, hx, hfm⟩ := List.mem_filterMap.mp h
@@ -447,7 +447,7 @@ theorem Tighter.destruct {Op : Type} {t : Op → List Op} {a o : Op} (h : Tighte
   | base hmem => exact ⟨o, hmem, TighterEq.refl⟩
   | step hmem hT => exact ⟨_, hmem, hT.toTighterEq⟩
 
-theorem Notation.toParts_ne_nil (tkns : Notation G.isSep G.Ent) :
+theorem Notation.toParts_ne_nil (tkns : Notation G.Ent) :
     Notation.toParts (G := G) tkns ≠ [] := by
   cases tkns <;> simp [Notation.toParts]
 
@@ -468,7 +468,7 @@ if `(f, rf)` is reachable and `x` parses from `rf`'s leftover, then `juxtApp f x
 is reachable with the same leftover as `x`. By recursion on the token list. -/
 theorem parseJuxtExtend_cont {e : G.Ent} {j : (G.entry e).Op}
     (hj : (G.entry e).operator j = Operator.juxt)
-    (acc : Expr G e (Level.tighterEq j)) (tkns : List (Token G.isSep))
+    (acc : Expr G e (Level.tighterEq j)) (tkns : List Token)
     (f : Expr G e (Level.tighterEq j)) (rf : RightSublist tkns)
     (hf : (f, rf) ∈ parseJuxtExtend e j hj acc tkns)
     (x : Expr G e (Level.tighter j)) (rx : RightSublist rf.list)
@@ -507,7 +507,7 @@ theorem parseJuxtExtend_cont {e : G.Ent} {j : (G.entry e).Op}
 argument `x` parsed from its leftover yields the extended chain `juxtApp f x`. -/
 theorem parseJuxt_cont {e : G.Ent} {j : (G.entry e).Op}
     (hj : (G.entry e).operator j = Operator.juxt)
-    {tkns : List (Token G.isSep)} {f : Expr G e (Level.tighterEq j)} {rf : RightSublist tkns}
+    {tkns : List Token} {f : Expr G e (Level.tighterEq j)} {rf : RightSublist tkns}
     (hf : (f, rf) ∈ parseJuxt e j hj tkns)
     {x : Expr G e (Level.tighter j)} {rx : RightSublist rf.list}
     (hx : (x, rx) ∈ parseExpr e (Level.tighter j) rf.list) :
@@ -543,7 +543,7 @@ theorem parseJuxt_cont {e : G.Ent} {j : (G.entry e).Op}
 (a `parseParts` of the body tail). Mirrors `parseJuxtExtend_cont`. -/
 theorem parseInfixLExtend_cont {e : G.Ent} {o : (G.entry e).Op}
     (hl : ((G.entry e).operator o).isInfxl = true)
-    (acc : Expr G e (Level.tighterEq o)) (tkns : List (Token G.isSep))
+    (acc : Expr G e (Level.tighterEq o)) (tkns : List Token)
     (f : Expr G e (Level.tighterEq o)) (rf : RightSublist tkns)
     (hf : (f, rf) ∈ parseInfixLExtend e o hl acc tkns)
     (tp : Parts G (Operator.body e o).tail) (rt : RightSublist rf.list)
@@ -581,7 +581,7 @@ theorem parseInfixLExtend_cont {e : G.Ent} {o : (G.entry e).Op}
 /-- The same extension step lifted to `parseInfixL`. Mirrors `parseJuxt_cont`. -/
 theorem parseInfixL_cont {e : G.Ent} {o : (G.entry e).Op}
     (hl : ((G.entry e).operator o).isInfxl = true)
-    {tkns : List (Token G.isSep)} {f : Expr G e (Level.tighterEq o)} {rf : RightSublist tkns}
+    {tkns : List Token} {f : Expr G e (Level.tighterEq o)} {rf : RightSublist tkns}
     (hf : (f, rf) ∈ parseInfixL e o hl tkns)
     {tp : Parts G (Operator.body e o).tail} {rt : RightSublist rf.list}
     (ht : (tp, rt) ∈ parseParts (Operator.body e o).tail rf.list) :
@@ -620,7 +620,7 @@ theorem parseExprList_complete {e : G.Ent} {l : Level (G.entry e)} (cs : List (G
     (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l)
     {c : (G.entry e).Op} (hc : c ∈ cs)
     (hcond : ∀ o, Level.condition (Level.tighterEq c) o → Level.condition l o)
-    {tkns : List (Token G.isSep)} {ex : Expr G e (.tighterEq c)} {r : RightSublist tkns}
+    {tkns : List Token} {ex : Expr G e (.tighterEq c)} {r : RightSublist tkns}
     (hmem : (ex, r) ∈ parseExpr e (.tighterEq c) tkns) :
     (ex.reindex hcond, r) ∈ parseExprList e l cs h hrank tkns := by
   induction cs with
@@ -639,7 +639,7 @@ mutual
 exactly `rest`. (`ps = []` is excluded: `parseParts [] = []` by design, so the
 parser never produces the empty-consuming `Parts.nil` on its own.) -/
 theorem parseParts_complete {ps : List (Part G)} (p : Parts G ps) (hps : ps ≠ [])
-    (tkns rest : List (Token G.isSep)) (heq : tkns = p.flatten ++ rest) :
+    (tkns rest : List Token) (heq : tkns = p.flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧ (p, r) ∈ parseParts ps tkns := by
   match ps, p, heq with
   | [], _, _ => exact absurd rfl hps
@@ -685,7 +685,7 @@ juxtaposition level routes through `parseJuxt` instead (`parseJuxt_complete` for
 the application node itself, a lone leftmost atom for a strictly-tighter node). -/
 theorem parseExpr_tighterEq_complete {e : G.Ent} {a o : (G.entry e).Op}
     (hpath : TighterEq (G.entry e).tighter a o)
-    (parts : Parts G (Operator.body e o)) (tkns rest : List (Token G.isSep))
+    (parts : Parts G (Operator.body e o)) (tkns rest : List Token)
     (heq : tkns = parts.flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
       ((Expr.op o hpath parts : Expr G e (.tighterEq a)), r) ∈ parseExpr e (.tighterEq a) tkns := by
@@ -766,7 +766,7 @@ argument `x` are parsed by `parseExpr` (smaller bodies), then `parseJuxt_cont`
 folds them — so the recursion is on the operator body, not the assembled tree. -/
 theorem parseJuxt_complete {e : G.Ent} {j : (G.entry e).Op}
     (hj : (G.entry e).operator j = Operator.juxt)
-    (parts : Parts G (Operator.body e j)) (tkns rest : List (Token G.isSep))
+    (parts : Parts G (Operator.body e j)) (tkns rest : List Token)
     (heq : tkns = (Expr.op j TighterEq.refl parts : Expr G e (Level.tighterEq j)).flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
       ((Expr.op j TighterEq.refl parts : Expr G e (Level.tighterEq j)), r)
@@ -798,7 +798,7 @@ found by the iterative chain parser. The left operand `acc` and the parsed tail
 `parseInfixL_cont` folds them. Mirrors `parseJuxt_complete`. -/
 theorem parseInfixL_complete {e : G.Ent} {o : (G.entry e).Op}
     (hl : ((G.entry e).operator o).isInfxl = true)
-    (parts : Parts G (Operator.body e o)) (tkns rest : List (Token G.isSep))
+    (parts : Parts G (Operator.body e o)) (tkns rest : List Token)
     (heq : tkns = (Expr.op o TighterEq.refl parts : Expr G e (Level.tighterEq o)).flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧
       ((Expr.op o TighterEq.refl parts : Expr G e (Level.tighterEq o)), r)
@@ -827,7 +827,7 @@ decreasing_by
 /-- Completeness of `parseExpr`: every `ex : Expr G e l` is found on its own
 flattening (any right-extension `rest`), leaving exactly `rest`. -/
 theorem parseExpr_complete {e : G.Ent} {l : Level (G.entry e)} (ex : Expr G e l)
-    (tkns rest : List (Token G.isSep)) (heq : tkns = ex.flatten ++ rest) :
+    (tkns rest : List Token) (heq : tkns = ex.flatten ++ rest) :
     ∃ r : RightSublist tkns, r.list = rest ∧ (ex, r) ∈ parseExpr e l tkns := by
   match l, ex, heq with
   | .tighterEq a, .op o hc parts, heq =>
@@ -867,7 +867,7 @@ theorem parse_complete {e : G.Ent} (ex : Expr G e .loosest) : ex ∈ parse e ex.
 
 /-- The full characterization of `parse` as a set: its members are exactly the
 loosest expressions flattening to the input. (Soundness + completeness.) -/
-theorem mem_parse_iff {e : G.Ent} {tkns : List (Token G.isSep)} {ex : Expr G e .loosest} :
+theorem mem_parse_iff {e : G.Ent} {tkns : List Token} {ex : Expr G e .loosest} :
     ex ∈ parse e tkns ↔ ex.flatten = tkns :=
   ⟨parse_sound, fun h => h ▸ parse_complete ex⟩
 
@@ -885,9 +885,9 @@ def Grammar.Unambiguous (G : Grammar) (e : G.Ent) : Prop :=
 /-- Uniqueness of full parses, conditional on entry unambiguity: any two
 members of `parse e tkns` are equal (the list may still contain duplicates when
 the precedence DAG reaches an operator along several paths). -/
-theorem parse_unique {e : G.Ent} (hG : G.Unambiguous e) {tkns : List (Token G.isSep)}
+theorem parse_unique {e : G.Ent} (hG : G.Unambiguous e) {tkns : List Token}
     {e₁ e₂ : Expr G e .loosest} (h₁ : e₁ ∈ parse e tkns) (h₂ : e₂ ∈ parse e tkns) :
     e₁ = e₂ :=
   hG e₁ e₂ ((parse_sound h₁).trans (parse_sound h₂).symm)
 
-end LambdaLab.Parser.Mixfix
+end LambdaLab.ParserOld.Mixfix

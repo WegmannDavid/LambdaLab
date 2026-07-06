@@ -1,4 +1,4 @@
-import LambdaLab.Parser.Mixfix.Verified
+import LambdaLab.ParserOld.Mixfix.Verified
 
 /-!
 # Interpreting parse trees into a carrier family (`Interp`)
@@ -10,23 +10,15 @@ The forward half of truncation, standalone and law-free. An `Interp` assigns:
 * an interpretation of variable leaves.
 
 `Expr.truncate` then folds it over a parse tree, producing the carrier value.
-
-Ported from `Parser/Mixfix/Truncation.lean` onto the char-level Parser stack; the
-only systematic change is that names/tokens carry the separator predicate
-(`Token G.isSep`, `Notation G.isSep G.Ent`, `Operator G.isSep G.Ent`). Everything at
-the `Part`/`Parts`/`Level`/`Expr` layer — where all the real machinery lives — is
-unchanged. Packaging (composing `lift`/`truncate` with the policy-driven char
-`Biparser`) is deferred to a `TruncatingBiparser`; this file stops at the verified
-`truncate_lift` round-trip.
 -/
 
-namespace LambdaLab.Parser.Mixfix
+namespace LambdaLab.ParserOld.Mixfix
 
 /-- The interior holes of a notation, as curried argument types in front of a
 `Tail` type. A hole `cons _ e' _` references entry `e'`, so it contributes that
 entry's carrier `eInt e'` as an argument. -/
 def Notation.shapeArgs {G : Grammar} (eInt : G.Ent → Type u) :
-    Notation G.isSep G.Ent → Type u → Type u
+    Notation G.Ent → Type u → Type u
   | .last _,         Tail => Tail
   | .cons _ e' rest, Tail => eInt e' → Notation.shapeArgs eInt rest Tail
 
@@ -41,7 +33,7 @@ operands reference the host entry, so they contribute `eInt e`.
 * `postfx`  `_ op`                → `eInt e → eInt e`
 * `juxt`    `_ _`                 → `eInt e → eInt e → eInt e` -/
 def Operator.shape {G : Grammar} (eInt : G.Ent → Type u) (e : G.Ent) :
-    Operator G.isSep G.Ent → Type u
+    Operator G.Ent → Type u
   | .closed n => Notation.shapeArgs eInt n (eInt e)
   | .prefx n  => Notation.shapeArgs eInt n (eInt e → eInt e)
   | .infx n   => eInt e → Notation.shapeArgs eInt n (eInt e → eInt e)
@@ -57,7 +49,7 @@ structure Interp (G : Grammar) where
   eInt : G.Ent → Type
   oInt : (e : G.Ent) → (o : (G.entry e).Op) →
     Operator.shape eInt e ((G.entry e).operator o)
-  vInt : (e : G.Ent) → Token G.isSep → eInt e
+  vInt : (e : G.Ent) → Token → eInt e
 
 /-! ## Folding an interpretation over a parse tree
 
@@ -81,7 +73,7 @@ theorem partsFun_append {G : Grammar} (eInt : G.Ent → Type) (R : Type)
   | cons x xs ih => cases x <;> simp [partsFun, ih]
 
 theorem shapeArgs_eq_partsFun {G : Grammar} (eInt : G.Ent → Type) (Tail : Type)
-    (n : Notation G.isSep G.Ent) :
+    (n : Notation G.Ent) :
     Notation.shapeArgs eInt n Tail = partsFun eInt Tail (Notation.toParts n) := by
   induction n with
   | last tkn => rfl
@@ -152,7 +144,7 @@ structure ReverseInterp (G : Grammar) extends Interp G where
   (not-yet-reversed) carrier values — each strictly smaller than `size v`, so
   `lift` descends. -/
   view : (e : G.Ent) → (v : eInt e) →
-    { t : Token G.isSep // (G.entry e).isVar t = true } ⊕
+    { t : Token // (G.entry e).isVar t = true } ⊕
       Σ o : { o : (G.entry e).Op // Level.condition Level.loosest o },
         smallVals eInt size (size e v) (Operator.body e o.1)
   /-- A user-supplied decision procedure for `Level.condition l o` — does operator
@@ -294,4 +286,30 @@ theorem ReverseInterp.truncate_lift {G : Grammar} (t : ReverseInterp G) {e : G.E
         rw [truncateApply_liftBody t (t.size e v) (fun {e'} w hw => IH w (by omega))]
         exact hvb
 
-end LambdaLab.Parser.Mixfix
+/-! ## Packaging as a `TruncatingParser`
+
+A `ReverseInterp` at a chosen start entry is exactly a `TruncatingParser`: the
+grammar's precedence parser supplies `parse` (each tree `truncate`d to a carrier
+value), and `lift` + `flatten` supply the canonical `render`. -/
+
+/-- Bundle a `ReverseInterp` at start entry `e` as a `TruncatingParser`:
+
+* `parse` — run the grammar's precedence parser and `truncate` every tree to a
+  carrier value (keeping each leftover);
+* `render` — `lift` a value back to a minimally-parenthesized tree and `flatten` it.
+
+The print→parse round-trip is immediate from `truncate_lift`: `render b` parses
+back (via `parseExpr_complete`) to `lift e b`, whose `truncate` is `b`. Because
+`truncate_lift` holds for *every* carrier value, the "`b` was produced" hypothesis
+is never used. -/
+def ReverseInterp.toTruncatingParser {G : Grammar} (t : ReverseInterp G) (e : G.Ent) :
+    TruncatingParser Token (t.eInt e) where
+  parse tkns := (parseExpr e .loosest tkns).map (fun x => (Expr.truncate t.toInterp x.1, x.2))
+  render v := (t.lift e v).flatten
+  complete := by
+    intro _input b _s _hmem rest
+    obtain ⟨r, hr, hm⟩ :=
+      parseExpr_complete (t.lift e b) ((t.lift e b).flatten ++ rest) rest rfl
+    exact ⟨r, hr, List.mem_map.mpr ⟨(t.lift e b, r), hm, by rw [t.truncate_lift]⟩⟩
+
+end LambdaLab.ParserOld.Mixfix

@@ -1,5 +1,5 @@
 import LambdaLab.Substitution.Basic
-import LambdaLab.Parser.Basic
+import LambdaLab.ParserOld.Basic
 import Std.Data.HashMap
 
 
@@ -128,8 +128,8 @@ structure Language : Type 1 where
   this function total — only well-typed terms are reducible. -/
   eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
 
-  pTy : Parser.LosslessParser Token Ty
-  pTerm : Parser.LosslessParser Token Term
+  pTy : ParserOld.LosslessParser Token Ty
+  pTerm : ParserOld.LosslessParser Token Term
 
 attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
 

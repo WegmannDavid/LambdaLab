@@ -9,10 +9,6 @@ which is the well-founded measure a leftover-threading parser recurs on.
 
 namespace LambdaLab.Parser
 
-/-- The default token alphabet (a thin string). `Parser`/`LosslessParser` are now
-alphabet-general; `Token` is just the one the mixfix grammar and tokenizer use. -/
-abbrev Token := String
-
 /-- A **proper right sublist** (strict suffix) of `l`: a list `list` together
 with the non-empty prefix `pre` that was dropped, witnessed by `pre ++ list = l`.
 
@@ -60,54 +56,96 @@ end RightSublist
 strict suffix left over (an empty list means "no parse"). -/
 abbrev Parser (α : Type u) (β : Type w) := (input : List α) → List (β × RightSublist input)
 
-/-- A **verified parser**: an all-parses `parse` bundled with its correctness, so
-it can be embedded as a hole in another language (`Mixfix.InnerHole.sub`) without
-that language having to know how it works — only that it is sound and complete.
-Universe-polymorphic so a grammar's own parse trees (`Expr.{u}`, in `Type (u+1)`)
-can themselves be embedded as a `LosslessParser.{u+1}` (`Grammar.toLosslessParser`).
+/-- A **policy-driven renderer**: turn a result `b` into tokens, with a `Policy`
+choosing *which* of its many valid concrete renderings to emit — whitespace,
+parenthesization, and any other surface styling. -/
+abbrev Renderer (β : Type u) (Policy : Type v) (α : Type w) := β → Policy → List α
 
-* `sound` — every parse consumes exactly the tokens its result flattens to.
-* `complete` — every result is found on its own flattening (for any right
-  extension `rest`, leaving exactly `rest`).
+/-- A **biparser**: one object that runs both directions — a `parse` together with a
+policy-driven `render`, certified to describe the *same* relation between results
+and token strings. A
+result has no single canonical serialization — it renders to a whole family of
+strings indexed by `Policy` (whitespace, parenthesization, …) — so both laws are
+stated against `render`, not a fixed `flatten`.
 
-These are the `mem_parse_iff` interface; any `Mixfix` grammar supplies them via a
-`toLosslessParser` adapter, and a hand-written parser can too. -/
-structure LosslessParser (α : Type u) (β : Type w) where
-  /-- The token string a result flattens to. -/
-  flatten : β → List α
+* `render_complete` (parser **soundness** = renderer **completeness**) — every parse
+  consumed a genuine rendering: the tokens a parse ate, `s.pre`, are `render e p`
+  for some policy `p`. The parser invents no structure the input didn't have, and
+  `render` reaches every string the parser accepts.
+* `parse_complete` (parser **completeness** = renderer **soundness**) — every
+  rendering parses back: for any policy `p`, `render e p` (then any `rest`) parses
+  to `e`, leaving exactly `rest`. The parser accepts every string `render` emits and
+  misses no valid input.
+
+Together they say `parse` and `render` are two views of one relation:
+`{(e, s.pre) | (e, s) ∈ parse _} = {(e, render e p) | p : Policy}`. Universe-
+polymorphic so a grammar's own parse trees (`Expr.{u}`, in `Type (u+1)`) can be
+embedded as a `Biparser.{u+1}`. -/
+structure Biparser (α : Type u) (Policy : Type v) (β : Type w) where
+  /-- Render a result to tokens under a chosen `Policy` — one of its many valid
+  concrete forms. -/
+  render : Renderer β Policy α
   /-- All parses of a prefix of the input. -/
   parse : Parser α β
-  sound : ∀ (input : List α) (x : β × RightSublist input),
-            x ∈ parse input → flatten x.1 ++ x.2.list = input
-  complete : ∀ (r : β) (input rest : List α), input = flatten r ++ rest →
-               ∃ s : RightSublist input, s.list = rest ∧ (r, s) ∈ parse input
+  /-- **Parser soundness / renderer completeness**: every parse consumed a genuine
+  rendering. If `(e, s)` is a parse of `input`, then some policy renders `e` back to
+  exactly the consumed tokens `s.pre` — so the parser invents nothing, and `render`
+  surjects onto every concrete syntax the parser accepts for `e`. -/
+  render_complete :
+    ∀ (input : List α) (e : β) (s : RightSublist input),
+      (e, s) ∈ parse input →
+      ∃ p : Policy, render e p = s.pre
+  /-- **Parser completeness / renderer soundness**: every rendering parses back. For
+  any result `e`, policy `p`, and continuation `rest`, parsing `render e p ++ rest`
+  finds `e`, leaving exactly `rest` — so the parser accepts every string `render`
+  emits and misses no valid input. -/
+  parse_complete :
+    ∀ (e : β) (p : Policy) (rest : List α),
+      ∃ s : RightSublist (render e p ++ rest),
+        s.list = rest ∧ (e, s) ∈ parse (render e p ++ rest)
 
-/-- A **truncating parser**: a (possibly lossy) parser paired with a canonical
-`render` — a pretty-printer that re-serializes a result to tokens, *inserting
-parentheses* so the output re-parses unambiguously to the same value.
+/-- **Print-then-parse recovers the value**: rendering `e` under any policy `p` and
+parsing the result back yields `e` as a *full* parse (empty leftover). The headline
+round-trip, a corollary of `parse_complete` at `rest = []`. -/
+theorem Biparser.roundTrip {α : Type u} {Policy : Type v} {β : Type w}
+    (bp : Biparser α Policy β) (e : β) (p : Policy) :
+    ∃ s : RightSublist (bp.render e p), s.list = [] ∧ (e, s) ∈ bp.parse (bp.render e p) := by
+  have heq : bp.render e p ++ [] = bp.render e p := List.append_nil _
+  exact heq ▸ bp.parse_complete e p []
 
-Unlike `LosslessParser`, the result `β` may *forget* surface detail (parentheses,
-sugar, annotations), so `render` is **not** a left inverse of `parse`: `parse`
-accepts many token strings, `render` emits one canonical string. What it
-guarantees is the **print→parse round-trip** — rendering a parse result and
-parsing it back yields that same value. (A strict `render r ++ leftover = input`
-soundness is *not* available: `( x )` and `x` both parse to the same value, but
-`render` gives only one of them.)
+/-- A **truncating biparser**: like a `Biparser`, but the result `β` is a **lossy**
+image of the surface syntax (parens dropped, annotations quotiented), so only *one*
+of the two laws survives.
 
-The round-trip is restricted to *parse results*: `β` may be richer than the
-surface (extra annotations, unrestricted identifiers), so `render` can only be a
-right inverse on the terms the parser actually produces — the hypothesis
-`(b, s) ∈ parse input` says exactly that. -/
-structure TruncatingParser (α : Type u) (β : Type w) where
-  /-- All parses of a prefix of the input. -/
+`render` still chooses a concrete surface form via a `Policy`, and `parse` recovers
+`β`. `parse_complete` (renderer soundness) holds unconditionally — every rendering
+parses back to its value, leaving exactly `rest`. But `render_complete` (parser
+soundness) is **dropped**: the parser accepts strings — e.g. redundantly
+parenthesized ones — that `render` never emits (`render` always produces the
+minimally-parenthesized canonical form), so no policy reproduces the consumed tokens
+`s.pre` in general. This is the print→parse direction only, and it is exactly what a
+`Grammar` + `ReverseInterp` supplies: `render = renderExpr ∘ lift`,
+`parse = truncate ∘ parseChars`, with the law from `truncate_lift` + the lossless
+`Biparser.parse_complete`. -/
+structure TruncatingBiparser (α : Type u) (Policy : Type v) (β : Type w) where
+  /-- Render a value to its **minimally-parenthesized** concrete form under a policy. -/
+  render : Renderer β Policy α
+  /-- All parses of a prefix of the input, each truncated to a value. -/
   parse : Parser α β
-  /-- Canonical token rendering of a result — adds parentheses so it re-parses. -/
-  render : β → List α
-  /-- Every term the parser *produces* re-parses from its own rendering: if `b`
-  is a parse of some input, then `render b` parses back to `b` (leaving any
-  appended `rest`). -/
-  complete : ∀ (input : List α) (b : β) (s : RightSublist input), (b, s) ∈ parse input →
-    ∀ (rest : List α), ∃ s' : RightSublist (render b ++ rest),
-      s'.list = rest ∧ (b, s') ∈ parse (render b ++ rest)
+  /-- **Renderer soundness**: every rendering parses back. For any value `b`, policy
+  `p`, and continuation `rest`, parsing `render b p ++ rest` finds `b`, leaving
+  exactly `rest`. (No `render_complete`: `render` reaches only the canonical form.) -/
+  parse_complete :
+    ∀ (b : β) (p : Policy) (rest : List α),
+      ∃ s : RightSublist (render b p ++ rest),
+        s.list = rest ∧ (b, s) ∈ parse (render b p ++ rest)
+
+/-- **Print-then-parse recovers the value** for a truncating biparser: rendering `b`
+and parsing back yields `b` as a full parse (empty leftover). -/
+theorem TruncatingBiparser.roundTrip {α : Type u} {Policy : Type v} {β : Type w}
+    (tp : TruncatingBiparser α Policy β) (b : β) (p : Policy) :
+    ∃ s : RightSublist (tp.render b p), s.list = [] ∧ (b, s) ∈ tp.parse (tp.render b p) := by
+  have heq : tp.render b p ++ [] = tp.render b p := List.append_nil _
+  exact heq ▸ tp.parse_complete b p []
 
 end LambdaLab.Parser
