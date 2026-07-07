@@ -71,53 +71,79 @@ def interpChain {G : Grammar} : {n : Nat} → TreeChain G n → TermChain G
   | _, .cons t ts => .cons (Interp t) (interpChain ts)
 end
 
-/-! ### `revInterp` — reconstruct a fully-parenthesized `Tree G 0` (`Term → Tree`). -/
+/-! ### `revAt` — reconstruct a **minimally-parenthesized** `Tree G ℓ` (`Term → Tree`).
+
+Build the operator node directly at the required level `ℓ` when it binds tightly enough
+(`ℓ ≤ k`); otherwise the node is too loose for the slot, so wrap it in a single `paren`
+(at level 0). Only *necessary* parentheses are emitted. Structural in the term. -/
 
 mutual
-def RevInterp {G : Grammar} : Term G → Tree G 0
-  | .var v                => .var v
-  | .op k hk hfix l r     => .op k hk hfix (Nat.zero_le k) (.paren (RevInterp l)) (.paren (RevInterp r))
+def revAt {G : Grammar} (ℓ : Nat) : Term G → Tree G ℓ
+  | .var v => .var v
+  | .op k hk hfix l r =>
+      if h : ℓ ≤ k then .op k hk hfix h (revAt (k + 1) l) (revAt k r)
+      else .paren (.op k hk hfix (Nat.zero_le k) (revAt (k + 1) l) (revAt k r))
   | .opl k hk hfix head chd chr =>
-      .opl k hk hfix (Nat.zero_le k) (.paren (RevInterp head)) (.paren (RevInterp chd)) (revChain chr)
-  | .opn k hk hfix l r    => .opn k hk hfix (Nat.zero_le k) (.paren (RevInterp l)) (.paren (RevInterp r))
-  | .pre k hk hfix e      => .pre k hk hfix (Nat.zero_le k) (.paren (RevInterp e))
-  | .post k hk hfix e     => .post k hk hfix (Nat.zero_le k) (.paren (RevInterp e))
-  | .jux hj head chd chr  =>
-      .jux hj (Nat.zero_le _) (.paren (RevInterp head)) (.paren (RevInterp chd)) (revChain chr)
-def revChain {G : Grammar} : {n : Nat} → TermChain G → TreeChain G n
-  | _, .nil       => .nil
-  | _, .cons t ts => .cons (.paren (RevInterp t)) (revChain ts)
+      if h : ℓ ≤ k then
+        .opl k hk hfix h (revAt (k + 1) head) (revAt (k + 1) chd) (revChainAt (k + 1) chr)
+      else .paren (.opl k hk hfix (Nat.zero_le k)
+        (revAt (k + 1) head) (revAt (k + 1) chd) (revChainAt (k + 1) chr))
+  | .opn k hk hfix l r =>
+      if h : ℓ ≤ k then .opn k hk hfix h (revAt (k + 1) l) (revAt (k + 1) r)
+      else .paren (.opn k hk hfix (Nat.zero_le k) (revAt (k + 1) l) (revAt (k + 1) r))
+  | .pre k hk hfix e =>
+      if h : ℓ ≤ k then .pre k hk hfix h (revAt (k + 1) e)
+      else .paren (.pre k hk hfix (Nat.zero_le k) (revAt (k + 1) e))
+  | .post k hk hfix e =>
+      if h : ℓ ≤ k then .post k hk hfix h (revAt (k + 1) e)
+      else .paren (.post k hk hfix (Nat.zero_le k) (revAt (k + 1) e))
+  | .jux hj head chd chr =>
+      if h : ℓ ≤ G.ops.length then .jux hj h
+        (revAt (G.ops.length + 1) head) (revAt (G.ops.length + 1) chd)
+        (revChainAt (G.ops.length + 1) chr)
+      else .paren (.jux hj (Nat.zero_le _)
+        (revAt (G.ops.length + 1) head) (revAt (G.ops.length + 1) chd)
+        (revChainAt (G.ops.length + 1) chr))
+def revChainAt {G : Grammar} (m : Nat) : TermChain G → TreeChain G m
+  | .nil       => .nil
+  | .cons t ts => .cons (revAt m t) (revChainAt m ts)
 end
 
-/-! ### The section law: `interp ∘ revInterp = id`. -/
+/-! ### The section law: `interp (revAt ℓ t) = t` (for any required level `ℓ`). -/
 
 mutual
-theorem interp_revInterp {G : Grammar} : (t : Term G) → Interp (RevInterp t) = t
-  | .var _              => rfl
-  | .op k hk hfix l r   => by
-      simp only [RevInterp, Interp, interp_revInterp l, interp_revInterp r]
-  | .opl k hk hfix head chd chr => by
-      simp only [RevInterp, Interp, interp_revInterp head, interp_revInterp chd, interp_revChain chr]
-  | .opn k hk hfix l r  => by
-      simp only [RevInterp, Interp, interp_revInterp l, interp_revInterp r]
-  | .pre k hk hfix e    => by simp only [RevInterp, Interp, interp_revInterp e]
-  | .post k hk hfix e   => by simp only [RevInterp, Interp, interp_revInterp e]
-  | .jux hj head chd chr => by
-      simp only [RevInterp, Interp, interp_revInterp head, interp_revInterp chd, interp_revChain chr]
-theorem interp_revChain {G : Grammar} {n : Nat} : (ts : TermChain G) →
-    interpChain (revChain (n := n) ts) = ts
-  | .nil       => rfl
-  | .cons t ts => by
-      simp only [revChain, interpChain, Interp, interp_revInterp t, interp_revChain ts]
+theorem interp_revAt {G : Grammar} : (ℓ : Nat) → (t : Term G) → Interp (revAt ℓ t) = t
+  | _, .var _              => rfl
+  | ℓ, .op k hk hfix l r   => by
+      simp only [revAt]; split <;> simp only [Interp, interp_revAt (k + 1) l, interp_revAt k r]
+  | ℓ, .opl k hk hfix head chd chr => by
+      simp only [revAt]; split <;> simp only [Interp, interp_revAt (k + 1) head,
+        interp_revAt (k + 1) chd, interp_revChainAt (k + 1) chr]
+  | ℓ, .opn k hk hfix l r  => by
+      simp only [revAt]; split <;>
+        simp only [Interp, interp_revAt (k + 1) l, interp_revAt (k + 1) r]
+  | ℓ, .pre k hk hfix e    => by
+      simp only [revAt]; split <;> simp only [Interp, interp_revAt (k + 1) e]
+  | ℓ, .post k hk hfix e   => by
+      simp only [revAt]; split <;> simp only [Interp, interp_revAt (k + 1) e]
+  | ℓ, .jux hj head chd chr => by
+      simp only [revAt]; split <;> simp only [Interp, interp_revAt (G.ops.length + 1) head,
+        interp_revAt (G.ops.length + 1) chd, interp_revChainAt (G.ops.length + 1) chr]
+theorem interp_revChainAt {G : Grammar} : (m : Nat) → (ts : TermChain G) →
+    interpChain (revChainAt m ts) = ts
+  | _, .nil       => rfl
+  | m, .cons t ts => by
+      simp only [revChainAt, interpChain, interp_revAt m t, interp_revChainAt m ts]
 end
 
 /-- The truncating mixfix biparser: parse chars into a paren-free `Term G` (parens erased),
-render a `Term` back to its canonical fully-parenthesized form. Only `parse_complete`
-holds — `render_complete` fails, since many surface strings map to one `Term`. -/
+render a `Term` back to its canonical **minimally-parenthesized** form. Only
+`parse_complete` holds — `render_complete` fails, since many surface strings map to one
+`Term`. -/
 def mixfixTrunc {G : Grammar} : TruncatingBiparser Char (Term G) :=
-  truncateLift mixfixBip Interp RevInterp (fun _ => 0) interp_revInterp
+  truncateLift mixfixBip Interp (revAt 0) (fun _ => 0) (interp_revAt 0)
 
-#eval String.ofList (mixfixTrunc.render (Interp sampleTree))     -- fully parenthesized "a + b * c"
-#eval String.ofList (mixfixTrunc.render (Interp sampleLTree))    -- fully parenthesized "a +. b +. c"
+#eval String.ofList (mixfixTrunc.render (Interp sampleTree))     -- "a + b * c" (no redundant parens)
+#eval String.ofList (mixfixTrunc.render (Interp sampleLTree))    -- "a +. b +. c"
 
 end LambdaLab.ParserExperimental1.Mixfix
