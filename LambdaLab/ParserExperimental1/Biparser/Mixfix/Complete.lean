@@ -37,17 +37,17 @@ theorem parseAt_complete {G : Grammar} :
         [((⟨c, h⟩ : {c : Char // (fun c => G.isVar c) c = true}), RightSublist.cons c rest)] else [])
     rw [dif_pos hc, List.mem_singleton]
   | p, .paren t', f, i, rest => by
-    obtain ⟨u1, hu1, hm1⟩ := lpGap.parse_complete (lpVal, ()) ((), f i)
+    obtain ⟨u1, hu1, hm1⟩ := (lpGap G).parse_complete (lpVal, ()) ((), f i)
       ((Tree.render t' f (i + 1)).1 ++
-        (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest))
+        ((gapRp G).render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest))
     obtain ⟨u2, hu2, hm2⟩ := parseAt_complete 0 t' f (i + 1)
-      (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)
-    obtain ⟨u3, hu3, hm3⟩ := gapRp.parse_complete ((), rpVal)
+      ((gapRp G).render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)
+    obtain ⟨u3, hu3, hm3⟩ := (gapRp G).parse_complete ((), rpVal)
       (f (Tree.render t' f (i + 1)).2, ()) rest
     have hexp : (Tree.render (Tree.paren t' : Tree G p) f i).1 ++ rest
-        = lpGap.render (lpVal, ()) ((), f i) ++
+        = (lpGap G).render (lpVal, ()) ((), f i) ++
           ((Tree.render t' f (i + 1)).1 ++
-            (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)) := by
+            ((gapRp G).render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)) := by
       simp only [Tree.render, List.append_assoc]
     rw [hexp]
     refine ⟨u1.trans ((u2.cast hu1.symm).trans (u3.cast hu2.symm)),
@@ -59,7 +59,7 @@ theorem parseAt_complete {G : Grammar} :
     simp only [List.mem_flatMap, List.mem_map]
     exact ⟨((lpVal, ()), u1), hm1,
            (t', u2.cast hu1.symm), mem_cast_gen (parseAt 0) hu1.symm hm2,
-           (((), rpVal), u3.cast hu2.symm), mem_cast_gen gapRp.parse hu2.symm hm3, rfl⟩
+           (((), rpVal), u3.cast hu2.symm), mem_cast_gen (gapRp G).parse hu2.symm hm3, rfl⟩
   | p, .op k hk hfix hp l r, f, i, rest => by
     obtain ⟨uL, huL, hmL⟩ := parseAt_complete (k + 1) l f i
       ((gapOpGap G k hk).render ((), opVal G k hk, ())
@@ -234,11 +234,11 @@ theorem juxtChainL_complete {G : Grammar} :
       s.list = rest ∧
         ((chainHead, chainRest), s) ∈ juxtChainL (renderJuxtChainFull chainHead chainRest f i ++ rest)
   | chainHead, .nil, f, i, rest => by
-    obtain ⟨uG, huG, hmG⟩ := spaces1.parse_complete () (f i)
+    obtain ⟨uG, huG, hmG⟩ := (sepRun G).parse_complete () (f i)
       ((Tree.render chainHead f (i + 1)).1 ++ rest)
     obtain ⟨uE, huE, hmE⟩ := parseAt_complete (G.ops.length + 1) chainHead f (i + 1) rest
     have hexp : renderJuxtChainFull chainHead .nil f i ++ rest
-        = spaces1.render () (f i) ++ ((Tree.render chainHead f (i + 1)).1 ++ rest) := by
+        = (sepRun G).render () (f i) ++ ((Tree.render chainHead f (i + 1)).1 ++ rest) := by
       simp only [renderJuxtChainFull, renderJuxtSeg, renderJuxtChain, List.append_nil,
         List.append_assoc]
     rw [hexp]
@@ -252,14 +252,14 @@ theorem juxtChainL_complete {G : Grammar} :
     exact ⟨((), uG), hmG,
            (chainHead, uE.cast huG.symm), mem_cast_gen (parseAt (G.ops.length + 1)) huG.symm hmE, rfl⟩
   | chainHead, .cons c cs, f, i, rest => by
-    obtain ⟨uG, huG, hmG⟩ := spaces1.parse_complete () (f i)
+    obtain ⟨uG, huG, hmG⟩ := (sepRun G).parse_complete () (f i)
       ((Tree.render chainHead f (i + 1)).1 ++
         (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest))
     obtain ⟨uE, huE, hmE⟩ := parseAt_complete (G.ops.length + 1) chainHead f (i + 1)
       (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest)
     obtain ⟨uC, huC, hmC⟩ := juxtChainL_complete c cs f (renderJuxtSeg chainHead f i).2 rest
     have hexp : renderJuxtChainFull chainHead (.cons c cs) f i ++ rest
-        = spaces1.render () (f i) ++
+        = (sepRun G).render () (f i) ++
           ((Tree.render chainHead f (i + 1)).1 ++
             (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest)) := by
       simp only [renderJuxtChainFull, renderJuxtSeg, renderJuxtChain, List.append_assoc]

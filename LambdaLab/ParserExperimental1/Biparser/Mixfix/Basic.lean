@@ -39,21 +39,28 @@ inductive Fixity where
   | postfix
 deriving DecidableEq
 
-/-- A generic grammar: `ops[k] = (c, fx)` is the operator character `c` at precedence
-level `k` (higher index = binds tighter) with fixity `fx`; `isVar` recognizes variable
-characters. `juxt` enables tokenless **juxtaposition** (application by adjacency) — a
-tightest-binding, left-associative operator sitting one level tighter than every `ops`
-entry (at precedence `ops.length`). Brackets `(`/`)` and the space separator are built in
-and assumed disjoint from `ops` and `isVar`. -/
+/-- A generic grammar: `ops[k] = (name, fx)` is the operator whose **multi-character
+name** is `name` (a nonempty char list, by `hopsNE`) at precedence level `k` (higher index
+= binds tighter) with fixity `fx`. `isSep` marks separator characters (a `sepWitness`
+witnesses the alphabet is nonempty); `isVar` recognizes single-character variables. `juxt`
+enables tokenless **juxtaposition** (application by adjacency) — a tightest-binding,
+left-associative operator at precedence `ops.length`. Brackets `(`/`)` are built in and
+assumed disjoint from `isSep`, `ops` names, and `isVar`. -/
 structure Grammar where
-  ops : List (Char × Fixity)
+  isSep : Char → Bool
+  sepWitness : {c : Char // isSep c = true}
+  ops : List (List Char × Fixity)
+  hopsNE : ∀ x ∈ ops, x.1 ≠ []
   isVar : Char → Bool
   juxt : Bool := false
 
-/-- The operator character at precedence `k`. -/
-def Grammar.opChar (G : Grammar) (k : Nat) (hk : k < G.ops.length) : Char := (G.ops[k]'hk).1
+/-- The operator name (char list) at precedence `k`. -/
+def Grammar.opName (G : Grammar) (k : Nat) (hk : k < G.ops.length) : List Char := (G.ops[k]'hk).1
 /-- The fixity at precedence `k`. -/
 def Grammar.opFixity (G : Grammar) (k : Nat) (hk : k < G.ops.length) : Fixity := (G.ops[k]'hk).2
+/-- Operator names are nonempty. -/
+theorem Grammar.opName_ne (G : Grammar) (k : Nat) (hk : k < G.ops.length) :
+    G.opName k hk ≠ [] := G.hopsNE _ (List.getElem_mem hk)
 
 /-! A precedence-indexed parse tree: an inhabitant of `Tree G p` is an expression whose
 top operator binds **at least as tightly as** level `p`. A `var`/`paren` is an atom
@@ -94,9 +101,15 @@ end
 
 /-! ### A sample grammar for `#eval` sanity checks. -/
 
+/-- The common lexis for the samples: space separator, lowercase-letter variables. -/
+def spaceSep : Char → Bool := fun c => c == ' '
+
 /-- `+` (0, infix), `*` (1, infix), `-` (2, prefix), `!` (3, postfix); lowercase = vars. -/
 def sample : Grammar where
-  ops := [('+', .infixr), ('*', .infixr), ('-', .prefix), ('!', .postfix)]
+  isSep := spaceSep
+  sepWitness := ⟨' ', by decide⟩
+  ops := [(['+'], .infixr), (['*'], .infixr), (['-'], .prefix), (['!'], .postfix)]
+  hopsNE := by decide
   isVar := fun c => 'a' ≤ c && c ≤ 'z'
 
 /-- `a + b * c`. -/
@@ -117,19 +130,25 @@ def sampleTree3 : Tree sample 0 :=
     (.post 3 (by decide) (by decide) (by decide) (.var 'a' (by decide)))
     (.var 'b' (by decide))
 
-/-- A left-associative grammar: `+` (prec 0, left-assoc). -/
+/-- A left-associative grammar with a **multi-character** operator name `+.` (prec 0). -/
 def sampleL : Grammar where
-  ops := [('+', .infixl)]
+  isSep := spaceSep
+  sepWitness := ⟨' ', by decide⟩
+  ops := [(['+', '.'], .infixl)]
+  hopsNE := by decide
   isVar := fun c => 'a' ≤ c && c ≤ 'z'
 
-/-- `a + b + c` = `(a + b) + c` (left-assoc): head `a`, chain `b`, `c`. -/
+/-- `a +. b +. c` = `(a +. b) +. c` (left-assoc): head `a`, chain `b`, `c`. -/
 def sampleLTree : Tree sampleL 0 :=
   .opl 0 (by decide) (by decide) (by decide)
     (.var 'a' (by decide)) (.var 'b' (by decide)) (.cons (.var 'c' (by decide)) .nil)
 
 /-- A grammar with juxtaposition: `+` (prec 0, right-assoc) and application. -/
 def sampleJ : Grammar where
-  ops := [('+', .infixr)]
+  isSep := spaceSep
+  sepWitness := ⟨' ', by decide⟩
+  ops := [(['+'], .infixr)]
+  hopsNE := by decide
   isVar := fun c => 'a' ≤ c && c ≤ 'z'
   juxt := true
 

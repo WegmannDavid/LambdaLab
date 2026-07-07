@@ -25,9 +25,9 @@ open LambdaLab.ParserExperimental1
 mutual
 def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × RightSublist input) :=
   ((varTok G).parse input).map (fun r => (Tree.var r.1.val r.1.property, r.2)) ++
-  (lpGap.parse input).flatMap (fun r1 =>
+  ((lpGap G).parse input).flatMap (fun r1 =>
     (parseAt 0 r1.2.list).flatMap (fun r2 =>
-      (gapRp.parse r2.2.list).map (fun r3 =>
+      ((gapRp G).parse r2.2.list).map (fun r3 =>
         (Tree.paren r2.1, r1.2.trans (r2.2.trans r3.2))))) ++
   (List.range G.ops.length).flatMap (fun k =>
     if hk : k < G.ops.length then
@@ -104,7 +104,7 @@ def chainL {G : Grammar} (k : Nat) (hk : k < G.ops.length) (input : List Char) :
 /-- One juxtaposition segment: a gap then an operand (no operator token). -/
 def juxtSegParse {G : Grammar} (input : List Char) :
     List (Tree G (G.ops.length + 1) × RightSublist input) :=
-  (spaces1.parse input).flatMap (fun rG =>
+  ((sepRun G).parse input).flatMap (fun rG =>
     (parseAt (G.ops.length + 1) rG.2.list).map (fun rE => (rE.1, rG.2.trans rE.2)))
   termination_by (input.length, 0)
   decreasing_by exact Prod.Lex.left _ _ rG.2.length_lt

@@ -21,9 +21,9 @@ mutual
 def Tree.render {G : Grammar} : {p : Nat} → Tree G p → (Nat → Nat) → Nat → List Char × Nat
   | _, .var c _,        _, i => ([c], i)
   | _, .paren t,        f, i =>
-      (lpGap.render (lpVal, ()) ((), f i)
+      ((lpGap G).render (lpVal, ()) ((), f i)
          ++ (Tree.render t f (i + 1)).1
-         ++ gapRp.render ((), rpVal) (f (Tree.render t f (i + 1)).2, ()),
+         ++ (gapRp G).render ((), rpVal) (f (Tree.render t f (i + 1)).2, ()),
        (Tree.render t f (i + 1)).2 + 1)
   | _, .op k hk _ _ l r,  f, i =>
       ((Tree.render l f i).1
@@ -67,7 +67,7 @@ def renderChain {G : Grammar} (k : Nat) (hk : k < G.ops.length) :
 operand level `n` so the mutual block keeps a variable index. -/
 def renderJuxtSeg {G : Grammar} {n : Nat} (c : Tree G n) (f : Nat → Nat) (i : Nat) :
     List Char × Nat :=
-  (spaces1.render () (f i) ++ (Tree.render c f (i + 1)).1, (Tree.render c f (i + 1)).2)
+  ((sepRun G).render () (f i) ++ (Tree.render c f (i + 1)).1, (Tree.render c f (i + 1)).2)
 /-- The rest of a juxtaposition chain: a fold of gap-then-operand segments. -/
 def renderJuxtChain {G : Grammar} :
     {n : Nat} → TreeChain G n → (Nat → Nat) → Nat → List Char × Nat
