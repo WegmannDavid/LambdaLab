@@ -110,6 +110,29 @@ theorem parseAt_complete {G : Grammar} :
     rw [afterPre]
     simp only [List.mem_map]
     exact ⟨(e, uE.cast huO.symm), mem_cast_gen (parseAt (k + 1)) huO.symm hmE, rfl⟩
+  | p, .post k hk hfix hp e, f, i, rest => by
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (k + 1) e f i
+      ((gapOp G k hk).render ((), opVal G k hk) (f (Tree.render e f i).2, ()) ++ rest)
+    obtain ⟨uP, huP, hmP⟩ := (gapOp G k hk).parse_complete ((), opVal G k hk)
+      (f (Tree.render e f i).2, ()) rest
+    have hexp : (Tree.render (Tree.post k hk hfix hp e) f i).1 ++ rest
+        = (Tree.render e f i).1 ++
+          ((gapOp G k hk).render ((), opVal G k hk) (f (Tree.render e f i).2, ()) ++ rest) := by
+      simp only [Tree.render, List.append_assoc]
+    rw [hexp]
+    refine ⟨uE.trans (uP.cast huE.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huP], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_right
+    simp only [List.mem_flatMap]
+    refine ⟨k, List.mem_range.mpr hk, ?_⟩
+    rw [dif_pos hk, dif_pos hp,
+      dif_neg (show ¬ G.opFixity k hk = .infixr by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .infixl by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .prefix by rw [hfix]; decide), dif_pos hfix]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(e, uE), hmE, (((), opVal G k hk), uP.cast huE.symm),
+           mem_cast_gen (gapOp G k hk).parse huE.symm hmP, rfl⟩
   | p, .opl k hk hfix hp head chainHead chainRest, f, i, rest => by
     obtain ⟨uH, huH, hmH⟩ := parseAt_complete (k + 1) head f i
       (renderChainFull k hk chainHead chainRest f (Tree.render head f i).2 ++ rest)

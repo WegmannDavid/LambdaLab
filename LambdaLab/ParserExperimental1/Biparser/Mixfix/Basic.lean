@@ -29,11 +29,14 @@ open LambdaLab.ParserExperimental1
 
 /-- The fixity of an operator. `infixr` is a right-associative binary infix `a ⊙ b`;
 `infixl` is left-associative `a ⊙ b ⊙ c = (a ⊙ b) ⊙ c`; `prefix` is a unary leading
-operator `⊙ a`. (More fixities — postfix, non-assoc, juxt — are added in later stages.) -/
+operator `⊙ a`; `postfix` is a unary trailing operator `a ⊙` (non-chaining — the operand
+is strictly tighter, matching `Parser/Mixfix`). (Juxtaposition is added separately, being
+tokenless.) -/
 inductive Fixity where
   | infixr
   | infixl
   | prefix
+  | postfix
 deriving DecidableEq
 
 /-- A generic grammar: `ops[k] = (c, fx)` is the operator character `c` at precedence
@@ -73,6 +76,8 @@ inductive Tree (G : Grammar) : Nat → Type where
             (hp : p ≤ k) : Tree G (k + 1) → Tree G (k + 1) → TreeChain G (k + 1) → Tree G p
   | pre   {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .prefix)
             (hp : p ≤ k) : Tree G (k + 1) → Tree G p
+  | post  {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .postfix)
+            (hp : p ≤ k) : Tree G (k + 1) → Tree G p
 inductive TreeChain (G : Grammar) : Nat → Type where
   | nil  {n : Nat} : TreeChain G n
   | cons {n : Nat} : Tree G n → TreeChain G n → TreeChain G n
@@ -80,9 +85,9 @@ end
 
 /-! ### A sample grammar for `#eval` sanity checks. -/
 
-/-- `+` (prec 0, infix), `*` (prec 1, infix), `-` (prec 2, prefix); lowercase = variables. -/
+/-- `+` (0, infix), `*` (1, infix), `-` (2, prefix), `!` (3, postfix); lowercase = vars. -/
 def sample : Grammar where
-  ops := [('+', .infixr), ('*', .infixr), ('-', .prefix)]
+  ops := [('+', .infixr), ('*', .infixr), ('-', .prefix), ('!', .postfix)]
   isVar := fun c => 'a' ≤ c && c ≤ 'z'
 
 /-- `a + b * c`. -/
@@ -95,6 +100,12 @@ def sampleTree : Tree sample 0 :=
 def sampleTree2 : Tree sample 0 :=
   .op 0 (by decide) (by decide) (by decide)
     (.pre 2 (by decide) (by decide) (by decide) (.var 'a' (by decide)))
+    (.var 'b' (by decide))
+
+/-- `a ! + b` (postfix `!` binds tighter than `+`): `(a !) + b`. -/
+def sampleTree3 : Tree sample 0 :=
+  .op 0 (by decide) (by decide) (by decide)
+    (.post 3 (by decide) (by decide) (by decide) (.var 'a' (by decide)))
     (.var 'b' (by decide))
 
 /-- A left-associative grammar: `+` (prec 0, left-assoc). -/

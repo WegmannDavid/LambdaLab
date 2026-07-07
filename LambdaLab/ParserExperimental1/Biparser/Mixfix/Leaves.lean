@@ -32,6 +32,9 @@ def gapOpGap (G : Grammar) (k : Nat) (hk : k < G.ops.length) :=
 /-- `opₖ ++ gap` (a prefix operator with its trailing gap). -/
 def opGap (G : Grammar) (k : Nat) (hk : k < G.ops.length) :=
   seq (opTok G k hk) spaces1
+/-- `gap ++ opₖ` (a postfix operator with its leading gap). -/
+def gapOp (G : Grammar) (k : Nat) (hk : k < G.ops.length) :=
+  seq spaces1 (opTok G k hk)
 
 /-- The bracket / operator token values used by `render`. -/
 def lpVal : {c : Char // (c == '(') = true} := ⟨'(', by decide⟩

@@ -40,6 +40,10 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
               (Tree.opl k hk hl hp rH.1 rC.1.1 rC.1.2, rH.2.trans rC.2)))
         else if hr : G.opFixity k hk = .prefix then
           ((opGap G k hk).parse input).flatMap (fun rO => afterPre p k hk hr hp rO.2)
+        else if hpo : G.opFixity k hk = .postfix then
+          (parseAt (k + 1) input).flatMap (fun rO =>
+            ((gapOp G k hk).parse rO.2.list).map (fun rP =>
+              (Tree.post k hk hpo hp rO.1, rO.2.trans rP.2)))
         else []
       else []
     else [])

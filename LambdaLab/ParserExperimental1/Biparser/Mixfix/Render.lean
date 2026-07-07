@@ -39,6 +39,10 @@ def Tree.render {G : Grammar} : {p : Nat} → Tree G p → (Nat → Nat) → Nat
   | _, .pre k hk _ _ e,   f, i =>
       ((opGap G k hk).render (opVal G k hk, ()) ((), f i) ++ (Tree.render e f (i + 1)).1,
        (Tree.render e f (i + 1)).2)
+  | _, .post k hk _ _ e,  f, i =>
+      ((Tree.render e f i).1
+         ++ (gapOp G k hk).render ((), opVal G k hk) (f (Tree.render e f i).2, ()),
+       (Tree.render e f i).2 + 1)
 /-- One `⊙ operand` segment of a left-assoc chain: the infix operator with its gaps,
 then the operand. -/
 def renderSeg {G : Grammar} (k : Nat) (hk : k < G.ops.length)
