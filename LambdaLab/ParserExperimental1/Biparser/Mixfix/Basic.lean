@@ -42,7 +42,7 @@ deriving DecidableEq
 /-- A generic grammar: `ops[k] = (name, fx)` is the operator whose **multi-character
 name** is `name` (a nonempty char list, by `hopsNE`) at precedence level `k` (higher index
 = binds tighter) with fixity `fx`. `isSep` marks separator characters (a `sepWitness`
-witnesses the alphabet is nonempty); `isVar` recognizes single-character variables. `juxt`
+witnesses the alphabet is nonempty); `isVar` recognizes variable words (char lists). `juxt`
 enables tokenless **juxtaposition** (application by adjacency) — a tightest-binding,
 left-associative operator at precedence `ops.length`. Brackets `(`/`)` are built in and
 assumed disjoint from `isSep`, `ops` names, and `isVar`. -/
