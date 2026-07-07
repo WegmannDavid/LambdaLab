@@ -88,6 +88,41 @@ theorem parseAt_complete {G : Grammar} :
     exact ⟨(((), opVal G k hk, ()), uM.cast huL.symm),
              mem_cast_gen (gapOpGap G k hk).parse huL.symm hmM,
            (r, uR.cast huM.symm), mem_cast_gen (parseAt k) huM.symm hmR, rfl⟩
+  | p, .opn k hk hfix hp l r, f, i, rest => by
+    obtain ⟨uL, huL, hmL⟩ := parseAt_complete (k + 1) l f i
+      ((gapOpGap G k hk).render ((), opVal G k hk, ())
+          (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
+        ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest))
+    obtain ⟨uM, huM, hmM⟩ := (gapOpGap G k hk).parse_complete ((), opVal G k hk, ())
+      (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1))
+      ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest)
+    obtain ⟨uR, huR, hmR⟩ := parseAt_complete (k + 1) r f ((Tree.render l f i).2 + 2) rest
+    have hexp : (Tree.render (Tree.opn k hk hfix hp l r) f i).1 ++ rest
+        = (Tree.render l f i).1 ++
+          ((gapOpGap G k hk).render ((), opVal G k hk, ())
+              (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
+            ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest)) := by
+      simp only [Tree.render, List.append_assoc]
+    rw [hexp]
+    refine ⟨uL.trans ((uM.cast huL.symm).trans (uR.cast huM.symm)),
+            by simp [RightSublist.trans, RightSublist.cast_list, huR], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_left
+    apply List.mem_append_right
+    simp only [List.mem_flatMap]
+    refine ⟨k, List.mem_range.mpr hk, ?_⟩
+    rw [dif_pos hk, dif_pos hp,
+      dif_neg (show ¬ G.opFixity k hk = .infixr by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .infixl by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .prefix by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .postfix by rw [hfix]; decide), dif_pos hfix]
+    simp only [List.mem_flatMap]
+    refine ⟨(l, uL), hmL, ?_⟩
+    rw [afterInfixNon]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(((), opVal G k hk, ()), uM.cast huL.symm),
+             mem_cast_gen (gapOpGap G k hk).parse huL.symm hmM,
+           (r, uR.cast huM.symm), mem_cast_gen (parseAt (k + 1)) huM.symm hmR, rfl⟩
   | p, .pre k hk hfix hp e, f, i, rest => by
     obtain ⟨uO, huO, hmO⟩ := (opGap G k hk).parse_complete (opVal G k hk, ()) ((), f i)
       ((Tree.render e f (i + 1)).1 ++ rest)

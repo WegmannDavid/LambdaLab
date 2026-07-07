@@ -35,6 +35,7 @@ tokenless.) -/
 inductive Fixity where
   | infixr
   | infixl
+  | infixNon
   | prefix
   | postfix
 deriving DecidableEq
@@ -96,6 +97,8 @@ inductive Tree (G : Grammar) : Nat → Type where
             (hp : p ≤ k) : Tree G (k + 1) → Tree G k → Tree G p
   | opl   {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .infixl)
             (hp : p ≤ k) : Tree G (k + 1) → Tree G (k + 1) → TreeChain G (k + 1) → Tree G p
+  | opn   {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .infixNon)
+            (hp : p ≤ k) : Tree G (k + 1) → Tree G (k + 1) → Tree G p
   | pre   {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .prefix)
             (hp : p ≤ k) : Tree G (k + 1) → Tree G p
   | post  {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .postfix)
@@ -120,7 +123,8 @@ def spaceSep : Char → Bool := fun c => c == ' '
 def sample : Grammar where
   isSep := spaceSep
   sepWitness := ⟨' ', by decide⟩
-  ops := [(['+'], .infixr), (['*'], .infixr), (['-'], .prefix), (['!'], .postfix)]
+  ops := [(['+'], .infixr), (['*'], .infixr), (['-'], .prefix), (['!'], .postfix),
+          (['='], .infixNon)]
   hopsNE := by decide
   isVar := fun s => !s.isEmpty && s.all (fun c => 'a' ≤ c && c ≤ 'z')
 
@@ -141,6 +145,10 @@ def sampleTree3 : Tree sample 0 :=
   .op 0 (by decide) (by decide) (by decide)
     (.post 3 (by decide) (by decide) (by decide) (.var (vtok ['a'])))
     (.var (vtok ['b']))
+
+/-- `a = b` (non-associative `=` at prec 4, both operands strictly tighter). -/
+def sampleTree4 : Tree sample 0 :=
+  .opn 4 (by decide) (by decide) (by decide) (.var (vtok ['a'])) (.var (vtok ['b']))
 
 /-- A left-associative grammar with a **multi-character** operator name `+.` (prec 0). -/
 def sampleL : Grammar where

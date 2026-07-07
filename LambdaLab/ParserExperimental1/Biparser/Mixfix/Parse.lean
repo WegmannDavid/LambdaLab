@@ -44,6 +44,8 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
           (parseAt (k + 1) input).flatMap (fun rO =>
             ((gapOp G k hk).parse rO.2.list).map (fun rP =>
               (Tree.post k hk hpo hp rO.1, rO.2.trans rP.2)))
+        else if hn : G.opFixity k hk = .infixNon then
+          (parseAt (k + 1) input).flatMap (fun rL => afterInfixNon p k hk hn hp rL.1 rL.2)
         else []
       else []
     else []) ++
@@ -69,6 +71,15 @@ def afterInfixr {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
   ((gapOpGap G k hk).parse s.list).flatMap (fun rM =>
     (parseAt k rM.2.list).map (fun rR =>
       (Tree.op k hk hfix hp left rR.1, s.trans (rM.2.trans rR.2))))
+  termination_by (s.list.length, 0)
+  decreasing_by exact Prod.Lex.left _ _ rM.2.length_lt
+def afterInfixNon {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
+    (hfix : G.opFixity k hk = .infixNon) (hp : p ≤ k)
+    (left : Tree G (k + 1)) {input : List Char} (s : RightSublist input) :
+    List (Tree G p × RightSublist input) :=
+  ((gapOpGap G k hk).parse s.list).flatMap (fun rM =>
+    (parseAt (k + 1) rM.2.list).map (fun rR =>
+      (Tree.opn k hk hfix hp left rR.1, s.trans (rM.2.trans rR.2))))
   termination_by (s.list.length, 0)
   decreasing_by exact Prod.Lex.left _ _ rM.2.length_lt
 def afterPre {G : Grammar} (p k : Nat) (hk : k < G.ops.length)

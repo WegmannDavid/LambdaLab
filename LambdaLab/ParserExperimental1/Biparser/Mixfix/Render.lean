@@ -31,6 +31,12 @@ def Tree.render {G : Grammar} : {p : Nat} → Tree G p → (Nat → Nat) → Nat
               (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1))
          ++ (Tree.render r f ((Tree.render l f i).2 + 2)).1,
        (Tree.render r f ((Tree.render l f i).2 + 2)).2)
+  | _, .opn k hk _ _ l r,  f, i =>
+      ((Tree.render l f i).1
+         ++ (gapOpGap G k hk).render ((), opVal G k hk, ())
+              (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1))
+         ++ (Tree.render r f ((Tree.render l f i).2 + 2)).1,
+       (Tree.render r f ((Tree.render l f i).2 + 2)).2)
   | _, .opl k hk _ _ head chainHead chainRest, f, i =>
       let rH := Tree.render head f i
       let rS := renderSeg k hk chainHead f rH.2
