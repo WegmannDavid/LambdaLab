@@ -6,7 +6,7 @@ import LambdaLab.ParserExperimental1.Biparser.Example
 
 Every token/gap the grammar uses is a leaf biparser, so its round-trip is discharged by
 its own `parse_complete` (composed by `seq`). Operator **names are multi-character
-literals** (`litBip`), variables are single characters (`tok`), and every gap is a
+literals** (`litBip`), variables are multi-character words (`varWord`), and every gap is a
 **configurable separator run** `sepRun` (≥1 chars of `G.isSep`, the analogue of the
 hard-coded `spaces1`). Each token is pre-composed with its adjacent gap via `seq`
 (`lpGap = seq lparen (sepRun G)`, …) so that in the parser each recursive call sits one
@@ -71,8 +71,76 @@ def sepRun (G : Grammar) : Biparser Char Nat Unit where
 
 /-! ### The grammar's tokens. -/
 
-def varTok (G : Grammar) : Biparser Char Unit {c : Char // G.isVar c = true} :=
-  tok (fun c => G.isVar c)
+/-- One non-separator character. -/
+def nonSepTok (G : Grammar) : Biparser Char Unit {c : Char // (!G.isSep c) = true} :=
+  tok (fun c => !G.isSep c)
+
+/-- Package a provably-separator-free char list as a list of non-separator tokens. -/
+def toNonSep (G : Grammar) : (l : List Char) → (∀ c ∈ l, G.isSep c = false) →
+    List {c : Char // (!G.isSep c) = true}
+  | [],      _ => []
+  | c :: cs, h => ⟨c, by simp [h c List.mem_cons_self]⟩ ::
+      toNonSep G cs (fun x hx => h x (List.mem_cons_of_mem _ hx))
+
+theorem toNonSep_map (G : Grammar) (l : List Char) (h : ∀ c ∈ l, G.isSep c = false) :
+    (toNonSep G l h).map (·.val) = l := by
+  induction l with
+  | nil => rfl
+  | cons c cs ih => simp [toNonSep, ih]
+
+/-- The chars of a non-separator run are all non-separators. -/
+theorem run_sepFree (G : Grammar) (b : {c : Char // (!G.isSep c) = true})
+    (bs : List {c : Char // (!G.isSep c) = true}) :
+    ∀ c ∈ (b.val :: bs.map (·.val)), G.isSep c = false := by
+  intro c hc
+  simp only [List.mem_cons, List.mem_map] at hc
+  rcases hc with rfl | ⟨x, _, rfl⟩
+  · simpa using b.property
+  · simpa using x.property
+
+/-- The `filterMap` step turning a non-separator run into a variable token when `isVar`
+accepts its chars. -/
+def varMk (G : Grammar) {input : List Char}
+    (r : ({c : Char // (!G.isSep c) = true} × List {c : Char // (!G.isSep c) = true}) ×
+      RightSublist input) : Option (VarTok G × RightSublist input) :=
+  if h : G.isVar (r.1.1.val :: r.1.2.map (·.val)) = true then
+    Option.some ((⟨r.1.1.val :: r.1.2.map (·.val), List.cons_ne_nil _ _, run_sepFree G r.1.1 r.1.2, h⟩ : VarTok G), r.2)
+  else Option.none
+
+/-- A **variable word**: a nonempty separator-free run that `isVar` accepts. Renders its
+chars; parses **every** nonempty separator-free `isVar` prefix (the all-parses model — the
+intended variable is always among them, which is all `parse_complete` needs). -/
+def varWord (G : Grammar) : Biparser Char Unit (VarTok G) where
+  render v _ := v.chars
+  parse input := (someParse (nonSepTok G) input).filterMap (varMk G)
+  parse_complete := by
+    intro v _ rest
+    obtain ⟨c0, cs', hcons⟩ := List.exists_cons_of_ne_nil v.hne
+    have hc0 : (!G.isSep c0) = true := by
+      have := v.hsf c0 (by rw [hcons]; exact List.mem_cons_self); simp [this]
+    have hcs' : ∀ c ∈ cs', G.isSep c = false := fun c hc =>
+      v.hsf c (by rw [hcons]; exact List.mem_cons_of_mem _ hc)
+    obtain ⟨s0, hs0, hmem0⟩ := («some» (nonSepTok G)).parse_complete
+      (⟨c0, hc0⟩, toNonSep G cs' hcs') () rest
+    have hch : (⟨c0, hc0⟩ : {c : Char // (!G.isSep c) = true}).val ::
+        (toNonSep G cs' hcs').map (·.val) = v.chars := by
+      show c0 :: (toNonSep G cs' hcs').map (·.val) = v.chars
+      rw [toNonSep_map, hcons]
+    have hren : («some» (nonSepTok G)).render (⟨c0, hc0⟩, toNonSep G cs' hcs') () = v.chars := by
+      show ((⟨c0, hc0⟩ : {c : Char // (!G.isSep c) = true}) :: toNonSep G cs' hcs').flatMap
+          (fun x => [x.val]) = v.chars
+      rw [sep_fm_val]; exact hch
+    have hin : («some» (nonSepTok G)).render (⟨c0, hc0⟩, toNonSep G cs' hcs') () ++ rest
+        = v.chars ++ rest := by rw [hren]
+    refine ⟨s0.cast hin, by simp [hs0], ?_⟩
+    show (v, s0.cast hin) ∈ (someParse (nonSepTok G) (v.chars ++ rest)).filterMap (varMk G)
+    rw [List.mem_filterMap]
+    refine ⟨((⟨c0, hc0⟩, toNonSep G cs' hcs'), s0.cast hin), ?_, ?_⟩
+    · exact mem_cast_gen (someParse (nonSepTok G)) hin hmem0
+    · show varMk G ((⟨c0, hc0⟩, toNonSep G cs' hcs'), s0.cast hin) = Option.some (v, s0.cast hin)
+      unfold varMk
+      simp only [hch, dif_pos v.hv]
+
 def lparen : Biparser Char Unit {c : Char // (c == '(') = true} := tok (· == '(')
 def rparen : Biparser Char Unit {c : Char // (c == ')') = true} := tok (· == ')')
 /-- The operator at precedence `k` as a multi-character literal. -/

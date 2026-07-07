@@ -22,20 +22,17 @@ theorem parseAt_complete {G : Grammar} :
     (p : Nat) → (t : Tree G p) → (f : Nat → Nat) → (i : Nat) → (rest : List Char) →
     ∃ s : RightSublist ((Tree.render t f i).1 ++ rest),
       s.list = rest ∧ (t, s) ∈ parseAt p ((Tree.render t f i).1 ++ rest)
-  | p, .var c hc, f, i, rest => by
-    have hv : (Tree.render (Tree.var c hc : Tree G p) f i).1 = [c] := by simp [Tree.render]
-    rw [hv]
-    refine ⟨RightSublist.cons c rest, rfl, ?_⟩
-    show (Tree.var c hc, RightSublist.cons c rest) ∈ parseAt p ([c] ++ rest)
+  | p, .var v, f, i, rest => by
+    obtain ⟨s, hs, hmem⟩ := (varWord G).parse_complete v () rest
+    have hvr : (Tree.render (Tree.var v : Tree G p) f i).1 = v.chars := by simp [Tree.render]
+    rw [hvr]
+    refine ⟨s, hs, ?_⟩
+    show (Tree.var v, s) ∈ parseAt p (v.chars ++ rest)
     rw [parseAt]
     apply List.mem_append_left
     apply List.mem_append_left
     apply List.mem_append_left
-    refine List.mem_map.mpr ⟨(⟨c, hc⟩, RightSublist.cons c rest), ?_, rfl⟩
-    show (⟨c, hc⟩, RightSublist.cons c rest) ∈
-      (if h : (fun c => G.isVar c) c = true then
-        [((⟨c, h⟩ : {c : Char // (fun c => G.isVar c) c = true}), RightSublist.cons c rest)] else [])
-    rw [dif_pos hc, List.mem_singleton]
+    exact List.mem_map.mpr ⟨(v, s), hmem, rfl⟩
   | p, .paren t', f, i, rest => by
     obtain ⟨u1, hu1, hm1⟩ := (lpGap G).parse_complete (lpVal, ()) ((), f i)
       ((Tree.render t' f (i + 1)).1 ++

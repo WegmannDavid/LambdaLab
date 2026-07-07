@@ -24,7 +24,7 @@ open LambdaLab.ParserExperimental1
 
 mutual
 def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × RightSublist input) :=
-  ((varTok G).parse input).map (fun r => (Tree.var r.1.val r.1.property, r.2)) ++
+  ((varWord G).parse input).map (fun r => (Tree.var r.1, r.2)) ++
   ((lpGap G).parse input).flatMap (fun r1 =>
     (parseAt 0 r1.2.list).flatMap (fun r2 =>
       ((gapRp G).parse r2.2.list).map (fun r3 =>

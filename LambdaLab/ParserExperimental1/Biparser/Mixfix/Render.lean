@@ -19,7 +19,7 @@ open LambdaLab.ParserExperimental1
 mutual
 /-- Telescope render: returns the chars and the next gap counter. -/
 def Tree.render {G : Grammar} : {p : Nat} → Tree G p → (Nat → Nat) → Nat → List Char × Nat
-  | _, .var c _,        _, i => ([c], i)
+  | _, .var v,          _, i => (v.chars, i)
   | _, .paren t,        f, i =>
       ((lpGap G).render (lpVal, ()) ((), f i)
          ++ (Tree.render t f (i + 1)).1

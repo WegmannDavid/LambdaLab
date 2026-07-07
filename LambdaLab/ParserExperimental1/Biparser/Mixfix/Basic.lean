@@ -51,7 +51,7 @@ structure Grammar where
   sepWitness : {c : Char // isSep c = true}
   ops : List (List Char × Fixity)
   hopsNE : ∀ x ∈ ops, x.1 ≠ []
-  isVar : Char → Bool
+  isVar : List Char → Bool
   juxt : Bool := false
 
 /-- The operator name (char list) at precedence `k`. -/
@@ -61,6 +61,18 @@ def Grammar.opFixity (G : Grammar) (k : Nat) (hk : k < G.ops.length) : Fixity :=
 /-- Operator names are nonempty. -/
 theorem Grammar.opName_ne (G : Grammar) (k : Nat) (hk : k < G.ops.length) :
     G.opName k hk ≠ [] := G.hopsNE _ (List.getElem_mem hk)
+
+/-- A **variable token**: a nonempty, separator-free char run that `isVar` accepts. -/
+structure VarTok (G : Grammar) where
+  chars : List Char
+  hne : chars ≠ []
+  hsf : ∀ c ∈ chars, G.isSep c = false
+  hv : G.isVar chars = true
+
+/-- Build a `VarTok` with the three well-formedness conditions discharged by `decide`. -/
+def vtok {G : Grammar} (chars : List Char) (hne : chars ≠ [] := by decide)
+    (hsf : ∀ c ∈ chars, G.isSep c = false := by decide) (hv : G.isVar chars = true := by decide) :
+    VarTok G := ⟨chars, hne, hsf, hv⟩
 
 /-! A precedence-indexed parse tree: an inhabitant of `Tree G p` is an expression whose
 top operator binds **at least as tightly as** level `p`. A `var`/`paren` is an atom
@@ -78,7 +90,7 @@ valid at levels `p ≤ k` and carries a proof pinning it to its declared fixity.
 (Tree G (k+1))` can't appear in `Tree` since its parameter mentions the local `k`). -/
 mutual
 inductive Tree (G : Grammar) : Nat → Type where
-  | var   {p : Nat} (c : Char) : G.isVar c = true → Tree G p
+  | var   {p : Nat} : VarTok G → Tree G p
   | paren {p : Nat} : Tree G 0 → Tree G p
   | op    {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .infixr)
             (hp : p ≤ k) : Tree G (k + 1) → Tree G k → Tree G p
@@ -110,25 +122,25 @@ def sample : Grammar where
   sepWitness := ⟨' ', by decide⟩
   ops := [(['+'], .infixr), (['*'], .infixr), (['-'], .prefix), (['!'], .postfix)]
   hopsNE := by decide
-  isVar := fun c => 'a' ≤ c && c ≤ 'z'
+  isVar := fun s => !s.isEmpty && s.all (fun c => 'a' ≤ c && c ≤ 'z')
 
 /-- `a + b * c`. -/
 def sampleTree : Tree sample 0 :=
   .op 0 (by decide) (by decide) (by decide)
-    (.var 'a' (by decide))
-    (.op 1 (by decide) (by decide) (by decide) (.var 'b' (by decide)) (.var 'c' (by decide)))
+    (.var (vtok ['a']))
+    (.op 1 (by decide) (by decide) (by decide) (.var (vtok ['b'])) (.var (vtok ['c'])))
 
 /-- `- a + b` (prefix `-` binds tighter than `+`): `(- a) + b`. -/
 def sampleTree2 : Tree sample 0 :=
   .op 0 (by decide) (by decide) (by decide)
-    (.pre 2 (by decide) (by decide) (by decide) (.var 'a' (by decide)))
-    (.var 'b' (by decide))
+    (.pre 2 (by decide) (by decide) (by decide) (.var (vtok ['a'])))
+    (.var (vtok ['b']))
 
 /-- `a ! + b` (postfix `!` binds tighter than `+`): `(a !) + b`. -/
 def sampleTree3 : Tree sample 0 :=
   .op 0 (by decide) (by decide) (by decide)
-    (.post 3 (by decide) (by decide) (by decide) (.var 'a' (by decide)))
-    (.var 'b' (by decide))
+    (.post 3 (by decide) (by decide) (by decide) (.var (vtok ['a'])))
+    (.var (vtok ['b']))
 
 /-- A left-associative grammar with a **multi-character** operator name `+.` (prec 0). -/
 def sampleL : Grammar where
@@ -136,12 +148,12 @@ def sampleL : Grammar where
   sepWitness := ⟨' ', by decide⟩
   ops := [(['+', '.'], .infixl)]
   hopsNE := by decide
-  isVar := fun c => 'a' ≤ c && c ≤ 'z'
+  isVar := fun s => !s.isEmpty && s.all (fun c => 'a' ≤ c && c ≤ 'z')
 
 /-- `a +. b +. c` = `(a +. b) +. c` (left-assoc): head `a`, chain `b`, `c`. -/
 def sampleLTree : Tree sampleL 0 :=
   .opl 0 (by decide) (by decide) (by decide)
-    (.var 'a' (by decide)) (.var 'b' (by decide)) (.cons (.var 'c' (by decide)) .nil)
+    (.var (vtok ['a'])) (.var (vtok ['b'])) (.cons (.var (vtok ['c'])) .nil)
 
 /-- A grammar with juxtaposition: `+` (prec 0, right-assoc) and application. -/
 def sampleJ : Grammar where
@@ -149,12 +161,12 @@ def sampleJ : Grammar where
   sepWitness := ⟨' ', by decide⟩
   ops := [(['+'], .infixr)]
   hopsNE := by decide
-  isVar := fun c => 'a' ≤ c && c ≤ 'z'
+  isVar := fun s => !s.isEmpty && s.all (fun c => 'a' ≤ c && c ≤ 'z')
   juxt := true
 
 /-- `f x y` = `(f x) y` (application, left-assoc): head `f`, chain `x`, `y`. -/
 def sampleJTree : Tree sampleJ 0 :=
   .jux (by decide) (by decide)
-    (.var 'f' (by decide)) (.var 'x' (by decide)) (.cons (.var 'y' (by decide)) .nil)
+    (.var (vtok ['f'])) (.var (vtok ['x'])) (.cons (.var (vtok ['y'])) .nil)
 
 end LambdaLab.ParserExperimental1.Mixfix
