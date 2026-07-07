@@ -1,0 +1,97 @@
+import LambdaLab.ParserExperimental1.Biparser.Mixfix.Render
+import LambdaLab.ParserExperimental1.Biparser.Mixfix.Parse
+
+/-!
+# `parse_complete` and the assembled biparser
+
+Every rendering round-trips: for any tree `t`, gap counter `f`, start counter `i` and
+continuation `rest`, parsing `(Tree.render t f i).1 ++ rest` finds `t`, leaving exactly
+`rest`. Proved by structural induction on `Tree`, generalized over the level `p` and the
+counter `i`; the `var`/`paren`/`op` cases mirror `Telescope.lean`, with the `op` case
+navigating the parser's `range`+`dite`+`afterLeft` structure. Each gap/token joint is
+discharged by the corresponding combinator leaf's own `parse_complete` (`lpGap`, `gapRp`,
+`gapOpGap`), composed with the `RightSublist.cast` plumbing.
+-/
+
+namespace LambdaLab.ParserExperimental1.Mixfix
+
+open LambdaLab.ParserExperimental1
+
+theorem parseAt_complete {G : Grammar} :
+    (p : Nat) → (t : Tree G p) → (f : Nat → Nat) → (i : Nat) → (rest : List Char) →
+    ∃ s : RightSublist ((Tree.render t f i).1 ++ rest),
+      s.list = rest ∧ (t, s) ∈ parseAt p ((Tree.render t f i).1 ++ rest)
+  | p, .var c hc, f, i, rest => by
+    refine ⟨RightSublist.cons c rest, rfl, ?_⟩
+    show (Tree.var c hc, RightSublist.cons c rest) ∈ parseAt p ([c] ++ rest)
+    rw [parseAt]
+    apply List.mem_append_left
+    apply List.mem_append_left
+    refine List.mem_map.mpr ⟨(⟨c, hc⟩, RightSublist.cons c rest), ?_, rfl⟩
+    show (⟨c, hc⟩, RightSublist.cons c rest) ∈
+      (if h : (fun c => G.isVar c) c = true then
+        [((⟨c, h⟩ : {c : Char // (fun c => G.isVar c) c = true}), RightSublist.cons c rest)] else [])
+    rw [dif_pos hc, List.mem_singleton]
+  | p, .paren t', f, i, rest => by
+    obtain ⟨u1, hu1, hm1⟩ := lpGap.parse_complete (lpVal, ()) ((), f i)
+      ((Tree.render t' f (i + 1)).1 ++
+        (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest))
+    obtain ⟨u2, hu2, hm2⟩ := parseAt_complete 0 t' f (i + 1)
+      (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)
+    obtain ⟨u3, hu3, hm3⟩ := gapRp.parse_complete ((), rpVal)
+      (f (Tree.render t' f (i + 1)).2, ()) rest
+    have hexp : (Tree.render (Tree.paren t' : Tree G p) f i).1 ++ rest
+        = lpGap.render (lpVal, ()) ((), f i) ++
+          ((Tree.render t' f (i + 1)).1 ++
+            (gapRp.render ((), rpVal) (f (Tree.render t' f (i + 1)).2, ()) ++ rest)) := by
+      simp only [Tree.render, List.append_assoc]
+    rw [hexp]
+    refine ⟨u1.trans ((u2.cast hu1.symm).trans (u3.cast hu2.symm)),
+            by simp [RightSublist.trans, RightSublist.cast_list, hu3], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_left
+    apply List.mem_append_right
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨((lpVal, ()), u1), hm1,
+           (t', u2.cast hu1.symm), mem_cast_gen (parseAt 0) hu1.symm hm2,
+           (((), rpVal), u3.cast hu2.symm), mem_cast_gen gapRp.parse hu2.symm hm3, rfl⟩
+  | p, .op k hk hp l r, f, i, rest => by
+    obtain ⟨uL, huL, hmL⟩ := parseAt_complete (k + 1) l f i
+      ((gapOpGap G k hk).render ((), opVal G k hk, ())
+          (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
+        ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest))
+    obtain ⟨uM, huM, hmM⟩ := (gapOpGap G k hk).parse_complete ((), opVal G k hk, ())
+      (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1))
+      ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest)
+    obtain ⟨uR, huR, hmR⟩ := parseAt_complete k r f ((Tree.render l f i).2 + 2) rest
+    have hexp : (Tree.render (Tree.op k hk hp l r) f i).1 ++ rest
+        = (Tree.render l f i).1 ++
+          ((gapOpGap G k hk).render ((), opVal G k hk, ())
+              (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
+            ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest)) := by
+      simp only [Tree.render, List.append_assoc]
+    rw [hexp]
+    refine ⟨uL.trans ((uM.cast huL.symm).trans (uR.cast huM.symm)),
+            by simp [RightSublist.trans, RightSublist.cast_list, huR], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_right
+    simp only [List.mem_flatMap]
+    refine ⟨k, List.mem_range.mpr hk, ?_⟩
+    rw [dif_pos hk, dif_pos hp]
+    simp only [List.mem_flatMap]
+    refine ⟨(l, uL), hmL, ?_⟩
+    rw [afterLeft]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(((), opVal G k hk, ()), uM.cast huL.symm),
+             mem_cast_gen (gapOpGap G k hk).parse huL.symm hmM,
+           (r, uR.cast huM.symm), mem_cast_gen (parseAt k) huM.symm hmR, rfl⟩
+
+/-- The generic mixfix biparser at the loosest level: parse chars into a `Tree G 0`,
+render a tree back under a telescope policy `f : Nat → Nat`. Weak target
+(`parse_complete` only). -/
+def mixfixBip {G : Grammar} : Biparser Char (Nat → Nat) (Tree G 0) where
+  render t f := (Tree.render t f 0).1
+  parse := parseAt 0
+  parse_complete := fun t f rest => parseAt_complete 0 t f 0 rest
+
+end LambdaLab.ParserExperimental1.Mixfix
