@@ -17,11 +17,14 @@ namespace LambdaLab.ParserExperimental1.Mixfix
 
 open LambdaLab.ParserExperimental1
 
+mutual
 theorem parseAt_complete {G : Grammar} :
     (p : Nat) → (t : Tree G p) → (f : Nat → Nat) → (i : Nat) → (rest : List Char) →
     ∃ s : RightSublist ((Tree.render t f i).1 ++ rest),
       s.list = rest ∧ (t, s) ∈ parseAt p ((Tree.render t f i).1 ++ rest)
   | p, .var c hc, f, i, rest => by
+    have hv : (Tree.render (Tree.var c hc : Tree G p) f i).1 = [c] := by simp [Tree.render]
+    rw [hv]
     refine ⟨RightSublist.cons c rest, rfl, ?_⟩
     show (Tree.var c hc, RightSublist.cons c rest) ∈ parseAt p ([c] ++ rest)
     rw [parseAt]
@@ -100,12 +103,85 @@ theorem parseAt_complete {G : Grammar} :
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
-    rw [dif_pos hk, dif_pos hp, dif_neg (by rw [hfix]; decide), dif_pos hfix]
+    rw [dif_pos hk, dif_pos hp, dif_neg (show ¬ G.opFixity k hk = .infixr by rw [hfix]; decide),
+      dif_neg (show ¬ G.opFixity k hk = .infixl by rw [hfix]; decide), dif_pos hfix]
     simp only [List.mem_flatMap]
     refine ⟨((opVal G k hk, ()), uO), hmO, ?_⟩
     rw [afterPre]
     simp only [List.mem_map]
     exact ⟨(e, uE.cast huO.symm), mem_cast_gen (parseAt (k + 1)) huO.symm hmE, rfl⟩
+  | p, .opl k hk hfix hp head chainHead chainRest, f, i, rest => by
+    obtain ⟨uH, huH, hmH⟩ := parseAt_complete (k + 1) head f i
+      (renderChainFull k hk chainHead chainRest f (Tree.render head f i).2 ++ rest)
+    obtain ⟨uC, huC, hmC⟩ := chainL_complete k hk chainHead chainRest f (Tree.render head f i).2 rest
+    have hexp : (Tree.render (Tree.opl k hk hfix hp head chainHead chainRest) f i).1 ++ rest
+        = (Tree.render head f i).1 ++
+          (renderChainFull k hk chainHead chainRest f (Tree.render head f i).2 ++ rest) := by
+      simp only [Tree.render, renderChainFull, List.append_assoc]
+    rw [hexp]
+    refine ⟨uH.trans (uC.cast huH.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huC], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_right
+    simp only [List.mem_flatMap]
+    refine ⟨k, List.mem_range.mpr hk, ?_⟩
+    rw [dif_pos hk, dif_pos hp, dif_neg (by rw [hfix]; decide), dif_pos hfix]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(head, uH), hmH, ((chainHead, chainRest), uC.cast huH.symm),
+           mem_cast_gen (chainL k hk) huH.symm hmC, rfl⟩
+  termination_by p t _ _ _ => sizeOf t
+theorem chainL_complete {G : Grammar} (k : Nat) (hk : k < G.ops.length) :
+    (chainHead : Tree G (k + 1)) → (chainRest : TreeChain G (k + 1)) → (f : Nat → Nat) →
+    (i : Nat) → (rest : List Char) →
+    ∃ s : RightSublist (renderChainFull k hk chainHead chainRest f i ++ rest),
+      s.list = rest ∧
+        ((chainHead, chainRest), s) ∈ chainL k hk (renderChainFull k hk chainHead chainRest f i ++ rest)
+  | chainHead, .nil, f, i, rest => by
+    obtain ⟨uM, huM, hmM⟩ := (gapOpGap G k hk).parse_complete ((), opVal G k hk, ())
+      (f i, (), f (i + 1)) ((Tree.render chainHead f (i + 2)).1 ++ rest)
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (k + 1) chainHead f (i + 2) rest
+    have hexp : renderChainFull k hk chainHead .nil f i ++ rest
+        = (gapOpGap G k hk).render ((), opVal G k hk, ()) (f i, (), f (i + 1)) ++
+          ((Tree.render chainHead f (i + 2)).1 ++ rest) := by
+      simp only [renderChainFull, renderSeg, renderChain, List.append_nil, List.append_assoc]
+    rw [hexp]
+    refine ⟨uM.trans (uE.cast huM.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huE], ?_⟩
+    rw [chainL]
+    simp only [List.mem_flatMap]
+    refine ⟨(chainHead, uM.trans (uE.cast huM.symm)), ?_, List.mem_cons_self⟩
+    rw [segParse]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(((), opVal G k hk, ()), uM), hmM,
+           (chainHead, uE.cast huM.symm), mem_cast_gen (parseAt (k + 1)) huM.symm hmE, rfl⟩
+  | chainHead, .cons c cs, f, i, rest => by
+    obtain ⟨uM, huM, hmM⟩ := (gapOpGap G k hk).parse_complete ((), opVal G k hk, ())
+      (f i, (), f (i + 1))
+      ((Tree.render chainHead f (i + 2)).1 ++
+        (renderChainFull k hk c cs f (renderSeg k hk chainHead f i).2 ++ rest))
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (k + 1) chainHead f (i + 2)
+      (renderChainFull k hk c cs f (renderSeg k hk chainHead f i).2 ++ rest)
+    obtain ⟨uC, huC, hmC⟩ := chainL_complete k hk c cs f (renderSeg k hk chainHead f i).2 rest
+    have hexp : renderChainFull k hk chainHead (.cons c cs) f i ++ rest
+        = (gapOpGap G k hk).render ((), opVal G k hk, ()) (f i, (), f (i + 1)) ++
+          ((Tree.render chainHead f (i + 2)).1 ++
+            (renderChainFull k hk c cs f (renderSeg k hk chainHead f i).2 ++ rest)) := by
+      simp only [renderChainFull, renderSeg, renderChain, List.append_assoc]
+    rw [hexp]
+    refine ⟨(uM.trans (uE.cast huM.symm)).trans (uC.cast huE.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huC], ?_⟩
+    rw [chainL]
+    simp only [List.mem_flatMap]
+    refine ⟨(chainHead, uM.trans (uE.cast huM.symm)), ?_, ?_⟩
+    · rw [segParse]
+      simp only [List.mem_flatMap, List.mem_map]
+      exact ⟨(((), opVal G k hk, ()), uM), hmM,
+             (chainHead, uE.cast huM.symm), mem_cast_gen (parseAt (k + 1)) huM.symm hmE, rfl⟩
+    · simp only [List.mem_cons, List.mem_map]
+      refine Or.inr ⟨((c, cs), uC.cast huE.symm), ?_, rfl⟩
+      exact mem_cast_gen (chainL k hk) huE.symm hmC
+  termination_by chainHead chainRest _ _ _ => sizeOf chainHead + sizeOf chainRest
+end
 
 /-- The generic mixfix biparser at the loosest level: parse chars into a `Tree G 0`,
 render a tree back under a telescope policy `f : Nat → Nat`. Weak target

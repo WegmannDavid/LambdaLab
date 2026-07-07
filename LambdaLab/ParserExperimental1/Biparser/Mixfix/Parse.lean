@@ -34,16 +34,21 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
       if hp : p ≤ k then
         if hi : G.opFixity k hk = .infixr then
           (parseAt (k + 1) input).flatMap (fun rL => afterInfixr p k hk hi hp rL.1 rL.2)
+        else if hl : G.opFixity k hk = .infixl then
+          (parseAt (k + 1) input).flatMap (fun rH =>
+            (chainL k hk rH.2.list).map (fun rC =>
+              (Tree.opl k hk hl hp rH.1 rC.1.1 rC.1.2, rH.2.trans rC.2)))
         else if hr : G.opFixity k hk = .prefix then
           ((opGap G k hk).parse input).flatMap (fun rO => afterPre p k hk hr hp rO.2)
         else []
       else []
     else [])
-  termination_by (input.length, G.ops.length - p)
+  termination_by (input.length, (G.ops.length - p) * 4)
   decreasing_by
     all_goals first
       | exact Prod.Lex.left _ _ r1.2.length_lt
       | exact Prod.Lex.left _ _ rL.2.length_lt
+      | exact Prod.Lex.left _ _ rH.2.length_lt
       | exact Prod.Lex.left _ _ rO.2.length_lt
       | (apply Prod.Lex.right; omega)
 def afterInfixr {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
@@ -61,8 +66,30 @@ def afterPre {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
     List (Tree G p × RightSublist input) :=
   (parseAt (k + 1) s.list).map (fun rE =>
     (Tree.pre k hk hfix hp rE.1, s.trans rE.2))
-  termination_by (s.list.length, G.ops.length - k)
+  termination_by (s.list.length, (G.ops.length - (k + 1)) * 4 + 3)
   decreasing_by apply Prod.Lex.right; omega
+/-- One `⊙ operand` segment: the infix operator token (with gaps), then an operand parsed
+one level tighter. -/
+def segParse {G : Grammar} (k : Nat) (hk : k < G.ops.length) (input : List Char) :
+    List (Tree G (k + 1) × RightSublist input) :=
+  ((gapOpGap G k hk).parse input).flatMap (fun rM =>
+    (parseAt (k + 1) rM.2.list).map (fun rE => (rE.1, rM.2.trans rE.2)))
+  termination_by (input.length, 0)
+  decreasing_by exact Prod.Lex.left _ _ rM.2.length_lt
+/-- A **nonempty** left-assoc chain: one or more `⊙ operand` segments, as a head operand
+plus the rest (a `TreeChain`). Modelled on the verified `«some»`/`someParse`, so its
+self-recursion is one `flatMap` deep. -/
+def chainL {G : Grammar} (k : Nat) (hk : k < G.ops.length) (input : List Char) :
+    List ((Tree G (k + 1) × TreeChain G (k + 1)) × RightSublist input) :=
+  (segParse k hk input).flatMap (fun r =>
+    ((r.1, TreeChain.nil), r.2) ::
+      (chainL k hk r.2.list).map (fun r' =>
+        ((r.1, TreeChain.cons r'.1.1 r'.1.2), r.2.trans r'.2)))
+  termination_by (input.length, 1)
+  decreasing_by
+    all_goals first
+      | exact Prod.Lex.left _ _ r.2.length_lt
+      | (apply Prod.Lex.right; omega)
 end
 
 #eval ((parseAt (G := sample) 0 "a + b * c".toList).filter (fun r => r.2.list.isEmpty)).length  -- 1
