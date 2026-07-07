@@ -30,6 +30,7 @@ theorem parseAt_complete {G : Grammar} :
     rw [parseAt]
     apply List.mem_append_left
     apply List.mem_append_left
+    apply List.mem_append_left
     refine List.mem_map.mpr ⟨(⟨c, hc⟩, RightSublist.cons c rest), ?_, rfl⟩
     show (⟨c, hc⟩, RightSublist.cons c rest) ∈
       (if h : (fun c => G.isVar c) c = true then
@@ -52,6 +53,7 @@ theorem parseAt_complete {G : Grammar} :
     refine ⟨u1.trans ((u2.cast hu1.symm).trans (u3.cast hu2.symm)),
             by simp [RightSublist.trans, RightSublist.cast_list, hu3], ?_⟩
     rw [parseAt]
+    apply List.mem_append_left
     apply List.mem_append_left
     apply List.mem_append_right
     simp only [List.mem_flatMap, List.mem_map]
@@ -77,6 +79,7 @@ theorem parseAt_complete {G : Grammar} :
     refine ⟨uL.trans ((uM.cast huL.symm).trans (uR.cast huM.symm)),
             by simp [RightSublist.trans, RightSublist.cast_list, huR], ?_⟩
     rw [parseAt]
+    apply List.mem_append_left
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
@@ -100,6 +103,7 @@ theorem parseAt_complete {G : Grammar} :
     refine ⟨uO.trans (uE.cast huO.symm),
             by simp [RightSublist.trans, RightSublist.cast_list, huE], ?_⟩
     rw [parseAt]
+    apply List.mem_append_left
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
@@ -123,6 +127,7 @@ theorem parseAt_complete {G : Grammar} :
     refine ⟨uE.trans (uP.cast huE.symm),
             by simp [RightSublist.trans, RightSublist.cast_list, huP], ?_⟩
     rw [parseAt]
+    apply List.mem_append_left
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
@@ -145,6 +150,7 @@ theorem parseAt_complete {G : Grammar} :
     refine ⟨uH.trans (uC.cast huH.symm),
             by simp [RightSublist.trans, RightSublist.cast_list, huC], ?_⟩
     rw [parseAt]
+    apply List.mem_append_left
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
@@ -152,6 +158,23 @@ theorem parseAt_complete {G : Grammar} :
     simp only [List.mem_flatMap, List.mem_map]
     exact ⟨(head, uH), hmH, ((chainHead, chainRest), uC.cast huH.symm),
            mem_cast_gen (chainL k hk) huH.symm hmC, rfl⟩
+  | p, .jux hj hp head chainHead chainRest, f, i, rest => by
+    obtain ⟨uH, huH, hmH⟩ := parseAt_complete (G.ops.length + 1) head f i
+      (renderJuxtChainFull chainHead chainRest f (Tree.render head f i).2 ++ rest)
+    obtain ⟨uC, huC, hmC⟩ := juxtChainL_complete chainHead chainRest f (Tree.render head f i).2 rest
+    have hexp : (Tree.render (Tree.jux hj hp head chainHead chainRest) f i).1 ++ rest
+        = (Tree.render head f i).1 ++
+          (renderJuxtChainFull chainHead chainRest f (Tree.render head f i).2 ++ rest) := by
+      simp only [Tree.render, renderJuxtChainFull, List.append_assoc]
+    rw [hexp]
+    refine ⟨uH.trans (uC.cast huH.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huC], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_right
+    rw [dif_pos hj, dif_pos hp]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨(head, uH), hmH, ((chainHead, chainRest), uC.cast huH.symm),
+           mem_cast_gen juxtChainL huH.symm hmC, rfl⟩
   termination_by p t _ _ _ => sizeOf t
 theorem chainL_complete {G : Grammar} (k : Nat) (hk : k < G.ops.length) :
     (chainHead : Tree G (k + 1)) → (chainRest : TreeChain G (k + 1)) → (f : Nat → Nat) →
@@ -203,6 +226,56 @@ theorem chainL_complete {G : Grammar} (k : Nat) (hk : k < G.ops.length) :
     · simp only [List.mem_cons, List.mem_map]
       refine Or.inr ⟨((c, cs), uC.cast huE.symm), ?_, rfl⟩
       exact mem_cast_gen (chainL k hk) huE.symm hmC
+  termination_by chainHead chainRest _ _ _ => sizeOf chainHead + sizeOf chainRest
+theorem juxtChainL_complete {G : Grammar} :
+    (chainHead : Tree G (G.ops.length + 1)) → (chainRest : TreeChain G (G.ops.length + 1)) →
+    (f : Nat → Nat) → (i : Nat) → (rest : List Char) →
+    ∃ s : RightSublist (renderJuxtChainFull chainHead chainRest f i ++ rest),
+      s.list = rest ∧
+        ((chainHead, chainRest), s) ∈ juxtChainL (renderJuxtChainFull chainHead chainRest f i ++ rest)
+  | chainHead, .nil, f, i, rest => by
+    obtain ⟨uG, huG, hmG⟩ := spaces1.parse_complete () (f i)
+      ((Tree.render chainHead f (i + 1)).1 ++ rest)
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (G.ops.length + 1) chainHead f (i + 1) rest
+    have hexp : renderJuxtChainFull chainHead .nil f i ++ rest
+        = spaces1.render () (f i) ++ ((Tree.render chainHead f (i + 1)).1 ++ rest) := by
+      simp only [renderJuxtChainFull, renderJuxtSeg, renderJuxtChain, List.append_nil,
+        List.append_assoc]
+    rw [hexp]
+    refine ⟨uG.trans (uE.cast huG.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huE], ?_⟩
+    rw [juxtChainL]
+    simp only [List.mem_flatMap]
+    refine ⟨(chainHead, uG.trans (uE.cast huG.symm)), ?_, List.mem_cons_self⟩
+    rw [juxtSegParse]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨((), uG), hmG,
+           (chainHead, uE.cast huG.symm), mem_cast_gen (parseAt (G.ops.length + 1)) huG.symm hmE, rfl⟩
+  | chainHead, .cons c cs, f, i, rest => by
+    obtain ⟨uG, huG, hmG⟩ := spaces1.parse_complete () (f i)
+      ((Tree.render chainHead f (i + 1)).1 ++
+        (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest))
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (G.ops.length + 1) chainHead f (i + 1)
+      (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest)
+    obtain ⟨uC, huC, hmC⟩ := juxtChainL_complete c cs f (renderJuxtSeg chainHead f i).2 rest
+    have hexp : renderJuxtChainFull chainHead (.cons c cs) f i ++ rest
+        = spaces1.render () (f i) ++
+          ((Tree.render chainHead f (i + 1)).1 ++
+            (renderJuxtChainFull c cs f (renderJuxtSeg chainHead f i).2 ++ rest)) := by
+      simp only [renderJuxtChainFull, renderJuxtSeg, renderJuxtChain, List.append_assoc]
+    rw [hexp]
+    refine ⟨(uG.trans (uE.cast huG.symm)).trans (uC.cast huE.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huC], ?_⟩
+    rw [juxtChainL]
+    simp only [List.mem_flatMap]
+    refine ⟨(chainHead, uG.trans (uE.cast huG.symm)), ?_, ?_⟩
+    · rw [juxtSegParse]
+      simp only [List.mem_flatMap, List.mem_map]
+      exact ⟨((), uG), hmG,
+             (chainHead, uE.cast huG.symm), mem_cast_gen (parseAt (G.ops.length + 1)) huG.symm hmE, rfl⟩
+    · simp only [List.mem_cons, List.mem_map]
+      refine Or.inr ⟨((c, cs), uC.cast huE.symm), ?_, rfl⟩
+      exact mem_cast_gen juxtChainL huE.symm hmC
   termination_by chainHead chainRest _ _ _ => sizeOf chainHead + sizeOf chainRest
 end
 

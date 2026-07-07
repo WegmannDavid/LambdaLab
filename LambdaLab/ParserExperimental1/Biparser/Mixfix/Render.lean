@@ -43,6 +43,11 @@ def Tree.render {G : Grammar} : {p : Nat} → Tree G p → (Nat → Nat) → Nat
       ((Tree.render e f i).1
          ++ (gapOp G k hk).render ((), opVal G k hk) (f (Tree.render e f i).2, ()),
        (Tree.render e f i).2 + 1)
+  | _, .jux _ _ head chainHead chainRest, f, i =>
+      let rH := Tree.render head f i
+      let rS := renderJuxtSeg chainHead f rH.2
+      let rC := renderJuxtChain chainRest f rS.2
+      (rH.1 ++ rS.1 ++ rC.1, rC.2)
 /-- One `⊙ operand` segment of a left-assoc chain: the infix operator with its gaps,
 then the operand. -/
 def renderSeg {G : Grammar} (k : Nat) (hk : k < G.ops.length)
@@ -58,7 +63,26 @@ def renderChain {G : Grammar} (k : Nat) (hk : k < G.ops.length) :
       let rS := renderSeg k hk c f i
       let rC := renderChain k hk cs f rS.2
       (rS.1 ++ rC.1, rC.2)
+/-- One juxtaposition segment: a gap then the operand (no operator token). Generic in the
+operand level `n` so the mutual block keeps a variable index. -/
+def renderJuxtSeg {G : Grammar} {n : Nat} (c : Tree G n) (f : Nat → Nat) (i : Nat) :
+    List Char × Nat :=
+  (spaces1.render () (f i) ++ (Tree.render c f (i + 1)).1, (Tree.render c f (i + 1)).2)
+/-- The rest of a juxtaposition chain: a fold of gap-then-operand segments. -/
+def renderJuxtChain {G : Grammar} :
+    {n : Nat} → TreeChain G n → (Nat → Nat) → Nat → List Char × Nat
+  | _, .nil,       _, i => ([], i)
+  | _, .cons c cs, f, i =>
+      let rS := renderJuxtSeg c f i
+      let rC := renderJuxtChain cs f rS.2
+      (rS.1 ++ rC.1, rC.2)
 end
+
+/-- The chars of a nonempty juxtaposition chain `(chainHead, chainRest)` at counter `i`. -/
+def renderJuxtChainFull {G : Grammar} {n : Nat}
+    (chainHead : Tree G n) (chainRest : TreeChain G n) (f : Nat → Nat) (i : Nat) : List Char :=
+  (renderJuxtSeg chainHead f i).1
+    ++ (renderJuxtChain chainRest f (renderJuxtSeg chainHead f i).2).1
 
 /-- The chars of a **nonempty** left-assoc chain `(chainHead, chainRest)` at counter `i`:
 the first `⊙ operand` segment then the fold of the rest. This is exactly what the chain

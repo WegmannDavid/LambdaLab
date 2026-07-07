@@ -41,11 +41,14 @@ deriving DecidableEq
 
 /-- A generic grammar: `ops[k] = (c, fx)` is the operator character `c` at precedence
 level `k` (higher index = binds tighter) with fixity `fx`; `isVar` recognizes variable
-characters. Brackets `(`/`)` and the space separator are built in and assumed disjoint
-from `ops` and `isVar`. -/
+characters. `juxt` enables tokenless **juxtaposition** (application by adjacency) — a
+tightest-binding, left-associative operator sitting one level tighter than every `ops`
+entry (at precedence `ops.length`). Brackets `(`/`)` and the space separator are built in
+and assumed disjoint from `ops` and `isVar`. -/
 structure Grammar where
   ops : List (Char × Fixity)
   isVar : Char → Bool
+  juxt : Bool := false
 
 /-- The operator character at precedence `k`. -/
 def Grammar.opChar (G : Grammar) (k : Nat) (hk : k < G.ops.length) : Char := (G.ops[k]'hk).1
@@ -78,6 +81,12 @@ inductive Tree (G : Grammar) : Nat → Type where
             (hp : p ≤ k) : Tree G (k + 1) → Tree G p
   | post  {p : Nat} (k : Nat) (hk : k < G.ops.length) (hfix : G.opFixity k hk = .postfix)
             (hp : p ≤ k) : Tree G (k + 1) → Tree G p
+  /-- Juxtaposition (tokenless, left-assoc, tightest): like `opl` at precedence
+  `G.ops.length` with empty operator — a head operand, a mandatory `chainHead`, and a
+  chain of further operands, all at level `G.ops.length + 1` (atoms). -/
+  | jux   {p : Nat} (hj : G.juxt = true) (hp : p ≤ G.ops.length) :
+            Tree G (G.ops.length + 1) → Tree G (G.ops.length + 1) →
+            TreeChain G (G.ops.length + 1) → Tree G p
 inductive TreeChain (G : Grammar) : Nat → Type where
   | nil  {n : Nat} : TreeChain G n
   | cons {n : Nat} : Tree G n → TreeChain G n → TreeChain G n
@@ -117,5 +126,16 @@ def sampleL : Grammar where
 def sampleLTree : Tree sampleL 0 :=
   .opl 0 (by decide) (by decide) (by decide)
     (.var 'a' (by decide)) (.var 'b' (by decide)) (.cons (.var 'c' (by decide)) .nil)
+
+/-- A grammar with juxtaposition: `+` (prec 0, right-assoc) and application. -/
+def sampleJ : Grammar where
+  ops := [('+', .infixr)]
+  isVar := fun c => 'a' ≤ c && c ≤ 'z'
+  juxt := true
+
+/-- `f x y` = `(f x) y` (application, left-assoc): head `f`, chain `x`, `y`. -/
+def sampleJTree : Tree sampleJ 0 :=
+  .jux (by decide) (by decide)
+    (.var 'f' (by decide)) (.var 'x' (by decide)) (.cons (.var 'y' (by decide)) .nil)
 
 end LambdaLab.ParserExperimental1.Mixfix

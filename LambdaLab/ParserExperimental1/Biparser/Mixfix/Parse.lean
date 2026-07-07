@@ -46,8 +46,15 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
               (Tree.post k hk hpo hp rO.1, rO.2.trans rP.2)))
         else []
       else []
-    else [])
-  termination_by (input.length, (G.ops.length - p) * 4)
+    else []) ++
+  (if hj : G.juxt = true then
+    if hpj : p ≤ G.ops.length then
+      (parseAt (G.ops.length + 1) input).flatMap (fun rH =>
+        (juxtChainL rH.2.list).map (fun rC =>
+          (Tree.jux hj hpj rH.1 rC.1.1 rC.1.2, rH.2.trans rC.2)))
+    else []
+   else [])
+  termination_by (input.length, (G.ops.length + 1 - p) * 4)
   decreasing_by
     all_goals first
       | exact Prod.Lex.left _ _ r1.2.length_lt
@@ -70,7 +77,7 @@ def afterPre {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
     List (Tree G p × RightSublist input) :=
   (parseAt (k + 1) s.list).map (fun rE =>
     (Tree.pre k hk hfix hp rE.1, s.trans rE.2))
-  termination_by (s.list.length, (G.ops.length - (k + 1)) * 4 + 3)
+  termination_by (s.list.length, (G.ops.length + 1 - (k + 1)) * 4 + 3)
   decreasing_by apply Prod.Lex.right; omega
 /-- One `⊙ operand` segment: the infix operator token (with gaps), then an operand parsed
 one level tighter. -/
@@ -88,6 +95,25 @@ def chainL {G : Grammar} (k : Nat) (hk : k < G.ops.length) (input : List Char) :
   (segParse k hk input).flatMap (fun r =>
     ((r.1, TreeChain.nil), r.2) ::
       (chainL k hk r.2.list).map (fun r' =>
+        ((r.1, TreeChain.cons r'.1.1 r'.1.2), r.2.trans r'.2)))
+  termination_by (input.length, 1)
+  decreasing_by
+    all_goals first
+      | exact Prod.Lex.left _ _ r.2.length_lt
+      | (apply Prod.Lex.right; omega)
+/-- One juxtaposition segment: a gap then an operand (no operator token). -/
+def juxtSegParse {G : Grammar} (input : List Char) :
+    List (Tree G (G.ops.length + 1) × RightSublist input) :=
+  (spaces1.parse input).flatMap (fun rG =>
+    (parseAt (G.ops.length + 1) rG.2.list).map (fun rE => (rE.1, rG.2.trans rE.2)))
+  termination_by (input.length, 0)
+  decreasing_by exact Prod.Lex.left _ _ rG.2.length_lt
+/-- A nonempty juxtaposition chain: one or more gap-then-operand segments. -/
+def juxtChainL {G : Grammar} (input : List Char) :
+    List ((Tree G (G.ops.length + 1) × TreeChain G (G.ops.length + 1)) × RightSublist input) :=
+  (juxtSegParse input).flatMap (fun r =>
+    ((r.1, TreeChain.nil), r.2) ::
+      (juxtChainL r.2.list).map (fun r' =>
         ((r.1, TreeChain.cons r'.1.1 r'.1.2), r.2.trans r'.2)))
   termination_by (input.length, 1)
   decreasing_by
