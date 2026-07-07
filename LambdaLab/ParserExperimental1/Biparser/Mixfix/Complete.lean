@@ -55,7 +55,7 @@ theorem parseAt_complete {G : Grammar} :
     exact ⟨((lpVal, ()), u1), hm1,
            (t', u2.cast hu1.symm), mem_cast_gen (parseAt 0) hu1.symm hm2,
            (((), rpVal), u3.cast hu2.symm), mem_cast_gen gapRp.parse hu2.symm hm3, rfl⟩
-  | p, .op k hk hp l r, f, i, rest => by
+  | p, .op k hk hfix hp l r, f, i, rest => by
     obtain ⟨uL, huL, hmL⟩ := parseAt_complete (k + 1) l f i
       ((gapOpGap G k hk).render ((), opVal G k hk, ())
           (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
@@ -64,7 +64,7 @@ theorem parseAt_complete {G : Grammar} :
       (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1))
       ((Tree.render r f ((Tree.render l f i).2 + 2)).1 ++ rest)
     obtain ⟨uR, huR, hmR⟩ := parseAt_complete k r f ((Tree.render l f i).2 + 2) rest
-    have hexp : (Tree.render (Tree.op k hk hp l r) f i).1 ++ rest
+    have hexp : (Tree.render (Tree.op k hk hfix hp l r) f i).1 ++ rest
         = (Tree.render l f i).1 ++
           ((gapOpGap G k hk).render ((), opVal G k hk, ())
               (f (Tree.render l f i).2, (), f ((Tree.render l f i).2 + 1)) ++
@@ -77,14 +77,35 @@ theorem parseAt_complete {G : Grammar} :
     apply List.mem_append_right
     simp only [List.mem_flatMap]
     refine ⟨k, List.mem_range.mpr hk, ?_⟩
-    rw [dif_pos hk, dif_pos hp]
+    rw [dif_pos hk, dif_pos hp, dif_pos hfix]
     simp only [List.mem_flatMap]
     refine ⟨(l, uL), hmL, ?_⟩
-    rw [afterLeft]
+    rw [afterInfixr]
     simp only [List.mem_flatMap, List.mem_map]
     exact ⟨(((), opVal G k hk, ()), uM.cast huL.symm),
              mem_cast_gen (gapOpGap G k hk).parse huL.symm hmM,
            (r, uR.cast huM.symm), mem_cast_gen (parseAt k) huM.symm hmR, rfl⟩
+  | p, .pre k hk hfix hp e, f, i, rest => by
+    obtain ⟨uO, huO, hmO⟩ := (opGap G k hk).parse_complete (opVal G k hk, ()) ((), f i)
+      ((Tree.render e f (i + 1)).1 ++ rest)
+    obtain ⟨uE, huE, hmE⟩ := parseAt_complete (k + 1) e f (i + 1) rest
+    have hexp : (Tree.render (Tree.pre k hk hfix hp e) f i).1 ++ rest
+        = (opGap G k hk).render (opVal G k hk, ()) ((), f i) ++
+          ((Tree.render e f (i + 1)).1 ++ rest) := by
+      simp only [Tree.render, List.append_assoc]
+    rw [hexp]
+    refine ⟨uO.trans (uE.cast huO.symm),
+            by simp [RightSublist.trans, RightSublist.cast_list, huE], ?_⟩
+    rw [parseAt]
+    apply List.mem_append_right
+    simp only [List.mem_flatMap]
+    refine ⟨k, List.mem_range.mpr hk, ?_⟩
+    rw [dif_pos hk, dif_pos hp, dif_neg (by rw [hfix]; decide), dif_pos hfix]
+    simp only [List.mem_flatMap]
+    refine ⟨((opVal G k hk, ()), uO), hmO, ?_⟩
+    rw [afterPre]
+    simp only [List.mem_map]
+    exact ⟨(e, uE.cast huO.symm), mem_cast_gen (parseAt (k + 1)) huO.symm hmE, rfl⟩
 
 /-- The generic mixfix biparser at the loosest level: parse chars into a `Tree G 0`,
 render a tree back under a telescope policy `f : Nat → Nat`. Weak target

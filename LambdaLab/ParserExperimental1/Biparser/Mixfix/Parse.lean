@@ -32,7 +32,11 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
   (List.range G.ops.length).flatMap (fun k =>
     if hk : k < G.ops.length then
       if hp : p ≤ k then
-        (parseAt (k + 1) input).flatMap (fun rL => afterLeft p k hk hp rL.1 rL.2)
+        if hi : G.opFixity k hk = .infixr then
+          (parseAt (k + 1) input).flatMap (fun rL => afterInfixr p k hk hi hp rL.1 rL.2)
+        else if hr : G.opFixity k hk = .prefix then
+          ((opGap G k hk).parse input).flatMap (fun rO => afterPre p k hk hr hp rO.2)
+        else []
       else []
     else [])
   termination_by (input.length, G.ops.length - p)
@@ -40,15 +44,25 @@ def parseAt {G : Grammar} (p : Nat) (input : List Char) : List (Tree G p × Righ
     all_goals first
       | exact Prod.Lex.left _ _ r1.2.length_lt
       | exact Prod.Lex.left _ _ rL.2.length_lt
+      | exact Prod.Lex.left _ _ rO.2.length_lt
       | (apply Prod.Lex.right; omega)
-def afterLeft {G : Grammar} (p k : Nat) (hk : k < G.ops.length) (hp : p ≤ k)
+def afterInfixr {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
+    (hfix : G.opFixity k hk = .infixr) (hp : p ≤ k)
     (left : Tree G (k + 1)) {input : List Char} (s : RightSublist input) :
     List (Tree G p × RightSublist input) :=
   ((gapOpGap G k hk).parse s.list).flatMap (fun rM =>
     (parseAt k rM.2.list).map (fun rR =>
-      (Tree.op k hk hp left rR.1, s.trans (rM.2.trans rR.2))))
+      (Tree.op k hk hfix hp left rR.1, s.trans (rM.2.trans rR.2))))
   termination_by (s.list.length, 0)
   decreasing_by exact Prod.Lex.left _ _ rM.2.length_lt
+def afterPre {G : Grammar} (p k : Nat) (hk : k < G.ops.length)
+    (hfix : G.opFixity k hk = .prefix) (hp : p ≤ k)
+    {input : List Char} (s : RightSublist input) :
+    List (Tree G p × RightSublist input) :=
+  (parseAt (k + 1) s.list).map (fun rE =>
+    (Tree.pre k hk hfix hp rE.1, s.trans rE.2))
+  termination_by (s.list.length, G.ops.length - k)
+  decreasing_by apply Prod.Lex.right; omega
 end
 
 #eval ((parseAt (G := sample) 0 "a + b * c".toList).filter (fun r => r.2.list.isEmpty)).length  -- 1

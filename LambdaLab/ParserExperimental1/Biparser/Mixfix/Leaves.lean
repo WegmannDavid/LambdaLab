@@ -20,20 +20,23 @@ def varTok (G : Grammar) : Biparser Char Unit {c : Char // G.isVar c = true} :=
 def lparen : Biparser Char Unit {c : Char // (c == '(') = true} := tok (· == '(')
 def rparen : Biparser Char Unit {c : Char // (c == ')') = true} := tok (· == ')')
 def opTok (G : Grammar) (k : Nat) (hk : k < G.ops.length) :
-    Biparser Char Unit {c : Char // (c == G.ops[k]'hk) = true} := tok (· == G.ops[k]'hk)
+    Biparser Char Unit {c : Char // (c == G.opChar k hk) = true} := tok (· == G.opChar k hk)
 
 /-- `"(" ++ gap`. -/
 def lpGap := seq lparen spaces1
 /-- `gap ++ ")"`. -/
 def gapRp := seq spaces1 rparen
-/-- `gap ++ opₖ ++ gap`. -/
+/-- `gap ++ opₖ ++ gap` (an infix operator with its surrounding gaps). -/
 def gapOpGap (G : Grammar) (k : Nat) (hk : k < G.ops.length) :=
   seq spaces1 (seq (opTok G k hk) spaces1)
+/-- `opₖ ++ gap` (a prefix operator with its trailing gap). -/
+def opGap (G : Grammar) (k : Nat) (hk : k < G.ops.length) :=
+  seq (opTok G k hk) spaces1
 
 /-- The bracket / operator token values used by `render`. -/
 def lpVal : {c : Char // (c == '(') = true} := ⟨'(', by decide⟩
 def rpVal : {c : Char // (c == ')') = true} := ⟨')', by decide⟩
 def opVal (G : Grammar) (k : Nat) (hk : k < G.ops.length) :
-    {c : Char // (c == G.ops[k]'hk) = true} := ⟨G.ops[k]'hk, beq_self_eq_true _⟩
+    {c : Char // (c == G.opChar k hk) = true} := ⟨G.opChar k hk, beq_self_eq_true _⟩
 
 end LambdaLab.ParserExperimental1.Mixfix
