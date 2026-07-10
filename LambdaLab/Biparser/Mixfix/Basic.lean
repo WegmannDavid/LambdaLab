@@ -71,6 +71,14 @@ def Operator.nameTokens {sep : Char → Bool} {Ent : Type} : Operator sep Ent �
   | .postfx n => n.toTokens
   | .juxt => []
 
+/-- The **leading token** of an operator: its first name-part token, if any. This is
+the token the deterministic parser dispatches on to choose an operator — a prefix or
+closed operator is chosen by it before its operand, an infix/postfix one by it after
+the left operand. Juxtaposition (no name parts) has none. -/
+def Operator.headTok? {sep : Char → Bool} {Ent : Type} (o : Operator sep Ent) :
+    Option (Token sep) :=
+  o.nameTokens.head?
+
 
 /-- Reachability through the `tighter` successor lists: `TighterEq t a b`
 holds when `b` can be reached from `a` by repeatedly stepping into `t`, i.e.
@@ -147,6 +155,18 @@ structure Entry (sep : Char → Bool) (Ent : Type) where
   operators would be indistinguishable in the token stream; this pins it to one
   (vacuously satisfied by grammars without juxtaposition). -/
   juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
+  /-- **Distinct leading tokens.** Two operators sharing a leading token are the same
+  operator. This is what makes the deterministic parser's dispatch unambiguous — the
+  concrete blueprint discharges "a tighter sub-parser stops at the enclosing operator's
+  token" from exactly this. Juxtaposition (no leading token) is excluded by the `isSome`
+  guard and pinned instead by `juxtUnique`. -/
+  headsDistinct : ∀ o₁ o₂ : Op, (operator o₁).headTok?.isSome →
+    (operator o₁).headTok? = (operator o₂).headTok? → o₁ = o₂
+  /-- **Variables are not operator tokens.** No operator name part is an `isVar` token,
+  so a token can never be read as both a variable leaf and (part of) an operator. Stated
+  over the operator's *finite* name-part list, so a concrete grammar discharges it by
+  `decide`. -/
+  varDisjoint : ∀ (o : Op) (t : Token sep), t ∈ (operator o).nameTokens → isVar t = false
 
 structure Grammar where
   Ent : Type

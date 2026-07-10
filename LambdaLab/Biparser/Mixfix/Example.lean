@@ -56,6 +56,8 @@ def pEntry : Entry arithSep Unit where
   tighter_wf := psymTighter_wf
   isVar := fun t => decide (t ∉ preserved)
   juxtUnique := fun o₁ o₂ h₁ h₂ => by cases o₁ <;> cases o₂ <;> simp_all [psymOp]
+  headsDistinct := by intro o₁ o₂ _ _; cases o₁ <;> cases o₂ <;> simp_all [psymOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
+  varDisjoint := by intro o; cases o <;> decide
 
 /-- The grammar: one entry, space is the only separator. -/
 def arith : Grammar where
