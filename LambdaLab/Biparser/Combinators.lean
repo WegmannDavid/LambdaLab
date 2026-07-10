@@ -149,6 +149,49 @@ def anyChar : Biparser Char Char where
 theorem RoundTrips_anyChar : RoundTrips anyChar :=
   fun src rest => ⟨RightSublist.cons src rest, rfl, rfl⟩
 
+/-! ## Combinator: `alt` (choice / coproduct)
+
+`alt` is the coproduct: the source `w₁ ⊕ w₂` selects which branch `print` uses,
+and `parse` is **ordered choice** — try `bp₁`, fall back to `bp₂`.
+
+The round-trip law is where mixfix ambiguity bites. The left branch is free
+(tried first, so its own round-trip closes it). The right branch needs a
+**disjointness** side-condition: `bp₁` must *reject* everything `bp₂` prints —
+otherwise `parse` would take `bp₁`'s reading of a `bp₂`-string. This is exactly
+the "distinct leading tokens" obligation; it cannot be avoided, because `parse`
+sees only characters, never the source that chose the branch.
+
+Predicate-style dispatch is derivable: `comap (fun s => if p s then .inl s else
+.inr s) (alt bp₁ bp₂)`. -/
+
+def alt {w₁ w₂ v : Type} (bp₁ : Biparser w₁ v) (bp₂ : Biparser w₂ v) :
+    Biparser (w₁ ⊕ w₂) v where
+  parse input :=
+    match bp₁.parse input with
+    | some r => some r
+    | none   => bp₂.parse input
+  print
+    | .inl x => bp₁.print x
+    | .inr y => bp₂.print y
+
+theorem RoundTrips_alt {w₁ w₂ v : Type} (bp₁ : Biparser w₁ v) (bp₂ : Biparser w₂ v)
+    (h₁ : RoundTrips bp₁) (h₂ : RoundTrips bp₂)
+    (hdisj : ∀ (y : w₂) (rest : List Char), bp₁.parse ((bp₂.print y).2 ++ rest) = none) :
+    RoundTrips (alt bp₁ bp₂) := by
+  intro src rest
+  cases src with
+  | inl x =>
+    obtain ⟨s, hL, hP⟩ := h₁ x rest
+    refine ⟨s, hL, ?_⟩
+    simp only [alt]
+    rw [hP]
+  | inr y =>
+    obtain ⟨s, hL, hP⟩ := h₂ y rest
+    refine ⟨s, hL, ?_⟩
+    simp only [alt]
+    rw [hdisj y rest]
+    exact hP
+
 /-! ## Typeclass instances (bare biparser)
 
 `Bind` gives `do` (for blocks ending in a parser); `Functor`/`Seq` give `<$>`/`<*>`.
@@ -188,6 +231,14 @@ def lcomap {w w' v : Type} (g : w' → w) (x : LawfulBiparser w v) : LawfulBipar
 
 def lanyChar : LawfulBiparser Char Char := ⟨anyChar, RoundTrips_anyChar⟩
 
+/-- Proof-carrying choice. Unlike the other smart constructors this takes an extra
+argument — the **disjointness** proof (`x` rejects everything `y` prints) — because
+that obligation is genuine, not derivable from the two pieces. -/
+def lalt {w₁ w₂ v : Type} (x : LawfulBiparser w₁ v) (y : LawfulBiparser w₂ v)
+    (hdisj : ∀ (b : w₂) (rest : List Char), x.parse ((y.print b).2 ++ rest) = none) :
+    LawfulBiparser (w₁ ⊕ w₂) v :=
+  ⟨alt x.toBiparser y.toBiparser, RoundTrips_alt _ _ x.ok y.ok hdisj⟩
+
 instance : Functor (LawfulBiparser w) where
   map f x := ⟨map f x.toBiparser, RoundTrips_map f x.toBiparser x.ok⟩
 
@@ -218,15 +269,25 @@ build the tree out of combinators and both directions + the law come out free. -
 def pair : LawfulBiparser (Char × Char) (Char × Char) :=
   (fun a b => (a, b)) <$> lcomap Prod.fst lanyChar <*> lcomap Prod.snd lanyChar
 
+/-- Choice: parse `'a'` or `'b'`. The disjointness obligation (`char 'a'` rejects
+what `char 'b'` prints) is discharged by `'a' ≠ 'b'`. `print` dispatches on the
+`Sum` source; `parse` is ordered choice. -/
+def aOrB : LawfulBiparser (Unit ⊕ Unit) Char :=
+  lalt (lchar 'a') (lchar 'b') (by intro _ rest; simp [lchar, char])
+
 -- All proof-carrying, for free:
 #check (abc.ok   : RoundTrips abc.toBiparser)
 #check (abcAp.ok : RoundTrips abcAp.toBiparser)
 #check (pair.ok  : RoundTrips pair.toBiparser)
+#check (aOrB.ok  : RoundTrips aOrB.toBiparser)
 
 #eval (abc.parse   "abcd".toList).map (fun r => (r.1, r.2.list))  -- some (('a','b','c'), ['d'])
 #eval (abcAp.parse "abcd".toList).map (fun r => (r.1, r.2.list))  -- some (('a','b','c'), ['d'])
 #eval (ab.parse    "abc".toList ).map (fun r => (r.1, r.2.list))  -- some ('b', ['c'])
 #eval (pair.parse  "xyz".toList ).map (fun r => (r.1, r.2.list))  -- some (('x','y'), ['z'])
 #eval pair.print ('x', 'y')                                       -- (('x','y'), ['x','y'])
+#eval (aOrB.parse  "a".toList  ).map (fun r => (r.1, r.2.list))   -- some ('a', [])
+#eval (aOrB.parse  "b".toList  ).map (fun r => (r.1, r.2.list))   -- some ('b', [])
+#eval (aOrB.print (.inl ()), aOrB.print (.inr ()))                -- (('a',['a']), ('b',['b']))
 
 end LambdaLab.Biparser
