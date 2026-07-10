@@ -1,0 +1,165 @@
+import LambdaLab.Biparser.Mixfix.Precedence
+import LambdaLab.Biparser.Mixfix.RightSublist
+
+/-!
+# Generic deterministic mixfix parser (in progress)
+
+A precedence-climbing parser over an arbitrary `Grammar` — the deterministic `Option`
+generalization of the verified `Concrete.lean` blueprint. Because `headsDistinct` is a
+grammar field, dispatch is deterministic (at most one operator matches a leading token);
+a precedence-incomparable input simply returns `none` ("add parentheses").
+
+This file currently holds the **grammar-agnostic foundation**, ported from the reference
+`Parser/Mixfix/Parse.lean` (these pieces are model-independent — they don't care whether
+the parser returns one result or all): the precedence/body termination measures, the
+operator classification (`leftRec`/`isJuxt`/`isInfxl`), `Expr.reindex`, the fold smart
+constructors, and the variable leaf `parseVar`. The recursive `parseAt` core — the mutual
+block that dispatches on the leading token and climbs the precedence DAG — is next.
+-/
+
+namespace LambdaLab.Biparser.Mixfix
+
+variable {G : Grammar}
+
+/-! ## Precedence-order plumbing -/
+
+theorem TighterEq.toTighterOrEq {Op : Type} {t : Op → List Op} {a b : Op}
+    (h : TighterEq t a b) : a = b ∨ Tighter t a b := by
+  induction h with
+  | refl => exact Or.inl rfl
+  | step hmem _ ih =>
+      cases ih with
+      | inl hEq => exact Or.inr (hEq ▸ Tighter.base hmem)
+      | inr hT  => exact Or.inr (Tighter.step hmem hT)
+
+theorem Tighter.ofMemTighterEq {Op : Type} {t : Op → List Op} {a b o : Op}
+    (hmem : b ∈ t a) (h : TighterEq t b o) : Tighter t a o := by
+  cases h.toTighterOrEq with
+  | inl hEq => exact hEq ▸ Tighter.base hmem
+  | inr hT  => exact Tighter.step hmem hT
+
+/-! ## Termination measures -/
+
+/-- The secondary termination measure of a level: `base · 4 + phase`. -/
+def Level.measure {sep : Char → Bool} {Ent : Type} {E : Entry sep Ent} : Level E → Nat
+  | .loosest     => E.topRank * 4 + 1
+  | .tighter a   => E.rank a * 4 + 1
+  | .tighterEq a => E.rank a * 4 + 3
+
+/-- The secondary measure of an operator body: one more than the leading hole's
+level measure, or `0` when the body starts with a `namePart`. -/
+def partsMeasure {G : Grammar} : List (Part G) → Nat
+  | .hole _ l :: _ => Level.measure l + 1
+  | _              => 0
+
+theorem partsMeasure_inner_eq_zero (n : Notation G.isSep G.Ent) :
+    partsMeasure (Notation.toParts (G := G) n) = 0 := by
+  cases n <;> rfl
+
+/-! ## Operator classification -/
+
+/-- The **left-recursive** operators (body leads with a `.tighterEq` hole): juxt
+and left-assoc infix. Parsed by a fold instead of `parseParts`. -/
+def Operator.leftRec {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+  | .juxt    => true
+  | .infxl _ => true
+  | _        => false
+
+def Operator.isJuxt {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+  | .juxt => true
+  | _     => false
+
+theorem Operator.eq_juxt {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent}
+    (h : o.isJuxt = true) : o = Operator.juxt := by cases o <;> simp_all [Operator.isJuxt]
+
+theorem Operator.ne_juxt {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent}
+    (h : ¬ (o.isJuxt = true)) : o ≠ Operator.juxt := fun he => h (by rw [he]; rfl)
+
+def Operator.isInfxl {sep : Char → Bool} {Ent : Type} : Operator sep Ent → Bool
+  | .infxl _ => true
+  | _        => false
+
+theorem Operator.not_isJuxt_of_isInfxl {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent}
+    (h : o.isInfxl = true) : o.isJuxt = false := by
+  cases o <;> simp_all [Operator.isInfxl, Operator.isJuxt]
+
+theorem Operator.leftRec_eq_false {sep : Char → Bool} {Ent : Type} {o : Operator sep Ent}
+    (hj : ¬ o.isJuxt = true) (hl : ¬ o.isInfxl = true) : o.leftRec = false := by
+  cases o <;> simp_all [Operator.isJuxt, Operator.isInfxl, Operator.leftRec]
+
+/-- An operator body measures strictly below its own `tighterEq` level. -/
+theorem partsMeasure_parts_lt (e : G.Ent) (a : (G.entry e).Op)
+    (hne : ((G.entry e).operator a).leftRec = false) :
+    partsMeasure (Operator.body e a) < Level.measure (Level.tighterEq a) := by
+  unfold Operator.body
+  cases h : (G.entry e).operator a with
+  | closed n =>
+      rw [partsMeasure_inner_eq_zero]; simp only [Level.measure]; omega
+  | prefx n =>
+      have hz : partsMeasure (Notation.toParts (G := G) n ++ [.hole e (.tighter a)]) = 0 := by
+        cases n <;> rfl
+      rw [hz]; simp only [Level.measure]; omega
+  | infx n => simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]; omega
+  | infxl n => rw [h, Operator.leftRec] at hne; exact absurd hne (by simp)
+  | infxr n => simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]; omega
+  | juxt => rw [h, Operator.leftRec] at hne; exact absurd hne (by simp)
+  | postfx n => simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]; omega
+
+/-! ## Tree utilities -/
+
+/-- Weaken the level of an expression within its entry: only the level witness
+changes, so the flattening is untouched. -/
+def Expr.reindex {e : G.Ent} {l l' : Level (G.entry e)}
+    (h : ∀ o, Level.condition l o → Level.condition l' o) : Expr G e l → Expr G e l'
+  | .op o hc parts => .op o (h o hc) parts
+  | .var t hv => .var t hv
+
+/-- The body of a juxtaposition operator. -/
+theorem Operator.body_juxt {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) :
+    Operator.body e j = [Part.hole e (Level.tighterEq j), Part.hole e (Level.tighter j)] := by
+  unfold Operator.body; rw [hj]
+
+/-- Smart constructor for one application node `f x`. -/
+def Expr.juxtApp {e : G.Ent} {j : (G.entry e).Op} (hj : (G.entry e).operator j = Operator.juxt)
+    (f : Expr G e (Level.tighterEq j)) (x : Expr G e (Level.tighter j)) :
+    Expr G e (Level.tighterEq j) :=
+  Expr.op j TighterEq.refl ((Operator.body_juxt hj).symm ▸ Parts.hole f (Parts.hole x Parts.nil))
+
+/-- A left-assoc body splits as its chaining left operand hole and the tail. -/
+theorem Operator.body_infxl_cons {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) :
+    Operator.body e o = Part.hole e (Level.tighterEq o) :: (Operator.body e o).tail := by
+  cases hop : (G.entry e).operator o with
+  | infxl n => unfold Operator.body; rw [hop]; rfl
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
+/-- The tail of a left-assoc body leads with a name token (`partsMeasure = 0`). -/
+theorem partsMeasure_infxl_tail {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) :
+    partsMeasure (Operator.body e o).tail = 0 := by
+  cases hop : (G.entry e).operator o with
+  | infxl n => unfold Operator.body; rw [hop]; cases n <;> rfl
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
+/-- Smart constructor for one left-assoc fold step `(acc) ∘ rhs`. -/
+def Expr.infxlApp {e : G.Ent} {o : (G.entry e).Op} (hl : ((G.entry e).operator o).isInfxl = true)
+    (acc : Expr G e (Level.tighterEq o)) (tail : Parts G (Operator.body e o).tail) :
+    Expr G e (Level.tighterEq o) :=
+  Expr.op o TighterEq.refl ((Operator.body_infxl_cons hl).symm ▸ Parts.hole acc tail)
+
+/-! ## Leaf: variables
+
+The one non-recursive leaf. Deterministic: a leading `isVar` token is a variable leaf
+(valid at every level); otherwise no variable parse. `varDisjoint` guarantees this token
+is not also an operator part, so this never conflicts with operator dispatch. -/
+
+def parseVar (e : G.Ent) (l : Level (G.entry e)) :
+    (tkns : List (Token G.isSep)) → Option (Expr G e l × RightSublist tkns)
+  | [] => none
+  | t :: rest =>
+      if h : (G.entry e).isVar t = true then
+        some (Expr.var t h, RightSublist.consTail t rest)
+      else none
+
+end LambdaLab.Biparser.Mixfix
