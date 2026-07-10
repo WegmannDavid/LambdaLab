@@ -117,6 +117,38 @@ theorem RoundTrips_seqAp {w a b : Type} (bf : Biparser w (a → b)) (bw : Bipars
     (hf : RoundTrips bf) (hw : RoundTrips bw) : RoundTrips (seqAp bf bw) :=
   RoundTrips_map _ _ (RoundTrips_seq bf bw hf hw)
 
+/-! ## Combinator: `comap` (profunctor source-map)
+
+The one combinator that unlocks *structured* biparsers. `map` reshapes the
+*output* (`v`); `comap` reshapes the *source* (`w`) contravariantly — so two
+`seq` branches can print two different parts of a shared source (`comap .1` and
+`comap .2`). Without it, both branches would print from the identical source and
+only literal (source-free) content could be built.
+
+`comap` touches only `print`, never `parse`, so its round-trip law is immediate. -/
+
+def comap {w w' v : Type} (g : w' → w) (bp : Biparser w v) : Biparser w' v where
+  parse := bp.parse
+  print src := bp.print (g src)
+
+theorem RoundTrips_comap {w w' v : Type} (g : w' → w) (bp : Biparser w v)
+    (h : RoundTrips bp) : RoundTrips (comap g bp) := fun src rest => h (g src) rest
+
+/-! ## Leaf: `anyChar` (variable content)
+
+`char c` prints a *fixed* literal; `anyChar` prints whatever character its source
+carries (`print src = (src, [src])`) and parses any single character. This is the
+variable-content leaf structured biparsers read their data through. -/
+
+def anyChar : Biparser Char Char where
+  parse input := match input with
+    | []        => none
+    | c :: rest => some (c, RightSublist.cons c rest)
+  print src := (src, [src])
+
+theorem RoundTrips_anyChar : RoundTrips anyChar :=
+  fun src rest => ⟨RightSublist.cons src rest, rfl, rfl⟩
+
 /-! ## Typeclass instances (bare biparser)
 
 `Bind` gives `do` (for blocks ending in a parser); `Functor`/`Seq` give `<$>`/`<*>`.
@@ -151,6 +183,11 @@ def lseq {w a b : Type} (x : LawfulBiparser w a) (y : LawfulBiparser w b) :
     LawfulBiparser w (a × b) :=
   ⟨seq x.toBiparser y.toBiparser, RoundTrips_seq _ _ x.ok y.ok⟩
 
+def lcomap {w w' v : Type} (g : w' → w) (x : LawfulBiparser w v) : LawfulBiparser w' v :=
+  ⟨comap g x.toBiparser, RoundTrips_comap g x.toBiparser x.ok⟩
+
+def lanyChar : LawfulBiparser Char Char := ⟨anyChar, RoundTrips_anyChar⟩
+
 instance : Functor (LawfulBiparser w) where
   map f x := ⟨map f x.toBiparser, RoundTrips_map f x.toBiparser x.ok⟩
 
@@ -173,12 +210,23 @@ def ab : Biparser Unit Char := do
   let _a ← char 'a'
   char 'b'
 
--- Both grammars are proof-carrying, for free:
+/-- **Structured data, print for free.** A biparser whose value *is* a pair of
+characters, read from a source pair via `comap`. Nobody wrote a printer: `print`
+is assembled by the combinators — `print (a, b) = ((a, b), [a, b])` — and the
+round-trip proof is threaded the same way. This is the whole idea, in miniature:
+build the tree out of combinators and both directions + the law come out free. -/
+def pair : LawfulBiparser (Char × Char) (Char × Char) :=
+  (fun a b => (a, b)) <$> lcomap Prod.fst lanyChar <*> lcomap Prod.snd lanyChar
+
+-- All proof-carrying, for free:
 #check (abc.ok   : RoundTrips abc.toBiparser)
 #check (abcAp.ok : RoundTrips abcAp.toBiparser)
+#check (pair.ok  : RoundTrips pair.toBiparser)
 
 #eval (abc.parse   "abcd".toList).map (fun r => (r.1, r.2.list))  -- some (('a','b','c'), ['d'])
 #eval (abcAp.parse "abcd".toList).map (fun r => (r.1, r.2.list))  -- some (('a','b','c'), ['d'])
 #eval (ab.parse    "abc".toList ).map (fun r => (r.1, r.2.list))  -- some ('b', ['c'])
+#eval (pair.parse  "xyz".toList ).map (fun r => (r.1, r.2.list))  -- some (('x','y'), ['z'])
+#eval pair.print ('x', 'y')                                       -- (('x','y'), ['x','y'])
 
 end LambdaLab.Biparser
