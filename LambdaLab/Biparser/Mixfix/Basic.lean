@@ -155,18 +155,25 @@ structure Entry (sep : Char → Bool) (Ent : Type) where
   operators would be indistinguishable in the token stream; this pins it to one
   (vacuously satisfied by grammars without juxtaposition). -/
   juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
-  /-- **Distinct leading tokens.** Two operators sharing a leading token are the same
-  operator. This is what makes the deterministic parser's dispatch unambiguous — the
-  concrete blueprint discharges "a tighter sub-parser stops at the enclosing operator's
-  token" from exactly this. Juxtaposition (no leading token) is excluded by the `isSome`
-  guard and pinned instead by `juxtUnique`. -/
-  headsDistinct : ∀ o₁ o₂ : Op, (operator o₁).headTok?.isSome →
-    (operator o₁).headTok? = (operator o₂).headTok? → o₁ = o₂
-  /-- **Variables are not operator tokens.** No operator name part is an `isVar` token,
-  so a token can never be read as both a variable leaf and (part of) an operator. Stated
-  over the operator's *finite* name-part list, so a concrete grammar discharges it by
-  `decide`. -/
-  varDisjoint : ∀ (o : Op) (t : Token sep), t ∈ (operator o).nameTokens → isVar t = false
+
+/-! ## Unambiguity — a *property*, not a requirement
+
+Grammars are **not** forced to be unambiguous. The deterministic parser is total for
+any grammar: at each dispatch it fails (`none`) the moment it detects an ambiguity
+(two viable operators), so it simply succeeds only on the inputs that are
+unambiguous. `headsDistinct`/`varDisjoint` are therefore **predicates** (theorem
+hypotheses), not `Entry` fields: a *future* theorem will show that a grammar
+satisfying them (a proper precedence DAG with distinct leading tokens) never triggers
+the ambiguity failure, so its parser succeeds on every well-formed input. -/
+
+/-- Distinct leading tokens: operators sharing a leading token are equal. -/
+def Entry.HeadsDistinct {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) : Prop :=
+  ∀ o₁ o₂ : E.Op, (E.operator o₁).headTok?.isSome →
+    (E.operator o₁).headTok? = (E.operator o₂).headTok? → o₁ = o₂
+
+/-- No operator name part is an `isVar` token. -/
+def Entry.VarDisjoint {sep : Char → Bool} {Ent : Type} (E : Entry sep Ent) : Prop :=
+  ∀ (o : E.Op) (t : Token sep), t ∈ (E.operator o).nameTokens → E.isVar t = false
 
 structure Grammar where
   Ent : Type
