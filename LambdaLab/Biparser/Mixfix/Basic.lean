@@ -1,4 +1,4 @@
-import LambdaLab.Biparser.RightSublist
+import LambdaLab.Biparser.Basic
 
 
 namespace LambdaLab.Biparser.Mixfix
