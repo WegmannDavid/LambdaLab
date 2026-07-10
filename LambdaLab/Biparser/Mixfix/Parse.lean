@@ -162,4 +162,111 @@ def parseVar (e : G.Ent) (l : Level (G.entry e)) :
         some (Expr.var t h, RightSublist.consTail t rest)
       else none
 
+/-! ## The recursive core
+
+Deterministic precedence climbing. `parseExpr e l` parses one expression of entry `e`
+constrained to level `l`; `parseExprList` walks the candidate operators of a level,
+taking the **first** that succeeds (`headsDistinct` ⇒ at most one does); `parseParts`
+parses an operator body left-to-right.
+
+Left-recursive operators (`juxt`, `infxl`) are not yet parsed — at their `.tighterEq`
+level the parser falls through to `.tighter` instead of running a fold. Everything else
+(closed, prefix, non-assoc infix, right-assoc infix, postfix) parses fully.
+
+Termination is the reference's lexicographic measure `(tkns.length, Level.measure l /
+Level.base l * 4 / partsMeasure ps, phase)`; `RightSublist.length_lt` supplies the
+`tkns.length` drop when a sub-parse's leftover is fed onward. -/
+
+-- `h : … .leftRec = true` reads as unused (it is consumed only in `decreasing_by`).
+set_option linter.unusedVariables false in
+mutual
+  /-- Parse one expression of entry `e` constrained to level `l`. -/
+  def parseExpr (e : G.Ent) (l : Level (G.entry e)) (tkns : List (Token G.isSep)) :
+      Option (Expr G e l × RightSublist tkns) :=
+    match l with
+    | .loosest =>
+        (parseExprList e .loosest (G.entry e).loosest (fun c hc _o hco => ⟨c, hc, hco⟩)
+          (fun _ hc => (G.entry e).rank_lt_topRank hc) tkns).orElse
+          (fun _ => parseVar e .loosest tkns)
+    | .tighter a =>
+        (parseExprList e (.tighter a) ((G.entry e).tighter a)
+          (fun _ hc _o hco => Tighter.ofMemTighterEq hc hco)
+          (fun _ hc => (G.entry e).rank_lt hc) tkns).orElse
+          (fun _ => parseVar e (.tighter a) tkns)
+    | .tighterEq a =>
+        let fallthrough : Option (Expr G e (.tighterEq a) × RightSublist tkns) :=
+          (parseExpr e (.tighter a) tkns).map
+            (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
+                        (fun _o hh => Tighter.toTighterEq
+                          (show Tighter (G.entry e).tighter a _o from hh)), x.2))
+        if h : ((G.entry e).operator a).leftRec = true then
+          fallthrough
+        else
+          ((parseParts (Operator.body e a) tkns).map
+            (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G e (.tighterEq a)), x.2))).orElse
+            (fun _ => fallthrough)
+  termination_by (tkns.length, Level.measure l, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _
+          (partsMeasure_parts_lt _ _ (by simpa using h)))
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure, Level.base]; omega))
+
+  /-- Walk the candidate operators `cs` of a level, taking the first that succeeds. -/
+  def parseExprList (e : G.Ent) (l : Level (G.entry e)) (cs : List (G.entry e).Op)
+      (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
+      (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l)
+      (tkns : List (Token G.isSep)) : Option (Expr G e l × RightSublist tkns) :=
+    match cs, h, hrank with
+    | [], _, _ => none
+    | c :: rest, h, hrank =>
+        ((parseExpr e (.tighterEq c) tkns).map
+          (fun x => (x.1.reindex (l := .tighterEq c) (l' := l)
+                      (fun o hh => h c List.mem_cons_self o
+                        (show TighterEq (G.entry e).tighter c o from hh)), x.2))).orElse
+          (fun _ => parseExprList e l rest (fun c' hc' => h c' (List.mem_cons_of_mem _ hc'))
+                      (fun c' hc' => hrank c' (List.mem_cons_of_mem _ hc')) tkns)
+  termination_by (tkns.length, Level.base l * 4, cs.length)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _
+          (by have := hrank c List.mem_cons_self
+              first | (simp only [Level.measure]; omega) | omega))
+      | exact Prod.Lex.right _ (Prod.Lex.right _
+          (by first | (simp only [List.length_cons]; omega) | omega))
+
+  /-- Parse an operator body `ps` left-to-right: match each `namePart`, recurse into
+  `parseExpr` at each `hole`'s (entry, level). -/
+  def parseParts : (ps : List (Part G)) → (tkns : List (Token G.isSep)) →
+      Option (Parts G ps × RightSublist tkns)
+    | [], _ => none
+    | [.namePart tk], tkns =>
+        match tkns with
+        | t :: rest => if t = tk then some (Parts.namePart tk Parts.nil, RightSublist.consTail t rest) else none
+        | []        => none
+    | [.hole e l], tkns =>
+        (parseExpr e l tkns).map (fun x => (Parts.hole x.1 Parts.nil, x.2))
+    | .namePart tk :: y :: rest', tkns =>
+        match tkns with
+        | t :: ts =>
+            if t = tk then
+              (parseParts (y :: rest') ts).map
+                  (fun z => (Parts.namePart tk z.1, (RightSublist.consTail t ts).trans z.2))
+            else none
+        | [] => none
+    | .hole e l :: y :: rest', tkns =>
+        (parseExpr e l tkns).bind (fun x =>
+          (parseParts (y :: rest') x.2.list).map
+              (fun z => (Parts.hole x.1 z.1, x.2.trans z.2)))
+  termination_by ps tkns => (tkns.length, partsMeasure ps, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by first | (simp only [partsMeasure]; omega) | omega))
+      | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
+      | exact Prod.Lex.left _ _ (by first | (simp only [List.length_cons]; omega) | omega)
+end
+
 end LambdaLab.Biparser.Mixfix
