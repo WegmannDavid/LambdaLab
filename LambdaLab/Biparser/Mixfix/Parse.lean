@@ -194,14 +194,16 @@ mutual
           (fun _ hc => (G.entry e).rank_lt hc) tkns).orElse
           (fun _ => parseVar e (.tighter a) tkns)
     | .tighterEq a =>
-        let fallthrough : Option (Expr G e (.tighterEq a) × RightSublist tkns) :=
-          (parseExpr e (.tighter a) tkns).map
-            (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
-                        (fun _o hh => Tighter.toTighterEq
-                          (show Tighter (G.entry e).tighter a _o from hh)), x.2))
-        if h : ((G.entry e).operator a).leftRec = true then
-          fallthrough
+        if hj : ((G.entry e).operator a).isJuxt = true then
+          parseJuxt e a (Operator.eq_juxt hj) tkns
+        else if hl : ((G.entry e).operator a).isInfxl = true then
+          parseInfixL e a hl tkns
         else
+          let fallthrough : Option (Expr G e (.tighterEq a) × RightSublist tkns) :=
+            (parseExpr e (.tighter a) tkns).map
+              (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
+                          (fun _o hh => Tighter.toTighterEq
+                            (show Tighter (G.entry e).tighter a _o from hh)), x.2))
           ((parseParts (Operator.body e a) tkns).map
             (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G e (.tighterEq a)), x.2))).orElse
             (fun _ => fallthrough)
@@ -210,7 +212,7 @@ mutual
     all_goals simp_wf
     all_goals first
       | exact Prod.Lex.right _ (Prod.Lex.left _ _
-          (partsMeasure_parts_lt _ _ (by simpa using h)))
+          (partsMeasure_parts_lt _ _ (Operator.leftRec_eq_false hj hl)))
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure, Level.base]; omega))
 
   /-- Walk the candidate operators `cs` of a level, taking the first that succeeds. -/
@@ -267,6 +269,82 @@ mutual
       | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by first | (simp only [partsMeasure]; omega) | omega))
       | exact Prod.Lex.left _ _ (by have := x.2.length_lt; omega)
       | exact Prod.Lex.left _ _ (by first | (simp only [List.length_cons]; omega) | omega)
+
+  /-- Parse an application chain `f x y …` left-associatively: the first operand, then
+  as many further argument atoms as possible (greedy). -/
+  def parseJuxt (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
+      (tkns : List (Token G.isSep)) : Option (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
+    match parseExpr e (Level.tighter j) tkns with
+    | none => none
+    | some (x, s1) =>
+        let lone : Expr G e (Level.tighterEq j) :=
+          x.reindex (l := Level.tighter j) (l' := Level.tighterEq j)
+            (fun _o hh => Tighter.toTighterEq (show Tighter (G.entry e).tighter j _o from hh))
+        match parseJuxtExtend e j hj lone s1.list with
+        | none => some (lone, s1)
+        | some (final, s2) => some (final, s1.trans s2)
+  termination_by (tkns.length, (G.entry e).rank j * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := s1.length_lt; omega)
+
+  /-- Fold one more argument atom onto an application accumulator, greedily. -/
+  def parseJuxtExtend (e : G.Ent) (j : (G.entry e).Op) (hj : (G.entry e).operator j = Operator.juxt)
+      (acc : Expr G e (Level.tighterEq j)) (tkns : List (Token G.isSep)) :
+      Option (Expr G e (Level.tighterEq j) × RightSublist tkns) :=
+    match parseExpr e (Level.tighter j) tkns with
+    | none => none
+    | some (x, s) =>
+        let acc' := Expr.juxtApp hj acc x
+        match parseJuxtExtend e j hj acc' s.list with
+        | none => some (acc', s)
+        | some (final, s2) => some (final, s.trans s2)
+  termination_by (tkns.length, (G.entry e).rank j * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := s.length_lt; omega)
+
+  /-- Parse a left-associative chain `a ∘ b ∘ c …`: the first operand, then as many
+  `∘ rhs` segments as possible (greedy). -/
+  def parseInfixL (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
+      (tkns : List (Token G.isSep)) : Option (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
+    match parseExpr e (Level.tighter o) tkns with
+    | none => none
+    | some (x, s1) =>
+        let lone : Expr G e (Level.tighterEq o) :=
+          x.reindex (l := Level.tighter o) (l' := Level.tighterEq o)
+            (fun _o hh => Tighter.toTighterEq (show Tighter (G.entry e).tighter o _o from hh))
+        match parseInfixLExtend e o hl lone s1.list with
+        | none => some (lone, s1)
+        | some (final, s2) => some (final, s1.trans s2)
+  termination_by (tkns.length, (G.entry e).rank o * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp only [Level.measure]; omega))
+      | exact Prod.Lex.left _ _ (by have := s1.length_lt; omega)
+
+  /-- Fold one more `∘ rhs` segment onto a left-assoc accumulator, greedily. -/
+  def parseInfixLExtend (e : G.Ent) (o : (G.entry e).Op) (hl : ((G.entry e).operator o).isInfxl = true)
+      (acc : Expr G e (Level.tighterEq o)) (tkns : List (Token G.isSep)) :
+      Option (Expr G e (Level.tighterEq o) × RightSublist tkns) :=
+    match parseParts (Operator.body e o).tail tkns with
+    | none => none
+    | some (tp, s) =>
+        let acc' := Expr.infxlApp hl acc tp
+        match parseInfixLExtend e o hl acc' s.list with
+        | none => some (acc', s)
+        | some (final, s2) => some (final, s.trans s2)
+  termination_by (tkns.length, (G.entry e).rank o * 4 + 2, 0)
+  decreasing_by
+    all_goals simp_wf
+    all_goals first
+      | exact Prod.Lex.right _ (Prod.Lex.left _ _ (by rw [partsMeasure_infxl_tail hl]; omega))
+      | exact Prod.Lex.left _ _ (by have := s.length_lt; omega)
 end
 
 end LambdaLab.Biparser.Mixfix
