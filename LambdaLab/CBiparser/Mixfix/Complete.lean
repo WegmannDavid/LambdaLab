@@ -196,7 +196,17 @@ That is where FOLLOW earns its keep (stopping the greedy folds from eating into 
 where longest-match earns its keep (a candidate that really uses its operator consumes more than
 one that falls through, so the parser cannot stop short).
 
-Still needs the extra grammar condition of roadmap item (2). -/
+Both prerequisites are now in place:
+* the **per-level** FOLLOW below (a juxt's left operand lives at a tighter level, where
+  juxtaposition is not applicable, so the variable that follows it does *not* continue it);
+* **`follow_of_interior`** (`Biparser.lean`), from the `interiorTerminates` grammar condition —
+  the `)` of `( _ )` stops the parser, so an operator's inner expression is parsed exactly.
+
+What remains is the induction itself: mutual, over the tree, mirroring `parseExpr.induct`'s
+7 motives, with the same **shifted** statements on the two accumulator folds that `Sound.lean`
+needed (`acc.flatten ++ tkns`, not `tkns`). The `longer` combinator is what makes the fold cases
+go through: a candidate that really uses its operator consumes strictly more than one that falls
+through to a bare operand, so longest-match cannot stop short. -/
 theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
     (rest : List (Token G.isSep)) (hF : FollowAt e l rest) :
     ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
