@@ -82,6 +82,7 @@ def qEntry : Entry arithSep Unit where
     intro a b _ _; cases a <;> cases b <;>
       simp_all [qOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
   varDisjoint := by intro o; cases o <;> decide
+  interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide
 
 def qG : Grammar := { arith with entry := fun _ => qEntry }
 

@@ -103,6 +103,29 @@ operator — and tokens the grammar does not know at all (a vernacular keyword, 
 def follow (e : G.Ent) : Token G.isSep → Bool :=
   fun t => !startsOperand e t && !continuesExpr e t
 
+/-! ## Interior tokens are in FOLLOW
+
+The one consequence of `interiorTerminates` that the round-trip law actually consumes: the `)` of
+`( _ )` — any name token sitting *after* a hole — provably stops the parser. This is what lets an
+operator's inner expression be parsed *exactly*, which is the crux of `parseExpr_exact`. -/
+
+theorem follow_of_interior {e : G.Ent} {o : (G.entry e).Op} {t : Token G.isSep}
+    (h : t ∈ ((G.entry e).operator o).nameTokens.tail) : follow e t = true := by
+  have hvar : (G.entry e).isVar t = false :=
+    (G.entry e).varDisjoint o t (List.mem_of_mem_tail h)
+  have hhead : ∀ o', ((G.entry e).operator o').headTok? ≠ some t := fun o' =>
+    (G.entry e).interiorTerminates o o' t h
+  -- neither role is available to `t`: it is not a variable, and it heads no operator at all
+  have key : ∀ o', (match ((G.entry e).operator o').headTok? with
+      | some h => h.val == t.val | none => false) = false := by
+    intro o'
+    cases hk : ((G.entry e).operator o').headTok? with
+    | none => rfl
+    | some h =>
+      simp only [beq_eq_false_iff_ne, ne_eq]
+      intro he; exact hhead o' (by rw [hk, Subtype.ext he])
+  simp [follow, startsOperand, continuesExpr, hvar, key]
+
 /-! ## The law
 
 The round-trip law lives in `Complete.lean`, because it needs an **unambiguity** hypothesis on

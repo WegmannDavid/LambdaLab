@@ -62,6 +62,7 @@ def pEntry : Entry arithSep Unit where
     intro o₁ o₂ _ _; cases o₁ <;> cases o₂ <;>
       simp_all [psymOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
   varDisjoint := by intro o; cases o <;> decide
+  interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide
 
 /-- The grammar: one entry, space is the only separator. -/
 def arith : Grammar where
@@ -87,7 +88,8 @@ def reservedL : List (Token arithSep) :=
 def pEntryL : Entry arithSep Unit :=
   { pEntry with
     isVar := fun t => decide (t ∉ reservedL)
-    varDisjoint := by intro o; cases o <;> decide }
+    varDisjoint := by intro o; cases o <;> decide
+    interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide }
 
 /-- Plug-in-ready: a mixfix grammar whose terms stop at a command boundary. -/
 def arithL : Grammar := { arith with entry := fun _ => pEntryL }

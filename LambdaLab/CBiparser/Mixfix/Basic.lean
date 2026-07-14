@@ -198,6 +198,22 @@ structure Entry (sep : Char → Bool) (Ent : Type) where
   both a variable leaf and (part of) an operator. Stated over the operator's *finite*
   name-part list, so a concrete grammar discharges it by `decide`. -/
   varDisjoint : ∀ (o : Op) (t : Token sep), t ∈ (operator o).nameTokens → isVar t = false
+  /-- **Interior tokens terminate** — the third and last piece of lexical distinctness, and the
+  analogue of `headsDistinct` for the tokens that are *not* leading.
+
+  A name token that appears after a hole *inside* an operator — the `)` of `( _ )`, the `then`
+  of `if _ then _ else _` — must **head no operator at all**.
+
+  This is what puts such a token in FOLLOW, and it is exactly what the round-trip law needs.
+  Without it the law is **false**: a grammar carrying an operator *headed by* `)` would give
+  `follow ")" = false`, the greedy parser inside `( e )` would try to extend `e` past the `)`,
+  and the printed tree would not parse back. `varDisjoint` rules out the *variable* half of that
+  hazard (`)` must not also be a variable); this rules out the *operator* half.
+
+  Stated over the operator's finite name-part list, so a concrete grammar discharges it by
+  `cases o₁ <;> cases o₂ <;> decide`. -/
+  interiorTerminates : ∀ (o₁ o₂ : Op) (t : Token sep),
+    t ∈ (operator o₁).nameTokens.tail → (operator o₂).headTok? ≠ some t
 
 structure Grammar where
   Ent : Type
