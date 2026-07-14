@@ -1,16 +1,8 @@
-
+import LambdaLab.CBiparser.Token
 
 namespace LambdaLab.CBiparser.Mixfix
 
-/-- A predicate-restricted string. -/
-abbrev Restricted (P : String → Prop) : Type := { s : String // P s }
-
-/-- A **token** for the separator predicate `sep`: a **nonempty** string containing
-**no** separator character. Nonemptiness ensures a rendered token can't vanish, so a
-rendered token stream always re-splits back into the same tokens (needed for
-`parse_complete`). -/
-abbrev Token (sep : Char → Bool) : Type :=
-  Restricted (fun s => (∀ c ∈ s.toList, sep c = false) ∧ s.toList ≠ [])
+open LambdaLab.CBiparser
 
 /-! ## Operator names with configurable interior holes
 
