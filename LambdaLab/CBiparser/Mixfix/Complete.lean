@@ -78,14 +78,16 @@ mutual
         exact Expr.flatten_ne_nil ex (List.append_eq_nil_iff.mp hcon).1
 end
 
-/-! ## Unambiguity — and why it is unavoidable
+/-! ## Unambiguity — a hypothesis here, a theorem in `Unambiguity.lean`
 
-Completeness-as-equality requires `flatten` to be **injective**, and this is forced for *any*
+Completeness-as-equality requires `flatten` to be **injective**, and that is forced for *any*
 deterministic parser, not just ours: if `t₁ ≠ t₂` flatten alike, a deterministic parser returns
-one of them, and the other cannot possibly round-trip. `headsDistinct` does **not** supply it
-(this repo has a machine-checked counterexample to that implication). So it is a hypothesis. -/
+one of them and the other cannot round-trip.
 
-/-- Distinct trees at a level print distinctly. -/
+The theorems below take `Unambiguous G` as a hypothesis, which keeps them independent of *how* it
+is established. `Unambiguity.lean` sets out to **derive** it from the three lexical conditions the
+grammar already carries, so that the hypothesis can eventually be discharged rather than assumed.
+-/
 
 /-! ## The decomposition
 
