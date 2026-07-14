@@ -41,42 +41,6 @@ def runParts (shape : List (Part G)) (input : List (Token G.isSep)) :
     Option (Parts G shape × List (Token G.isSep)) :=
   (parseParts shape input).map (fun x => (x.1, x.2.list))
 
-/-! ## A printed tree is never empty
-
-Needed everywhere: the leftover after parsing `t.flatten ++ rest` must be a *strict* suffix, so
-`t.flatten` has to be non-empty. It is, and the reason is structural — a variable prints one
-token, and every operator body contains either a name part or a hole (which prints non-empty by
-induction). -/
-
-/-- A notation always has at least one name token. -/
-theorem Notation.toParts_ne_nil (n : Notation G.isSep G.Ent) :
-    Notation.toParts n ≠ [] := by
-  cases n <;> simp [Notation.toParts]
-
-/-- Every operator body has at least one part — a name token, or a hole. -/
-theorem Operator.body_ne_nil {e : G.Ent} (o : (G.entry e).Op) :
-    Operator.body e o ≠ [] := by
-  unfold Operator.body
-  cases (G.entry e).operator o <;>
-    simp [Notation.toParts_ne_nil]
-
-mutual
-  theorem Expr.flatten_ne_nil {e : G.Ent} {l : Level (G.entry e)} :
-      ∀ (t : Expr G e l), t.flatten ≠ []
-    | .var _ _ => by simp [Expr.flatten]
-    | .op o _ ps => by
-        simp only [Expr.flatten]
-        exact Parts.flatten_ne_nil ps (Operator.body_ne_nil o)
-
-  theorem Parts.flatten_ne_nil {shape : List (Part G)} :
-      ∀ (ps : Parts G shape), shape ≠ [] → ps.flatten ≠ []
-    | .nil, h => absurd rfl h
-    | .namePart _ _, _ => by simp [Parts.flatten]
-    | .hole ex _, _ => by
-        simp only [Parts.flatten]
-        intro hcon
-        exact Expr.flatten_ne_nil ex (List.append_eq_nil_iff.mp hcon).1
-end
 
 /-! ## Unambiguity — a hypothesis here, a theorem in `Unambiguity.lean`
 

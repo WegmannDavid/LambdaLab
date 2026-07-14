@@ -1,4 +1,5 @@
 import LambdaLab.CBiparser.Mixfix.Biparser
+import LambdaLab.CBiparser.Mixfix.Sound
 
 /-!
 # Unambiguity is a THEOREM, not a hypothesis
@@ -41,6 +42,43 @@ namespace LambdaLab.CBiparser.Mixfix
 
 variable {G : Grammar}
 
+/-! ## A printed tree is never empty
+
+Needed everywhere: the leftover after parsing `t.flatten ++ rest` must be a *strict* suffix, so
+`t.flatten` has to be non-empty. It is, and the reason is structural — a variable prints one
+token, and every operator body contains either a name part or a hole (which prints non-empty by
+induction). -/
+
+/-- A notation always has at least one name token. -/
+theorem Notation.toParts_ne_nil (n : Notation G.isSep G.Ent) :
+    Notation.toParts n ≠ [] := by
+  cases n <;> simp [Notation.toParts]
+
+/-- Every operator body has at least one part — a name token, or a hole. -/
+theorem Operator.body_ne_nil {e : G.Ent} (o : (G.entry e).Op) :
+    Operator.body e o ≠ [] := by
+  unfold Operator.body
+  cases (G.entry e).operator o <;>
+    simp [Notation.toParts_ne_nil]
+
+mutual
+  theorem Expr.flatten_ne_nil {e : G.Ent} {l : Level (G.entry e)} :
+      ∀ (t : Expr G e l), t.flatten ≠ []
+    | .var _ _ => by simp [Expr.flatten]
+    | .op o _ ps => by
+        simp only [Expr.flatten]
+        exact Parts.flatten_ne_nil ps (Operator.body_ne_nil o)
+
+  theorem Parts.flatten_ne_nil {shape : List (Part G)} :
+      ∀ (ps : Parts G shape), shape ≠ [] → ps.flatten ≠ []
+    | .nil, h => absurd rfl h
+    | .namePart _ _, _ => by simp [Parts.flatten]
+    | .hole ex _, _ => by
+        simp only [Parts.flatten]
+        intro hcon
+        exact Expr.flatten_ne_nil ex (List.append_eq_nil_iff.mp hcon).1
+end
+
 /-! ## Sizes, for the mutual termination -/
 
 mutual
@@ -55,6 +93,98 @@ end
 
 theorem Parts.size_cast {shape shape' : List (Part G)} (h : shape = shape') (ps : Parts G shape) :
     (h ▸ ps).size = ps.size := by cases h; rfl
+
+
+/-! ## The shape of an operator body, and the first token of a tree
+
+An operator body starts either with the operator's own **head token** (`closed`, `prefx`) or with a
+**hole at the host entry** (the left operand of `infx`/`infxl`/`infxr`/`postfx`/`juxt`). The second
+half matters: the leading hole is at `e` itself, never at some other entry, so the recursion below
+stays inside one entry. -/
+
+theorem Notation.toParts_cons (n : Notation G.isSep G.Ent) :
+    Notation.toParts (G := G) n = .namePart n.firstTok :: (Notation.toParts (G := G) n).tail := by
+  cases n <;> rfl
+
+theorem Notation.head?_toTokens {sep : Char → Bool} {Ent : Type} (n : Notation sep Ent) :
+    n.toTokens.head? = some n.firstTok := by
+  cases n <;> rfl
+
+theorem Notation.toParts_append_cons (n : Notation G.isSep G.Ent) (suffix : List (Part G)) :
+    Notation.toParts (G := G) n ++ suffix
+      = .namePart n.firstTok :: ((Notation.toParts (G := G) n).tail ++ suffix) := by
+  cases n <;> rfl
+
+/-- A **token-led** operator's body begins with its head token. -/
+theorem body_cons_namePart {e : G.Ent} (o : (G.entry e).Op)
+    (h : ((G.entry e).operator o).startsWithHole = false) :
+    ∃ tk ps, Operator.body e o = .namePart tk :: ps ∧
+      ((G.entry e).operator o).headTok? = some tk := by
+  unfold Operator.body
+  cases hop : (G.entry e).operator o with
+  | closed n =>
+      exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail, Notation.toParts_cons n,
+        by simp [Operator.headTok?, Operator.nameTokens, hop, Notation.head?_toTokens]⟩
+  | prefx n =>
+      exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail ++ [.hole e (.tighter o)],
+        Notation.toParts_append_cons n _,
+        by simp [Operator.headTok?, Operator.nameTokens, hop, Notation.head?_toTokens]⟩
+  | infx n   => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | infxl n  => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | infxr n  => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | postfx n => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | juxt     => rw [hop] at h; simp [Operator.startsWithHole] at h
+
+/-- A **hole-led** operator's body begins with a hole **at the host entry**. -/
+theorem body_cons_hole {e : G.Ent} (o : (G.entry e).Op)
+    (h : ((G.entry e).operator o).startsWithHole = true) :
+    ∃ (L : Level (G.entry e)) (ps : List (Part G)), Operator.body e o = .hole e L :: ps := by
+  unfold Operator.body
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | prefx n  => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | infx n   => exact ⟨.tighter o, _, rfl⟩
+  | infxl n  => exact ⟨.tighterEq o, _, rfl⟩
+  | infxr n  => exact ⟨.tighter o, _, rfl⟩
+  | postfx n => exact ⟨.tighter o, _, rfl⟩
+  | juxt     => exact ⟨.tighterEq o, _, rfl⟩
+
+theorem Parts.flatten_cons_namePart {tk : Token G.isSep} {ps : List (Part G)}
+    (q : Parts G (.namePart tk :: ps)) : ∃ r, q.flatten = tk :: r := by
+  cases q with | namePart _ rest => exact ⟨rest.flatten, rfl⟩
+
+theorem Parts.flatten_cons_hole {e' : G.Ent} {L : Level (G.entry e')} {ps : List (Part G)}
+    (q : Parts G (.hole e' L :: ps)) :
+    ∃ (sub : Expr G e' L) (r : List (Token G.isSep)),
+      q.flatten = sub.flatten ++ r ∧ sub.size < q.size := by
+  cases q with
+  | hole sub rest => exact ⟨sub, rest.flatten, rfl, by simp [Parts.size]; omega⟩
+
+/-- **The first token of any tree starts an operand.** A variable does by definition; a token-led
+operator does because its head is the head of a non-hole-led operator; a hole-led one inherits it
+from its left operand, which lives at the *same entry*. -/
+theorem Expr.flatten_head {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    ∃ tk r, t.flatten = tk :: r ∧ startsOperand e tk := by
+  match t with
+  | .var tk hv => exact ⟨tk, [], rfl, by simp [startsOperand, hv]⟩
+  | .op o hc ps =>
+      by_cases hh : ((G.entry e).operator o).startsWithHole = true
+      · -- hole-led: recurse into the left operand (same entry, strictly smaller)
+        obtain ⟨L, ps', hshape⟩ := body_cons_hole o hh
+        obtain ⟨sub, r, hfl, hsz⟩ := Parts.flatten_cons_hole (hshape ▸ ps)
+        have hsz' : sub.size < (Expr.op o hc ps).size := by
+          rw [Expr.size, ← Parts.size_cast hshape ps]; omega
+        obtain ⟨tk, r', h1, h2⟩ := Expr.flatten_head sub
+        refine ⟨tk, r' ++ r, ?_, h2⟩
+        rw [Expr.flatten, ← Parts.flatten_cast hshape ps, hfl, h1, List.cons_append]
+      · -- token-led: the head token itself
+        rw [Bool.not_eq_true] at hh
+        obtain ⟨tk, ps', hshape, hhead⟩ := body_cons_namePart o hh
+        obtain ⟨r, hfl⟩ := Parts.flatten_cons_namePart (hshape ▸ ps)
+        refine ⟨tk, r, by rw [Expr.flatten, ← Parts.flatten_cast hshape ps, hfl], ?_⟩
+        simp only [startsOperand, Bool.or_eq_true, List.any_eq_true]
+        exact Or.inr ⟨o, (G.entry e).ops_complete o, by simp [hh, hhead]⟩
+  termination_by t.size
 
 /-! ## `Stops` — the per-level FOLLOW, as the induction consumes it
 
@@ -317,12 +447,52 @@ theorem not_continuesAt_tighter_juxt {e : G.Ent} {j : (G.entry e).Op} {t : Token
   · rw [not_startsOperand_of_head hhole' hhead'] at hstart; exact absurd hstart (by simp)
   · exact Tighter.irrefl j ((G.entry e).juxtUnique j' j hj' hj ▸ hc')
 
-/-- **The kernel.** For a left-recursive operator `o` (`infxl`/`infxr`/`juxt`), a flattening
-determines the split between its left and right operands.
+/-! ## The spine: what the `infxl`/`juxt` kernel must actually say
 
-Left operand at `.tighterEq o`, right at `.tighter o` (or mirrored, for `infxr`). The right operand
-is *strictly* tighter, so its flattening carries no top-level `o`; hence the split is forced. This
-is the depth-0 counting argument, and it is the one thing this file still owes. -/
+The ★ lemmas make FOLLOW available at `.tighter o`. What remains is to get the *shape* of the
+statement right, and two natural attempts are **FALSE**. Both counterexamples use `o = +` (infxl),
+`s` a leftover stopping the ambient level `l`.
+
+**Attempt 1** — "left operands with FOLLOW-stopping continuations agree":
+    L₁ = `a`,     c₁ = `+ b`        L₂ = `a + b`,  c₂ = `[]`
+Both `c`s satisfy `FollowAt e (.tighter o)` (`+` does not continue there, by ★; `[]` vacuously),
+the flattenings agree — and `L₁ ≠ L₂`. The hypothesis is too weak: it does not know that `c` is a
+*body tail followed by a stopping leftover*.
+
+**Attempt 2** — repair it by letting `c` be *any* sequence of body tails then a stopping leftover
+(`TailSeq`). Still false:
+    L₁ = `a + b`, c₁ = `+ c ++ s`   L₂ = `a`,      c₂ = `+ b + c ++ s`
+Both `c`s are legitimate tail-sequences (`c₂` is two tails), the flattenings agree, `L₁ ≠ L₂`. The
+*number of tails* is doing real work and cannot be existentially quantified away.
+
+**The correct statement.** Normalise the spine. Every tree at `.tighterEq o` is uniquely
+
+    base + [tail₁, …, tailₙ]        base : Expr e (.tighter o)   -- STRICTLY tighter
+                                    tailᵢ : Parts (Operator.body e o).tail
+
+with `n = 0` exactly when the top operator is not `o` (`TighterEq.toTighterOrEq`: a top operator at
+`.tighterEq o` is either `o` itself or strictly tighter — and a `var` inhabits every level). The
+base is at `.tighter o`, **not** `.tighterEq o`; that is the whole point, and it is what kills
+Attempt 2, whose `L₂ = a` could absorb an extra tail precisely because `a + b` was allowed to be a
+"base".
+
+Uniqueness then falls out of the ★ lemmas:
+* compare `base₁` and `base₂` at `.tighter o`. Their continuations start with `headTok o` (if any
+  tail remains) or are the final leftover — `FollowAt e (.tighter o)` holds in both cases, by ★ and
+  by `FollowAt.tighten` respectively. So `udExpr` at `.tighter o` applies;
+* compare the tails one at a time with `udParts`. A tail's right operand sits at `.tighter o` and
+  its continuation is again "next tail, or the leftover" — same argument;
+* when one spine runs out first, its leftover **stops `l`** while the other still begins with
+  `headTok o`, which **continues** `l` (`o` is applicable at `l`). Contradiction. This is the step
+  that forces the two spines to have the same length, and it is the only place the *ambient* level
+  is used.
+
+Building the spine view (an `Expr e (.tighterEq o)` ↔ `base + tails` isomorphism) is the remaining
+work. The kernel sorries below are stated in the un-normalised form and should be *replaced* by it,
+not proved directly. -/
+
+/-- **The kernel**, un-normalised — see the spine note above: this is the statement to replace, not
+to prove head-on. -/
 theorem splitLeftRec {e : G.Ent} {l : Level (G.entry e)} (o : (G.entry e).Op)
     (hc : Level.condition l o)
     {shape : List (Part G)} (hb : Operator.body e o = shape)
@@ -333,8 +503,7 @@ theorem splitLeftRec {e : G.Ent} {l : Level (G.entry e)} (o : (G.entry e).Op)
   sorry
 
 /-- **Two distinct top operators cannot share a flattening.** For the token-led fixities this is
-`headsDistinct` (the leading token identifies the operator). For the hole-led ones it needs the
-same depth-0 kernel as `splitLeftRec`. -/
+`headsDistinct`. For the hole-led ones it needs the spine. -/
 theorem topOp_unique {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
     (hne : o₁ ≠ o₂) (hc₁ : Level.condition l o₁) (hc₂ : Level.condition l o₂)
     (p₁ : Parts G (Operator.body e o₁)) (p₂ : Parts G (Operator.body e o₂))
@@ -343,7 +512,8 @@ theorem topOp_unique {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e
     (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : False := by
   sorry
 
-/-- A variable and an operator cannot share a flattening. -/
+/-- A variable and an operator cannot share a flattening. For a token-led operator this is
+`varDisjoint` on the first token; for a hole-led one it is again the spine. -/
 theorem varOp_ne {e : G.Ent} {l : Level (G.entry e)} {t : Token G.isSep}
     (hv : (G.entry e).isVar t = true) {o : (G.entry e).Op} (hc : Level.condition l o)
     (p : Parts G (Operator.body e o)) (s₁ s₂ : List (Token G.isSep))
