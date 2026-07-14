@@ -79,6 +79,36 @@ def Operator.headTok? {sep : Char → Bool} {Ent : Type} (o : Operator sep Ent) 
   o.nameTokens.head?
 
 
+/-- The **first** token of a notation. Every notation has one (it is non-empty by
+construction), which is what makes `holeFollowers` total. -/
+def Notation.firstTok {sep : Char → Bool} {Ent : Type} : Notation sep Ent → Token sep
+  | .last t     => t
+  | .cons t _ _ => t
+
+/-- The **interior seams** of a notation: for each interior hole, the entry it is parsed at
+paired with the token that immediately follows it.
+
+In `( _ )` the single seam is `(e', ")")`; in `if _ then _ else _` the seams are
+`(e₁, "then")` and `(e₂, "else")`. These are exactly the places where one parser must hand
+back to another, and exactly where FOLLOW has to be right. -/
+def Notation.holeFollowers {sep : Char → Bool} {Ent : Type} :
+    Notation sep Ent → List (Ent × Token sep)
+  | .last _        => []
+  | .cons _ e' rest => (e', rest.firstTok) :: rest.holeFollowers
+
+/-- The interior seams of an operator. `juxt` has none (no tokens at all); every other fixity
+inherits its notation's. The *outer* holes never appear here: they are at the host entry and are
+bounded by the ambient FOLLOW, not by a token of this operator. -/
+def Operator.holeFollowers {sep : Char → Bool} {Ent : Type} :
+    Operator sep Ent → List (Ent × Token sep)
+  | .closed n => n.holeFollowers
+  | .prefx n  => n.holeFollowers
+  | .infx n   => n.holeFollowers
+  | .infxl n  => n.holeFollowers
+  | .infxr n  => n.holeFollowers
+  | .postfx n => n.holeFollowers
+  | .juxt     => []
+
 /-- Does this operator begin with a **hole** (i.e. take a left operand)?
 
 This is the distinction FOLLOW turns on, and it is exactly the one `headTok?` alludes to. A
@@ -198,22 +228,6 @@ structure Entry (sep : Char → Bool) (Ent : Type) where
   both a variable leaf and (part of) an operator. Stated over the operator's *finite*
   name-part list, so a concrete grammar discharges it by `decide`. -/
   varDisjoint : ∀ (o : Op) (t : Token sep), t ∈ (operator o).nameTokens → isVar t = false
-  /-- **Interior tokens terminate** — the third and last piece of lexical distinctness, and the
-  analogue of `headsDistinct` for the tokens that are *not* leading.
-
-  A name token that appears after a hole *inside* an operator — the `)` of `( _ )`, the `then`
-  of `if _ then _ else _` — must **head no operator at all**.
-
-  This is what puts such a token in FOLLOW, and it is exactly what the round-trip law needs.
-  Without it the law is **false**: a grammar carrying an operator *headed by* `)` would give
-  `follow ")" = false`, the greedy parser inside `( e )` would try to extend `e` past the `)`,
-  and the printed tree would not parse back. `varDisjoint` rules out the *variable* half of that
-  hazard (`)` must not also be a variable); this rules out the *operator* half.
-
-  Stated over the operator's finite name-part list, so a concrete grammar discharges it by
-  `cases o₁ <;> cases o₂ <;> decide`. -/
-  interiorTerminates : ∀ (o₁ o₂ : Op) (t : Token sep),
-    t ∈ (operator o₁).nameTokens.tail → (operator o₂).headTok? ≠ some t
 
 structure Grammar where
   Ent : Type
@@ -230,6 +244,29 @@ structure Grammar where
   sepWitness : { c : Char // isSep c = true }
   entry : Ent → Entry isSep Ent
   -- no start symbol, the start symbol is choosen when deriving the parser
+  /-- **Interior seams terminate** — the third and last piece of lexical distinctness, and the
+  analogue of `headsDistinct` for the tokens that are *not* leading.
+
+  Read it off an operator's shape. In `( _ )` the hole is parsed by entry `e'`'s parser, and the
+  only thing that can stop that parser is the token that follows the hole — here `)`. So `)` must
+  lie in **`e'`'s** FOLLOW: it may be neither an `e'`-variable nor the head of any `e'`-operator.
+
+  This lives on `Grammar`, not on `Entry`, and it *has* to: the hole's entry `e'` is in general a
+  **different** entry from the operator's host `e` (that is the whole point of `Notation.cons`
+  carrying an `Ent`), and an `Entry` cannot see its siblings. A two-entry grammar — exactly what
+  `Language1` is, with `Ty` and `Tm` — can satisfy every `Entry` field and still break the law.
+
+  Without this the round-trip law is **FALSE**, not merely unproved: a grammar in which `)` heads
+  an operator of the hole's entry gives `follow e' ")" = false`, the greedy `e'`-parser runs past
+  the `)`, and the printed tree does not parse back. `varDisjoint` rules out the *variable* half of
+  the hazard within one entry; this rules out both halves across all of them. Together with
+  `headsDistinct` it says: **every token has exactly one lexical role at every seam it can reach.**
+
+  Stated over the operator's finite seam list, so a concrete grammar discharges it by `decide`. -/
+  interiorTerminates : ∀ (e : Ent) (o : (entry e).Op) (e' : Ent) (t : Token isSep),
+    (e', t) ∈ ((entry e).operator o).holeFollowers →
+      (entry e').isVar t = false ∧
+        ∀ o' : (entry e').Op, ((entry e').operator o').headTok? ≠ some t
 
 /-! **Note.** The char-level separator machinery (`Sep`, `NESep`, `mkNESep`, …) that used to
 live here is gone: the mixfix biparser is **token-level**, so its alphabet is `Token isSep` and

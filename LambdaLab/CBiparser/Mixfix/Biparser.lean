@@ -103,23 +103,23 @@ operator — and tokens the grammar does not know at all (a vernacular keyword, 
 def follow (e : G.Ent) : Token G.isSep → Bool :=
   fun t => !startsOperand e t && !continuesExpr e t
 
-/-! ## Interior tokens are in FOLLOW
+/-! ## Interior seams land in the FOLLOW of the hole's entry
 
-The one consequence of `interiorTerminates` that the round-trip law actually consumes: the `)` of
-`( _ )` — any name token sitting *after* a hole — provably stops the parser. This is what lets an
-operator's inner expression be parsed *exactly*, which is the crux of `parseExpr_exact`. -/
+The one consequence of `interiorTerminates` that the round-trip law consumes: at every interior
+seam of an operator — the `)` of `( _ )`, the `then` of `if _ then _` — the following token is in
+the FOLLOW of **the entry that parses the hole**. That is what lets an operator's inner expression
+be parsed *exactly*, and it is the crux of `parseExpr_exact`.
 
-theorem follow_of_interior {e : G.Ent} {o : (G.entry e).Op} {t : Token G.isSep}
-    (h : t ∈ ((G.entry e).operator o).nameTokens.tail) : follow e t = true := by
-  have hvar : (G.entry e).isVar t = false :=
-    (G.entry e).varDisjoint o t (List.mem_of_mem_tail h)
-  have hhead : ∀ o', ((G.entry e).operator o').headTok? ≠ some t := fun o' =>
-    (G.entry e).interiorTerminates o o' t h
-  -- neither role is available to `t`: it is not a variable, and it heads no operator at all
-  have key : ∀ o', (match ((G.entry e).operator o').headTok? with
+Note the entry: `follow e'`, not `follow e`. The hole may belong to a different entry than the
+operator hosting it, and it is the *hole's* parser that has to stop. -/
+
+theorem follow_of_holeFollower {e e' : G.Ent} {o : (G.entry e).Op} {t : Token G.isSep}
+    (h : (e', t) ∈ ((G.entry e).operator o).holeFollowers) : follow e' t = true := by
+  obtain ⟨hvar, hhead⟩ := G.interiorTerminates e o e' t h
+  have key : ∀ o' : (G.entry e').Op, (match ((G.entry e').operator o').headTok? with
       | some h => h.val == t.val | none => false) = false := by
     intro o'
-    cases hk : ((G.entry e).operator o').headTok? with
+    cases hk : ((G.entry e').operator o').headTok? with
     | none => rfl
     | some h =>
       simp only [beq_eq_false_iff_ne, ne_eq]

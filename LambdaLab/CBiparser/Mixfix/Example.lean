@@ -62,7 +62,6 @@ def pEntry : Entry arithSep Unit where
     intro o₁ o₂ _ _; cases o₁ <;> cases o₂ <;>
       simp_all [psymOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
   varDisjoint := by intro o; cases o <;> decide
-  interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide
 
 /-- The grammar: one entry, space is the only separator. -/
 def arith : Grammar where
@@ -70,6 +69,13 @@ def arith : Grammar where
   isSep := arithSep
   sepWitness := ⟨' ', by decide⟩
   entry := fun _ => pEntry
+  interiorTerminates := by
+    intro _ o _ t h
+    cases o <;>
+      simp [pEntry, psymOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h
+    subst h
+    exact ⟨by decide, by intro o'; cases o' <;> decide⟩
 
 /-! ## A `Language1`-compatible variant
 
@@ -88,11 +94,19 @@ def reservedL : List (Token arithSep) :=
 def pEntryL : Entry arithSep Unit :=
   { pEntry with
     isVar := fun t => decide (t ∉ reservedL)
-    varDisjoint := by intro o; cases o <;> decide
-    interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide }
+    varDisjoint := by intro o; cases o <;> decide }
 
 /-- Plug-in-ready: a mixfix grammar whose terms stop at a command boundary. -/
-def arithL : Grammar := { arith with entry := fun _ => pEntryL }
+def arithL : Grammar :=
+  { arith with
+    entry := fun _ => pEntryL
+    interiorTerminates := by
+      intro _ o _ t h
+      cases o <;>
+        simp [pEntryL, pEntry, psymOp, Operator.holeFollowers, Notation.holeFollowers,
+          Notation.firstTok] at h
+      obtain ⟨-, rfl⟩ := h
+      exact ⟨by decide, by intro o'; cases o' <;> decide⟩ }
 
 /-- A variable leaf `x` at the loosest level. -/
 def exVar : Expr arith () .loosest := .var (tk "x") (by decide)

@@ -82,13 +82,29 @@ def qEntry : Entry arithSep Unit where
     intro a b _ _; cases a <;> cases b <;>
       simp_all [qOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
   varDisjoint := by intro o; cases o <;> decide
-  interiorTerminates := by intro o₁ o₂; cases o₁ <;> cases o₂ <;> decide
 
-def qG : Grammar := { arith with entry := fun _ => qEntry }
+def qG : Grammar :=
+  { arith with
+    entry := fun _ => qEntry
+    interiorTerminates := by
+      intro _ o _ t h
+      cases o <;>
+        simp [qEntry, qOp, Operator.holeFollowers, Notation.holeFollowers,
+          Notation.firstTok] at h
+      obtain ⟨-, rfl⟩ := h
+      exact ⟨by decide, by intro o'; cases o' <;> decide⟩ }
 
 /-- The same grammar with the two operators listed the other way round. -/
 def qG' : Grammar :=
-  { arith with entry := fun _ => { qEntry with loosest := [.plus, .times] } }
+  { arith with
+    entry := fun _ => { qEntry with loosest := [.plus, .times] }
+    interiorTerminates := by
+      intro _ o _ t h
+      cases o <;>
+        simp [qEntry, qOp, Operator.holeFollowers, Notation.holeFollowers,
+          Notation.firstTok] at h
+      obtain ⟨-, rfl⟩ := h
+      exact ⟨by decide, by intro o'; cases o' <;> decide⟩ }
 
 /-! ## The regression test
 
