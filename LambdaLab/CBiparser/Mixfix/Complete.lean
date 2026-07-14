@@ -143,15 +143,62 @@ condition, and it is the analogue of `headsDistinct` for **interior** tokens.
 So `Entry` needs one more field (or `Unambiguous` needs to imply it).
 -/
 
+/-! ### The per-level FOLLOW
+
+`follow e` (the `Bool` in `Biparser.lean`) is the **loosest-level** instance and is what the
+`IBip` index needs. The induction needs the level-indexed version, and only as a `Prop` —
+it never has to be computed. -/
+
+/-- A token can **continue** an expression at level `l` if some operator *valid at `l`* can
+consume it as a continuation:
+
+* a left-recursive operator whose leading token is `t` (it arrives after the left operand), or
+* juxtaposition — which continues via an *operand*, so any operand-starter continues it.
+
+The `Level.condition l o` guard is the whole point: at a tighter level, juxtaposition is not
+applicable, so a variable **does not** continue — which is exactly why the operands of `f x y`
+parse exactly, even though a variable is never in the loosest-level FOLLOW. -/
+def ContinuesAt (e : G.Ent) (l : Level (G.entry e)) (t : Token G.isSep) : Prop :=
+  (∃ o, Level.condition l o ∧ ((G.entry e).operator o).startsWithHole = true ∧
+        ((G.entry e).operator o).headTok? = some t)
+  ∨ (∃ j, Level.condition l j ∧ (G.entry e).operator j = Operator.juxt ∧
+          startsOperand e t = true)
+
+/-- **FOLLOW at a level**: the tokens that cannot extend an expression at `l`. -/
+def FollowAt (e : G.Ent) (l : Level (G.entry e)) (rest : List (Token G.isSep)) : Prop :=
+  ∀ t, rest.head? = some t → ¬ ContinuesAt e l t
+
+/-- The computable `follow` is the **strongest** FOLLOW: it excludes *every* operator, not just
+those valid at a level. So it implies `FollowAt` at every level -- which is what lets the
+loosest-level `IBip` index feed the level-indexed induction. -/
+theorem followAt_of_follow {e : G.Ent} {l : Level (G.entry e)} {rest : List (Token G.isSep)}
+    (h : HeadIn (follow e) rest) : FollowAt e l rest := by
+  intro t ht hcon
+  have hf : follow e t = true := h t ht
+  simp only [follow, Bool.and_eq_true, Bool.not_eq_true'] at hf
+  obtain ⟨hstart, hcont⟩ := hf
+  rcases hcon with ⟨o, _, hhole, hhead⟩ | ⟨j, _, hjuxt, hstart'⟩
+  · -- `t` heads a left-recursive operator, so `continuesExpr` should have been true
+    have : continuesExpr e t = true := by
+      simp only [continuesExpr, List.any_eq_true]
+      exact ⟨o, (G.entry e).ops_complete o, by simp [hhole, hhead]⟩
+    rw [this] at hcont; exact absurd hcont (by simp)
+  · -- `t` starts an operand
+    rw [hstart'] at hstart; exact absurd hstart (by simp)
+
 /-- **The one open lemma.** The parser consumes exactly what was printed.
 
-*Not yet proved* — see the roadmap above. Needs (1) a per-level FOLLOW and (2) an extra grammar
-condition on interior tokens. Note it does **not** need unambiguity: it is purely a statement
-about how *much* the parser consumes. That is where FOLLOW earns its keep (it stops the greedy
-folds eating into `rest`) and where longest-match earns its keep (a candidate that really uses
-its operator consumes more than one that falls through, so the parser cannot stop short). -/
+Stated with the **per-level** FOLLOW -- with `follow e` it would be *false* (a juxt's left
+operand is followed by a variable, which is never in the loosest-level FOLLOW).
+
+It does **not** need unambiguity: it is purely a statement about how *much* the parser consumes.
+That is where FOLLOW earns its keep (stopping the greedy folds from eating into `rest`) and
+where longest-match earns its keep (a candidate that really uses its operator consumes more than
+one that falls through, so the parser cannot stop short).
+
+Still needs the extra grammar condition of roadmap item (2). -/
 theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
-    (rest : List (Token G.isSep)) (hF : HeadIn (follow e) rest) :
+    (rest : List (Token G.isSep)) (hF : FollowAt e l rest) :
     ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
   sorry
 
@@ -161,7 +208,7 @@ theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
 theorem parseExpr_complete (hU : Unambiguous G) {e : G.Ent} {l : Level (G.entry e)}
     (t : Expr G e l) (rest : List (Token G.isSep)) (hF : HeadIn (follow e) rest) :
     runExpr e l (t.flatten ++ rest) = some (t, rest) := by
-  obtain ⟨t', ht'⟩ := parseExpr_exact t rest hF
+  obtain ⟨t', ht'⟩ := parseExpr_exact t rest (followAt_of_follow hF)
   -- soundness: what the parser returned flattens to what it consumed
   have hsound : t'.flatten ++ rest = t.flatten ++ rest := by
     simp only [runExpr, Option.map_eq_some_iff] at ht'
