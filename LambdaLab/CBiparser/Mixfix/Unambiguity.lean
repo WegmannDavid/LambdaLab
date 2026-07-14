@@ -447,6 +447,169 @@ theorem not_continuesAt_tighter_juxt {e : G.Ent} {j : (G.entry e).Op} {t : Token
   · rw [not_startsOperand_of_head hhole' hhead'] at hstart; exact absurd hstart (by simp)
   · exact Tighter.irrefl j ((G.entry e).juxtUnique j' j hj' hj ▸ hc')
 
+
+/-! ## The spine view
+
+`infxl` and `juxt` are exactly the operators whose body leads with a `.tighterEq` hole
+(`Operator.leftRec`). For those, a tree at `.tighterEq o` unfolds into
+
+    base : Expr e (.tighter o)          -- STRICTLY tighter: not `o`-headed
+    tails : List (Parts G (body e o).tail)
+
+and that normal form is what makes the kernel true (see the note above). -/
+
+/-- A left-recursive body leads with a `.tighterEq o` hole at the host entry. -/
+theorem body_leftRec_cons {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) :
+    Operator.body e o = .hole e (.tighterEq o) :: (Operator.body e o).tail := by
+  cases hop : (G.entry e).operator o with
+  | infxl n => unfold Operator.body; rw [hop]; rfl
+  | juxt    => unfold Operator.body; rw [hop]; rfl
+  | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+
+/-- **The left-recursive smart constructor**, uniform over `infxl` and `juxt`
+(generalising `Expr.juxtApp` / `Expr.infxlApp`). -/
+def Expr.leftRecApp {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true)
+    (L : Expr G e (Level.tighterEq o)) (T : Parts G (Operator.body e o).tail) :
+    Expr G e (Level.tighterEq o) :=
+  Expr.op o TighterEq.refl ((body_leftRec_cons hlr).symm ▸ Parts.hole L T)
+
+/-- Its flattening is the concatenation, as it must be. -/
+theorem Expr.leftRecApp_flatten {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true)
+    (L : Expr G e (Level.tighterEq o)) (T : Parts G (Operator.body e o).tail) :
+    (Expr.leftRecApp hlr L T).flatten = L.flatten ++ T.flatten := by
+  rw [Expr.leftRecApp, Expr.flatten, Parts.flatten_cast, Parts.flatten]
+
+/-- Cast cancellation, stated over *variables* so that `cases h` is available (the shape equations
+we actually have — `Operator.body e o = …` — have no variable side, so they cannot be `cases`d
+directly). -/
+theorem cast_eq_iff {α : Sort _} {P : α → Sort _} {a b : α} (h : a = b) (x : P a) (y : P b) :
+    (h ▸ x) = y ↔ x = (h.symm ▸ y) := by cases h; simp
+
+/-- **Inversion**: every body of a left-recursive operator splits into its left operand and tail,
+and the left operand is strictly smaller. -/
+theorem Parts.leftRec_inv {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    ∃ (L : Expr G e (Level.tighterEq o)) (T : Parts G (Operator.body e o).tail),
+      ps = (body_leftRec_cons hlr).symm ▸ Parts.hole L T ∧
+        ps.flatten = L.flatten ++ T.flatten ∧ L.size < ps.size := by
+  have hb := body_leftRec_cons hlr
+  cases hq : (hb ▸ ps : Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | hole L T =>
+      refine ⟨L, T, (cast_eq_iff hb ps _).mp hq, ?_, ?_⟩
+      · rw [← Parts.flatten_cast hb ps, hq, Parts.flatten]
+      · rw [← Parts.size_cast hb ps, hq, Parts.size]; omega
+
+
+/-! ### Destructors, and the unfold -/
+
+/-- The left operand of a left-recursive body. -/
+def Parts.leftRecL {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    Expr G e (Level.tighterEq o) :=
+  match (body_leftRec_cons hlr ▸ ps :
+      Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | .hole L _ => L
+
+/-- The tail of a left-recursive body. -/
+def Parts.leftRecT {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    Parts G (Operator.body e o).tail :=
+  match (body_leftRec_cons hlr ▸ ps :
+      Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | .hole _ T => T
+
+theorem Parts.leftRec_eta {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    ps = (body_leftRec_cons hlr).symm ▸ Parts.hole (ps.leftRecL hlr) (ps.leftRecT hlr) := by
+  have hb := body_leftRec_cons hlr
+  rw [← cast_eq_iff hb ps]
+  unfold Parts.leftRecL Parts.leftRecT
+  cases (hb ▸ ps : Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | hole L T => rfl
+
+theorem Parts.leftRec_flatten {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    ps.flatten = (ps.leftRecL hlr).flatten ++ (ps.leftRecT hlr).flatten := by
+  have hb := body_leftRec_cons hlr
+  rw [← Parts.flatten_cast hb ps]
+  unfold Parts.leftRecL Parts.leftRecT
+  cases (hb ▸ ps : Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | hole L T => rfl
+
+theorem Parts.leftRecL_size {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    (ps.leftRecL hlr).size < ps.size := by
+  have hb := body_leftRec_cons hlr
+  rw [← Parts.size_cast hb ps]
+  unfold Parts.leftRecL
+  cases (hb ▸ ps : Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | hole L T =>
+      show L.size < (Parts.hole L T).size
+      simp only [Parts.size]
+      omega
+
+/-- Transporting a body along an operator equation does not change its size. -/
+theorem Parts.size_opCast {e : G.Ent} {o o' : (G.entry e).Op} (h : o' = o)
+    (ps : Parts G (Operator.body e o')) : (h ▸ ps : Parts G (Operator.body e o)).size = ps.size := by
+  cases h; rfl
+
+theorem Parts.flatten_opCast {e : G.Ent} {o o' : (G.entry e).Op} (h : o' = o)
+    (ps : Parts G (Operator.body e o')) :
+    (h ▸ ps : Parts G (Operator.body e o)).flatten = ps.flatten := by
+  cases h; rfl
+
+open Classical in
+/-- **The spine unfold.** A tree at `.tighterEq o` becomes a *strictly tighter* base plus the list
+of body tails hanging off it, in left-to-right order. `n = 0` exactly when the top operator is not
+`o`. -/
+noncomputable def Expr.spine {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) :
+    Expr G e (Level.tighterEq o) →
+      Expr G e (Level.tighter o) × List (Parts G (Operator.body e o).tail)
+  | .var t hv => (.var t hv, [])
+  | .op o' hc ps =>
+      if h : o' = o then
+        let sp := Expr.spine hlr ((h ▸ ps : Parts G (Operator.body e o)).leftRecL hlr)
+        (sp.1, sp.2 ++ [(h ▸ ps : Parts G (Operator.body e o)).leftRecT hlr])
+      else
+        -- `o'` inhabits `.tighterEq o` and is not `o`, so it is STRICTLY tighter
+        (.op o' (by
+            rcases TighterEq.toTighterOrEq hc with heq | hT
+            · exact absurd heq.symm h
+            · exact hT) ps, [])
+  termination_by t => t.size
+  decreasing_by
+    simp_wf
+    have h1 := Parts.leftRecL_size hlr (h ▸ ps : Parts G (Operator.body e o))
+    have h2 := Parts.size_opCast h ps
+    simp only [Expr.size]
+    omega
+
+
+/-- **The spine flattens to base ++ tails.** -/
+theorem Expr.spine_flatten {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (t : Expr G e (Level.tighterEq o)) :
+    t.flatten = (Expr.spine hlr t).1.flatten
+      ++ (((Expr.spine hlr t).2).map Parts.flatten).flatten := by
+  induction t using Expr.spine.induct (hlr := hlr) with
+  | case1 tk hv => simp [Expr.spine, Expr.flatten]
+  | case2 hc ps ih =>
+      rw [Expr.spine, dif_pos (rfl : o = o)]
+      rw [Expr.flatten]
+      rw [Parts.leftRec_flatten hlr ps] at *
+      rw [ih]
+      simp [List.map_append, List.append_assoc]
+  | case3 o' hc ps hne =>
+      rw [Expr.spine, dif_neg hne]
+      simp [Expr.flatten]
+
 /-! ## The spine: what the `infxl`/`juxt` kernel must actually say
 
 The ★ lemmas make FOLLOW available at `.tighter o`. What remains is to get the *shape* of the
