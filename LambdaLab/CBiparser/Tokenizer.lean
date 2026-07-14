@@ -1,4 +1,5 @@
 import LambdaLab.CBiparser.Token
+import LambdaLab.CBiparser.Basic
 import LambdaLab.CBiparser.RoundTrip
 
 /-!
@@ -259,5 +260,121 @@ theorem dropToks_render {sc : Char} (hsc : sep sc = true) :
           rw [hstep, afterFirstTok_token t (by intro a ha; simp at ha; subst ha; exact hsc),
             afterFirstTok_sep_cons hsc]
           exact ih hrest
+
+/-! ## Progress: the replay strictly shrinks the input -/
+
+theorem length_afterFirstTok_le (cs : List Char) :
+    (afterFirstTok sep cs).length ≤ cs.length :=
+  Nat.le_trans (length_dropWhile_le _ _) (length_dropWhile_le _ _)
+
+/-- If there *is* a token, consuming it costs at least one character. This is where
+**non-emptiness of `Token`** pays for the composite's progress proof. -/
+theorem length_afterFirstTok_lt : ∀ {cs : List Char}, tokens sep cs ≠ [] →
+    (afterFirstTok sep cs).length < cs.length
+  | [], h => by simp [tokens] at h
+  | c :: cs, h => by
+      by_cases hc : sep c = true
+      · have ih := length_afterFirstTok_lt (cs := cs) (by rwa [tokens_sep_cons hc] at h)
+        rw [afterFirstTok_sep_cons hc]
+        simp only [List.length_cons]
+        omega
+      · have hcf : sep c = false := by simpa using hc
+        have h1 : skipSep sep (c :: cs) = c :: cs := by simp [skipSep, List.dropWhile_cons, hcf]
+        have h2 : afterWord sep (c :: cs) = afterWord sep cs := by
+          simp [afterWord, List.dropWhile_cons, hcf]
+        have h3 := length_dropWhile_le (fun x => !sep x) cs
+        have h4 : afterFirstTok sep (c :: cs) = afterWord sep cs := by
+          simp only [afterFirstTok, h1, h2]
+        have h5 : (afterFirstTok sep (c :: cs)).length ≤ cs.length :=
+          Nat.le_trans (Nat.le_of_eq (congrArg List.length h4)) h3
+        simp only [List.length_cons]
+        omega
+
+theorem length_dropToks_le : ∀ (n : Nat) (cs : List Char),
+    (dropToks sep n cs).length ≤ cs.length
+  | 0, cs => by simp [dropToks]
+  | n + 1, cs => by
+      simp only [dropToks]
+      exact Nat.le_trans (length_dropToks_le n _) (length_afterFirstTok_le cs)
+
+theorem length_dropToks_lt {n : Nat} {cs : List Char} (hn : 0 < n) (h : tokens sep cs ≠ []) :
+    (dropToks sep n cs).length < cs.length := by
+  cases n with
+  | zero => omega
+  | succ m =>
+      simp only [dropToks]
+      exact Nat.lt_of_le_of_lt (length_dropToks_le m _) (length_afterFirstTok_lt h)
+
+/-! ## The composite
+
+`viaTokens` precomposes a token-level biparser with the tokenizer: `parse` tokenizes, runs the
+inner parser, then **replays** its consumption with `dropToks` to recover a *character* leftover.
+`print` renders. -/
+
+/-- Precompose a token-level biparser with the tokenizer. -/
+def viaTokens {w v : Type} (sep : Char → Bool) (sc : Char)
+    (P : CBiparser (Token sep) w v) : CBiparser Char w v where
+  parse cs :=
+    (P.parse (tokens sep cs)).map (fun r =>
+      (r.1, ⟨dropToks sep ((tokens sep cs).length - r.2.val.length) cs, by
+        refine length_dropToks_lt ?_ ?_
+        · have := r.2.2; omega
+        · intro hnil
+          -- `r`'s TYPE mentions `tokens sep cs`, so rewriting it there is not type correct;
+          -- go through the length instead
+          have h2 := r.2.2
+          have hz : (tokens sep cs).length = 0 := by rw [hnil]; rfl
+          omega⟩))
+  print x := ((P.print x).1, render sc (P.print x).2)
+
+/-- The **erased-level** equation for the composite. Stating the law against `run` keeps the
+strict-suffix subtype out of every proof — and here it is not merely convenient but *necessary*:
+the subtype's proof mentions `tokens sep cs`, so rewriting that term underneath `parse` is not
+type correct. -/
+theorem viaTokens_run {w v : Type} (sep : Char → Bool) (sc : Char)
+    (P : CBiparser (Token sep) w v) (cs : List Char) :
+    (viaTokens sep sc P).run cs
+      = (P.run (tokens sep cs)).map
+          (fun r => (r.1, dropToks sep ((tokens sep cs).length - r.2.length) cs)) := by
+  simp only [CBiparser.run, viaTokens, Option.map_map]
+  cases P.parse (tokens sep cs) <;> rfl
+
+/-- **The composite FOLLOW.** Two seams, honestly stated: the continuation must begin with a
+separator (or be empty), *and* its first **token** must lie in the inner parser's FOLLOW.
+
+This is **not** of the form `HeadIn f` for any `f : Char → Bool`, and it cannot be: one character
+of lookahead does not determine the next *token*, because the next character may be whitespace.
+That is a real fact about two-stage lexing, not a defect — and it is why the composite is a
+`CBiparser` rather than an `IBip`. At the top level (`rest = []`) both halves are vacuous, so the
+whole-file round trip pays nothing. -/
+def CharFollow (sep : Char → Bool) (fol : Token sep → Bool) (rest : List Char) : Prop :=
+  HeadIn sep rest ∧ HeadIn fol (tokens sep rest)
+
+/-- **The composed round-trip law.** -/
+theorem viaTokens_roundTrips {w v : Type} {sep : Char → Bool} {sc : Char} (hsc : sep sc = true)
+    {fol : Token sep → Bool} (P : CBiparser (Token sep) w v)
+    (hP : RoundTrips P (HeadIn fol)) :
+    RoundTrips (viaTokens sep sc P) (CharFollow sep fol) := by
+  intro x rest hF
+  obtain ⟨hsep, htok⟩ := hF
+  have htoks : tokens sep (render sc (P.print x).2 ++ rest)
+      = (P.print x).2 ++ tokens sep rest := tokens_render_append hsc _ hsep
+  have hinner : P.run ((P.print x).2 ++ tokens sep rest)
+      = some ((P.print x).1, tokens sep rest) := hP x _ htok
+  rw [viaTokens_run]
+  simp only [viaTokens]
+  rw [htoks, hinner]
+  simp only [Option.map_some, List.length_append, Nat.add_sub_cancel]
+  rw [dropToks_render hsc _ hsep]
+
+/-- **The payoff: a whole file round-trips, with no side condition at all.** Both seams are vacuous
+at end of input. -/
+theorem viaTokens_roundtrip {w v : Type} {sep : Char → Bool} {sc : Char} (hsc : sep sc = true)
+    {fol : Token sep → Bool} (P : CBiparser (Token sep) w v)
+    (hP : RoundTrips P (HeadIn fol)) (x : w) :
+    (viaTokens sep sc P).run ((viaTokens sep sc P).print x).2
+      = some (((viaTokens sep sc P).print x).1, []) := by
+  have h := viaTokens_roundTrips hsc P hP x [] ⟨by simp, by simp [tokens]⟩
+  simpa using h
 
 end LambdaLab.CBiparser
