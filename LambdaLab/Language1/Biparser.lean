@@ -1,4 +1,5 @@
 import LambdaLab.Language1.Vernacular
+import LambdaLab.CBiparser.Tokenizer
 
 /-!
 # The vernacular biparser, derived
@@ -55,5 +56,46 @@ theorem Language.parser_roundtrip (L : Language) (prog : Program L) :
     L.parser.run (L.parser.print prog).2
       = some ((L.parser.print prog).1, []) :=
   L.parser.roundtrip prog
+
+/-! ## The character level
+
+Everything above is over *tokens*. A file is *characters*. `viaTokens` precomposes the tokenizer,
+and because the tokenizer's `Token` and the vernacular's `Token` are **the same type** — Language1
+derives its alphabet from `CBiparser.Token isSep` rather than declaring a parallel one — the two
+stages compose with nothing to reconcile.
+
+The round-trip law survives the composition **with no new hypothesis**: `viaTokens_roundtrip` needs
+only that `' '` is a separator, and both seams (the character one and the token one) are vacuous at
+end of input. -/
+
+/-- **The file parser, over characters.** -/
+def Language.fileParser (L : Language) : CBiparser Char (Program L) (List (Command L)) :=
+  viaTokens isSep ' ' L.parser.toCBiparser
+
+/-- Print a program to source text. -/
+def Language.renderProgram (L : Language) (prog : Program L) : String :=
+  String.ofList (L.fileParser.print prog).2
+
+/-- Parse a whole file: succeeds only if **everything** is consumed. -/
+def Language.parseFile (L : Language) (src : String) : Option (List (Command L)) :=
+  match L.fileParser.run src.toList with
+  | some (cmds, []) => some cmds
+  | _               => none
+
+/-- **The file round-trip, at the character level.** Print any program to text, parse the text
+back, and recover it exactly — for *every* language, with no side conditions.
+
+This is the same one-liner as `parser_roundtrip`, now spanning both stages. -/
+theorem Language.fileParser_roundtrip (L : Language) (prog : Program L) :
+    L.fileParser.run (L.fileParser.print prog).2
+      = some ((L.fileParser.print prog).1, []) :=
+  viaTokens_roundtrip (by decide) L.parser.toCBiparser L.parser.ok prog
+
+/-- The same law, in the form a user cares about: **render a program, parse the text, get it
+back.** -/
+theorem Language.parseFile_renderProgram (L : Language) (prog : Program L) :
+    L.parseFile (L.renderProgram prog) = some ((L.fileParser.print prog).1) := by
+  have h := L.fileParser_roundtrip prog
+  simp only [Language.parseFile, Language.renderProgram, String.toList_ofList, h]
 
 end LambdaLab.Language1

@@ -87,7 +87,7 @@ theorem length_dropWhile_le {α : Type} (p : α → Bool) :
 /-- Build a token from characters known to be separator-free and non-empty. -/
 def Token.ofChars (sep : Char → Bool) (w : List Char)
     (h1 : ∀ c ∈ w, sep c = false) (h2 : w ≠ []) : Token sep :=
-  ⟨String.ofList w, by simpa [String.toList_ofList] using And.intro h1 h2⟩
+  ⟨String.ofList w, isToken_iff.mpr (by rw [String.toList_ofList]; exact ⟨h1, h2⟩)⟩
 
 @[simp] theorem Token.ofChars_toList (sep : Char → Bool) (w : List Char)
     (h1 : ∀ c ∈ w, sep c = false) (h2 : w ≠ []) :

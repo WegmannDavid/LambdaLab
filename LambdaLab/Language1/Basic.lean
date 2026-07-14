@@ -1,4 +1,5 @@
 import LambdaLab.CBiparser.Indexed
+import LambdaLab.CBiparser.Token
 
 namespace LambdaLab.Language1
 
@@ -19,14 +20,15 @@ So neither is representable. Which characters separate tokens is a parameter: `i
 /-- Which characters separate tokens. A token is a maximal run of non-separator characters. -/
 def isSep (c : Char) : Bool := c.isWhitespace
 
-/-- A well-formed lexeme: **non-empty**, and containing **no separator**. -/
-def isToken (s : String) : Bool :=
-  !s.isEmpty && s.toList.all (fun c => !isSep c)
+/-- The parser's alphabet — **derived**, by instantiating `CBiparser.Token` at our separator.
+It is not a type of our own: the tokenizer that actually produces these lives in
+`CBiparser/Tokenizer.lean` and knows nothing about this vernacular, so the two must agree by
+construction rather than by coincidence. By construction, printing a `Token` and re-lexing
+recovers it.
 
-/-- The parser's alphabet. By construction, printing a `Token` and re-lexing recovers it. -/
-abbrev Token := { s : String // isToken s = true }
-
-instance : DecidableEq Token := Subtype.instDecidableEq
+`CBiparser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
+discharged by `decide`. -/
+abbrev Token := _root_.LambdaLab.CBiparser.Token isSep
 
 /-! ## The vernacular -/
 

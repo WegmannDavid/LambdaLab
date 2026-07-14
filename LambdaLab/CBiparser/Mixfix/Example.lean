@@ -19,8 +19,7 @@ namespace LambdaLab.CBiparser.Mixfix
 def arithSep : Char → Bool := fun c => c == ' '
 
 /-- A separator-free token literal; the proof is discharged by `decide`. -/
-def tk (s : String) (h : (∀ c ∈ s.toList, arithSep c = false) ∧ s.toList ≠ [] := by decide) :
-    Token arithSep := ⟨s, h⟩
+def tk (s : String) (h : isToken arithSep s = true := by decide) : Token arithSep := ⟨s, h⟩
 
 /-- Operators of the single entry: parentheses, application (`juxt`), `_ + _`. -/
 inductive PSym | paren | app | plus
