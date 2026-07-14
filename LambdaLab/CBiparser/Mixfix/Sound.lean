@@ -67,6 +67,22 @@ theorem orElse_eq_some {α : Type _} (a : Option α) (b : Unit → Option α) (x
     (a.orElse b) = some x ↔ a = some x ∨ (a = none ∧ b () = some x) := by
   cases a <;> simp [Option.orElse]
 
+/-- The `longer` analogue of `orElse_eq_some`: a longest-match result came from one of the two
+candidates. That is all soundness needs — *which* one won is a completeness question. -/
+theorem longer_eq_some {α : Type} {tkns : List (Token G.isSep)}
+    {a b : Option (α × RightSublist tkns)} {x : α × RightSublist tkns}
+    (h : longer a b = some x) : a = some x ∨ b = some x := by
+  cases a with
+  | none => right; simpa [longer] using h
+  | some p =>
+      cases b with
+      | none => left; simpa [longer] using h
+      | some q =>
+          simp only [longer] at h
+          split at h
+          · right; exact h
+          · left; exact h
+
 /-- **Soundness**, all seven mutually-recursive functions at once.
 
 The delicate part is the *motives*. The two accumulator-carrying folds (`parseJuxtExtend`,
@@ -162,10 +178,22 @@ theorem parseExpr_sound (e : G.Ent) (l : Level (G.entry e)) (tkns : List (Token 
   all_goals first
     | done
     | (simp_all [parseParts, parseExprList, parseVar, Expr.flatten, Parts.flatten]; done)
+    -- `parseExprList` now takes the LONGEST match, not the first success.
     | (rename_i heq
-       first
-         | rw [parseExpr] at heq
-         | rw [parseExprList] at heq
+       rw [parseExprList] at heq
+       rcases longer_eq_some heq with h | h <;>
+         first
+           | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at h
+              obtain ⟨x, hx, rfl, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+              obtain ⟨x, hx, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done))
+    | (rename_i heq
+       rw [parseExpr] at heq
        rw [orElse_eq_some] at heq
        rcases heq with h | ⟨_, h⟩ <;>
          first

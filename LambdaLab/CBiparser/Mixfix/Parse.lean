@@ -162,16 +162,35 @@ def parseVar (e : G.Ent) (l : Level (G.entry e)) :
         some (Expr.var t h, RightSublist.consTail t rest)
       else none
 
+/-! ## Longest match among candidate operators
+
+`parseExprList` walks a level's candidate operators. It must **not** take the first that
+succeeds: a left-recursive operator's parse *always* succeeds, because it falls through to
+its bare left operand when its infix token is absent (`a` alone is a legitimate expression at
+`tighterEq plus`). Taking the first success therefore lets the first infix operator in the
+list win by falling through, and the operator that actually matches the tokens is never
+tried — which made the parser **order-dependent** and produce partial parses. (See
+`Counterexample.lean` for the machine-checked refutation of the old behaviour.)
+
+Instead we take the **longest match**: the candidate that consumes the most. A candidate that
+genuinely uses its operator consumes strictly more than one that merely falls through to a
+sub-expression, so the right operator wins regardless of the order it is listed in. Ties keep
+the earlier candidate, so the parser stays deterministic. -/
+
+/-- Prefer whichever parse consumed **more** (i.e. left the shorter leftover). Ties go to the
+first argument, so the result is deterministic. -/
+def longer {α : Type} {tkns : List (Token G.isSep)}
+    (a b : Option (α × RightSublist tkns)) : Option (α × RightSublist tkns) :=
+  match a, b with
+  | none,   b'     => b'
+  | a',     none   => a'
+  | some x, some y => if y.2.list.length < x.2.list.length then some y else some x
+
 /-! ## The recursive core
 
-Deterministic precedence climbing. `parseExpr e l` parses one expression of entry `e`
-constrained to level `l`; `parseExprList` walks the candidate operators of a level,
-taking the **first** that succeeds (`headsDistinct` ⇒ at most one does); `parseParts`
-parses an operator body left-to-right.
-
-Left-recursive operators (`juxt`, `infxl`) are not yet parsed — at their `.tighterEq`
-level the parser falls through to `.tighter` instead of running a fold. Everything else
-(closed, prefix, non-assoc infix, right-assoc infix, postfix) parses fully.
+`parseExpr e l` parses one expression of entry `e` constrained to level `l`; `parseExprList`
+takes the longest match over the candidate operators of a level; `parseParts` parses an
+operator body left-to-right.
 
 Termination is the reference's lexicographic measure `(tkns.length, Level.measure l /
 Level.base l * 4 / partsMeasure ps, phase)`; `RightSublist.length_lt` supplies the
@@ -223,12 +242,13 @@ mutual
     match cs, h, hrank with
     | [], _, _ => none
     | c :: rest, h, hrank =>
-        ((parseExpr e (.tighterEq c) tkns).map
-          (fun x => (x.1.reindex (l := .tighterEq c) (l' := l)
-                      (fun o hh => h c List.mem_cons_self o
-                        (show TighterEq (G.entry e).tighter c o from hh)), x.2))).orElse
-          (fun _ => parseExprList e l rest (fun c' hc' => h c' (List.mem_cons_of_mem _ hc'))
-                      (fun c' hc' => hrank c' (List.mem_cons_of_mem _ hc')) tkns)
+        longer
+          ((parseExpr e (.tighterEq c) tkns).map
+            (fun x => (x.1.reindex (l := .tighterEq c) (l' := l)
+                        (fun o hh => h c List.mem_cons_self o
+                          (show TighterEq (G.entry e).tighter c o from hh)), x.2)))
+          (parseExprList e l rest (fun c' hc' => h c' (List.mem_cons_of_mem _ hc'))
+             (fun c' hc' => hrank c' (List.mem_cons_of_mem _ hc')) tkns)
   termination_by (tkns.length, Level.base l * 4, cs.length)
   decreasing_by
     all_goals simp_wf
