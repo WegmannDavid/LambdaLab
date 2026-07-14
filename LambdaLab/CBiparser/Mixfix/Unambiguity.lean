@@ -124,6 +124,83 @@ theorem condition_tighterEq_up {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry
     ∀ o', Level.condition (.tighterEq o) o' → Level.condition l o' :=
   fun _ h => Level.condition_up hc h
 
+
+/-! ## Facts every version of the argument needs
+
+These are independent of how the left-recursive kernel is finally closed, and they are where the
+three grammar conditions actually get *used*. -/
+
+/-- **No cycles.** `tighter` is well-founded, so nothing is strictly tighter than itself. -/
+theorem Tighter.irrefl {e : G.Ent} (o : (G.entry e).Op) :
+    ¬ Tighter (G.entry e).tighter o o := by
+  -- a strict cycle would give an infinite descending chain
+  have wf := (G.entry e).tighter_wf
+  intro h
+  induction (wf.apply o) with
+  | intro a _ ih =>
+      -- `Tighter a a` yields some `b ∈ tighter a` with `Tighter b a`, hence `Tighter b b`
+      cases h with
+      | base hm => exact ih a hm (.base hm)
+      | step hm hr => exact ih _ hm (hr.snoc hm)
+
+/-- A strictly-tighter path composed with a tighter-or-equal one stays strict. -/
+theorem Tighter.trans_tighterEq {Op : Type} {t : Op → List Op} {a b c : Op}
+    (h₁ : Tighter t a b) (h₂ : TighterEq t b c) : Tighter t a c := by
+  induction h₂ with
+  | refl => exact h₁
+  | step hm _ ih => exact ih (h₁.snoc hm)
+
+/-! ### The interior tokens of a notation are exactly its seam tokens
+
+`interiorTerminates` is phrased over `holeFollowers` (entry-tagged seams) because that is what the
+*law* needs. The unambiguity argument wants the same fact phrased over `nameTokens.tail`. They are
+the same list of tokens, and this is the bridge. -/
+
+/-- A notation's token list is its first token followed by its interior tokens. -/
+theorem Notation.toTokens_eq {sep : Char → Bool} {Ent : Type} (n : Notation sep Ent) :
+    n.toTokens = n.firstTok :: n.toTokens.tail := by
+  cases n <;> simp [Notation.toTokens, Notation.firstTok]
+
+theorem Notation.mem_tail_toTokens {sep : Char → Bool} {Ent : Type} (n : Notation sep Ent)
+    {t : Token sep} (h : t ∈ n.toTokens.tail) : ∃ e', (e', t) ∈ n.holeFollowers := by
+  induction n with
+  | last a => simp [Notation.toTokens] at h
+  | cons a e' rest ih =>
+      simp only [Notation.toTokens, List.cons_append, List.tail_cons] at h
+      rw [Notation.toTokens_eq rest, List.mem_cons] at h
+      rcases h with rfl | h
+      · exact ⟨e', by simp [Notation.holeFollowers]⟩
+      · obtain ⟨e₀, h₀⟩ := ih h
+        exact ⟨e₀, by simp [Notation.holeFollowers, h₀]⟩
+
+theorem Operator.mem_tail_nameTokens {sep : Char → Bool} {Ent : Type} (o : Operator sep Ent)
+    {t : Token sep} (h : t ∈ o.nameTokens.tail) : ∃ e', (e', t) ∈ o.holeFollowers := by
+  cases o with
+  | closed n => exact Notation.mem_tail_toTokens n h
+  | prefx n  => exact Notation.mem_tail_toTokens n h
+  | infx n   => exact Notation.mem_tail_toTokens n h
+  | infxl n  => exact Notation.mem_tail_toTokens n h
+  | infxr n  => exact Notation.mem_tail_toTokens n h
+  | postfx n => exact Notation.mem_tail_toTokens n h
+  | juxt     => simp [Operator.nameTokens] at h
+
+/-! ### ⚠ A cross-entry subtlety — do NOT "fix" this by strengthening the grammar
+
+The obvious next lemma is *"a leading token is never an interior token"*: if `t` heads an operator
+then seeing `t` after a seam is impossible, so a body token that heads something must *be* a head.
+
+**That lemma is not available, and it should not be made available.** `Grammar.interiorTerminates`
+constrains a seam token `t` with respect to the **hole's** entry `e'` — `t` is neither an
+`e'`-variable nor the head of any `e'`-operator. It says nothing about the **host** entry `e`. When
+the hole is cross-entry (`e' ≠ e`), `t` may perfectly well head an operator of `e`.
+
+The temptation is to strengthen the field to cover the host entry too. `unambiguity-hunt2.py`
+(beside this file) says **don't**: over 5370 well-formed *two-entry* grammars it finds no ambiguity
+under the condition as shipped, and strengthening it to constrain the host entry as well rules out
+grammars without ruling out any ambiguity. The condition is not too weak — this formulation of the
+lemma is simply the wrong shape, and the argument has to phrase its appeals to `interiorTerminates`
+at **the hole's entry**, which is where the sub-tree comparison actually happens. -/
+
 /-! ## ⚠ Where the left-recursive fixities bite
 
 For a `closed`/`prefx`/`infx`/`postfx` operator every hole's continuation begins with either a
