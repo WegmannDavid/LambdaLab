@@ -104,10 +104,52 @@ folds from eating into `rest` — and where longest-match earns its keep: the ca
 really uses its operator consumes more than one that falls through, so the parser cannot stop
 short. -/
 
+/-! ### Roadmap for `parseExpr_exact` — two things it needs that we do not yet have
+
+Both were found by probing the actual parser, and both change the *shape* of the proof.
+
+**(1) FOLLOW must be per-LEVEL, not per-entry.**
+
+In `f x` (juxtaposition), the left hole is followed directly by the right hole, whose flatten
+begins with `x` — a *variable*, i.e. an operand-starter, i.e. **not** in `follow e`:
+
+    #eval follow (G := arith) () (tk "x")   -- false
+
+So the left operand of a juxt can *never* satisfy `HeadIn (follow e)` on its continuation. Yet
+`f x y` parses perfectly. Why? Because the operands sit at **tighter levels**, where
+juxtaposition is not applicable — nothing can extend them there, so a variable *is* a legal
+follower **at that level**.
+
+Hence the induction needs `follow e l` — the tokens that cannot extend an expression **at level
+`l`**: the left-recursive operators valid at `l` (`Level.condition l o`), plus juxt if it is
+valid at `l`. The current `follow e` is precisely the **loosest-level** instance, which is what
+`Language1`'s interface wants — so the `IBip` index is right; it is the *induction* that needs
+the refinement.
+
+**(2) A grammar condition that `Entry` does not currently force.**
+
+Inside an operator body, a hole is followed by a name token (`)` in `( _ )`, `then` in
+`if _ then _ else _`). For that hole to parse *exactly* — stopping where the printed
+sub-expression ended, rather than running on — that token must be in FOLLOW at the hole's level.
+
+`follow t = true` iff `t` is not a variable **and** `t` heads no operator. `varDisjoint` already
+gives the first half. The second is **missing**: a grammar with an operator *headed by* `)`
+would make `follow ")" = false`, and `( e )` could not round-trip. This is the classic LL(1)
+condition, and it is the analogue of `headsDistinct` for **interior** tokens.
+
+    #eval follow (G := arith) () (tk ")")   -- true  -- interior; heads nothing
+    #eval follow (G := arith) () (tk "(")   -- false -- HEADS the paren operator
+
+So `Entry` needs one more field (or `Unambiguous` needs to imply it).
+-/
+
 /-- **The one open lemma.** The parser consumes exactly what was printed.
 
-*Not yet proved.* Needs induction on the tree, with FOLLOW stopping the greedy folds
-(`parseJuxt`/`parseInfixL`) precisely where `t.flatten` ends. -/
+*Not yet proved* — see the roadmap above. Needs (1) a per-level FOLLOW and (2) an extra grammar
+condition on interior tokens. Note it does **not** need unambiguity: it is purely a statement
+about how *much* the parser consumes. That is where FOLLOW earns its keep (it stops the greedy
+folds eating into `rest`) and where longest-match earns its keep (a candidate that really uses
+its operator consumes more than one that falls through, so the parser cannot stop short). -/
 theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
     (rest : List (Token G.isSep)) (hF : HeadIn (follow e) rest) :
     ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
