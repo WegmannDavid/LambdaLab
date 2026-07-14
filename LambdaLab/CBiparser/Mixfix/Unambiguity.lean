@@ -225,6 +225,98 @@ which is the kernel Danielsson–Norell only sketch and the earlier stack also l
 `juxt (juxt f x) y` is bounded by nothing lexical whatsoever — only by the right operand being a
 single tightest operand. -/
 
+
+/-! ## ★ The crux: FOLLOW *is* available one level down
+
+The apparent dead-end was this: an `infxl o`'s left operand sits at `.tighterEq o`, and its
+continuation begins with `o`'s own head token, which **continues** that level. True — but it is the
+wrong level to look at.
+
+Split on the left operand's top operator:
+
+* if it is **strictly tighter** than `o`, the operand is a tree at `.tighter o` — and `headTok o`
+  does **not** continue *there*. By `headsDistinct` the only operator that token heads is `o`
+  itself, and by `Tighter.irrefl` `o` is not strictly tighter than `o`. So FOLLOW is available
+  after all, one level down;
+* if it is `o` itself, we recurse into a structurally **smaller** left spine.
+
+That is the whole induction. `juxt` works the same way, with `startsOperand` in place of a head
+token: juxtaposition continues via an *operand*, and juxtaposition is not applicable at
+`.tighter j` — again by irreflexivity. -/
+
+/-- A leading token is one of the operator's name tokens. -/
+theorem Operator.headTok?_mem {sep : Char → Bool} {Ent : Type} (o : Operator sep Ent)
+    {t : Token sep} (h : o.headTok? = some t) : t ∈ o.nameTokens := by
+  have h' : o.nameTokens.head? = some t := h
+  cases hn : o.nameTokens with
+  | nil => rw [hn] at h'; simp at h'
+  | cons a rest =>
+      rw [hn] at h'
+      simp only [List.head?_cons, Option.some.injEq] at h'
+      subst h'
+      simp [hn]
+
+/-- `headsDistinct`, in the form the argument actually uses: a token heads at most one operator. -/
+theorem head_inj {e : G.Ent} {o o' : (G.entry e).Op} {t : Token G.isSep}
+    (h : ((G.entry e).operator o).headTok? = some t)
+    (h' : ((G.entry e).operator o').headTok? = some t) : o = o' :=
+  (G.entry e).headsDistinct o o' (by rw [h]; rfl) (by rw [h, h'])
+
+/-- **A hole-led operator's head token starts no operand.** It is not a variable (`varDisjoint`),
+and the only operator it heads is the hole-led one itself (`headsDistinct`). -/
+theorem not_startsOperand_of_head {e : G.Ent} {o : (G.entry e).Op} {t : Token G.isSep}
+    (hhole : ((G.entry e).operator o).startsWithHole = true)
+    (hhead : ((G.entry e).operator o).headTok? = some t) : startsOperand e t = false := by
+  have hnv : (G.entry e).isVar t = false :=
+    (G.entry e).varDisjoint o t (Operator.headTok?_mem _ hhead)
+  cases hs : startsOperand e t with
+  | false => rfl
+  | true =>
+      exfalso
+      simp only [startsOperand, hnv, Bool.false_or, List.any_eq_true] at hs
+      obtain ⟨o', -, ho'⟩ := hs
+      simp only [Bool.and_eq_true, Bool.not_eq_true'] at ho'
+      obtain ⟨hnh, hm⟩ := ho'
+      revert hm
+      cases hk : ((G.entry e).operator o').headTok? with
+      | none => simp
+      | some a =>
+          simp only [beq_iff_eq]
+          intro hm
+          have ht : a = t := by first | exact hm | exact Subtype.ext hm
+          have hoo : o' = o := head_inj (by rw [hk, ht]) hhead
+          rw [hoo, hhole] at hnh
+          simp at hnh
+
+/-- ★ **A token that heads a hole-led operator `o` does not continue an expression at
+`.tighter o`.** Both disjuncts of `ContinuesAt` die:
+
+* a left-recursive operator headed by `t` must **be** `o` (`headsDistinct`), and `o` is not
+  strictly tighter than itself (`Tighter.irrefl`);
+* juxtaposition continues via an operand, but `t` starts no operand
+  (`not_startsOperand_of_head`).
+
+This is the lemma that unblocks the whole development: FOLLOW *is* available below a left-recursive
+operator, just not at its own level. -/
+theorem not_continuesAt_tighter_head {e : G.Ent} {o : (G.entry e).Op} {t : Token G.isSep}
+    (hhole : ((G.entry e).operator o).startsWithHole = true)
+    (hhead : ((G.entry e).operator o).headTok? = some t) :
+    ¬ ContinuesAt e (.tighter o) t := by
+  rintro (⟨o', hc', -, hhead'⟩ | ⟨j, hc', -, hstart⟩)
+  · exact Tighter.irrefl o (head_inj hhead' hhead ▸ hc')
+  · rw [not_startsOperand_of_head hhole hhead] at hstart; exact absurd hstart (by simp)
+
+/-- ★ The `juxt` analogue: an **operand-starting** token does not continue at `.tighter j` when `j`
+is juxtaposition. Juxtaposition strictly tighter than itself is impossible (`juxtUnique` +
+`Tighter.irrefl`), and an operand-starter heads no hole-led operator. -/
+theorem not_continuesAt_tighter_juxt {e : G.Ent} {j : (G.entry e).Op} {t : Token G.isSep}
+    (hj : (G.entry e).operator j = Operator.juxt)
+    (hstart : startsOperand e t = true) :
+    ¬ ContinuesAt e (.tighter j) t := by
+  rintro (⟨o', hc', hhole', hhead'⟩ | ⟨j', hc', hj', -⟩)
+  · rw [not_startsOperand_of_head hhole' hhead'] at hstart; exact absurd hstart (by simp)
+  · exact Tighter.irrefl j ((G.entry e).juxtUnique j' j hj' hj ▸ hc')
+
 /-- **The kernel.** For a left-recursive operator `o` (`infxl`/`infxr`/`juxt`), a flattening
 determines the split between its left and right operands.
 
