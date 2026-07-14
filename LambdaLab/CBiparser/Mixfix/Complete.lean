@@ -1,5 +1,6 @@
 import LambdaLab.CBiparser.Mixfix.Sound
 import LambdaLab.CBiparser.Mixfix.Biparser
+import LambdaLab.CBiparser.Mixfix.Unambiguity
 
 /-!
 # Parser completeness: printing a tree and parsing it back recovers the tree
@@ -85,8 +86,6 @@ one of them, and the other cannot possibly round-trip. `headsDistinct` does **no
 (this repo has a machine-checked counterexample to that implication). So it is a hypothesis. -/
 
 /-- Distinct trees at a level print distinctly. -/
-def Unambiguous (G : Grammar) : Prop :=
-  ∀ (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l), t₁.flatten = t₂.flatten → t₁ = t₂
 
 /-! ## The decomposition
 
@@ -142,49 +141,6 @@ condition, and it is the analogue of `headsDistinct` for **interior** tokens.
 
 So `Entry` needs one more field (or `Unambiguous` needs to imply it).
 -/
-
-/-! ### The per-level FOLLOW
-
-`follow e` (the `Bool` in `Biparser.lean`) is the **loosest-level** instance and is what the
-`IBip` index needs. The induction needs the level-indexed version, and only as a `Prop` —
-it never has to be computed. -/
-
-/-- A token can **continue** an expression at level `l` if some operator *valid at `l`* can
-consume it as a continuation:
-
-* a left-recursive operator whose leading token is `t` (it arrives after the left operand), or
-* juxtaposition — which continues via an *operand*, so any operand-starter continues it.
-
-The `Level.condition l o` guard is the whole point: at a tighter level, juxtaposition is not
-applicable, so a variable **does not** continue — which is exactly why the operands of `f x y`
-parse exactly, even though a variable is never in the loosest-level FOLLOW. -/
-def ContinuesAt (e : G.Ent) (l : Level (G.entry e)) (t : Token G.isSep) : Prop :=
-  (∃ o, Level.condition l o ∧ ((G.entry e).operator o).startsWithHole = true ∧
-        ((G.entry e).operator o).headTok? = some t)
-  ∨ (∃ j, Level.condition l j ∧ (G.entry e).operator j = Operator.juxt ∧
-          startsOperand e t = true)
-
-/-- **FOLLOW at a level**: the tokens that cannot extend an expression at `l`. -/
-def FollowAt (e : G.Ent) (l : Level (G.entry e)) (rest : List (Token G.isSep)) : Prop :=
-  ∀ t, rest.head? = some t → ¬ ContinuesAt e l t
-
-/-- The computable `follow` is the **strongest** FOLLOW: it excludes *every* operator, not just
-those valid at a level. So it implies `FollowAt` at every level -- which is what lets the
-loosest-level `IBip` index feed the level-indexed induction. -/
-theorem followAt_of_follow {e : G.Ent} {l : Level (G.entry e)} {rest : List (Token G.isSep)}
-    (h : HeadIn (follow e) rest) : FollowAt e l rest := by
-  intro t ht hcon
-  have hf : follow e t = true := h t ht
-  simp only [follow, Bool.and_eq_true, Bool.not_eq_true'] at hf
-  obtain ⟨hstart, hcont⟩ := hf
-  rcases hcon with ⟨o, _, hhole, hhead⟩ | ⟨j, _, hjuxt, hstart'⟩
-  · -- `t` heads a left-recursive operator, so `continuesExpr` should have been true
-    have : continuesExpr e t = true := by
-      simp only [continuesExpr, List.any_eq_true]
-      exact ⟨o, (G.entry e).ops_complete o, by simp [hhole, hhead]⟩
-    rw [this] at hcont; exact absurd hcont (by simp)
-  · -- `t` starts an operand
-    rw [hstart'] at hstart; exact absurd hstart (by simp)
 
 /-- **The one open lemma.** The parser consumes exactly what was printed.
 
