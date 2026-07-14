@@ -105,18 +105,11 @@ def follow (e : G.Ent) : Token G.isSep → Bool :=
 
 /-! ## The law
 
-This is the one genuinely open obligation — the completeness half of the mixfix parser, which
-has been open since the mixfix work began. Everything else in this file is free. -/
+The round-trip law lives in `Complete.lean`, because it needs an **unambiguity** hypothesis on
+the grammar — which is unavoidable for any *deterministic* parser: if two distinct trees flatten
+alike, the parser returns one of them and the other cannot round-trip. `headsDistinct` does not
+supply that.
 
-theorem mixfix_ok (e : G.Ent) (l : Level (G.entry e)) :
-    RoundTrips (biparser G e l) (HeadIn (follow e)) := by
-  sorry
-
-/-- **The mixfix `IBip`** — a plug-in-ready biparser, modulo `mixfix_ok`. -/
-def ibiparser (G : Grammar) (e : G.Ent) (l : Level (G.entry e)) :
-    IBip (anyTok (G := G)) (follow e) (Expr G e l) (Expr G e l) where
-  toCBiparser := biparser G e l
-  firstOk := firstOk_any e l
-  ok := mixfix_ok e l
+`Complete.lean` also builds the plug-in-ready `IBip` from it. -/
 
 end LambdaLab.CBiparser.Mixfix

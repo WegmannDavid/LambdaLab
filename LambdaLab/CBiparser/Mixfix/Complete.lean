@@ -77,28 +77,80 @@ mutual
         exact Expr.flatten_ne_nil ex (List.append_eq_nil_iff.mp hcon).1
 end
 
-/-! ## The main theorem — the shape of the induction
+/-! ## Unambiguity — and why it is unavoidable
 
-`Expr` and `Parts` are mutually inductive, so completeness is a mutual theorem. The `Parts`
-statement carries its own FOLLOW obligation (what may follow the *rest* of the body).
+Completeness-as-equality requires `flatten` to be **injective**, and this is forced for *any*
+deterministic parser, not just ours: if `t₁ ≠ t₂` flatten alike, a deterministic parser returns
+one of them, and the other cannot possibly round-trip. `headsDistinct` does **not** supply it
+(this repo has a machine-checked counterexample to that implication). So it is a hypothesis. -/
 
-**Where the difficulty concentrates**: the two greedy folds. For a left-nested juxtaposition
-`(f x) y`, `flatten = f.flatten ++ x.flatten ++ y.flatten`, and `parseJuxt` must consume all
-three and then *stop* — which is precisely what `HeadIn (follow e) rest` buys. Proving the fold
-stops in the right place needs an auxiliary induction on the *spine* of the tree, not just its
-subterms. -/
+/-- Distinct trees at a level print distinctly. -/
+def Unambiguous (G : Grammar) : Prop :=
+  ∀ (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l), t₁.flatten = t₂.flatten → t₁ = t₂
 
-theorem parseExpr_complete {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
+/-! ## The decomposition
+
+Everything hard is concentrated in **one** lemma, and — importantly — that lemma does **not**
+mention unambiguity:
+
+    parseExpr_exact :  the parser succeeds on `t.flatten ++ rest` and consumes EXACTLY
+                       `t.flatten`, i.e. its leftover is exactly `rest`.
+
+Given that, completeness is three lines: soundness turns "leftover = rest" into
+`t'.flatten = t.flatten`, and unambiguity turns that into `t' = t`.
+
+`parseExpr_exact` is where the FOLLOW condition earns its keep — it is what stops the greedy
+folds from eating into `rest` — and where longest-match earns its keep: the candidate that
+really uses its operator consumes more than one that falls through, so the parser cannot stop
+short. -/
+
+/-- **The one open lemma.** The parser consumes exactly what was printed.
+
+*Not yet proved.* Needs induction on the tree, with FOLLOW stopping the greedy folds
+(`parseJuxt`/`parseInfixL`) precisely where `t.flatten` ends. -/
+theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
     (rest : List (Token G.isSep)) (hF : HeadIn (follow e) rest) :
-    runExpr e l (t.flatten ++ rest) = some (t, rest) := by
+    ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
   sorry
 
+/-! ## Completeness, and the round-trip law -- both DERIVED -/
+
+/-- **Completeness**: printing a tree and parsing it back recovers *that* tree. -/
+theorem parseExpr_complete (hU : Unambiguous G) {e : G.Ent} {l : Level (G.entry e)}
+    (t : Expr G e l) (rest : List (Token G.isSep)) (hF : HeadIn (follow e) rest) :
+    runExpr e l (t.flatten ++ rest) = some (t, rest) := by
+  obtain ⟨t', ht'⟩ := parseExpr_exact t rest hF
+  -- soundness: what the parser returned flattens to what it consumed
+  have hsound : t'.flatten ++ rest = t.flatten ++ rest := by
+    simp only [runExpr, Option.map_eq_some_iff] at ht'
+    obtain ⟨x, hx, hxe⟩ := ht'
+    have hs := parseExpr_sound e l (t.flatten ++ rest) x.1 x.2 hx
+    simp only [Prod.mk.injEq] at hxe
+    obtain ⟨rfl, hrest⟩ := hxe
+    rw [hrest] at hs
+    exact hs
+  -- hence the two trees print alike, hence (unambiguity) they are equal
+  have ht : t' = t := hU e l t' t (by simpa using hsound)
+  subst ht
+  exact ht'
+
 /-- **The round-trip law** for the mixfix biparser. -/
-theorem mixfix_ok' (e : G.Ent) (l : Level (G.entry e)) :
+theorem mixfix_ok' (hU : Unambiguous G) (e : G.Ent) (l : Level (G.entry e)) :
     RoundTrips (biparser G e l) (HeadIn (follow e)) := by
   intro t rest hF
-  have h := parseExpr_complete t rest hF
+  have h := parseExpr_complete hU t rest hF
   simp only [runExpr] at h
   simpa [biparser, CBiparser.run, parseCB, Option.map_map] using h
+
+/-- **The mixfix `IBip`** — a plug-in-ready biparser for an unambiguous grammar.
+
+FIRST is `anyTok`: `firstOk` is a purely negative claim, so the weakest FIRST makes it vacuous —
+and `anyTok` is exactly what `Language1`'s interface asks for. FOLLOW is derived from the
+grammar. The round-trip law rides along. -/
+def ibiparser (hU : Unambiguous G) (e : G.Ent) (l : Level (G.entry e)) :
+    IBip (anyTok (G := G)) (follow e) (Expr G e l) (Expr G e l) where
+  toCBiparser := biparser G e l
+  firstOk := firstOk_any e l
+  ok := mixfix_ok' hU e l
 
 end LambdaLab.CBiparser.Mixfix
