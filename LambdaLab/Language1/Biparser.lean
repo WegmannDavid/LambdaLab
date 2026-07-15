@@ -65,22 +65,18 @@ derives its alphabet from `CBiparser.Token isSep` rather than declaring a parall
 stages compose with nothing to reconcile.
 
 The round-trip law survives the composition **with no new hypothesis**: `viaTokens_roundtrip` needs
-only that every gap is a valid separator run (`Gap`), and both seams (the character one and the
-token one) are vacuous at end of input.
+only that each gap the printer emits is a nonempty separator run (`Gap`), and both seams (the
+character one and the token one) are vacuous at end of input.
 
-## Layout is a free knob
+The printer breaks a line before each command keyword (`def`) and uses a space everywhere else —
+one declaration per line. Because a newline is just another separator, the tokenizer collapses it
+like any other, so this costs the round-trip proof nothing. -/
 
-The gap policy is a pure *printing* choice — `parse` never sees it. So a language can lay out its
-source however it likes (a newline before each declaration, say) and the very same round-trip proof
-still holds, because tokenizing collapses whatever separators the policy emitted. `layout` below is
-that policy: a newline before each command keyword (`def`), a single space everywhere else. -/
-
-/-- The gap policy: a newline before each command boundary (`def`), a space elsewhere. A pure
-layout choice; parsing is oblivious to it. -/
+/-- Separator before a token: a newline before each command boundary (`def`), a space elsewhere. -/
 def layout : Token → Token → List Char :=
   fun _ u => if u = kwDef then ['\n'] else [' ']
 
-/-- Every gap `layout` emits is a nonempty run of separators — so the round-trip law applies. -/
+/-- Each gap `layout` emits is a nonempty separator run, so the round-trip law applies. -/
 theorem layout_gap : ∀ t u, CBiparser.Gap isSep (layout t u) := by
   intro t u
   unfold layout CBiparser.Gap
