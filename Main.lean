@@ -1,66 +1,55 @@
-import LambdaLab.Parser.Playground2.Example
+import LambdaLab.Language1.Arith
 
 /-!
-# Playground parser demo
+# Arithmetic vernacular demo
 
-A tiny CLI that runs the verified precedence-DAG mixfix parser
-(`LambdaLab.Parser.Playground2`) over the concrete `arith` and `mix` grammars
-from `Example.lean`.
+Reads a source file in the `arithLanguage` vernacular — `def NAME : (N|Z|R) := EXPR`, one command
+per declaration, `EXPR` a mixfix arithmetic expression — parses it, and prints the AST back out as
+normalised source. Round-tripping the text is the whole point: the printed form is what the parser
+would read back to the same tree.
 
-* `lake exe playground`            — run the built-in showcase
-* `lake exe playground n + n * n`  — parse the given tokens with `arith`
+* `lake exe playground`                — parse the bundled `examples/demo.arith`
+* `lake exe playground path/to/file`   — parse the given file
 
-Each line shows the input and the parser's output. Because both grammars are
-unambiguous, an accepted input yields exactly one parse (printed as the
-re-flattened token string) and a rejected input yields none.
+Note: the *parser* here is the verified mixfix parser; the round-trip *proof* for this language is
+still conditional on the open unambiguity lemmas (see `LambdaLab/Language1/Arith.lean`). The
+executable exercises the running parser, not the proof.
 -/
 
-open LambdaLab.Parser (Token)
-open LambdaLab.Parser.Playground2
+open LambdaLab.Language1
 
-/-- Render a token list as a space-separated string. -/
-def renderTokens (ts : List Token) : String := " ".intercalate ts
+/-- Recover a non-empty program from the flat command list `parseFile` returns. -/
+def toProgram : List (Command arithLanguage) → Option (Program arithLanguage)
+  | []      => none
+  | c :: cs => some (c, cs)
 
-/-- Parse `input` in grammar `G` and describe the result on one line. -/
-def report (G : Grammar) (input : List Token) : String :=
-  let parses := (parse (G := G) input).map (·.flatten)
-  let lhs := renderTokens input
-  match parses with
-  | []  => s!"  {lhs}  ⟹  (rejected)"
-  | [p] => s!"  {lhs}  ⟹  {renderTokens p}"
-  | _   => s!"  {lhs}  ⟹  {parses.length} parses: " ++
-             ", ".intercalate (parses.map renderTokens)
+/-- Parse `src`, then re-render it. `none` if the file is not a well-formed program.
 
-def arithExamples : List (List Token) :=
-  [ ["n"],
-    ["n", "+", "n"],
-    ["(", "n", ")"],
-    ["n", "+", "n", "*", "n"],
-    ["n", "*", "n", "+", "n"],
-    ["n", "+", "n", "+", "n"],
-    ["(", "n", "+", "n", ")", "*", "n"],
-    ["+", "n"],
-    ["n", "+"] ]
+`parseFile` requires the *entire* character stream to be consumed, but the tokenizer leaves any
+trailing whitespace (a final newline, say) as leftover characters even though it tokenizes to
+nothing. Trimming is a preprocessing choice on the way in — it does not touch the verified core,
+and `renderProgram` never emits trailing separators, so the round-trip theorem is unaffected. -/
+def roundtrip (src : String) : Option String := do
+  let cmds ← arithLanguage.parseFile src.trim
+  let prog ← toProgram cmds
+  some (arithLanguage.renderProgram prog)
 
-def mixExamples : List (List Token) :=
-  [ ["-", "x"],
-    ["-", "-", "x"],
-    ["x", "!"],
-    ["x", "!", "!"],
-    ["x", "^", "x", "^", "x"],
-    ["x", "=", "x"],
-    ["x", "=", "x", "=", "x"],
-    ["-", "x", "!"] ]
+def run (label : String) (src : String) : IO Unit := do
+  IO.println s!"── {label} ──"
+  IO.println "input:"
+  for line in ((src.splitOn "\n").filter (fun l => !l.isEmpty)) do
+    IO.println s!"  {line}"
+  match roundtrip src with
+  | some out => IO.println "parsed & re-rendered:"; IO.println s!"  {out}"
+  | none     => IO.println "  ⟹  rejected (not a well-formed program)"
+  IO.println ""
 
 def main (args : List String) : IO Unit := do
-  if args.isEmpty then
-    IO.println "arith  (precedence:  + < * < atoms/parens):"
-    for e in arithExamples do IO.println (report arith e)
-    IO.println ""
-    IO.println "mix  (prefix -, postfix !, infix-right ^, non-assoc =):"
-    for e in mixExamples do IO.println (report mix e)
-    IO.println ""
-    IO.println "Pass tokens as arguments to parse them with `arith`,"
-    IO.println "e.g.  lake exe playground n + n '*' n"
-  else
-    IO.println (report arith args)
+  match args with
+  | [] =>
+      let path := "examples/demo.arith"
+      let src ← IO.FS.readFile path
+      run path src
+  | path :: _ =>
+      let src ← IO.FS.readFile path
+      run path src
