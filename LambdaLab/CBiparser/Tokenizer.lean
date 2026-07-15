@@ -140,14 +140,26 @@ theorem afterFirstTok_sep_cons {c : Char} (hc : sep c = true) (cs : List Char) :
 
 /-! ## Rendering
 
-One separator **between** tokens, none at the end. The trailing separator is deliberately omitted:
-it would make the seam condition vacuous, but at the cost of printing a stray character after every
-program. Paying the seam condition instead keeps `print` exact. -/
+Separators go **between** tokens, never at the end (the trailing separator is deliberately
+omitted; it would make the seam condition vacuous, but at the cost of a stray character after every
+program). *Which* separators, and how many, is a **gap policy** — a function of the two tokens a
+gap sits between. The tokenizer collapses any run of separators, so every policy round-trips, as
+long as each gap it emits is a nonempty run of separators (`Gap` below). That freedom is exactly
+what lets a client put a newline before each declaration and a space everywhere else. -/
 
-def render (sc : Char) : List (Token sep) → List Char
-  | []      => []
-  | [t]     => t.val.toList
-  | t :: ts => t.val.toList ++ sc :: render sc ts
+/-- A valid inter-token gap: a **nonempty** run of **separator** characters. Nonempty so the two
+tokens do not fuse; all-separators so the tokenizer skips it entirely. -/
+def Gap (sep : Char → Bool) (g : List Char) : Prop := (∀ c ∈ g, sep c = true) ∧ g ≠ []
+
+/-- **Render under a gap policy.** `gap t u` is the separators placed between `t` and its successor
+`u`. -/
+def renderWith (gap : Token sep → Token sep → List Char) : List (Token sep) → List Char
+  | []           => []
+  | [t]          => t.val.toList
+  | t :: u :: ts => t.val.toList ++ gap t u ++ renderWith gap (u :: ts)
+
+/-- The single-separator policy: one fixed separator `sc` in every gap. -/
+def render (sc : Char) : List (Token sep) → List Char := renderWith (fun _ _ => [sc])
 
 /-! ## The splitting lemmas
 
@@ -216,50 +228,117 @@ theorem tokens_token (t : Token sep) {tail : List Char} (ht : HeadIn sep tail) :
       congr 1
       exact Token.eq_of_toList (by rw [Token.ofChars_toList, hw])
 
+/-! ## Prepending a run of separators
+
+A gap is a run of separators; the tokenizer and the replay both skip it whole. These lemmas are
+what let a *multi-character* gap behave exactly like the single `sc` did. -/
+
+/-- The head of a gap is a separator, so a gap followed by anything satisfies the seam condition. -/
+theorem headIn_gap_append {g : List Char} (hg : Gap sep g) (xs : List Char) :
+    HeadIn sep (g ++ xs) := by
+  cases g with
+  | nil => exact absurd rfl hg.2
+  | cons c g' => intro a ha; simp only [List.cons_append, List.head?_cons,
+      Option.some.injEq] at ha; subst ha; exact hg.1 c List.mem_cons_self
+
+/-- Tokenizing ignores a leading run of separators. -/
+theorem tokens_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, sep c = true) :
+    tokens sep (g ++ cs) = tokens sep cs := by
+  induction g with
+  | nil => rfl
+  | cons c g' ih =>
+      rw [List.cons_append, tokens_sep_cons (hg c List.mem_cons_self),
+        ih (fun x hx => hg x (List.mem_cons_of_mem _ hx))]
+
+/-- Skipping separators ignores a leading run of separators. -/
+theorem skipSep_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, sep c = true) :
+    skipSep sep (g ++ cs) = skipSep sep cs := by
+  induction g with
+  | nil => rfl
+  | cons c g' ih =>
+      have hc : sep c = true := hg c List.mem_cons_self
+      rw [List.cons_append, skipSep, List.dropWhile_cons, if_pos hc]
+      exact ih (fun x hx => hg x (List.mem_cons_of_mem _ hx))
+
+theorem afterFirstTok_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, sep c = true) :
+    afterFirstTok sep (g ++ cs) = afterFirstTok sep cs := by
+  rw [afterFirstTok, skipSep_sep_prepend hg, afterFirstTok]
+
+theorem dropToks_succ (n : Nat) (cs : List Char) :
+    dropToks sep (n + 1) cs = dropToks sep n (afterFirstTok sep cs) := rfl
+
+/-- The replay ignores a leading run of separators (given it consumes at least one token). -/
+theorem dropToks_sep_prepend {g cs : List Char} {n : Nat} (hg : ∀ c ∈ g, sep c = true)
+    (hn : 0 < n) : dropToks sep n (g ++ cs) = dropToks sep n cs := by
+  cases n with
+  | zero => omega
+  | succ m => rw [dropToks_succ, dropToks_succ, afterFirstTok_sep_prepend hg]
+
 /-! ## The two laws the composition needs -/
 
 /-- **Tokenizing a rendering.** The seam condition `HeadIn sep rest` is exactly "the continuation
-is empty, or begins with a separator" — without it the continuation fuses onto the last token. -/
-theorem tokens_render_append {sc : Char} (hsc : sep sc = true) :
+is empty, or begins with a separator" — without it the continuation fuses onto the last token. The
+gap policy is unconstrained beyond `Gap` (each gap a nonempty separator run). -/
+theorem tokens_renderWith_append {gap : Token sep → Token sep → List Char}
+    (hgap : ∀ t u, Gap sep (gap t u)) :
     ∀ (ts : List (Token sep)) {rest : List Char}, HeadIn sep rest →
-      tokens sep (render sc ts ++ rest) = ts ++ tokens sep rest := by
+      tokens sep (renderWith gap ts ++ rest) = ts ++ tokens sep rest := by
   intro ts
   induction ts with
-  | nil => intro rest _; simp [render]
+  | nil => intro rest _; simp [renderWith]
   | cons t ts ih =>
       intro rest hrest
       cases ts with
-      | nil => simpa [render] using tokens_token t hrest
+      | nil => simpa [renderWith] using tokens_token t hrest
       | cons u us =>
-          have hstep : render sc (t :: u :: us) ++ rest
-              = t.val.toList ++ (sc :: (render sc (u :: us) ++ rest)) := by
-            simp [render]
-          rw [hstep, tokens_token t (by intro a ha; simp at ha; subst ha; exact hsc),
-            tokens_sep_cons hsc, ih hrest]
+          have hstep : renderWith gap (t :: u :: us) ++ rest
+              = t.val.toList ++ (gap t u ++ (renderWith gap (u :: us) ++ rest)) := by
+            simp [renderWith, List.append_assoc]
+          rw [hstep, tokens_token t (headIn_gap_append (hgap t u) _),
+            tokens_sep_prepend (hgap t u).1, ih hrest]
           simp
 
 /-- **Replaying the consumption.** After the `ts` tokens, exactly `rest` characters remain — with
 their leading separators intact, which is the whole point of `afterFirstTok`. -/
-theorem dropToks_render {sc : Char} (hsc : sep sc = true) :
+theorem dropToks_renderWith {gap : Token sep → Token sep → List Char}
+    (hgap : ∀ t u, Gap sep (gap t u)) :
     ∀ (ts : List (Token sep)) {rest : List Char}, HeadIn sep rest →
-      dropToks sep ts.length (render sc ts ++ rest) = rest := by
+      dropToks sep ts.length (renderWith gap ts ++ rest) = rest := by
   intro ts
   induction ts with
-  | nil => intro rest _; simp [render, dropToks]
+  | nil => intro rest _; simp [renderWith, dropToks]
   | cons t ts ih =>
       intro rest hrest
       cases ts with
       | nil =>
-          simp only [render, List.length_cons, List.length_nil, dropToks]
-          rw [afterFirstTok_token t hrest]
+          rw [show ([t] : List (Token sep)).length = 0 + 1 from rfl, dropToks_succ]
+          simp only [dropToks]
+          show afterFirstTok sep (renderWith gap [t] ++ rest) = rest
+          rw [show renderWith gap [t] = t.val.toList from rfl, afterFirstTok_token t hrest]
       | cons u us =>
-          have hstep : render sc (t :: u :: us) ++ rest
-              = t.val.toList ++ (sc :: (render sc (u :: us) ++ rest)) := by
-            simp [render]
-          simp only [List.length_cons, dropToks]
-          rw [hstep, afterFirstTok_token t (by intro a ha; simp at ha; subst ha; exact hsc),
-            afterFirstTok_sep_cons hsc]
+          have hstep : renderWith gap (t :: u :: us) ++ rest
+              = t.val.toList ++ (gap t u ++ (renderWith gap (u :: us) ++ rest)) := by
+            simp [renderWith, List.append_assoc]
+          rw [show (t :: u :: us).length = (u :: us).length + 1 from rfl, dropToks_succ, hstep,
+            afterFirstTok_token t (headIn_gap_append (hgap t u) _),
+            dropToks_sep_prepend (hgap t u).1 (by simp)]
           exact ih hrest
+
+/-- The single-separator policy is a gap policy. -/
+theorem gap_const {sc : Char} (hsc : sep sc = true) :
+    ∀ t u : Token sep, Gap sep ((fun _ _ => [sc]) t u) :=
+  fun _ _ => ⟨by intro c hc; simp only [List.mem_singleton] at hc; subst hc; exact hsc, by simp⟩
+
+/-- The original single-separator laws, now corollaries. -/
+theorem tokens_render_append {sc : Char} (hsc : sep sc = true)
+    (ts : List (Token sep)) {rest : List Char} (hrest : HeadIn sep rest) :
+    tokens sep (render sc ts ++ rest) = ts ++ tokens sep rest :=
+  tokens_renderWith_append (gap_const hsc) ts hrest
+
+theorem dropToks_render {sc : Char} (hsc : sep sc = true)
+    (ts : List (Token sep)) {rest : List Char} (hrest : HeadIn sep rest) :
+    dropToks sep ts.length (render sc ts ++ rest) = rest :=
+  dropToks_renderWith (gap_const hsc) ts hrest
 
 /-! ## Progress: the replay strictly shrinks the input -/
 
@@ -311,8 +390,10 @@ theorem length_dropToks_lt {n : Nat} {cs : List Char} (hn : 0 < n) (h : tokens s
 inner parser, then **replays** its consumption with `dropToks` to recover a *character* leftover.
 `print` renders. -/
 
-/-- Precompose a token-level biparser with the tokenizer. -/
-def viaTokens {w v : Type} (sep : Char → Bool) (sc : Char)
+/-- Precompose a token-level biparser with the tokenizer, under a **gap policy** `gap`. `parse`
+does not depend on `gap` (the tokenizer collapses every separator run the same way); only `print`
+does. -/
+def viaTokens {w v : Type} (sep : Char → Bool) (gap : Token sep → Token sep → List Char)
     (P : CBiparser (Token sep) w v) : CBiparser Char w v where
   parse cs :=
     (P.parse (tokens sep cs)).map (fun r =>
@@ -325,15 +406,15 @@ def viaTokens {w v : Type} (sep : Char → Bool) (sc : Char)
           have h2 := r.2.2
           have hz : (tokens sep cs).length = 0 := by rw [hnil]; rfl
           omega⟩))
-  print x := ((P.print x).1, render sc (P.print x).2)
+  print x := ((P.print x).1, renderWith gap (P.print x).2)
 
 /-- The **erased-level** equation for the composite. Stating the law against `run` keeps the
 strict-suffix subtype out of every proof — and here it is not merely convenient but *necessary*:
 the subtype's proof mentions `tokens sep cs`, so rewriting that term underneath `parse` is not
 type correct. -/
-theorem viaTokens_run {w v : Type} (sep : Char → Bool) (sc : Char)
+theorem viaTokens_run {w v : Type} (sep : Char → Bool) (gap : Token sep → Token sep → List Char)
     (P : CBiparser (Token sep) w v) (cs : List Char) :
-    (viaTokens sep sc P).run cs
+    (viaTokens sep gap P).run cs
       = (P.run (tokens sep cs)).map
           (fun r => (r.1, dropToks sep ((tokens sep cs).length - r.2.length) cs)) := by
   simp only [CBiparser.run, viaTokens, Option.map_map]
@@ -350,31 +431,33 @@ whole-file round trip pays nothing. -/
 def CharFollow (sep : Char → Bool) (fol : Token sep → Bool) (rest : List Char) : Prop :=
   HeadIn sep rest ∧ HeadIn fol (tokens sep rest)
 
-/-- **The composed round-trip law.** -/
-theorem viaTokens_roundTrips {w v : Type} {sep : Char → Bool} {sc : Char} (hsc : sep sc = true)
+/-- **The composed round-trip law**, for any gap policy whose gaps are valid separator runs. -/
+theorem viaTokens_roundTrips {w v : Type} {sep : Char → Bool}
+    {gap : Token sep → Token sep → List Char} (hgap : ∀ t u, Gap sep (gap t u))
     {fol : Token sep → Bool} (P : CBiparser (Token sep) w v)
     (hP : RoundTrips P (HeadIn fol)) :
-    RoundTrips (viaTokens sep sc P) (CharFollow sep fol) := by
+    RoundTrips (viaTokens sep gap P) (CharFollow sep fol) := by
   intro x rest hF
   obtain ⟨hsep, htok⟩ := hF
-  have htoks : tokens sep (render sc (P.print x).2 ++ rest)
-      = (P.print x).2 ++ tokens sep rest := tokens_render_append hsc _ hsep
+  have htoks : tokens sep (renderWith gap (P.print x).2 ++ rest)
+      = (P.print x).2 ++ tokens sep rest := tokens_renderWith_append hgap _ hsep
   have hinner : P.run ((P.print x).2 ++ tokens sep rest)
       = some ((P.print x).1, tokens sep rest) := hP x _ htok
   rw [viaTokens_run]
   simp only [viaTokens]
   rw [htoks, hinner]
   simp only [Option.map_some, List.length_append, Nat.add_sub_cancel]
-  rw [dropToks_render hsc _ hsep]
+  rw [dropToks_renderWith hgap _ hsep]
 
 /-- **The payoff: a whole file round-trips, with no side condition at all.** Both seams are vacuous
 at end of input. -/
-theorem viaTokens_roundtrip {w v : Type} {sep : Char → Bool} {sc : Char} (hsc : sep sc = true)
+theorem viaTokens_roundtrip {w v : Type} {sep : Char → Bool}
+    {gap : Token sep → Token sep → List Char} (hgap : ∀ t u, Gap sep (gap t u))
     {fol : Token sep → Bool} (P : CBiparser (Token sep) w v)
     (hP : RoundTrips P (HeadIn fol)) (x : w) :
-    (viaTokens sep sc P).run ((viaTokens sep sc P).print x).2
-      = some (((viaTokens sep sc P).print x).1, []) := by
-  have h := viaTokens_roundTrips hsc P hP x [] ⟨by simp, by simp [tokens]⟩
+    (viaTokens sep gap P).run ((viaTokens sep gap P).print x).2
+      = some (((viaTokens sep gap P).print x).1, []) := by
+  have h := viaTokens_roundTrips hgap P hP x [] ⟨by simp, by simp [tokens]⟩
   simpa using h
 
 end LambdaLab.CBiparser

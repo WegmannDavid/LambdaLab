@@ -65,14 +65,34 @@ derives its alphabet from `CBiparser.Token isSep` rather than declaring a parall
 stages compose with nothing to reconcile.
 
 The round-trip law survives the composition **with no new hypothesis**: `viaTokens_roundtrip` needs
-only that `' '` is a separator, and both seams (the character one and the token one) are vacuous at
-end of input. -/
+only that every gap is a valid separator run (`Gap`), and both seams (the character one and the
+token one) are vacuous at end of input.
 
-/-- **The file parser, over characters.** -/
+## Layout is a free knob
+
+The gap policy is a pure *printing* choice — `parse` never sees it. So a language can lay out its
+source however it likes (a newline before each declaration, say) and the very same round-trip proof
+still holds, because tokenizing collapses whatever separators the policy emitted. `layout` below is
+that policy: a newline before each command keyword (`def`), a single space everywhere else. -/
+
+/-- The gap policy: a newline before each command boundary (`def`), a space elsewhere. A pure
+layout choice; parsing is oblivious to it. -/
+def layout : Token → Token → List Char :=
+  fun _ u => if u = kwDef then ['\n'] else [' ']
+
+/-- Every gap `layout` emits is a nonempty run of separators — so the round-trip law applies. -/
+theorem layout_gap : ∀ t u, CBiparser.Gap isSep (layout t u) := by
+  intro t u
+  unfold layout CBiparser.Gap
+  by_cases h : u = kwDef <;> simp only [h, if_true, if_false] <;>
+    refine ⟨fun c hc => ?_, by simp⟩ <;>
+    · simp only [List.mem_singleton] at hc; subst hc; decide
+
+/-- **The file parser, over characters.** Laid out with `layout`: one declaration per line. -/
 def Language.fileParser (L : Language) : CBiparser Char (Program L) (List (Command L)) :=
-  viaTokens isSep ' ' L.parser.toCBiparser
+  viaTokens isSep layout L.parser.toCBiparser
 
-/-- Print a program to source text. -/
+/-- Print a program to source text (one declaration per line). -/
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.fileParser.print prog).2
 
@@ -85,11 +105,11 @@ def Language.parseFile (L : Language) (src : String) : Option (List (Command L))
 /-- **The file round-trip, at the character level.** Print any program to text, parse the text
 back, and recover it exactly — for *every* language, with no side conditions.
 
-This is the same one-liner as `parser_roundtrip`, now spanning both stages. -/
+This is the same one-liner as `parser_roundtrip`, now spanning both stages *and* the layout. -/
 theorem Language.fileParser_roundtrip (L : Language) (prog : Program L) :
     L.fileParser.run (L.fileParser.print prog).2
       = some ((L.fileParser.print prog).1, []) :=
-  viaTokens_roundtrip (by decide) L.parser.toCBiparser L.parser.ok prog
+  viaTokens_roundtrip layout_gap L.parser.toCBiparser L.parser.ok prog
 
 /-- The same law, in the form a user cares about: **render a program, parse the text, get it
 back.** -/

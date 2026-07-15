@@ -40,8 +40,10 @@ def run (label : String) (src : String) : IO Unit := do
   for line in ((src.splitOn "\n").filter (fun l => !l.isEmpty)) do
     IO.println s!"  {line}"
   match roundtrip src with
-  | some out => IO.println "parsed & re-rendered:"; IO.println s!"  {out}"
-  | none     => IO.println "  ⟹  rejected (not a well-formed program)"
+  | some out =>
+      IO.println "parsed & re-rendered:"
+      for line in out.splitOn "\n" do IO.println s!"  {line}"
+  | none => IO.println "  ⟹  rejected (not a well-formed program)"
   IO.println ""
 
 def main (args : List String) : IO Unit := do
