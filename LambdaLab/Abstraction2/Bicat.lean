@@ -8,8 +8,19 @@ Objects are types. A 1-cell `A ⟶ B` is an abstraction with its annotation fami
 (`OneCell`). A 2-cell is a **fibrewise** map of annotation families commuting with `realize`
 (`TwoCell`) — a map of spans over the fixed feet, but the fibre indexing makes it fibrewise.
 
-This file builds the layer that is genuinely tractable and checks whether the coherence closes
-concretely in `Type`. Data first: local category, horizontal composition, identity.
+## ⚠ Status: WIP — the `Bicategory Abs` instance has 3 sorried coherence fields
+
+Almost everything closed. The full 1/2-cell data (composition, identity, associator, unitors,
+whiskerings) is built with its own laws proved, and Mathlib's `aesop_cat` discharged MOST of the
+bicategory coherence **including the pentagon and the triangle**. Hand-proved: `whiskerRight_id`,
+`whiskerLeft_comp`.
+
+**Three coherence fields remain, as `sorry`:** `id_whiskerLeft`, `comp_whiskerLeft`,
+`whisker_exchange`. All three are transport-naturality facts that are *true* (each reduces, via
+`Sigma.ext`, to an equality of transports of the same element) — the unfinished part is the
+transport bookkeeping (`Σ`-transport distribution and dependent-map naturality). Until they are
+filled, **`Bicategory Abs` depends on `sorryAx` and must not be relied on.** Helpers `map_eqRec`
+(dependent-map naturality) and the cast lemmas are the tools to finish them.
 -/
 
 namespace LambdaLab.Abstraction2
@@ -20,6 +31,11 @@ open CategoryTheory
 fibres chain (composition, associator). -/
 theorem realize_cast {A B : Type} {Ann : B → Type} (F : (b : B) → Ann b → A)
     {x y : B} (h : x = y) (t : Ann x) : F y (h ▸ t) = F x t := by cases h; rfl
+
+/-- Naturality of a dependent map under transport of its argument's index. -/
+theorem map_eqRec {B : Type} {P Q : B → Type} (F : (b : B) → P b → Q b)
+    {b1 b2 : B} (h : b1 = b2) (x : P b1) : F b2 (h ▸ x) = h ▸ F b1 x := by cases h; rfl
+
 
 /-- Composition of abstractions: the annotation fibre is the dependent sum of the two fibres. -/
 def _root_.Abstraction.comp {A B C : Type} {AnnAB : B → Type} {AnnBC : C → Type}
@@ -121,5 +137,60 @@ def rightUnitor {A B : Type} (f : OneCell A B) : f.hcomp (OneCell.id B) ≅ f wh
   inv := { map := fun _ φ => ⟨⟨_, rfl⟩, φ⟩, realize_map := fun _ _ => rfl }
   hom_inv_id := by apply TwoCell.ext; funext b x; obtain ⟨⟨b', hb'⟩, φ⟩ := x; cases hb'; rfl
   inv_hom_id := by apply TwoCell.ext; funext b x; rfl
+
+/-! ## Whiskerings -/
+
+/-- Left whiskering `f ◁ η : f ≫ g ⟶ f ≫ h`. Carries a transport (the right operand's fibre moves
+along `η`'s realize equation). -/
+def whiskerL {A B C : Type} (f : OneCell A B) {g h : OneCell B C} (η : TwoCell g h) :
+    TwoCell (f.hcomp g) (f.hcomp h) where
+  map := fun c x => ⟨η.map c x.1, (η.realize_map c x.1).symm ▸ x.2⟩
+  realize_map := fun c x =>
+    realize_cast (fun b (t : f.Ann b) => f.hom.realize t) (η.realize_map c x.1).symm x.2
+
+/-- Right whiskering `η ▷ h : f ≫ h ⟶ g ≫ h`. Transport-free. -/
+def whiskerR {A B C : Type} {f g : OneCell A B} (η : TwoCell f g) (h : OneCell B C) :
+    TwoCell (f.hcomp h) (g.hcomp h) where
+  map := fun c x => ⟨x.1, η.map (h.hom.realize x.1) x.2⟩
+  realize_map := fun c x => η.realize_map (h.hom.realize x.1) x.2
+
+/-- Identity-1-cell fibres are singletons. -/
+instance instSubsingletonEqFibre {α : Type} (v : α) : Subsingleton {a' : α // a' = v} :=
+  ⟨fun x y => Subtype.ext (x.2.trans y.2.symm)⟩
+
+/-! ## The bicategory `Abs`
+
+Objects are types, wrapped as `Abs` to avoid clashing with the existing `Category Type` (functions).
+-/
+
+/-- Objects of the bicategory: types. Wrapped so the `Bicategory` instance does not collide with the
+function-category structure on `Type`. -/
+def Abs : Type _ := Type
+
+instance : Bicategory Abs where
+  Hom A B := OneCell A B
+  id A := OneCell.id A
+  comp f g := f.hcomp g
+  whiskerLeft := fun {_ _ _} f {_ _} η => whiskerL f η
+  whiskerRight := fun {_ _ _} {_ _} η h => whiskerR η h
+  associator f g h := associator f g h
+  leftUnitor f := leftUnitor f
+  rightUnitor f := rightUnitor f
+  whiskerRight_id := by
+    intros; apply TwoCell.ext; funext b x; obtain ⟨⟨b', hb'⟩, φ⟩ := x; cases hb'; rfl
+  -- TODO: singleton-fibre transport. TRUE (both sides land in the 𝟙-fibre singleton); the
+  -- transport bookkeeping is what is unfinished.
+  id_whiskerLeft := by intros; sorry
+  whiskerLeft_comp := by
+    intros; apply TwoCell.ext; funext b x; obtain ⟨β, φ⟩ := x
+    refine Sigma.ext rfl ?_
+    simp only [whiskerL, whiskerR, associator, leftUnitor, rightUnitor,
+      TwoCell.comp_map, TwoCell.id_map, eqRec_heq_iff_heq, heq_eq_eq,
+      eqRec_eq_cast, cast_cast, cast_eq]
+  -- TODO: Σ-transport distribution across the associator. TRUE; needs `h ▸ ⟨a,b⟩ = ⟨h▸a, h▸b⟩`.
+  comp_whiskerLeft := by intros; sorry
+  -- TODO: naturality of η.map under the transport (via `map_eqRec`). TRUE; index equality is
+  -- exactly θ.realize_map.
+  whisker_exchange := by intros; sorry
 
 end LambdaLab.Abstraction2
