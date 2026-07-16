@@ -44,22 +44,23 @@ structure OneCell (A B : Type) where
   Ann : B → Type
   hom : Abstraction A B Ann
 
-/-- A 2-cell `f ⟹ g`: a **fibrewise** map of annotation families commuting with `realize`. -/
+/-- A 2-cell `f ⟹ g`: a **fibrewise** map of annotation families commuting with `realize`.
+`map` takes the fibre index `b` explicitly, which keeps `ext` and `funext` clean. -/
 @[ext]
 structure TwoCell {A B : Type} (f g : OneCell A B) where
-  map : ∀ {b : B}, f.Ann b → g.Ann b
-  realize_map : ∀ {b : B} (x : f.Ann b), g.hom.realize (map x) = f.hom.realize x
+  map : (b : B) → f.Ann b → g.Ann b
+  realize_map : ∀ (b : B) (x : f.Ann b), g.hom.realize (map b x) = f.hom.realize x
 
 /-- Vertical composition of 2-cells. -/
 def TwoCell.vcomp {A B : Type} {f g h : OneCell A B} (α : TwoCell f g) (β : TwoCell g h) :
     TwoCell f h where
-  map := fun x => β.map (α.map x)
-  realize_map := fun x => (β.realize_map (α.map x)).trans (α.realize_map x)
+  map := fun b x => β.map b (α.map b x)
+  realize_map := fun b x => (β.realize_map b (α.map b x)).trans (α.realize_map b x)
 
 /-- The identity 2-cell. -/
 def TwoCell.id {A B : Type} (f : OneCell A B) : TwoCell f f where
-  map := fun x => x
-  realize_map := fun _ => rfl
+  map := fun _ x => x
+  realize_map := fun _ _ => rfl
 
 /-- **The local category** on `A ⟶ B`. A 2-cell is determined by its `map`, so the laws are `rfl`
 after `ext`. -/
@@ -71,12 +72,12 @@ instance (A B : Type) : Category (OneCell A B) where
   comp_id _ := rfl
   assoc _ _ _ := rfl
 
-@[simp] theorem TwoCell.id_map {A B : Type} (f : OneCell A B) {b : B} (x : f.Ann b) :
-    (𝟙 f : TwoCell f f).map x = x := rfl
+@[simp] theorem TwoCell.id_map {A B : Type} (f : OneCell A B) (b : B) (x : f.Ann b) :
+    (𝟙 f : TwoCell f f).map b x = x := rfl
 
 @[simp] theorem TwoCell.comp_map {A B : Type} {f g h : OneCell A B}
-    (α : f ⟶ g) (β : g ⟶ h) {b : B} (x : f.Ann b) :
-    (α ≫ β).map x = β.map (α.map x) := rfl
+    (α : f ⟶ g) (β : g ⟶ h) (b : B) (x : f.Ann b) :
+    (α ≫ β).map b x = β.map b (α.map b x) := rfl
 
 /-- The identity 1-cell `A ⟶ A`. -/
 def OneCell.id (A : Type) : OneCell A A where
@@ -92,5 +93,33 @@ def OneCell.id (A : Type) : OneCell A A where
 def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A C where
   Ann := fun c => Σ β : g.Ann c, f.Ann (g.hom.realize β)
   hom := f.hom.comp g.hom
+
+
+/-! ## Associator and unitors (the invertible 2-cell data) -/
+
+/-- The **associator** `(f ≫ g) ≫ h ≅ f ≫ (g ≫ h)`. Transport-free: both fibres are the same
+`Σγ Σβ, f.Ann (g.realize β)` nested differently, so it is pure re-association. -/
+def associator {A B C D : Type} (f : OneCell A B) (g : OneCell B C) (h : OneCell C D) :
+    (f.hcomp g).hcomp h ≅ f.hcomp (g.hcomp h) where
+  hom := { map := fun _ x => ⟨⟨x.1, x.2.1⟩, x.2.2⟩, realize_map := fun _ _ => rfl }
+  inv := { map := fun _ x => ⟨x.1.1, x.1.2, x.2⟩, realize_map := fun _ _ => rfl }
+  hom_inv_id := by apply TwoCell.ext; funext b x; rfl
+  inv_hom_id := by apply TwoCell.ext; funext b x; rfl
+
+/-- The **left unitor** `𝟙 A ≫ f ≅ f`. The `𝟙 A` fibre is a singleton, so it drops out cleanly. -/
+def leftUnitor {A B : Type} (f : OneCell A B) : (OneCell.id A).hcomp f ≅ f where
+  hom := { map := fun _ x => x.1, realize_map := fun _ x => x.2.2.symm }
+  inv := { map := fun _ β => ⟨β, ⟨f.hom.realize β, rfl⟩⟩, realize_map := fun _ _ => rfl }
+  hom_inv_id := by apply TwoCell.ext; funext b x; obtain ⟨β, a', ha'⟩ := x; cases ha'; rfl
+  inv_hom_id := by apply TwoCell.ext; funext b x; rfl
+
+/-- The **right unitor** `f ≫ 𝟙 B ≅ f`. Carries a transport: the `𝟙 B` fibre pins the index to `b`,
+so `f.Ann b'` must be transported along `b' = b`. -/
+def rightUnitor {A B : Type} (f : OneCell A B) : f.hcomp (OneCell.id B) ≅ f where
+  hom := { map := fun _ x => x.1.2 ▸ x.2
+           realize_map := fun _ x => realize_cast (fun b (t : f.Ann b) => f.hom.realize t) x.1.2 x.2 }
+  inv := { map := fun _ φ => ⟨⟨_, rfl⟩, φ⟩, realize_map := fun _ _ => rfl }
+  hom_inv_id := by apply TwoCell.ext; funext b x; obtain ⟨⟨b', hb'⟩, φ⟩ := x; cases hb'; rfl
+  inv_hom_id := by apply TwoCell.ext; funext b x; rfl
 
 end LambdaLab.Abstraction2
