@@ -43,6 +43,13 @@ theorem sigma_mk_heq {γ : Type} {P : γ → Type} {Q : (c : γ) → P c → Typ
     (⟨a1, b1⟩ : Σ z : P c1, Q c1 z) ≍ (⟨a2, b2⟩ : Σ z : P c2, Q c2 z) := by
   subst hc; obtain rfl := eq_of_heq ha; obtain rfl := eq_of_heq hb; rfl
 
+/-- Transport of a dependent pair distributes over its components. -/
+theorem eqRec_sigma {γ : Type} {P : γ → Type} {Q : (c : γ) → P c → Type}
+    {c1 c2 : γ} (h : c1 = c2) (a : P c1) (b : Q c1 a) :
+    (h ▸ (⟨a, b⟩ : Σ z : P c1, Q c1 z) : Σ z : P c2, Q c2 z)
+      = ⟨h ▸ a, @Eq.rec γ c1 (fun c hc => Q c (hc ▸ a)) b c2 h⟩ := by
+  cases h; rfl
+
 
 /-- Composition of abstractions: the annotation fibre is the dependent sum of the two fibres. -/
 def _root_.Abstraction.comp {A B C : Type} {AnnAB : B → Type} {AnnBC : C → Type}
@@ -197,10 +204,11 @@ instance : Bicategory Abs where
     simp only [whiskerL, whiskerR, associator, leftUnitor, rightUnitor,
       TwoCell.comp_map, TwoCell.id_map, eqRec_heq_iff_heq, heq_eq_eq,
       eqRec_eq_cast, cast_cast, cast_eq]
-  -- The ONLY remaining coherence gap. Reduces (via `Sigma.ext`) to the Σ-transport distribution
-  -- `h ▸ ⟨β, φ⟩ = ⟨h ▸ β, h ▸ φ⟩`, which is TRUE (`cases h; rfl`) but whose *statement* will not
-  -- typecheck cleanly: the second component needs `Eq.rec`'s dependent motive, and the goal keeps
-  -- the transport in mismatched `▸`/`cast`/`Eq.rec` forms. A well-stated Σ-transport lemma closes it.
+  -- The ONLY remaining coherence gap. After `Sigma.ext` the goal is `h ▸ ⟨β,φ⟩ = ⟨h ▸ β, h ▸ φ⟩`
+  -- (Σ-transport distribution). The RHS distribution lemma is `eqRec_sigma` above (proven,
+  -- `cases h; rfl`), but the goal's `▸` is produced in an eliminator form (`Eq.mpr`-based) that
+  -- neither `rw [eqRec_sigma]` nor the `cast`/`eqRec_heq` lemmas match — the fact is TRUE, the
+  -- Lean transport bookkeeping is what is unfinished.
   comp_whiskerLeft := by intros; sorry
   whisker_exchange := by
     intros; apply TwoCell.ext; funext b x; obtain ⟨β, φ⟩ := x
