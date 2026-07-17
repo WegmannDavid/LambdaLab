@@ -1,4 +1,4 @@
-import LambdaLab.Abstraction2.Basic
+import LambdaLab.Abstraction.Basic
 
 /-!
 # The parser abstraction: `abstract = parse`, `realize = flatten`
@@ -22,7 +22,7 @@ trivial** (`Unit`): a tree already pins down its canonical string, leaving nothi
 abstraction records precisely that `parse` is a retraction of `flatten`.
 -/
 
-namespace LambdaLab.Abstraction2
+namespace LambdaLab.Abstraction
 
 /-- The parser abstraction `List Tok ⇝ Tree` for a parser `parse` with right inverse `flatten`
 (`roundtrip : parse (flatten t) = t`): `abstract = parse`, `realize = flatten`, trivial annotation.
@@ -38,4 +38,4 @@ def parseAbstraction {Tok Tree : Type}
   realize_complete := fun c => ⟨(), Subtype.ext <| by
     obtain ⟨t, ht⟩ := c.2; rw [← ht]; exact congrArg flatten (roundtrip t)⟩
 
-end LambdaLab.Abstraction2
+end LambdaLab.Abstraction

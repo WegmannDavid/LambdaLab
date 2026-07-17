@@ -1,5 +1,5 @@
 import Mathlib.CategoryTheory.Bicategory.Basic
-import LambdaLab.Abstraction2.Basic
+import LambdaLab.Abstraction.Basic
 
 /-!
 # `Abs` (indexed design) — toward a `Bicategory` instance
@@ -28,7 +28,7 @@ dependent `Eq.rec`. With `eqRec_hcomp` stated in that matching form, `rw [eqRec_
 by a **default-transparency `rfl`** (reducible `rfl` is not enough) closes it.
 -/
 
-namespace LambdaLab.Abstraction2
+namespace LambdaLab.Abstraction
 
 open CategoryTheory
 
@@ -223,4 +223,4 @@ instance : Bicategory Abs where
     refine HEq.trans ?_ (eqRec_heq _ _).symm
     exact HEq.trans (heq_of_eq (map_eqRec _ _ _)) (eqRec_heq _ _)
 
-end LambdaLab.Abstraction2
+end LambdaLab.Abstraction
