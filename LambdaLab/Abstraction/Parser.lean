@@ -1,41 +1,54 @@
 import LambdaLab.Abstraction.Basic
+import LambdaLab.CBiparser.Indexed
 
 /-!
-# The parser abstraction: `abstract = parse`, `realize = flatten`
+# The parser abstraction from an `IBip`: `abstract = parse`, `realize = flatten`
 
-A parser `parse : List Tok → Tree` is the **lossy forward** map (token string ↦ its tree); `flatten :
-Tree → List Tok` reconstructs the canonical string. This is an `Abs` morphism `List Tok ⇝ Tree`:
+An **aligned** biparser (source and value the same type `v`) is exactly a parser packaged with its
+reconstruction: `p.print t = (t, flatten t)` and `p.run` parses. Its `IBip.roundtrip` law says
+`parse (flatten t) = t`, so it is an `Abs` morphism `List α ⇝ v`:
 
-* `abstract = parse`   — parse the token string,
-* `realize  = flatten` — flatten a tree back to its canonical token string.
+* `abstract = parse`   — run the biparser (defined on printable strings, where it always succeeds),
+* `realize  = flatten` — a value's canonical token string, `(p.print ·).2`.
 
-The two laws are exactly the two halves of the round-trip:
+The concrete objects are the **printable** strings `{c // ∃ t, (p.print t).2 = c}`; a string that is
+no value's printout is out of scope. On those, `parse` and `flatten` are mutually inverse, so a value
+already pins down its canonical string — the **annotation is trivial** (`Unit`).
 
-* `abstract_realize` = `parse (flatten t) = t` — the biparser **round-trip / soundness** law (the
-  string a tree prints to parses back to that tree). This is the one assumption.
-* `realize_complete` follows from it on the concrete side: every **printable** string `c = flatten t`
-  satisfies `flatten (parse c) = flatten (parse (flatten t)) = flatten t = c`.
-
-So the concrete objects are restricted to printable strings — a string that is no tree's printout is
-not in scope. On those, `parse` and `flatten` are mutually inverse, hence the **annotation is
-trivial** (`Unit`): a tree already pins down its canonical string, leaving nothing to annotate. The
-abstraction records precisely that `parse` is a retraction of `flatten`.
+The one thing `IBip` alone does not give is that the printer *echoes* its parsed value as its source
+(`(p.print t).1 = t`); that is what turns the round-trip `parse (flatten t) = (p.print t).1` into
+`parse (flatten t) = t`. It holds `rfl` for any aligned printer of the form `t ↦ (t, flatten t)`
+(e.g. the mixfix `ibiparser`), and is the `echo` hypothesis below.
 -/
 
 namespace LambdaLab.Abstraction
 
-/-- The parser abstraction `List Tok ⇝ Tree` for a parser `parse` with right inverse `flatten`
-(`roundtrip : parse (flatten t) = t`): `abstract = parse`, `realize = flatten`, trivial annotation.
-Computable — no choice. -/
-def parseAbstraction {Tok Tree : Type}
-    (parse : List Tok → Tree) (flatten : Tree → List Tok)
-    (roundtrip : ∀ t, parse (flatten t) = t) :
-    Abstraction { c : List Tok // ∃ t, flatten t = c } Tree (fun _ => Unit) where
-  abstract c := parse c.val
-  realize {t} _ := ⟨flatten t, t, rfl⟩
+open Classical LambdaLab.CBiparser
+
+private theorem get_eq {β : Type} {o : Option β} {b : β}
+    (h : o.isSome) (heq : o = some b) : o.get h = b := by subst heq; rfl
+
+/-- The parser abstraction `List α ⇝ v` induced by an aligned `IBip` whose printer echoes its source
+(`echo : (p.print t).1 = t`): `abstract = parse` (run the biparser), `realize = flatten`
+(`(p.print ·).2`), trivial annotation. Computable. -/
+def _root_.LambdaLab.CBiparser.IBip.parserAbstraction
+    {α : Type} {fst fol : α → Bool} {v : Type}
+    (p : IBip fst fol v v) (echo : ∀ t, (p.print t).1 = t) :
+    Abstraction { c : List α // ∃ t, (p.print t).2 = c } v (fun _ => Unit) where
+  abstract c := ((p.run c.val).get (by
+      obtain ⟨t, ht⟩ := c.property; rw [← ht, p.roundtrip]; rfl)).1
+  realize {t} _ := ⟨(p.print t).2, t, rfl⟩
   default := ()
-  abstract_realize t _ := roundtrip t
-  realize_complete := fun c => ⟨(), Subtype.ext <| by
-    obtain ⟨t, ht⟩ := c.2; rw [← ht]; exact congrArg flatten (roundtrip t)⟩
+  abstract_realize t _ := by
+    have hr : p.run (p.print t).2 = some (t, []) := by rw [p.roundtrip, echo]
+    have H : (p.run (p.print t).2).isSome := by rw [hr]; rfl
+    rw [get_eq H hr]
+  realize_complete c := by
+    refine ⟨(), Subtype.ext ?_⟩
+    obtain ⟨t₀, ht₀⟩ := c.property
+    have hrun : p.run c.val = some (t₀, []) := by rw [← ht₀, p.roundtrip, echo]
+    have H : (p.run c.val).isSome := by rw [hrun]; rfl
+    rw [congrArg Prod.fst (get_eq H hrun)]
+    exact ht₀
 
 end LambdaLab.Abstraction
