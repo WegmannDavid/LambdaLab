@@ -14,13 +14,13 @@ The full 1/2-cell data (composition, identity, associator, unitors, whiskerings)
 own laws proved, and Mathlib's `aesop_cat` discharged MOST of the bicategory coherence **including
 the pentagon and the triangle**. Hand-proved with transport handling: `whiskerRight_id`,
 `whiskerLeft_comp`, `id_whiskerLeft` (singleton fibre), `whisker_exchange` (dependent-map naturality
-via `map_eqRec` + `sigma_mk_heq`).
+via `map_eqRec`).
 
 **ONE coherence field remains, as `sorry`: `comp_whiskerLeft`.** It reduces (via `Sigma.ext`) to the
 Σ-transport distribution `h ▸ ⟨β,φ⟩ = ⟨h ▸ β, h ▸ φ⟩`, which is TRUE but whose statement will not
 typecheck cleanly (the second component needs `Eq.rec`'s dependent motive, and the goal keeps the
 transport in mismatched `▸`/`cast`/`Eq.rec` forms). Until it is filled, **`Bicategory Abs` depends
-on `sorryAx` and must not be relied on.** Helpers in place: `map_eqRec`, `sigma_mk_heq`.
+on `sorryAx` and must not be relied on.** Helpers in place: `map_eqRec`, `eqRec_hcomp` (proven; distributes the LHS transport).
 -/
 
 namespace LambdaLab.Abstraction2
@@ -36,19 +36,7 @@ theorem realize_cast {A B : Type} {Ann : B → Type} (F : (b : B) → Ann b → 
 theorem map_eqRec {B : Type} {P Q : B → Type} (F : (b : B) → P b → Q b)
     {b1 b2 : B} (h : b1 = b2) (x : P b1) : F b2 (h ▸ x) = h ▸ F b1 x := by cases h; rfl
 
-/-- `HEq` congruence for a dependent pair over a moving base index. -/
-theorem sigma_mk_heq {γ : Type} {P : γ → Type} {Q : (c : γ) → P c → Type}
-    {c1 c2 : γ} (hc : c1 = c2) {a1 : P c1} {a2 : P c2} {b1 : Q c1 a1} {b2 : Q c2 a2}
-    (ha : a1 ≍ a2) (hb : b1 ≍ b2) :
-    (⟨a1, b1⟩ : Σ z : P c1, Q c1 z) ≍ (⟨a2, b2⟩ : Σ z : P c2, Q c2 z) := by
-  subst hc; obtain rfl := eq_of_heq ha; obtain rfl := eq_of_heq hb; rfl
 
-/-- Transport of a dependent pair distributes over its components. -/
-theorem eqRec_sigma {γ : Type} {P : γ → Type} {Q : (c : γ) → P c → Type}
-    {c1 c2 : γ} (h : c1 = c2) (a : P c1) (b : Q c1 a) :
-    (h ▸ (⟨a, b⟩ : Σ z : P c1, Q c1 z) : Σ z : P c2, Q c2 z)
-      = ⟨h ▸ a, @Eq.rec γ c1 (fun c hc => Q c (hc ▸ a)) b c2 h⟩ := by
-  cases h; rfl
 
 
 /-- Composition of abstractions: the annotation fibre is the dependent sum of the two fibres. -/
@@ -175,6 +163,31 @@ instance instSubsingletonEqFibre {α : Type} (v : α) : Subsingleton {a' : α //
 instance instSubsingletonIdFibre {A : Type} (v : A) : Subsingleton ((OneCell.id A).Ann v) :=
   instSubsingletonEqFibre v
 
+/-- `Eq.rec` transport of an `hcomp` fibre distributes over its two components, in the exact
+`@Eq.rec` form that `whiskerL` on a composite produces. -/
+theorem eqRec_hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) {c1 c2 : C} (e : c1 = c2)
+    (β : g.Ann c1) (φ : f.Ann (g.hom.realize β)) :
+    @Eq.rec C c1 (fun x _ => (f.hcomp g).Ann x) (⟨β, φ⟩ : (f.hcomp g).Ann c1) c2 e
+      = ⟨@Eq.rec C c1 (fun x _ => g.Ann x) β c2 e,
+         @Eq.rec C c1 (fun x hx => f.Ann (g.hom.realize (@Eq.rec C c1 (fun y _ => g.Ann y) β x hx)))
+           φ c2 e⟩ := by
+  cases e; rfl
+
+/-- Standalone proof of the `comp_whiskerLeft` coherence, with `f`/`g` named so `eqRec_hcomp` can be applied. -/
+theorem comp_whiskerLeft_aux {A B C D : Type} (f : OneCell A B) (g : OneCell B C)
+    {h h' : OneCell C D} (η : TwoCell h h') :
+    whiskerL (f.hcomp g) η
+      = (associator f g h).hom ≫ whiskerL f (whiskerL g η) ≫ (associator f g h').inv := by
+  apply TwoCell.ext; funext b x; obtain ⟨γ, β, φ⟩ := x
+  dsimp only [whiskerL, whiskerR, associator, TwoCell.comp_map, TwoCell.vcomp,
+    CategoryStruct.comp]
+  rw [eqRec_hcomp f g]
+  -- `eqRec_hcomp` has distributed the LHS transport over the `f.hcomp g` fibre. What remains is to
+  -- reconcile it with the RHS, whose transports run through the associator's reassociation over
+  -- `g.hcomp h` (nested `whiskerL f (whiskerL g η)`). TRUE; needs the analogous distribution on the
+  -- RHS. This is the sole remaining coherence gap.
+  sorry
+
 /-! ## The bicategory `Abs`
 
 Objects are types, wrapped as `Abs` to avoid clashing with the existing `Category Type` (functions).
@@ -204,12 +217,7 @@ instance : Bicategory Abs where
     simp only [whiskerL, whiskerR, associator, leftUnitor, rightUnitor,
       TwoCell.comp_map, TwoCell.id_map, eqRec_heq_iff_heq, heq_eq_eq,
       eqRec_eq_cast, cast_cast, cast_eq]
-  -- The ONLY remaining coherence gap. After `Sigma.ext` the goal is `h ▸ ⟨β,φ⟩ = ⟨h ▸ β, h ▸ φ⟩`
-  -- (Σ-transport distribution). The RHS distribution lemma is `eqRec_sigma` above (proven,
-  -- `cases h; rfl`), but the goal's `▸` is produced in an eliminator form (`Eq.mpr`-based) that
-  -- neither `rw [eqRec_sigma]` nor the `cast`/`eqRec_heq` lemmas match — the fact is TRUE, the
-  -- Lean transport bookkeeping is what is unfinished.
-  comp_whiskerLeft := by intros; sorry
+  comp_whiskerLeft := by intros; exact comp_whiskerLeft_aux _ _ _
   whisker_exchange := by
     intros; apply TwoCell.ext; funext b x; obtain ⟨β, φ⟩ := x
     refine Sigma.ext rfl ?_
