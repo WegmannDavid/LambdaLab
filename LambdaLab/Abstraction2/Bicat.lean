@@ -8,19 +8,24 @@ Objects are types. A 1-cell `A ⟶ B` is an abstraction with its annotation fami
 (`OneCell`). A 2-cell is a **fibrewise** map of annotation families commuting with `realize`
 (`TwoCell`) — a map of spans over the fixed feet, but the fibre indexing makes it fibrewise.
 
-## ⚠ Status: WIP — the `Bicategory Abs` instance has ONE sorried coherence field
+## Status: COMPLETE — `instance : Bicategory Abs` is fully proved
 
 The full 1/2-cell data (composition, identity, associator, unitors, whiskerings) is built with its
-own laws proved, and Mathlib's `aesop_cat` discharged MOST of the bicategory coherence **including
-the pentagon and the triangle**. Hand-proved with transport handling: `whiskerRight_id`,
-`whiskerLeft_comp`, `id_whiskerLeft` (singleton fibre), `whisker_exchange` (dependent-map naturality
-via `map_eqRec`).
+own laws proved, and all bicategory coherence is discharged: Mathlib's `aesop_cat` handled most of
+it out of the box **including the pentagon and the triangle**, and the transport-heavy laws are
+proved by hand — `whiskerRight_id`, `whiskerLeft_comp`, `id_whiskerLeft` (singleton fibre),
+`whisker_exchange` (`map_eqRec`), and `comp_whiskerLeft` (via `eqRec_hcomp`, below).
 
-**ONE coherence field remains, as `sorry`: `comp_whiskerLeft`.** It reduces (via `Sigma.ext`) to the
-Σ-transport distribution `h ▸ ⟨β,φ⟩ = ⟨h ▸ β, h ▸ φ⟩`, which is TRUE but whose statement will not
-typecheck cleanly (the second component needs `Eq.rec`'s dependent motive, and the goal keeps the
-transport in mismatched `▸`/`cast`/`Eq.rec` forms). Until it is filled, **`Bicategory Abs` depends
-on `sorryAx` and must not be relied on.** Helpers in place: `map_eqRec`, `eqRec_hcomp` (proven; distributes the LHS transport).
+`#print axioms` on the instance is `[propext, Quot.sound]` — **no `sorryAx`, no choice**.
+
+## The transport crux (`comp_whiskerLeft` / `eqRec_hcomp`)
+
+The one genuinely hard field. Its goal reduces to an `@Eq.rec` transport of an `f.hcomp g` fibre
+`⟨β, φ⟩`. The lesson learned the hard way: a `▸`-based distribution lemma will **not** match — the
+goal's transport is `@Eq.rec` with motive `fun x _ => (f.hcomp g).Ann x`, and the second component's
+transport must be phrased with **`realize_cast`** (exactly as `whiskerL` produces it), not an opaque
+dependent `Eq.rec`. With `eqRec_hcomp` stated in that matching form, `rw [eqRec_hcomp f g]` followed
+by a **default-transparency `rfl`** (reducible `rfl` is not enough) closes it.
 -/
 
 namespace LambdaLab.Abstraction2
@@ -168,9 +173,7 @@ instance instSubsingletonIdFibre {A : Type} (v : A) : Subsingleton ((OneCell.id 
 theorem eqRec_hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) {c1 c2 : C} (e : c1 = c2)
     (β : g.Ann c1) (φ : f.Ann (g.hom.realize β)) :
     @Eq.rec C c1 (fun x _ => (f.hcomp g).Ann x) (⟨β, φ⟩ : (f.hcomp g).Ann c1) c2 e
-      = ⟨@Eq.rec C c1 (fun x _ => g.Ann x) β c2 e,
-         @Eq.rec C c1 (fun x hx => f.Ann (g.hom.realize (@Eq.rec C c1 (fun y _ => g.Ann y) β x hx)))
-           φ c2 e⟩ := by
+      = ⟨e ▸ β, (realize_cast (fun b (t : g.Ann b) => g.hom.realize t) e β).symm ▸ φ⟩ := by
   cases e; rfl
 
 /-- Standalone proof of the `comp_whiskerLeft` coherence, with `f`/`g` named so `eqRec_hcomp` can be applied. -/
@@ -181,12 +184,7 @@ theorem comp_whiskerLeft_aux {A B C D : Type} (f : OneCell A B) (g : OneCell B C
   apply TwoCell.ext; funext b x; obtain ⟨γ, β, φ⟩ := x
   dsimp only [whiskerL, whiskerR, associator, TwoCell.comp_map, TwoCell.vcomp,
     CategoryStruct.comp]
-  rw [eqRec_hcomp f g]
-  -- `eqRec_hcomp` has distributed the LHS transport over the `f.hcomp g` fibre. What remains is to
-  -- reconcile it with the RHS, whose transports run through the associator's reassociation over
-  -- `g.hcomp h` (nested `whiskerL f (whiskerL g η)`). TRUE; needs the analogous distribution on the
-  -- RHS. This is the sole remaining coherence gap.
-  sorry
+  rw [eqRec_hcomp f g]; rfl
 
 /-! ## The bicategory `Abs`
 
