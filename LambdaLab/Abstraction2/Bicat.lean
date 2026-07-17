@@ -8,19 +8,19 @@ Objects are types. A 1-cell `A ⟶ B` is an abstraction with its annotation fami
 (`OneCell`). A 2-cell is a **fibrewise** map of annotation families commuting with `realize`
 (`TwoCell`) — a map of spans over the fixed feet, but the fibre indexing makes it fibrewise.
 
-## ⚠ Status: WIP — the `Bicategory Abs` instance has 3 sorried coherence fields
+## ⚠ Status: WIP — the `Bicategory Abs` instance has ONE sorried coherence field
 
-Almost everything closed. The full 1/2-cell data (composition, identity, associator, unitors,
-whiskerings) is built with its own laws proved, and Mathlib's `aesop_cat` discharged MOST of the
-bicategory coherence **including the pentagon and the triangle**. Hand-proved: `whiskerRight_id`,
-`whiskerLeft_comp`.
+The full 1/2-cell data (composition, identity, associator, unitors, whiskerings) is built with its
+own laws proved, and Mathlib's `aesop_cat` discharged MOST of the bicategory coherence **including
+the pentagon and the triangle**. Hand-proved with transport handling: `whiskerRight_id`,
+`whiskerLeft_comp`, `id_whiskerLeft` (singleton fibre), `whisker_exchange` (dependent-map naturality
+via `map_eqRec` + `sigma_mk_heq`).
 
-**Three coherence fields remain, as `sorry`:** `id_whiskerLeft`, `comp_whiskerLeft`,
-`whisker_exchange`. All three are transport-naturality facts that are *true* (each reduces, via
-`Sigma.ext`, to an equality of transports of the same element) — the unfinished part is the
-transport bookkeeping (`Σ`-transport distribution and dependent-map naturality). Until they are
-filled, **`Bicategory Abs` depends on `sorryAx` and must not be relied on.** Helpers `map_eqRec`
-(dependent-map naturality) and the cast lemmas are the tools to finish them.
+**ONE coherence field remains, as `sorry`: `comp_whiskerLeft`.** It reduces (via `Sigma.ext`) to the
+Σ-transport distribution `h ▸ ⟨β,φ⟩ = ⟨h ▸ β, h ▸ φ⟩`, which is TRUE but whose statement will not
+typecheck cleanly (the second component needs `Eq.rec`'s dependent motive, and the goal keeps the
+transport in mismatched `▸`/`cast`/`Eq.rec` forms). Until it is filled, **`Bicategory Abs` depends
+on `sorryAx` and must not be relied on.** Helpers in place: `map_eqRec`, `sigma_mk_heq`.
 -/
 
 namespace LambdaLab.Abstraction2
@@ -35,6 +35,13 @@ theorem realize_cast {A B : Type} {Ann : B → Type} (F : (b : B) → Ann b → 
 /-- Naturality of a dependent map under transport of its argument's index. -/
 theorem map_eqRec {B : Type} {P Q : B → Type} (F : (b : B) → P b → Q b)
     {b1 b2 : B} (h : b1 = b2) (x : P b1) : F b2 (h ▸ x) = h ▸ F b1 x := by cases h; rfl
+
+/-- `HEq` congruence for a dependent pair over a moving base index. -/
+theorem sigma_mk_heq {γ : Type} {P : γ → Type} {Q : (c : γ) → P c → Type}
+    {c1 c2 : γ} (hc : c1 = c2) {a1 : P c1} {a2 : P c2} {b1 : Q c1 a1} {b2 : Q c2 a2}
+    (ha : a1 ≍ a2) (hb : b1 ≍ b2) :
+    (⟨a1, b1⟩ : Σ z : P c1, Q c1 z) ≍ (⟨a2, b2⟩ : Σ z : P c2, Q c2 z) := by
+  subst hc; obtain rfl := eq_of_heq ha; obtain rfl := eq_of_heq hb; rfl
 
 
 /-- Composition of abstractions: the annotation fibre is the dependent sum of the two fibres. -/
@@ -158,6 +165,9 @@ def whiskerR {A B C : Type} {f g : OneCell A B} (η : TwoCell f g) (h : OneCell 
 instance instSubsingletonEqFibre {α : Type} (v : α) : Subsingleton {a' : α // a' = v} :=
   ⟨fun x y => Subtype.ext (x.2.trans y.2.symm)⟩
 
+instance instSubsingletonIdFibre {A : Type} (v : A) : Subsingleton ((OneCell.id A).Ann v) :=
+  instSubsingletonEqFibre v
+
 /-! ## The bicategory `Abs`
 
 Objects are types, wrapped as `Abs` to avoid clashing with the existing `Category Type` (functions).
@@ -178,19 +188,25 @@ instance : Bicategory Abs where
   rightUnitor f := rightUnitor f
   whiskerRight_id := by
     intros; apply TwoCell.ext; funext b x; obtain ⟨⟨b', hb'⟩, φ⟩ := x; cases hb'; rfl
-  -- TODO: singleton-fibre transport. TRUE (both sides land in the 𝟙-fibre singleton); the
-  -- transport bookkeeping is what is unfinished.
-  id_whiskerLeft := by intros; sorry
+  id_whiskerLeft := by
+    intros; apply TwoCell.ext; funext b x; obtain ⟨β, s⟩ := x
+    refine Sigma.ext rfl ?_; exact heq_of_eq (Subsingleton.elim _ _)
   whiskerLeft_comp := by
     intros; apply TwoCell.ext; funext b x; obtain ⟨β, φ⟩ := x
     refine Sigma.ext rfl ?_
     simp only [whiskerL, whiskerR, associator, leftUnitor, rightUnitor,
       TwoCell.comp_map, TwoCell.id_map, eqRec_heq_iff_heq, heq_eq_eq,
       eqRec_eq_cast, cast_cast, cast_eq]
-  -- TODO: Σ-transport distribution across the associator. TRUE; needs `h ▸ ⟨a,b⟩ = ⟨h▸a, h▸b⟩`.
+  -- The ONLY remaining coherence gap. Reduces (via `Sigma.ext`) to the Σ-transport distribution
+  -- `h ▸ ⟨β, φ⟩ = ⟨h ▸ β, h ▸ φ⟩`, which is TRUE (`cases h; rfl`) but whose *statement* will not
+  -- typecheck cleanly: the second component needs `Eq.rec`'s dependent motive, and the goal keeps
+  -- the transport in mismatched `▸`/`cast`/`Eq.rec` forms. A well-stated Σ-transport lemma closes it.
   comp_whiskerLeft := by intros; sorry
-  -- TODO: naturality of η.map under the transport (via `map_eqRec`). TRUE; index equality is
-  -- exactly θ.realize_map.
-  whisker_exchange := by intros; sorry
+  whisker_exchange := by
+    intros; apply TwoCell.ext; funext b x; obtain ⟨β, φ⟩ := x
+    refine Sigma.ext rfl ?_
+    simp only [whiskerL, whiskerR, TwoCell.comp_map]
+    refine HEq.trans ?_ (eqRec_heq _ _).symm
+    exact HEq.trans (heq_of_eq (map_eqRec _ _ _)) (eqRec_heq _ _)
 
 end LambdaLab.Abstraction2
