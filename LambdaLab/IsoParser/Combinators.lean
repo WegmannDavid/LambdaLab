@@ -1,4 +1,5 @@
 import LambdaLab.IsoParser.Basic
+import LambdaLab.NEList
 
 /-!
 # `IsoParser` combinators
@@ -69,5 +70,179 @@ def tok [DecidableEq α] (t : α) :
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨-, rfl⟩ := h; subst hp; rfl
       · simp at h
+
+/-! ## Helper lemmas -/
+
+variable {fst fol : α → Bool} {v : Type}
+
+/-- Recover the underlying `parse` result from a `run` equation. -/
+theorem run_eq_some {p : IsoParser α fst fol v} {input : List α} {a : v} {rest : List α}
+    (h : p.run input = some (a, rest)) :
+    ∃ r : { r : List α // r.length < input.length }, p.parse input = some (a, r) ∧ r.val = rest := by
+  unfold IsoParser.run at h
+  rcases hpp : p.parse input with _ | ⟨a', r⟩
+  · rw [hpp] at h; simp at h
+  · rw [hpp] at h; simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h; exact ⟨r, rfl, rfl⟩
+
+/-- `parse` fails on empty input (from `run_nil`). -/
+theorem parse_nil (p : IsoParser α fst fol v) : p.parse [] = none := by
+  have h := p.run_nil; unfold IsoParser.run at h
+  rcases hpp : p.parse [] with _ | x
+  · rfl
+  · rw [hpp] at h; simp at h
+
+/-- A printed value is never empty. -/
+theorem print_ne_nil (p : IsoParser α fst fol v) (x : v) : p.print x ≠ [] := by
+  intro h
+  have hr := p.run_print_nil x
+  rw [h, p.run_nil] at hr
+  simp at hr
+
+/-- A printed value starts with a FIRST token. -/
+theorem print_head_fst (p : IsoParser α fst fol v) (x : v) (c : α) (cs : List α)
+    (h : p.print x = c :: cs) : fst c = true := by
+  cases hc : fst c with
+  | true => rfl
+  | false =>
+    exfalso
+    have hr := p.run_print_nil x
+    rw [h] at hr
+    unfold IsoParser.run at hr
+    rw [p.firstOk c cs hc] at hr
+    simp at hr
+
+/-- `print x ++ rest` has a FOLLOW-admissible head (given `FIRST ⊆ FOLLOW`). -/
+theorem headIn_print_append (p : IsoParser α fst fol v)
+    (hrep : ∀ c, fst c = true → fol c = true) (x : v) (rest : List α) :
+    HeadIn fol (p.print x ++ rest) := by
+  intro a ha
+  obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (print_ne_nil p x)
+  rw [hcs, List.cons_append, List.head?_cons, Option.some.injEq] at ha
+  subst ha
+  exact hrep c (print_head_fst p x c cs hcs)
+
+/-! ## `many1` — one or more -/
+
+/-- Parse one-or-more `p`, greedily: keep going until `p` fails. -/
+def many1Parse (p : IsoParser α fst fol v) : (input : List α) →
+    Option (NEList v × { r : List α // r.length < input.length })
+  | input =>
+    match p.parse input with
+    | none => none
+    | some (x, r) =>
+      match many1Parse p r.val with
+      | none => some (NEList.singleton x, r)
+      | some (xs, r2) =>
+        some ((x, xs.toList), ⟨r2.val, Nat.lt_trans r2.property r.property⟩)
+  termination_by input => input.length
+  decreasing_by exact r.property
+
+theorem many1Parse_none {p : IsoParser α fst fol v} {input : List α}
+    (h : p.parse input = none) : many1Parse p input = none := by
+  rw [many1Parse, h]
+
+theorem many1Parse_cons {p : IsoParser α fst fol v} {input : List α} {x : v}
+    {r : { r : List α // r.length < input.length }} (h : p.parse input = some (x, r)) :
+    many1Parse p input =
+      (match many1Parse p r.val with
+        | none => some (NEList.singleton x, r)
+        | some (xs, r2) =>
+          some ((x, xs.toList), ⟨r2.val, Nat.lt_trans r2.property r.property⟩)) := by
+  rw [many1Parse, h]
+
+private theorem and_left_of {a b : Bool} (h : (a && b) = true) : a = true := by
+  cases a with | true => rfl | false => simp at h
+
+private theorem and_right_of {a b : Bool} (h : (a && b) = true) : b = true := by
+  cases a with | true => simpa using h | false => simp at h
+
+/-- The printout of a `many1` value: concatenate the elements' printouts. -/
+def many1Print (p : IsoParser α fst fol v) : List v → List α
+  | [] => []
+  | x :: xs => p.print x ++ many1Print p xs
+
+/-- **Round-trip for `many1`.** Parsing a concatenation of ≥1 printouts, followed by a `rest` whose
+head is not in FIRST, recovers the elements and leaves `rest`. -/
+theorem many1Parse_run (p : IsoParser α fst fol v) (hrep : ∀ c, fst c = true → fol c = true) :
+    ∀ (x : v) (xs : List v) (rest : List α),
+      HeadIn (fun c => fol c && !fst c) rest →
+      (many1Parse p (many1Print p (x :: xs) ++ rest)).map (fun y => (y.1, y.2.val))
+        = some ((x, xs), rest) := by
+  intro x xs
+  induction xs generalizing x with
+  | nil =>
+    intro rest hr
+    rw [show many1Print p (x :: []) ++ rest = p.print x ++ rest by simp [many1Print]]
+    have hfol : HeadIn fol rest := fun a ha => and_left_of (hr a ha)
+    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x rest hfol)
+    rw [many1Parse_cons hpar]
+    have hstop : p.parse r.val = none := by
+      rw [hrv]
+      cases rest with
+      | nil => exact parse_nil p
+      | cons c cs =>
+        have hc : fst c = false := by simpa using and_right_of (hr c (by simp))
+        exact p.firstOk c cs hc
+    rw [many1Parse_none hstop]
+    simp [NEList.singleton, hrv]
+  | cons y ys ih =>
+    intro rest hr
+    have hMore : HeadIn fol (many1Print p (y :: ys) ++ rest) := by
+      rw [show many1Print p (y :: ys) ++ rest = p.print y ++ (many1Print p ys ++ rest) by
+        simp [many1Print, List.append_assoc]]
+      exact headIn_print_append p hrep y _
+    rw [show many1Print p (x :: y :: ys) ++ rest
+          = p.print x ++ (many1Print p (y :: ys) ++ rest) by simp [many1Print, List.append_assoc]]
+    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x _ hMore)
+    rw [many1Parse_cons hpar]
+    have ihy := ih y rest hr
+    rw [← hrv] at ihy
+    rcases hM : many1Parse p r.val with _ | ⟨xs', r2⟩
+    · rw [hM] at ihy; simp at ihy
+    · rw [hM] at ihy
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at ihy
+      obtain ⟨rfl, hr2⟩ := ihy
+      simp [NEList.toList, hr2]
+
+/-- **Exactness for `many1`.** Whatever it parsed, `many1Print` reproduces. -/
+theorem many1Parse_exact (p : IsoParser α fst fol v) :
+    ∀ (n : Nat) (input : List α), input.length = n →
+      ∀ (xs : NEList v) (r : { r : List α // r.length < input.length }),
+        many1Parse p input = some (xs, r) → many1Print p xs.toList ++ r.val = input := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro input hn xs r hpar
+    rcases hp : p.parse input with _ | ⟨x, r0⟩
+    · rw [many1Parse_none hp] at hpar; simp at hpar
+    · rw [many1Parse_cons hp] at hpar
+      rcases hM : many1Parse p r0.val with _ | ⟨xs', r2⟩
+      · rw [hM] at hpar
+        simp only [Option.some.injEq, Prod.mk.injEq] at hpar
+        obtain ⟨rfl, rfl⟩ := hpar
+        rw [show many1Print p (NEList.singleton x).toList = p.print x by
+          simp [NEList.singleton, NEList.toList, many1Print]]
+        exact p.print_parse input x r0 hp
+      · rw [hM] at hpar
+        simp only [Option.some.injEq, Prod.mk.injEq] at hpar
+        obtain ⟨rfl, rfl⟩ := hpar
+        have hr0 : many1Print p xs'.toList ++ r2.val = r0.val :=
+          ih r0.val.length (hn ▸ r0.property) r0.val rfl xs' r2 hM
+        show p.print x ++ many1Print p xs'.toList ++ r2.val = input
+        rw [List.append_assoc, hr0]
+        exact p.print_parse input x r0 hp
+
+/-- **One-or-more `p`.** FIRST is unchanged; FOLLOW forbids starting another element
+(`fol && !fst`). `hrep : FIRST ⊆ FOLLOW` — an element's own output may follow it. -/
+def many1 (p : IsoParser α fst fol v) (hrep : ∀ c, fst c = true → fol c = true) :
+    IsoParser α fst (fun c => fol c && !fst c) (NEList v) where
+  parse := many1Parse p
+  print xs := many1Print p xs.toList
+  firstOk c rest hc := many1Parse_none (p.firstOk c rest hc)
+  parse_print xs rest hr := by
+    obtain ⟨x, tail⟩ := xs
+    exact many1Parse_run p hrep x tail rest hr
+  print_parse input xs r h := many1Parse_exact p input.length input rfl xs r h
 
 end LambdaLab.IsoParser
