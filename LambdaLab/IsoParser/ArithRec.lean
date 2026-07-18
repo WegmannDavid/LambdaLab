@@ -217,4 +217,192 @@ theorem exact_all (n : Nat) :
         _ = t.flatten ++ s1.val := rfl
         _ = input := htermc
 
+/-! ## Round-trip (`parse_print`): print a tree, parse it back, recover it.
+
+The hard direction — the greedy left-associative reconstruction (the analogue of CBiparser's open
+`parseExpr_exact`). Structural induction on `AExpr` fails on `add e t`: after parsing `e`, the input
+continues with `+`, so `e` is never parsed as a standalone sub-expression. The fix is the **spine** —
+every `AExpr` is a seed term left-folded over its `+`-chained steps, and the greedy fold rebuilds it. -/
+
+/-! ### Leaf parse reductions (raw results, no subtype plumbing) -/
+
+private theorem tok_parse_hit (c : Char) (rest : List Char) :
+    (tok c).parse (c :: rest) = some (⟨(), PUnit.unit⟩, ⟨rest, by simp⟩) := by
+  simp [tok, tokParse]
+
+private theorem tok_parse_miss {t c : Char} (rest : List Char) (h : c ≠ t) :
+    (tok t).parse (c :: rest) = none := by simp [tok, tokParse, h]
+
+private theorem sat_parse_hit {pred : Char → Bool} {c : Char} (hc : pred c = true) (rest : List Char) :
+    (sat pred).parse (c :: rest) = some (⟨⟨c, hc⟩, PUnit.unit⟩, ⟨rest, by simp⟩) := by
+  simp [sat, satParse, hc]
+
+/-- Extract the raw parse result (with its progress subtype) from the projected `.map` form. -/
+private theorem map_proj_eq_some {V : Type} {input : List Char}
+    {o : Option (V × { r : List Char // r.length < input.length })} {x : V} {rest : List Char}
+    (h : o.map (fun z => (z.1, z.2.val)) = some (x, rest)) :
+    ∃ r : { r : List Char // r.length < input.length }, o = some (x, r) ∧ r.val = rest := by
+  cases o with
+  | none => simp at h
+  | some z =>
+      obtain ⟨v, r⟩ := z
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨r, rfl, rfl⟩
+
+/-! ### The spine -/
+
+/-- The first (leftmost) term of an expression's left-associative chain. -/
+def AExpr.seed : AExpr → ATerm
+  | .single t => t
+  | .add e _  => e.seed
+
+/-- The `+`-chained step terms after the seed, in order. -/
+def AExpr.steps : AExpr → List ATerm
+  | .single _ => []
+  | .add e t  => e.steps ++ [t]
+
+/-- An expression *is* its seed left-folded over its steps. -/
+theorem AExpr.fold_spine : ∀ e : AExpr,
+    e.steps.foldl (fun a t => AExpr.add a t) (AExpr.single e.seed) = e
+  | .single _ => rfl
+  | .add e' t => by
+      simp only [AExpr.seed, AExpr.steps, List.foldl_append, List.foldl_cons, List.foldl_nil]
+      rw [AExpr.fold_spine e']
+
+/-- `flatten` follows the spine: the seed's flattening, then `+ tᵢ` for each step. -/
+theorem AExpr.flatten_spine : ∀ e : AExpr,
+    e.flatten = e.seed.flatten ++ e.steps.flatMap (fun t => '+' :: t.flatten)
+  | .single _ => by simp [AExpr.flatten, AExpr.seed, AExpr.steps]
+  | .add e' t => by
+      simp only [AExpr.seed, AExpr.steps, List.flatMap_append, List.flatMap_cons, List.flatMap_nil,
+        List.append_nil]
+      rw [show (AExpr.add e' t).flatten = e'.flatten ++ ('+' :: t.flatten) from rfl,
+        AExpr.flatten_spine e', List.append_assoc]
+
+/-! ### The round-trip -/
+
+/-- Both trees at once, by strong induction on the flattened length. `term` accepts any continuation
+(self-delimiting); `expr` needs `rest` to not start with `+` (else the greedy fold consumes it). -/
+theorem roundtrip_all (n : Nat) :
+    (∀ t : ATerm, t.flatten.length = n → ∀ rest,
+        (parseTerm (t.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (t, rest)) ∧
+    (∀ e : AExpr, e.flatten.length = n → ∀ rest, rest.head? ≠ some '+' →
+        (parseExpr (e.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (e, rest)) := by
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    -- `term` round-trip at length `n`
+    have hterm : ∀ t : ATerm, t.flatten.length = n → ∀ rest,
+        (parseTerm (t.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (t, rest) := by
+      intro t hn rest
+      cases t with
+      | digit d =>
+        have hd : d.val.isDigit = true := d.property
+        have hne : d.val ≠ '(' := by intro h; rw [h] at hd; exact absurd hd (by decide)
+        show (parseTerm (d.val :: rest)).map _ = _
+        rw [parseTerm, tok_parse_miss rest hne, sat_parse_hit hd rest]
+        rfl
+      | paren e =>
+        have hlen : e.flatten.length < n := by
+          rw [← hn]; simp only [ATerm.flatten, List.length_cons, List.length_append]; omega
+        have hin : (ATerm.paren e).flatten ++ rest = '(' :: (e.flatten ++ ')' :: rest) := by
+          simp [ATerm.flatten, List.append_assoc]
+        have hexpr := (ih e.flatten.length hlen).2 e rfl (')' :: rest) (by simp)
+        obtain ⟨r2, hpe, hr2⟩ := map_proj_eq_some hexpr
+        rw [hin, parseTerm, tok_parse_hit]
+        dsimp only
+        rw [hpe]
+        dsimp only
+        split
+        · next fst r3 heq =>
+          have e1 := (tok ')').print_parse r2.val fst r3 heq
+          have hr3v : r3.val = rest := by simpa [tok] using e1.trans hr2
+          simp only [Option.map_some, hr3v]
+        · next heq =>
+          exfalso
+          have hrun : (tok ')').run r2.val = none := by simp [IsoParser.run, heq]
+          rw [hr2] at hrun
+          have hr : (tok ')').run (')' :: rest) = some (⟨(), PUnit.unit⟩, rest) := by
+            simp [IsoParser.run, tok_parse_hit]
+          rw [hr] at hrun; simp at hrun
+    -- `term` round-trip for length `≤ n` (seed can equal `n`; steps are `< n`)
+    have htermLE : ∀ t : ATerm, t.flatten.length ≤ n → ∀ rest,
+        (parseTerm (t.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (t, rest) := by
+      intro t ht rest
+      rcases Nat.lt_or_eq_of_le ht with hlt | heq
+      · exact (ih t.flatten.length hlt).1 t rfl rest
+      · exact hterm t heq rest
+    -- the greedy fold rebuilds the chain
+    have haddtail : ∀ (steps : List ATerm), (∀ t ∈ steps, t.flatten.length < n) →
+        ∀ (acc : AExpr) (rest : List Char), rest.head? ≠ some '+' →
+        (parseAddTail acc (steps.flatMap (fun t => '+' :: t.flatten) ++ rest)).1
+            = steps.foldl (fun a t => AExpr.add a t) acc ∧
+          (parseAddTail acc (steps.flatMap (fun t => '+' :: t.flatten) ++ rest)).2.val = rest := by
+      intro steps
+      induction steps with
+      | nil =>
+        intro _ acc rest hrest
+        have hmiss : (tok '+').parse rest = none := by
+          cases rest with
+          | nil => exact parse_nil _
+          | cons c cs => refine tok_parse_miss cs ?_; intro h; subst h; exact hrest rfl
+        show (parseAddTail acc rest).1 = acc ∧ (parseAddTail acc rest).2.val = rest
+        rw [parseAddTail, hmiss]
+        exact ⟨rfl, rfl⟩
+      | cons t ts iht =>
+        intro hlen acc rest hrest
+        have hstep : t.flatten.length < n := hlen t List.mem_cons_self
+        have hin : (t :: ts).flatMap (fun t => '+' :: t.flatten) ++ rest
+            = '+' :: (t.flatten ++ (ts.flatMap (fun t => '+' :: t.flatten) ++ rest)) := by
+          simp [List.flatMap_cons, List.append_assoc]
+        have htc := (ih t.flatten.length hstep).1 t rfl
+                      (ts.flatMap (fun t => '+' :: t.flatten) ++ rest)
+        obtain ⟨r2, hpt, hr2⟩ := map_proj_eq_some htc
+        have hrec := iht (fun t' ht' => hlen t' (List.mem_cons_of_mem _ ht')) (AExpr.add acc t) rest hrest
+        rw [hin, parseAddTail, tok_parse_hit]
+        dsimp only
+        rw [hpt]
+        dsimp only
+        rw [hr2]
+        refine ⟨?_, hrec.2⟩
+        rw [List.foldl_cons]
+        exact hrec.1
+    refine ⟨hterm, ?_⟩
+    -- `expr` round-trip at length `n`, via the spine
+    intro e hn rest hrest
+    have hseedLE : e.seed.flatten.length ≤ n := by
+      rw [← hn, AExpr.flatten_spine e]; simp only [List.length_append]; omega
+    have hstepsLT : ∀ t ∈ e.steps, t.flatten.length < n := by
+      have hmem : ∀ (l : List ATerm) (t : ATerm), t ∈ l →
+          t.flatten.length < (l.flatMap (fun t => '+' :: t.flatten)).length := by
+        intro l
+        induction l with
+        | nil => intro t ht; simp at ht
+        | cons a as ih' =>
+          intro t ht
+          simp only [List.flatMap_cons, List.length_append, List.length_cons]
+          rcases List.mem_cons.mp ht with rfl | hm
+          · omega
+          · have := ih' t hm; omega
+      intro t ht
+      have h1 := hmem e.steps t ht
+      have h2 : e.flatten.length
+          = e.seed.flatten.length + (e.steps.flatMap (fun t => '+' :: t.flatten)).length := by
+        rw [AExpr.flatten_spine e, List.length_append]
+      omega
+    have hseed := htermLE e.seed hseedLE (e.steps.flatMap (fun t => '+' :: t.flatten) ++ rest)
+    obtain ⟨s1, hps, hs1⟩ := map_proj_eq_some hseed
+    have hat := haddtail e.steps hstepsLT (AExpr.single e.seed) rest hrest
+    rw [AExpr.flatten_spine e, parseExpr, List.append_assoc, hps]
+    dsimp only
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
+    rw [hs1]
+    exact ⟨hat.1.trans (AExpr.fold_spine e), hat.2⟩
+
+/-- **The round-trip law, terminally**: print a tree, parse it back, recover it with nothing left. -/
+theorem parseExpr_print (e : AExpr) :
+    (parseExpr e.flatten).map (fun z => (z.1, z.2.val)) = some (e, []) := by
+  have h := (roundtrip_all e.flatten.length).2 e rfl [] (by simp)
+  rw [List.append_nil] at h; exact h
+
 end LambdaLab.IsoParser.ArithRec
