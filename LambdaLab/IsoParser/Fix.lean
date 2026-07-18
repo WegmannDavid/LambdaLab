@@ -148,4 +148,31 @@ theorem parseParen_sound : ∀ (n : Nat) (input : List Char), input.length = n �
           · exact absurd h.symm (Option.some_ne_none _)
         · rw [parseParen_other c rest hx hp] at h; simp at h
 
+/-- **The recursive parser as a genuine law-carrying `IsoParser`.** A `fix`-style parser (nested
+parens) with both round-trip and exactness verified — recursion, sorry-free, in the `IsoParser`
+framework. FIRST = `{ '(' , 'x' }`, FOLLOW = `⊤` (self-delimiting). -/
+def parenIso : IsoParser Char (fun c => c == '(' || c == 'x') (fun _ => true) Paren (fun _ => PUnit) where
+  parse input := (parseParen input).map (fun z => (⟨z.1, PUnit.unit⟩, z.2))
+  print p _ := p.flatten
+  firstOk c rest hc := by
+    simp only [Bool.or_eq_false_iff, beq_eq_false_iff_ne] at hc
+    simp [parseParen_other c rest hc.2 hc.1]
+  parse_print p a rest _ := by
+    obtain ⟨⟩ := a
+    have hrt := parseParen_roundtrip p rest
+    rcases hpp : parseParen (p.flatten ++ rest) with _ | ⟨p', r⟩
+    · rw [hpp] at hrt; simp at hrt
+    · rw [hpp] at hrt
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrt
+      obtain ⟨rfl, hrv⟩ := hrt
+      simp [hrv]
+  print_parse input pa r h := by
+    rcases hpp : parseParen input with _ | ⟨p', r'⟩
+    · rw [hpp] at h; simp at h
+    · rw [hpp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hpa, rfl⟩ := h
+      subst hpa
+      exact parseParen_sound input.length input rfl p' r' hpp
+
 end LambdaLab.IsoParser
