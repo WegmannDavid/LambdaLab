@@ -1,117 +1,81 @@
 import LambdaLab.Language1.Vernacular
-import LambdaLab.CBiparser.Tokenizer
+import LambdaLab.IsoParser.Combinators
+import LambdaLab.IsoParser.Adapters
 
 /-!
-# The vernacular biparser, derived
+# The vernacular biparser, derived (IsoParser)
 
-A `Language` supplies exactly two things: `pTy` and `pTm`. *Everything* here is derived from
-them — the command biparser, the file biparser, and the round-trip proof. It is a *bi*parser:
-one definition gives both the parser and the printer, and the law that they agree.
+A `Language` supplies `pTy` and `pTm` (now `IsoParser`s); the command and file parsers are derived.
 
-**There are no proof obligations left in this file.** The seams that used to be declared facts
-are now definitionally true, because the interface pins `pTy`'s FOLLOW to `:=` and `pTm`'s to
-`def` — the very tokens that follow them. So a command's FIRST *is* `def` and a term's FOLLOW
-*is* `def`, and the `iMany1` obligation collapses to the identity function (`fun _ h => h`).
+**The product node without `comap`.** `IBip` built a command by giving each field a `comap` of the
+shared `Command` source and threading them with `gdo`. An `IsoParser`'s value *is* its source, so
+there is nothing to project: `seq` pairs the six pieces into a nested tuple, `trivialize` collapses
+the (all-`PUnit`) annotation, and `imapT` reshapes the tuple into `Command` once. The keyword tokens
+contribute `Unit` values that the reshape drops.
 
-The round-trip is one line: each combinator rebuilt the law as it went, so there is nothing to
-assemble at the end.
+**Deferred: the character level.** `viaTokens`/`layout`/`fileParser` compose a tokenizer in front of
+the token parser; that machinery is not yet ported to `IsoParser`, so this file stops at the token
+level. (See the note at the bottom.)
 -/
 
 namespace LambdaLab.Language1
 
-open LambdaLab.CBiparser
+open LambdaLab.IsoParser
 
-/-- An identifier: one non-keyword lexeme. Source *and* value are `Name`, so a keyword source
-is unrepresentable. -/
-def pName : IBip isName (fun _ => true) Name Name := iSat isName
+/-- An identifier: one non-keyword lexeme. -/
+def pName : IsoParser Token isName (fun _ => true) Name (fun _ => PUnit) := sat isName
 
-/-- One command: `def NAME : TYPE := BODY`.
-
-Source **and** value are `Command L`. This is the multi-source node: the name, the type and the
-term each print from a *different* slice of the command, so each sub-parser `iComap`s out the
-projection it needs. `iTok`'s source is polymorphic, so the fixed keywords need no adaptation. -/
+/-- One command: `def NAME : TYPE := BODY`. Six pieces sequenced with `seq`; the only non-trivial
+seam is `ty ⟶ :=` (`FIRST(:=) ⊆ FOLLOW(ty) = {:=}`), which is the identity. -/
 def Language.command (L : Language) :
-    IBip (fun t => decide (t = kwDef)) followDef (Command L) (Command L) :=
-  gdo
-    let _kw ← iTok (w := Command L) kwDef
-    let n  ← iComap Command.name pName
-    let _c  ← iTok (w := Command L) kwColon
-    let ty ← iComap Command.ty L.pTy
-    let _a  ← iTok (w := Command L) kwAssign
-    let tm ← iComap Command.tm L.pTm
-    return Command.decl n ty tm
+    IsoParser Token (fun t => decide (t = kwDef)) followDef (Command L) (fun _ => PUnit) :=
+  imapT
+    (fun t => Command.decl t.2.1 t.2.2.2.1 t.2.2.2.2.2)
+    (fun c => ((), c.name, (), c.ty, (), c.tm))
+    (by intro t; obtain ⟨⟨⟩, n, ⟨⟩, ty, ⟨⟩, tm⟩ := t; rfl)
+    (by intro c; obtain ⟨n, ty, tm⟩ := c; rfl)
+    (trivialize
+      (seq (tok kwDef)
+        (seq pName
+          (seq (tok kwColon)
+            (seq L.pTy
+              (seq (tok kwAssign) L.pTm (fun _ _ => rfl))
+              (fun c hc => hc))
+            (fun _ _ => rfl))
+          (fun _ _ => rfl))
+        (fun _ _ => rfl))
+      (fun _ => ⟨PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit⟩)
+      (by intro x a; obtain ⟨⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩⟩ := a; rfl))
 
-/-- **The file parser**: a non-empty run of commands. Its source is exactly `Program L`. -/
+/-- The all-`PUnit` `ManyAnn` — the unique inhabitant, so the parser carries *no* real annotation. -/
+def dfltMany {v : Type} : (l : List v) → ManyAnn (fun _ => PUnit) l
+  | []      => PUnit.unit
+  | _ :: xs => ⟨PUnit.unit, dfltMany xs⟩
+
+theorem manyAnn_uniq {v : Type} : ∀ (l : List v) (a : ManyAnn (fun _ => PUnit) l), a = dfltMany l
+  | [], a => by obtain ⟨⟩ := a; rfl
+  | _ :: xs, a => by obtain ⟨⟨⟩, rest⟩ := a; simp only [dfltMany]; rw [manyAnn_uniq xs rest]
+
+/-- **The file parser**: a non-empty run of commands. A command's FIRST *is* `def` and its FOLLOW
+*is* `def`, so the `many1` repetition obligation is the identity; the `ManyAnn` is `trivialize`d away
+(it is all `PUnit`), so the parser is a genuine iso `stream ≃ Program`. -/
 def Language.parser (L : Language) :
-    IBip (fun t => decide (t = kwDef))
-         (fun t => followDef t && !decide (t = kwDef))
-         (Program L) (List (Command L)) :=
-  -- `hrep` is now trivial: a command's FIRST *is* `def`, and a term's FOLLOW *is* `def`.
-  iMany1 L.command (fun _ h => h)
+    IsoParser Token (fun t => decide (t = kwDef))
+      (fun t => followDef t && !decide (t = kwDef)) (Program L) (fun _ => PUnit) :=
+  trivialize (many1 L.command (fun _ h => h))
+    (fun p => dfltMany p.toList) (fun p a => manyAnn_uniq p.toList a)
 
-/-- **The file round-trip.** Print any program, parse it back, recover it exactly with nothing
-left over — for *every* language, no side-conditions. One line: the law was rebuilt by the
-combinators, not proved here. -/
+/-- **The file round-trip.** Print any program, parse it back, recover it exactly with nothing left
+over — for every language, no side-conditions. -/
 theorem Language.parser_roundtrip (L : Language) (prog : Program L) :
-    L.parser.run (L.parser.print prog).2
-      = some ((L.parser.print prog).1, []) :=
-  L.parser.roundtrip prog
+    L.parser.run (L.parser.print prog PUnit.unit) = some (⟨prog, PUnit.unit⟩, []) :=
+  L.parser.run_print_nil prog PUnit.unit
 
-/-! ## The character level
+/-! ## Deferred: the character level
 
-Everything above is over *tokens*. A file is *characters*. `viaTokens` precomposes the tokenizer,
-and because the tokenizer's `Token` and the vernacular's `Token` are **the same type** — Language1
-derives its alphabet from `CBiparser.Token isSep` rather than declaring a parallel one — the two
-stages compose with nothing to reconcile.
-
-The round-trip law survives the composition **with no new hypothesis**: `viaTokens_roundtrip` needs
-only that each gap the printer emits is a nonempty separator run (`Gap`), and both seams (the
-character one and the token one) are vacuous at end of input.
-
-The printer breaks a line before each command keyword (`def`) and uses a space everywhere else —
-one declaration per line. Because a newline is just another separator, the tokenizer collapses it
-like any other, so this costs the round-trip proof nothing. -/
-
-/-- Separator before a token: a newline before each command boundary (`def`), a space elsewhere. -/
-def layout : Token → Token → List Char :=
-  fun _ u => if u = kwDef then ['\n'] else [' ']
-
-/-- Each gap `layout` emits is a nonempty separator run, so the round-trip law applies. -/
-theorem layout_gap : ∀ t u, CBiparser.Gap isSep (layout t u) := by
-  intro t u
-  unfold layout CBiparser.Gap
-  by_cases h : u = kwDef <;> simp only [h, if_true, if_false] <;>
-    refine ⟨fun c hc => ?_, by simp⟩ <;>
-    · simp only [List.mem_singleton] at hc; subst hc; decide
-
-/-- **The file parser, over characters.** Laid out with `layout`: one declaration per line. -/
-def Language.fileParser (L : Language) : CBiparser Char (Program L) (List (Command L)) :=
-  viaTokens isSep layout L.parser.toCBiparser
-
-/-- Print a program to source text (one declaration per line). -/
-def Language.renderProgram (L : Language) (prog : Program L) : String :=
-  String.ofList (L.fileParser.print prog).2
-
-/-- Parse a whole file: succeeds only if **everything** is consumed. -/
-def Language.parseFile (L : Language) (src : String) : Option (List (Command L)) :=
-  match L.fileParser.run src.toList with
-  | some (cmds, []) => some cmds
-  | _               => none
-
-/-- **The file round-trip, at the character level.** Print any program to text, parse the text
-back, and recover it exactly — for *every* language, with no side conditions.
-
-This is the same one-liner as `parser_roundtrip`, now spanning both stages *and* the layout. -/
-theorem Language.fileParser_roundtrip (L : Language) (prog : Program L) :
-    L.fileParser.run (L.fileParser.print prog).2
-      = some ((L.fileParser.print prog).1, []) :=
-  viaTokens_roundtrip layout_gap L.parser.toCBiparser L.parser.ok prog
-
-/-- The same law, in the form a user cares about: **render a program, parse the text, get it
-back.** -/
-theorem Language.parseFile_renderProgram (L : Language) (prog : Program L) :
-    L.parseFile (L.renderProgram prog) = some ((L.fileParser.print prog).1) := by
-  have h := L.fileParser_roundtrip prog
-  simp only [Language.parseFile, Language.renderProgram, String.toList_ofList, h]
+`IBip`'s `viaTokens`/`layout`/`fileParser`/`renderProgram`/`parseFile` composed a tokenizer in front
+of the token parser and carried the round-trip across both stages. That composition (`viaTokens`,
+`Gap`) is not yet available for `IsoParser`; porting it is a separate piece. Until then the
+vernacular round-trip lives at the token level (`parser_roundtrip`). -/
 
 end LambdaLab.Language1
