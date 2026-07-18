@@ -270,4 +270,183 @@ def fix (body : FixBody α v) (print : v → List α)
       subst hpa
       exact fixParse_sound body print h_sound input.length input rfl x' r' hfp
 
+/-! ## `fix2` — the ergonomic version: a **proof-free** recursor
+
+`FixBody`'s recursor took the "shorter" proof as an argument, which coupled the list into a proof and
+made the step-laws un-applicable to bracketed grammars (the recursor's arg differs by
+append-associativity, and rewriting it hits a dependent-motive wall). `fix2` moves the guard inside:
+the recursor takes just a `List α`, and `fixParse2` returns `none` when it isn't shorter. Then relating
+`rec A` and `rec B` (`A = B`) across the subtype-erasing `.map` is a plain `congrArg`. -/
+
+/-- Recursor with the shortness guard internalized (no proof argument). -/
+abbrev FixBody2 (α : Type) (v : Type) :=
+  (input : List α) →
+    ((input' : List α) → Option (v × { r : List α // r.length < input'.length })) →
+    Option (v × { r : List α // r.length < input.length })
+
+/-- Well-founded fixpoint with a proof-free recursor (guarded internally). -/
+def fixParse2 {v : Type} (body : FixBody2 α v) :
+    (input : List α) → Option (v × { r : List α // r.length < input.length })
+  | input => body input (fun input' => if h : input'.length < input.length then fixParse2 body input' else none)
+  termination_by input => input.length
+  decreasing_by exact h
+
+variable {v : Type} {fst fol : α → Bool}
+
+theorem fixParse2_run (body : FixBody2 α v) (print : v → List α)
+    (h_pp : ∀ (x : v) (rest : List α)
+      (rec : (input' : List α) → Option (v × { r : List α // r.length < input'.length })),
+      HeadIn fol rest →
+      (∀ (y : v) (rest' : List α), (print y ++ rest').length < (print x ++ rest).length →
+          HeadIn fol rest' → (rec (print y ++ rest')).map (fun z => (z.1, z.2.val)) = some (y, rest')) →
+      (body (print x ++ rest) rec).map (fun z => (z.1, z.2.val)) = some (x, rest)) :
+    ∀ (n : Nat) (x : v) (rest : List α), (print x ++ rest).length = n → HeadIn fol rest →
+      (fixParse2 body (print x ++ rest)).map (fun z => (z.1, z.2.val)) = some (x, rest) := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro x rest hn hr
+    rw [fixParse2]
+    apply h_pp x rest _ hr
+    intro y rest' hlt hr'
+    simp only [dif_pos hlt]
+    exact ih (print y ++ rest').length (hn ▸ hlt) y rest' rfl hr'
+
+theorem fixParse2_sound (body : FixBody2 α v) (print : v → List α)
+    (h_sound : ∀ (input : List α)
+      (rec : (input' : List α) → Option (v × { r : List α // r.length < input'.length })),
+      (∀ (input' : List α), input'.length < input.length → ∀ (y : v) (r), rec input' = some (y, r) →
+          print y ++ r.val = input') →
+      ∀ (x : v) (r), body input rec = some (x, r) → print x ++ r.val = input) :
+    ∀ (n : Nat) (input : List α), input.length = n →
+      ∀ (x : v) (r), fixParse2 body input = some (x, r) → print x ++ r.val = input := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro input hn x r h
+    rw [fixParse2] at h
+    refine h_sound input _ ?_ x r h
+    intro input' hlt y r0 hrec
+    rw [dif_pos hlt] at hrec
+    exact ih input'.length (hn ▸ hlt) input' rfl y r0 hrec
+
+/-- **`fix2`** — reusable recursion combinator with the ergonomic proof-free recursor. -/
+def fix2 (body : FixBody2 α v) (print : v → List α)
+    (h_first : ∀ (c : α) (rest : List α) rec, fst c = false → body (c :: rest) rec = none)
+    (h_pp : ∀ (x : v) (rest : List α)
+      (rec : (input' : List α) → Option (v × { r : List α // r.length < input'.length })),
+      HeadIn fol rest →
+      (∀ (y : v) (rest' : List α), (print y ++ rest').length < (print x ++ rest).length →
+          HeadIn fol rest' → (rec (print y ++ rest')).map (fun z => (z.1, z.2.val)) = some (y, rest')) →
+      (body (print x ++ rest) rec).map (fun z => (z.1, z.2.val)) = some (x, rest))
+    (h_sound : ∀ (input : List α)
+      (rec : (input' : List α) → Option (v × { r : List α // r.length < input'.length })),
+      (∀ (input' : List α), input'.length < input.length → ∀ (y : v) (r), rec input' = some (y, r) →
+          print y ++ r.val = input') →
+      ∀ (x : v) (r), body input rec = some (x, r) → print x ++ r.val = input) :
+    IsoParser α fst fol v (fun _ => PUnit) where
+  parse input := (fixParse2 body input).map (fun z => (⟨z.1, PUnit.unit⟩, z.2))
+  print x _ := print x
+  firstOk c rest hc := by
+    rw [fixParse2, h_first c rest _ hc]; rfl
+  parse_print x a rest hr := by
+    obtain ⟨⟩ := a
+    have hrt := fixParse2_run body print h_pp (print x ++ rest).length x rest rfl hr
+    rcases hfp : fixParse2 body (print x ++ rest) with _ | ⟨x', r⟩
+    · rw [hfp] at hrt; simp at hrt
+    · rw [hfp] at hrt
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrt
+      obtain ⟨rfl, hrv⟩ := hrt
+      simp [hrv]
+  print_parse input pa r h := by
+    rcases hfp : fixParse2 body input with _ | ⟨x', r'⟩
+    · rw [hfp] at h; simp at h
+    · rw [hfp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hpa, rfl⟩ := h
+      subst hpa
+      exact fixParse2_sound body print h_sound input.length input rfl x' r' hfp
+
+/-! ## Validating `fix2`: the parens parser rebuilt through it -/
+
+/-- One layer, proof-free recursor. -/
+def parenBody2 : FixBody2 Char Paren := fun input rec =>
+  match input with
+  | [] => none
+  | c :: rest =>
+    if c = 'x' then some (.leaf, ⟨rest, by simp⟩)
+    else if c = '(' then
+      match rec rest with
+      | some (p, r) =>
+        match hr : r.val with
+        | ')' :: r2 => some (.nest p, ⟨r2, by
+            have h0 := r.property; rw [hr] at h0
+            simp only [List.length_cons] at h0 ⊢; omega⟩)
+        | _ => none
+      | none => none
+    else none
+
+/-- **The parens parser via `fix2`** — the step-laws now go through (the `congrArg` transport in
+`h_pp` is where the old interface got stuck). -/
+def parenViaFix : IsoParser Char (fun c => c == '(' || c == 'x') (fun _ => true) Paren (fun _ => PUnit) :=
+  fix2 parenBody2 Paren.flatten
+    (h_first := by
+      intro c rest rec hc
+      simp only [Bool.or_eq_false_iff, beq_eq_false_iff_ne] at hc
+      simp only [parenBody2]; rw [if_neg hc.2, if_neg hc.1])
+    (h_pp := by
+      intro x rest rec _ hrec
+      cases x with
+      | leaf => simp [parenBody2, Paren.flatten]
+      | nest q =>
+        show (parenBody2 ('(' :: ((q.flatten ++ [')']) ++ rest)) rec).map (fun z => (z.1, z.2.val))
+          = some (Paren.nest q, rest)
+        simp only [parenBody2]
+        rw [if_neg (by decide)]; simp only [if_true]
+        have happ : (q.flatten ++ [')']) ++ rest = q.flatten ++ (')' :: rest) := by
+          rw [List.append_assoc]; rfl
+        have hq := hrec q (')' :: rest)
+          (by simp only [Paren.flatten, List.length_append, List.length_cons]; omega)
+          (by intro a _; rfl)
+        have hmap : (rec ((q.flatten ++ [')']) ++ rest)).map (fun z => (z.1, z.2.val)) = some (q, ')' :: rest) := by
+          rw [congrArg (fun l => (rec l).map (fun z => (z.1, z.2.val))) happ]; exact hq
+        rcases hrc : rec ((q.flatten ++ [')']) ++ rest) with _ | ⟨q', r0⟩
+        · rw [hrc] at hmap; simp at hmap
+        · rw [hrc] at hmap
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hmap
+          obtain ⟨rfl, hrv⟩ := hmap
+          obtain ⟨r0v, r0lt⟩ := r0
+          subst hrv; rfl)
+    (h_sound := by
+      intro input rec hrec x r h
+      match input with
+      | [] => simp only [parenBody2] at h; exact absurd h (by simp)
+      | c :: rest =>
+        by_cases hx : c = 'x'
+        · subst hx
+          simp only [parenBody2, if_pos] at h
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h; rfl
+        · by_cases hp : c = '('
+          · subst hp
+            simp only [parenBody2, if_neg hx, if_pos] at h
+            split at h
+            · rename_i a b hrb
+              split at h
+              · rename_i r2 heq
+                simp only [Option.some.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, rfl⟩ := h
+                have hb := hrec rest (by simp) a b hrb
+                rw [heq] at hb
+                simp only [Paren.flatten, List.cons_append, List.append_assoc, List.nil_append]
+                rw [hb]
+              · exact absurd h.symm (Option.some_ne_none _)
+            · exact absurd h.symm (Option.some_ne_none _)
+          · simp only [parenBody2, if_neg hx, if_neg hp] at h
+            exact absurd h.symm (Option.some_ne_none _))
+
+#eval match parenViaFix.run "((x))".toList with
+  | some (⟨p, _⟩, []) => some (String.ofList p.flatten)
+  | _ => none                                                   -- some "((x))"
+
 end LambdaLab.IsoParser
