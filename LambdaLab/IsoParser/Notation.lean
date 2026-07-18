@@ -50,4 +50,30 @@ macro_rules
         acc ← `(seq $(ps[n-2-i]!) $acc (by iso_seam))
       `(trivializeSub $acc)
 
+/-! ## Dropping a `Unit`-valued neighbour — the applicative `<~` / `~>`
+
+`Unit`-valued pieces (tokens) carry no information, and printing re-emits them, so they can be
+dropped from the value *invertibly*. `p <~ q` keeps `p`'s value and drops `q` (which must be
+`Unit`-valued); `p ~> q` keeps `q` and drops `p`. This is how you get `(a, b)` with no `Unit` in the
+middle: `a-parser` `seq` (`= token ~> b-parser`). -/
+
+/-- Sequence, **keeping the left** value; `q` (a `Unit`-valued piece, e.g. a token) is dropped. -/
+def seqL {f1 fo1 f2 fo2 : α → Bool} {a : Type}
+    (p : IsoParser α f1 fo1 a (fun _ => PUnit)) (q : IsoParser α f2 fo2 Unit (fun _ => PUnit))
+    (hseam : ∀ c, f2 c = true → fo1 c = true) : IsoParser α f1 fo2 a (fun _ => PUnit) :=
+  imapT (fun x => x.1) (fun y => (y, ()))
+    (by intro x; obtain ⟨_, ⟨⟩⟩ := x; rfl) (by intro _; rfl)
+    (trivializeSub (seq p q hseam))
+
+/-- Sequence, **keeping the right** value; `p` (a `Unit`-valued piece, e.g. a token) is dropped. -/
+def seqR {f1 fo1 f2 fo2 : α → Bool} {b : Type}
+    (p : IsoParser α f1 fo1 Unit (fun _ => PUnit)) (q : IsoParser α f2 fo2 b (fun _ => PUnit))
+    (hseam : ∀ c, f2 c = true → fo1 c = true) : IsoParser α f1 fo2 b (fun _ => PUnit) :=
+  imapT (fun x => x.2) (fun y => ((), y))
+    (by intro x; obtain ⟨⟨⟩, _⟩ := x; rfl) (by intro _; rfl)
+    (trivializeSub (seq p q hseam))
+
+notation:65 l:66 " <~ " r:66 => seqL l r (by iso_seam)
+notation:65 l:66 " ~> " r:66 => seqR l r (by iso_seam)
+
 end LambdaLab.IsoParser
