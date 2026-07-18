@@ -382,4 +382,56 @@ def orElse {f1 f2 fol : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → 
         exact q.print_parse input sy r0 hq
       · simp at h
 
+/-! ## `imapT` — relabel the value along an iso (trivial annotation) -/
+
+/-- **Relabel the value** along an iso `f`/`g`, keeping the trivial `PUnit` annotation. Used to map a
+combinator's sum-of-products value into a target type (e.g. an `Expr` constructor). -/
+def imapT {a b : Type} (f : a → b) (g : b → a)
+    (hgf : ∀ x, g (f x) = x) (hfg : ∀ y, f (g y) = y)
+    (p : IsoParser α fst fol a (fun _ => PUnit)) :
+    IsoParser α fst fol b (fun _ => PUnit) where
+  parse input := (p.parse input).map (fun z => (⟨f z.1.1, PUnit.unit⟩, z.2))
+  print y _ := p.print (g y) PUnit.unit
+  firstOk c rest hc := by simp [p.firstOk c rest hc]
+  parse_print y u rest hr := by
+    obtain ⟨⟩ := u
+    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print (g y) PUnit.unit rest hr)
+    simp [hpar, hrv, hfg]
+  print_parse input yu r h := by
+    rcases hp : p.parse input with _ | ⟨⟨sxv, ⟨⟩⟩, r'⟩
+    · rw [hp] at h; simp at h
+    · rw [hp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hyu, rfl⟩ := h
+      subst hyu
+      show p.print (g (f sxv)) PUnit.unit ++ r'.val = input
+      rw [hgf sxv]
+      exact p.print_parse input ⟨sxv, PUnit.unit⟩ r' hp
+
+/-! ## `trivialize` — collapse a no-choice annotation to `PUnit` -/
+
+/-- **Collapse a trivial annotation to `PUnit`.** When the annotation is uniquely determined
+(`huniq`), it carries no information — e.g. the nested `PUnit` products `seq`/`many1`/`orElse` leave
+behind. This normalizes it so the value can be reshaped by `imapT`. -/
+def trivialize (p : IsoParser α fst fol v Ann) (dflt : ∀ x, Ann x)
+    (huniq : ∀ x (a : Ann x), a = dflt x) :
+    IsoParser α fst fol v (fun _ => PUnit) where
+  parse input := (p.parse input).map (fun z => (⟨z.1.1, PUnit.unit⟩, z.2))
+  print x _ := p.print x (dflt x)
+  firstOk c rest hc := by simp [p.firstOk c rest hc]
+  parse_print x u rest hr := by
+    obtain ⟨⟩ := u
+    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x (dflt x) rest hr)
+    simp [hpar, hrv]
+  print_parse input xu r h := by
+    rcases hp : p.parse input with _ | ⟨sx, r'⟩
+    · rw [hp] at h; simp at h
+    · rw [hp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hxu, rfl⟩ := h
+      subst hxu
+      show p.print sx.1 (dflt sx.1) ++ r'.val = input
+      rw [← huniq sx.1 sx.2]
+      exact p.print_parse input sx r' hp
+
 end LambdaLab.IsoParser
