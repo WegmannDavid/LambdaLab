@@ -41,23 +41,24 @@ def Paren.flatten : Paren → List Char
   | .leaf   => ['x']
   | .nest p => '(' :: (p.flatten ++ [')'])
 
-/-- Parse a nesting, recursion on input length via `fixParse`. -/
-def parseParen : (input : List Char) → Option (Paren × { r : List Char // r.length < input.length }) :=
-  fixParse (fun input rec =>
-    match input with
-    | 'x' :: rest => some (.leaf, ⟨rest, by simp⟩)
-    | '(' :: rest =>
-      match h : rec rest (by simp) with
+/-- Parse a nesting, well-founded recursion on input length (a concrete instance of `fixParse`;
+written directly so its equation lemmas drive the law proofs). -/
+def parseParen : (input : List Char) → Option (Paren × { r : List Char // r.length < input.length })
+  | [] => none
+  | c :: rest =>
+    if c = 'x' then some (.leaf, ⟨rest, by simp⟩)
+    else if c = '(' then
+      match parseParen rest with
       | some (p, r) =>
         match hr : r.val with
         | ')' :: r2 => some (.nest p, ⟨r2, by
-            have := r.property
-            rw [hr] at this
-            simp only [List.length_cons] at this ⊢
-            omega⟩)
+            have := r.property; rw [hr] at this
+            simp only [List.length_cons] at this ⊢; omega⟩)
         | _ => none
       | none => none
-    | _ => none)
+    else none
+  termination_by input => input.length
+  decreasing_by simp_wf
 
 /-- Round-trip a nesting string. -/
 def parenRoundtrip (s : String) : Option String :=
@@ -71,5 +72,27 @@ def parenRoundtrip (s : String) : Option String :=
 #eval parenRoundtrip "(((x)))"  -- some "(((x)))"
 #eval parenRoundtrip "((x)"     -- none  (unbalanced)
 #eval parenRoundtrip "(y)"      -- none
+
+/-! ## Unfolding lemmas for `parseParen` (the WF `fix` equation, at each head token) -/
+
+theorem parseParen_x (rest : List Char) :
+    parseParen ('x' :: rest) = some (Paren.leaf, ⟨rest, by simp⟩) := by
+  simp [parseParen]
+
+theorem parseParen_open (rest : List Char) :
+    parseParen ('(' :: rest) =
+      (match parseParen rest with
+        | some (p, r) =>
+          match hr : r.val with
+          | ')' :: r2 => some (Paren.nest p, ⟨r2, by
+              have := r.property; rw [hr] at this
+              simp only [List.length_cons] at this ⊢; omega⟩)
+          | _ => none
+        | none => none) := by
+  rw [parseParen]; rw [if_neg (by decide), if_pos rfl]
+
+theorem parseParen_other (c : Char) (rest : List Char) (hx : c ≠ 'x') (hp : c ≠ '(') :
+    parseParen (c :: rest) = none := by
+  rw [parseParen]; rw [if_neg hx, if_neg hp]
 
 end LambdaLab.IsoParser
