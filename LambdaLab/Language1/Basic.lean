@@ -1,9 +1,9 @@
-import LambdaLab.CBiparser.Indexed
+import LambdaLab.IsoParser.Basic
 import LambdaLab.CBiparser.Token
 
 namespace LambdaLab.Language1
 
-open LambdaLab.CBiparser
+open LambdaLab.CBiparser LambdaLab.IsoParser
 
 /-! ## Lexemes
 
@@ -84,15 +84,17 @@ term back with the `def` untouched.* That is a **proof** that a term parser stop
 boundary — and it is why the two seam obligations vanished; they are now definitionally true.
 
 **The plug-in boundary.** A language states its parser's *real* FIRST and FOLLOW and then adapts:
-`IBip.enlargeFirst` to widen FIRST up to `anyTok`, `IBip.weakenFollow` to narrow FOLLOW down to
-the key token. Both are sound in exactly one direction, and that direction is the one you need. -/
+widen FIRST up to `anyTok` (sound because `firstOk` is negative — a larger FIRST promises less) and
+narrow FOLLOW down to the key token (sound because the round-trip is antitone in FOLLOW, `HeadIn.mono`).
+Both are sound in exactly one direction, and that direction is the one you need. -/
 structure Language where
   Tm : Type
   Ty : Type
 
-  /-- The type parser: must stop at `:=` rather than swallowing the assignment. -/
-  pTy : IBip anyTok followAssign Ty Ty
+  /-- The type parser: must stop at `:=` rather than swallowing the assignment. Trivial annotation
+  (`fun _ => PUnit`): an exact parser makes no printing choices, so this is a genuine iso. -/
+  pTy : IsoParser Token anyTok followAssign Ty (fun _ => PUnit)
   /-- The term parser: must stop at a command boundary (`def`). -/
-  pTm : IBip anyTok followDef Tm Tm
+  pTm : IsoParser Token anyTok followDef Tm (fun _ => PUnit)
 
 end LambdaLab.Language1
