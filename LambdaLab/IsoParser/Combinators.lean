@@ -434,4 +434,109 @@ def trivialize (p : IsoParser α fst fol v Ann) (dflt : ∀ x, Ann x)
       rw [← huniq sx.1 sx.2]
       exact p.print_parse input sx r' hp
 
+/-! ## `chainl` — a seed followed by zero-or-more steps (for left-recursion / juxtaposition) -/
+
+variable {fo : α → Bool}
+
+/-- Parse `seed`, then zero-or-more `step`s (reusing `many1Parse`: after the seed, either a `many1`
+of steps or none). Value `a × List b`. -/
+def chainlParse {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
+    (seed : IsoParser α fs fo a As) (step : IsoParser α ft fo b Ab) : (input : List α) →
+    Option ((Σ pr : a × List b, As pr.1 × ManyAnn Ab pr.2) × { r : List α // r.length < input.length })
+  | input =>
+    match seed.parse input with
+    | none => none
+    | some (sa, r1) =>
+      match many1Parse step r1.val with
+      | none => some (⟨(sa.1, []), (sa.2, PUnit.unit)⟩, r1)
+      | some (snel, r2) =>
+        some (⟨(sa.1, snel.1.toList), (sa.2, snel.2)⟩,
+              ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)
+
+theorem chainlParse_seedNone {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
+    {seed : IsoParser α fs fo a As} {step : IsoParser α ft fo b Ab} {input : List α}
+    (h : seed.parse input = none) : chainlParse seed step input = none := by
+  rw [chainlParse, h]
+
+theorem chainlParse_seedSome {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
+    {seed : IsoParser α fs fo a As} {step : IsoParser α ft fo b Ab} {input : List α}
+    {sa : Σ x : a, As x} {r1 : { r : List α // r.length < input.length }}
+    (h : seed.parse input = some (sa, r1)) :
+    chainlParse seed step input =
+      (match many1Parse step r1.val with
+        | none => some (⟨(sa.1, []), (sa.2, PUnit.unit)⟩, r1)
+        | some (snel, r2) =>
+          some (⟨(sa.1, snel.1.toList), (sa.2, snel.2)⟩,
+                ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)) := by
+  rw [chainlParse, h]
+
+/-- **Seed then zero-or-more steps**, left-recursion structurally (value `a × List b`; fold into a
+tree with `imapT`). Seed and step share FOLLOW `fo`; `hrep : FIRST(step) ⊆ fo`. -/
+def chainl {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
+    (seed : IsoParser α fs fo a As) (step : IsoParser α ft fo b Ab)
+    (hrep : ∀ c, ft c = true → fo c = true) :
+    IsoParser α fs (fun c => fo c && !ft c) (a × List b) (fun pr => As pr.1 × ManyAnn Ab pr.2) where
+  parse := chainlParse seed step
+  print pr ann := seed.print pr.1 ann.1 ++ many1Print step pr.2 ann.2
+  firstOk c rest hc := chainlParse_seedNone (seed.firstOk c rest hc)
+  parse_print pr ann rest hr := by
+    obtain ⟨sv, steps⟩ := pr
+    obtain ⟨asv, asteps⟩ := ann
+    cases steps with
+    | nil =>
+      obtain ⟨⟩ := asteps
+      have hfo : HeadIn fo rest := fun c hc => and_left_of (hr c hc)
+      obtain ⟨r1, hpar, hrv⟩ := run_eq_some (seed.run_print sv asv rest hfo)
+      simp only [many1Print]
+      rw [List.append_nil, chainlParse_seedSome hpar]
+      have hstop : step.parse r1.val = none := by
+        rw [hrv]
+        cases rest with
+        | nil => exact parse_nil step
+        | cons c cs => exact step.firstOk c cs (by simpa using and_right_of (hr c (by simp)))
+      rw [many1Parse_none hstop]
+      simp [hrv]
+    | cons x xs =>
+      obtain ⟨a1, arest⟩ := asteps
+      have hMore : HeadIn fo (many1Print step (x :: xs) (a1, arest) ++ rest) := by
+        rw [show many1Print step (x :: xs) (a1, arest) ++ rest
+              = step.print x a1 ++ (many1Print step xs arest ++ rest) by
+            simp [many1Print, List.append_assoc]]
+        exact headIn_print_append step hrep x a1 _
+      rw [show seed.print (sv, x :: xs).1 (asv, a1, arest).1
+            ++ many1Print step (sv, x :: xs).2 (asv, a1, arest).2 ++ rest
+            = seed.print sv asv ++ (many1Print step (x :: xs) (a1, arest) ++ rest) by
+          simp [List.append_assoc]]
+      obtain ⟨r1, hpar, hrv⟩ := run_eq_some (seed.run_print sv asv _ hMore)
+      rw [chainlParse_seedSome hpar]
+      have hrun := many1Parse_run step hrep x xs (a1, arest) rest hr
+      rw [← hrv] at hrun
+      rcases hM : many1Parse step r1.val with _ | ⟨snel, r2⟩
+      · rw [hM] at hrun; simp at hrun
+      · rw [hM] at hrun
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrun
+        obtain ⟨hsnel, hr2⟩ := hrun
+        subst hsnel
+        simp [NEList.toList, hr2]
+  print_parse input prann r h := by
+    rcases hp : seed.parse input with _ | ⟨sa, r1⟩
+    · rw [chainlParse_seedNone hp] at h; simp at h
+    · rw [chainlParse_seedSome hp] at h
+      rcases hM : many1Parse step r1.val with _ | ⟨snel, r2⟩
+      · rw [hM] at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨hpr, rfl⟩ := h
+        subst hpr
+        show seed.print sa.1 sa.2 ++ many1Print step [] PUnit.unit ++ r1.val = input
+        simp only [many1Print, List.append_nil]
+        exact seed.print_parse input sa r1 hp
+      · rw [hM] at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨hpr, rfl⟩ := h
+        subst hpr
+        have hex := many1Parse_exact step r1.val.length r1.val rfl snel r2 hM
+        show seed.print sa.1 sa.2 ++ many1Print step snel.1.toList snel.2 ++ r2.val = input
+        rw [List.append_assoc, hex]
+        exact seed.print_parse input sa r1 hp
+
 end LambdaLab.IsoParser
