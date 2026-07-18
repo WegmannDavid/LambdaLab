@@ -112,15 +112,15 @@ theorem print_head_fst (p : IsoParser α fst fol v) (x : v) (c : α) (cs : List 
     rw [p.firstOk c cs hc] at hr
     simp at hr
 
-/-- `print x ++ rest` has a FOLLOW-admissible head (given `FIRST ⊆ FOLLOW`). -/
-theorem headIn_print_append (p : IsoParser α fst fol v)
-    (hrep : ∀ c, fst c = true → fol c = true) (x : v) (rest : List α) :
-    HeadIn fol (p.print x ++ rest) := by
+/-- `print x ++ rest` has a `g`-admissible head, for any `g ⊇ FIRST`. -/
+theorem headIn_print_append (p : IsoParser α fst fol v) {g : α → Bool}
+    (hg : ∀ c, fst c = true → g c = true) (x : v) (rest : List α) :
+    HeadIn g (p.print x ++ rest) := by
   intro a ha
   obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (print_ne_nil p x)
   rw [hcs, List.cons_append, List.head?_cons, Option.some.injEq] at ha
   subst ha
-  exact hrep c (print_head_fst p x c cs hcs)
+  exact hg c (print_head_fst p x c cs hcs)
 
 /-! ## `many1` — one or more -/
 
@@ -244,5 +244,73 @@ def many1 (p : IsoParser α fst fol v) (hrep : ∀ c, fst c = true → fol c = t
     obtain ⟨x, tail⟩ := xs
     exact many1Parse_run p hrep x tail rest hr
   print_parse input xs r h := many1Parse_exact p input.length input rfl xs r h
+
+/-! ## `seq` — sequencing, and `imap` — an isomorphism on values -/
+
+/-- Parse `p` then `q` on the leftover. -/
+def seqParse {f1 fo1 f2 fo2 : α → Bool} {a b : Type}
+    (p : IsoParser α f1 fo1 a) (q : IsoParser α f2 fo2 b) : (input : List α) →
+    Option ((a × b) × { r : List α // r.length < input.length })
+  | input =>
+    match p.parse input with
+    | none => none
+    | some (x, r1) =>
+      match q.parse r1.val with
+      | none => none
+      | some (y, r2) => some ((x, y), ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)
+
+/-- **Sequence two parsers.** Seam: `q`'s FIRST is in `p`'s FOLLOW, so `p` stops where `q` begins.
+FIRST is `p`'s; FOLLOW is `q`'s. -/
+def seq {f1 fo1 f2 fo2 : α → Bool} {a b : Type}
+    (p : IsoParser α f1 fo1 a) (q : IsoParser α f2 fo2 b)
+    (hseam : ∀ c, f2 c = true → fo1 c = true) :
+    IsoParser α f1 fo2 (a × b) where
+  parse := seqParse p q
+  print := fun ab => p.print ab.1 ++ q.print ab.2
+  firstOk c rest hc := by simp [seqParse, p.firstOk c rest hc]
+  parse_print ab rest hr := by
+    obtain ⟨x, y⟩ := ab
+    have h1 : HeadIn fo1 (q.print y ++ rest) := headIn_print_append q hseam y rest
+    obtain ⟨r1, hp1, hv1⟩ := run_eq_some (p.run_print x (q.print y ++ rest) h1)
+    have hq : q.run r1.val = some (y, rest) := by rw [hv1]; exact q.run_print y rest hr
+    obtain ⟨r2, hp2, hv2⟩ := run_eq_some hq
+    rw [show p.print (x, y).1 ++ q.print (x, y).2 ++ rest
+          = p.print x ++ (q.print y ++ rest) from by simp [List.append_assoc]]
+    simp only [seqParse, hp1, hp2, Option.map_some]
+    simp [hv2]
+  print_parse input ab r h := by
+    obtain ⟨x, y⟩ := ab
+    simp only [seqParse] at h
+    split at h
+    · simp at h
+    · next x' r1 hp1 =>
+      split at h
+      · simp at h
+      · next y' r2 hp2 =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨⟨rfl, rfl⟩, rfl⟩ := h
+        have e1 := p.print_parse input x' r1 hp1
+        have e2 := q.print_parse r1.val y' r2 hp2
+        show p.print x' ++ q.print y' ++ r2.val = input
+        rw [List.append_assoc, e2, e1]
+
+/-- **Relabel the value along an isomorphism** `f`/`g`. FIRST and FOLLOW are unchanged. -/
+def imap {a b : Type} (f : a → b) (g : b → a)
+    (hgf : ∀ x, g (f x) = x) (hfg : ∀ y, f (g y) = y)
+    (p : IsoParser α fst fol a) : IsoParser α fst fol b where
+  parse input := (p.parse input).map (fun z => (f z.1, z.2))
+  print y := p.print (g y)
+  firstOk c rest hc := by simp [p.firstOk c rest hc]
+  parse_print y rest hr := by
+    obtain ⟨r, hp, hv⟩ := run_eq_some (p.run_print (g y) rest hr)
+    simp [hp, hfg, hv]
+  print_parse input y r h := by
+    rcases hp : p.parse input with _ | ⟨x, r'⟩
+    · rw [hp] at h; simp at h
+    · rw [hp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      rw [show g (f x) = x from hgf x]
+      exact p.print_parse input x r' hp
 
 end LambdaLab.IsoParser
