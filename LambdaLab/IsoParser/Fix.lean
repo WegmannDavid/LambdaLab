@@ -95,4 +95,57 @@ theorem parseParen_other (c : Char) (rest : List Char) (hx : c ≠ 'x') (hp : c 
     parseParen (c :: rest) = none := by
   rw [parseParen]; rw [if_neg hx, if_neg hp]
 
+/-! ## The two laws — the `fix` proof, concrete -/
+
+/-- **Round-trip.** Printing a nesting then parsing recovers it (any `rest`). By induction on the
+value; the recursive position (inside `(` `)`) uses the IH, and `)` stops the sub-parser exactly. -/
+theorem parseParen_roundtrip (p : Paren) (rest : List Char) :
+    (parseParen (p.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (p, rest) := by
+  induction p generalizing rest with
+  | leaf =>
+    rw [show Paren.leaf.flatten ++ rest = 'x' :: rest from rfl, parseParen_x]; rfl
+  | nest q ih =>
+    rw [show (Paren.nest q).flatten ++ rest = '(' :: (q.flatten ++ (')' :: rest)) by
+      simp [Paren.flatten, List.append_assoc], parseParen_open]
+    have hih := ih (')' :: rest)
+    rcases hpp : parseParen (q.flatten ++ (')' :: rest)) with _ | ⟨q', r⟩
+    · rw [hpp] at hih; simp at hih
+    · rw [hpp] at hih
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hih
+      obtain ⟨rfl, hrv⟩ := hih
+      obtain ⟨rval, rlt⟩ := r
+      subst hrv; rfl
+
+/-- **Exactness (soundness).** Whatever `parseParen` consumed, `flatten` reproduces. Strong
+induction on input length; the recursive position uses the IH on the shorter interior. -/
+theorem parseParen_sound : ∀ (n : Nat) (input : List Char), input.length = n →
+    ∀ (p : Paren) (r : { r : List Char // r.length < input.length }),
+      parseParen input = some (p, r) → p.flatten ++ r.val = input := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro input hn
+    rcases input with _ | ⟨c, rest⟩
+    · intro p r h; rw [parseParen] at h; simp at h
+    · intro p r h
+      by_cases hx : c = 'x'
+      · subst hx; rw [parseParen_x] at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h; rfl
+      · by_cases hp : c = '('
+        · subst hp; rw [parseParen_open] at h
+          split at h
+          · rename_i a b hpp
+            split at h
+            · rename_i r2 heq
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl⟩ := h
+              have hq := ih rest.length (by rw [← hn]; simp) rest rfl a b hpp
+              rw [heq] at hq
+              simp only [Paren.flatten, List.cons_append, List.append_assoc, List.nil_append]
+              rw [hq]
+            · exact absurd h.symm (Option.some_ne_none _)
+          · exact absurd h.symm (Option.some_ne_none _)
+        · rw [parseParen_other c rest hx hp] at h; simp at h
+
 end LambdaLab.IsoParser
