@@ -325,4 +325,61 @@ def hide {V : Type} {PAnn : V → Type} (p : IsoParser α fst fol V PAnn) :
       subst husxa
       exact p.print_parse input sx r' hp
 
+/-! ## `orElse` — alternation (FIRST-disjoint) -/
+
+/-- Try `p`, else `q`. -/
+def orElseParse {f1 f2 fol : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
+    (p : IsoParser α f1 fol a Aa) (q : IsoParser α f2 fol b Ab) : (input : List α) →
+    Option ((Σ s : a ⊕ b, Sum.elim Aa Ab s) × { r : List α // r.length < input.length })
+  | input =>
+    match p.parse input with
+    | some (sx, r) => some (⟨Sum.inl sx.1, sx.2⟩, r)
+    | none =>
+      match q.parse input with
+      | some (sy, r) => some (⟨Sum.inr sy.1, sy.2⟩, r)
+      | none => none
+
+/-- **Alternation.** Value is a sum; annotation is `Sum.elim`. Seam: `FIRST(q)` tokens make `p` fail
+(FIRST-disjoint), so the choice is deterministic and round-trips. Both share FOLLOW. -/
+def orElse {f1 f2 fol : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
+    (p : IsoParser α f1 fol a Aa) (q : IsoParser α f2 fol b Ab)
+    (hdisj : ∀ c, f2 c = true → f1 c = false) :
+    IsoParser α (fun c => f1 c || f2 c) fol (a ⊕ b) (Sum.elim Aa Ab) where
+  parse := orElseParse p q
+  print
+    | .inl x, ann => p.print x ann
+    | .inr y, ann => q.print y ann
+  firstOk c rest hc := by
+    simp only [Bool.or_eq_false_iff] at hc
+    simp [orElseParse, p.firstOk c rest hc.1, q.firstOk c rest hc.2]
+  parse_print s ann rest hr := by
+    cases s with
+    | inl x =>
+      obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x ann rest hr)
+      simp only [orElseParse, hpar]
+      simp [hrv]
+    | inr y =>
+      have hpn : p.parse (q.print y ann ++ rest) = none := by
+        obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (print_ne_nil q y ann)
+        rw [hcs, List.cons_append]
+        exact p.firstOk c (cs ++ rest) (hdisj c (print_head_fst q y ann c cs hcs))
+      obtain ⟨r, hpar, hrv⟩ := run_eq_some (q.run_print y ann rest hr)
+      simp only [orElseParse, hpn, hpar]
+      simp [hrv]
+  print_parse input sann r h := by
+    simp only [orElseParse] at h
+    split at h
+    · next sx r0 hp =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hsann, rfl⟩ := h
+      subst hsann
+      exact p.print_parse input sx r0 hp
+    · split at h
+      · next sy r0 hq =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨hsann, rfl⟩ := h
+        subst hsann
+        exact q.print_parse input sy r0 hq
+      · simp at h
+
 end LambdaLab.IsoParser
