@@ -175,4 +175,99 @@ def parenIso : IsoParser Char (fun c => c == '(' || c == 'x') (fun _ => true) Pa
       subst hpa
       exact parseParen_sound input.length input rfl p' r' hpp
 
+/-! ## `fix` — the recursion pattern abstracted into a reusable combinator
+
+The `parenIso` proof, generalized: a body describing one layer (with a recursor for shorter inputs)
+plus its two step-laws, and `fix` does the well-founded induction once. Trivial annotation. -/
+
+variable {v : Type} {fst fol : α → Bool}
+
+/-- Abbreviation: the body of a recursive parser (trivial annotation). -/
+abbrev FixBody (α : Type) (v : Type) :=
+  (input : List α) →
+    ((input' : List α) → input'.length < input.length →
+      Option (v × { r : List α // r.length < input'.length })) →
+    Option (v × { r : List α // r.length < input.length })
+
+/-- The round-trip, lifted over the fixpoint by strong induction on input length. -/
+theorem fixParse_run (body : FixBody α v) (print : v → List α)
+    (h_pp : ∀ (x : v) (rest : List α)
+      (rec : (input' : List α) → input'.length < (print x ++ rest).length →
+        Option (v × { r : List α // r.length < input'.length })),
+      HeadIn fol rest →
+      (∀ (y : v) (rest' : List α) (h : (print y ++ rest').length < (print x ++ rest).length),
+          HeadIn fol rest' →
+          (rec (print y ++ rest') h).map (fun z => (z.1, z.2.val)) = some (y, rest')) →
+      (body (print x ++ rest) rec).map (fun z => (z.1, z.2.val)) = some (x, rest)) :
+    ∀ (n : Nat) (x : v) (rest : List α), (print x ++ rest).length = n → HeadIn fol rest →
+      (fixParse body (print x ++ rest)).map (fun z => (z.1, z.2.val)) = some (x, rest) := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro x rest hn hr
+    rw [fixParse]
+    apply h_pp x rest _ hr
+    intro y rest' hlt hr'
+    exact ih (print y ++ rest').length (hn ▸ hlt) y rest' rfl hr'
+
+/-- Exactness, lifted over the fixpoint by strong induction on input length. -/
+theorem fixParse_sound (body : FixBody α v) (print : v → List α)
+    (h_sound : ∀ (input : List α)
+      (rec : (input' : List α) → input'.length < input.length →
+        Option (v × { r : List α // r.length < input'.length })),
+      (∀ (input' : List α) (h : input'.length < input.length) (y : v) (r), rec input' h = some (y, r) →
+          print y ++ r.val = input') →
+      ∀ (x : v) (r), body input rec = some (x, r) → print x ++ r.val = input) :
+    ∀ (n : Nat) (input : List α), input.length = n →
+      ∀ (x : v) (r), fixParse body input = some (x, r) → print x ++ r.val = input := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro input hn x r h
+    rw [fixParse] at h
+    refine h_sound input _ ?_ x r h
+    intro input' hlt y r0 hrec
+    exact ih input'.length (hn ▸ hlt) input' rfl y r0 hrec
+
+/-- **`fix`** — build a recursive parser from a one-layer body and its step-laws. Does the
+well-founded induction once; the two laws come from `h_pp`/`h_sound`. -/
+def fix (body : FixBody α v) (print : v → List α)
+    (h_first : ∀ (c : α) (rest : List α) rec, fst c = false → body (c :: rest) rec = none)
+    (h_pp : ∀ (x : v) (rest : List α)
+      (rec : (input' : List α) → input'.length < (print x ++ rest).length →
+        Option (v × { r : List α // r.length < input'.length })),
+      HeadIn fol rest →
+      (∀ (y : v) (rest' : List α) (h : (print y ++ rest').length < (print x ++ rest).length),
+          HeadIn fol rest' →
+          (rec (print y ++ rest') h).map (fun z => (z.1, z.2.val)) = some (y, rest')) →
+      (body (print x ++ rest) rec).map (fun z => (z.1, z.2.val)) = some (x, rest))
+    (h_sound : ∀ (input : List α)
+      (rec : (input' : List α) → input'.length < input.length →
+        Option (v × { r : List α // r.length < input'.length })),
+      (∀ (input' : List α) (h : input'.length < input.length) (y : v) (r), rec input' h = some (y, r) →
+          print y ++ r.val = input') →
+      ∀ (x : v) (r), body input rec = some (x, r) → print x ++ r.val = input) :
+    IsoParser α fst fol v (fun _ => PUnit) where
+  parse input := (fixParse body input).map (fun z => (⟨z.1, PUnit.unit⟩, z.2))
+  print x _ := print x
+  firstOk c rest hc := by
+    rw [fixParse, h_first c rest _ hc]; rfl
+  parse_print x a rest hr := by
+    obtain ⟨⟩ := a
+    have hrt := fixParse_run body print h_pp (print x ++ rest).length x rest rfl hr
+    rcases hfp : fixParse body (print x ++ rest) with _ | ⟨x', r⟩
+    · rw [hfp] at hrt; simp at hrt
+    · rw [hfp] at hrt
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrt
+      obtain ⟨rfl, hrv⟩ := hrt
+      simp [hrv]
+  print_parse input pa r h := by
+    rcases hfp : fixParse body input with _ | ⟨x', r'⟩
+    · rw [hfp] at h; simp at h
+    · rw [hfp] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hpa, rfl⟩ := h
+      subst hpa
+      exact fixParse_sound body print h_sound input.length input rfl x' r' hfp
+
 end LambdaLab.IsoParser
