@@ -1,5 +1,6 @@
 import LambdaLab.Language1.Biparser
 import LambdaLab.IsoParser.Mixfix.Biparser
+import LambdaLab.IsoParser.Adapters
 
 /-!
 # A real plug-in language: arithmetic (on the independent `IsoParser` mixfix)
@@ -15,7 +16,7 @@ two boundary adapters. The new grammar is *lighter* than the CBiparser one: no `
 
 ## ⚠ The round-trip law here is CONDITIONAL
 
-`Mixfix.mixfix`'s `parse_print` (the greedy left-associative round-trip) is still an open `sorry`, so
+`Mixfix.mixfix`'s `ok` (the greedy left-associative round-trip) is still an open `sorry`, so
 `arithLanguage`'s round-trip laws depend on `sorryAx`. The parser itself does not: it `#eval`s and
 runs. Discharging that one lemma turns these laws unconditional with no change here.
 -/
@@ -86,7 +87,8 @@ def arithLanguage : Language where
   Ty := NumSet
 
   -- types: a single token drawn from {N, Z, R}. FOLLOW is ⊤, so `:=` may follow.
-  pTy := ((sat isNumSet).weakenFollow (fun _ _ => rfl)).enlargeFirst (fun _ hf => by simp at hf)
+  pTy := ((sat isNumSet).weakenFollow (fun _ _ => trivial)).enlargeFirst
+    (fun _ hf => absurd trivial hf)
 
   -- terms: the mixfix parser. Its FIRST is already `anyTok`; its FOLLOW is the grammar's,
   -- narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
@@ -94,8 +96,8 @@ def arithLanguage : Language where
     (mixfix (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
-        have : t = kwDef := of_decide_eq_true ht
-        subst this
+        have h : t = kwDef := ht
+        subst h
         exact follow_def)
 
 end LambdaLab.Language1

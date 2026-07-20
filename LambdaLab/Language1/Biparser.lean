@@ -1,81 +1,57 @@
 import LambdaLab.Language1.Vernacular
-import LambdaLab.IsoParser.Combinators
-import LambdaLab.IsoParser.Adapters
+import LambdaLab.IsoParser.Notation
 
 /-!
-# The vernacular biparser, derived (IsoParser)
+# The vernacular biparser, derived (IsoParser, split model)
 
-A `Language` supplies `pTy` and `pTm` (now `IsoParser`s); the command and file parsers are derived.
+A `Language` supplies exactly two things: `pTy` and `pTm`. *Everything* here is derived from
+them — the command parser, the file parser, and the round-trip proof.
 
-**The product node without `comap`.** `IBip` built a command by giving each field a `comap` of the
-shared `Command` source and threading them with `gdo`. An `IsoParser`'s value *is* its source, so
-there is nothing to project: `seq` pairs the six pieces into a nested tuple, `trivialize` collapses
-the (all-`PUnit`) annotation, and `imapT` reshapes the tuple into `Command` once. The keyword tokens
-contribute `Unit` values that the reshape drops.
+**There are no proof obligations left in this file.** The seams that used to be declared facts
+are now definitionally true, because the interface pins `pTy`'s FOLLOW to `:=` and `pTm`'s to
+`def` — the very tokens that follow them. So every `gdo` seam and the `many1` repetition
+obligation discharge by `seam`/identity.
 
-**Deferred: the character level.** `viaTokens`/`layout`/`fileParser` compose a tokenizer in front of
-the token parser; that machinery is not yet ported to `IsoParser`, so this file stops at the token
-level. (See the note at the bottom.)
+**The product node.** The command's fields print from different slices of the shared source, so
+the name, type and term sub-parsers each `comap` the projection they need; the keyword `tok`s
+have polymorphic sources and need no adaptation.
+
+**Deferred: the character level.** `viaTokens`/`layout` compose a tokenizer in front of the token
+parser; that machinery is not ported to `IsoParser`, so this file stops at the token level.
 -/
 
 namespace LambdaLab.Language1
 
 open LambdaLab.IsoParser
 
-/-- An identifier: one non-keyword lexeme. -/
-def pName : IsoParser Token isName (fun _ => true) Name (fun _ => PUnit) := sat isName
+/-- An identifier: one non-keyword lexeme. Aligned: source and value are `Name`, so a keyword
+source is unrepresentable. -/
+def pName : IsoParser Token (fun t => isName t = true) (fun _ => True) Name Name := sat isName
 
-/-- One command: `def NAME : TYPE := BODY`. Six pieces sequenced with `seq`; the only non-trivial
-seam is `ty ⟶ :=` (`FIRST(:=) ⊆ FOLLOW(ty) = {:=}`), which is the identity. -/
+/-- One command: `def NAME : TYPE := BODY`. The one non-trivial seam — a type may be followed by
+`:=` — is definitionally true (`pTy`'s FOLLOW *is* `(· = kwAssign)`). -/
 def Language.command (L : Language) :
-    IsoParser Token (fun t => decide (t = kwDef)) followDef (Command L) (fun _ => PUnit) :=
-  imapT
-    (fun t => Command.decl t.2.1 t.2.2.2.1 t.2.2.2.2.2)
-    (fun c => ((), c.name, (), c.ty, (), c.tm))
-    (by intro t; obtain ⟨⟨⟩, n, ⟨⟩, ty, ⟨⟩, tm⟩ := t; rfl)
-    (by intro c; obtain ⟨n, ty, tm⟩ := c; rfl)
-    (trivialize
-      (seq (tok kwDef)
-        (seq pName
-          (seq (tok kwColon)
-            (seq L.pTy
-              (seq (tok kwAssign) L.pTm (fun _ _ => rfl))
-              (fun c hc => hc))
-            (fun _ _ => rfl))
-          (fun _ _ => rfl))
-        (fun _ _ => rfl))
-      (fun _ => ⟨PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit, PUnit.unit⟩)
-      (by intro x a; obtain ⟨⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩, ⟨⟩⟩ := a; rfl))
-
-/-- The all-`PUnit` `ManyAnn` — the unique inhabitant, so the parser carries *no* real annotation. -/
-def dfltMany {v : Type} : (l : List v) → ManyAnn (fun _ => PUnit) l
-  | []      => PUnit.unit
-  | _ :: xs => ⟨PUnit.unit, dfltMany xs⟩
-
-theorem manyAnn_uniq {v : Type} : ∀ (l : List v) (a : ManyAnn (fun _ => PUnit) l), a = dfltMany l
-  | [], a => by obtain ⟨⟩ := a; rfl
-  | _ :: xs, a => by obtain ⟨⟨⟩, rest⟩ := a; simp only [dfltMany]; rw [manyAnn_uniq xs rest]
+    IsoParser Token (· = kwDef) followDef (Command L) (Command L) := gdo
+  let _kw ← tok kwDef
+  let n ← comap Command.name pName
+  let _c ← tok kwColon
+  let ty ← comap Command.ty L.pTy
+  let _a ← tok kwAssign
+  let tm ← comap Command.tm L.pTm
+  return Command.decl n ty tm
 
 /-- **The file parser**: a non-empty run of commands. A command's FIRST *is* `def` and its FOLLOW
-*is* `def`, so the `many1` repetition obligation is the identity; the `ManyAnn` is `trivialize`d away
-(it is all `PUnit`), so the parser is a genuine iso `stream ≃ Program`. -/
+*is* `def`, so the `many1` repetition obligation is the identity. Aligned: source and value are
+both `Program L`. -/
 def Language.parser (L : Language) :
-    IsoParser Token (fun t => decide (t = kwDef))
-      (fun t => followDef t && !decide (t = kwDef)) (Program L) (fun _ => PUnit) :=
-  trivialize (many1 L.command (fun _ h => h))
-    (fun p => dfltMany p.toList) (fun p a => manyAnn_uniq p.toList a)
+    IsoParser Token (· = kwDef) (fun t => followDef t ∧ ¬ t = kwDef)
+      (Program L) (NEList (Command L)) :=
+  many1 L.command (fun _ h => h)
 
-/-- **The file round-trip.** Print any program, parse it back, recover it exactly with nothing left
-over — for every language, no side-conditions. -/
+/-- **The file round-trip.** Print any program, parse it back, recover the printed value exactly
+with nothing left over — for *every* language, no side-conditions. -/
 theorem Language.parser_roundtrip (L : Language) (prog : Program L) :
-    L.parser.run (L.parser.print prog PUnit.unit) = some (⟨prog, PUnit.unit⟩, []) :=
-  L.parser.run_print_nil prog PUnit.unit
-
-/-! ## Deferred: the character level
-
-`IBip`'s `viaTokens`/`layout`/`fileParser`/`renderProgram`/`parseFile` composed a tokenizer in front
-of the token parser and carried the round-trip across both stages. That composition (`viaTokens`,
-`Gap`) is not yet available for `IsoParser`; porting it is a separate piece. Until then the
-vernacular round-trip lives at the token level (`parser_roundtrip`). -/
+    L.parser.run (L.parser.print prog).2 = some ((L.parser.print prog).1, []) :=
+  L.parser.roundtrip prog
 
 end LambdaLab.Language1

@@ -54,19 +54,19 @@ mutual
   /-- `term = digit | ( expr )`. Level `0`. -/
   def parseTerm (input : List Char) :
       Option (ATerm × { r : List Char // r.length < input.length }) :=
-    match hlp : (tok '(').parse input with
+    match hlp : tokParse '(' input with
     | some (_, r1) =>
       match parseExpr r1.val with
       | some (e, r2) =>
-        match (tok ')').parse r2.val with
+        match tokParse ')' r2.val with
         | some (_, r3) =>
           some (.paren e, ⟨r3.val, by
             have := r1.property; have := r2.property; have := r3.property; omega⟩)
         | none => none
       | none => none
     | none =>
-      match (sat Char.isDigit).parse input with
-      | some (d, r1) => some (.digit d.1, r1)
+      match satParse Char.isDigit input with
+      | some (d, r1) => some (.digit d, r1)
       | none => none
   termination_by (input.length, 0)
 
@@ -84,7 +84,7 @@ mutual
   the whole input). Level `0`; every recursive call strictly shortens the input. -/
   def parseAddTail (acc : AExpr) (input : List Char) :
       AExpr × { r : List Char // r.length ≤ input.length } :=
-    match (tok '+').parse input with
+    match tokParse '+' input with
     | some (_, r1) =>
       match parseTerm r1.val with
       | some (t, r2) =>
@@ -121,12 +121,35 @@ shortens the input (so it is covered by the IH); the seed is same-length, handle
 `parseTerm` before `parseExpr` inside each length step. The leaves discharge via `tok`/`sat`'s own
 `print_parse`. -/
 
-/-- `['(' ] ++ leftover = input` when `tok '('` fires — from `tok`'s exactness. -/
+/-- `['(' ] ++ leftover = input` when `tokParse '('` fires — leaf exactness, proved directly (the
+split model has no `print_parse` field to inherit it from). -/
 private theorem tok_consumed {t : Char} {input : List Char}
-    {x : Σ _ : Unit, PUnit} {r : { r : List Char // r.length < input.length }}
-    (h : (tok t).parse input = some (x, r)) : t :: r.val = input := by
-  have := (tok t).print_parse input x r h
-  simpa [tok] using this
+    {x : Unit} {r : { r : List Char // r.length < input.length }}
+    (h : tokParse t input = some (x, r)) : t :: r.val = input := by
+  cases input with
+  | nil => simp [tokParse] at h
+  | cons hd tl =>
+    simp only [tokParse] at h
+    split at h
+    · rename_i hp
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      subst hp; rfl
+    · simp at h
+
+/-- The digit leaf's exactness, proved directly. -/
+private theorem sat_consumed {pred : Char → Bool} {input : List Char}
+    {d : { c : Char // pred c = true }} {r : { r : List Char // r.length < input.length }}
+    (h : satParse pred input = some (d, r)) : d.val :: r.val = input := by
+  cases input with
+  | nil => simp [satParse] at h
+  | cons hd tl =>
+    simp only [satParse] at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      rfl
+    · simp at h
 
 /-- The exactness triple, proved simultaneously by strong induction on the length. -/
 theorem exact_all (n : Nat) :
@@ -171,8 +194,7 @@ theorem exact_all (n : Nat) :
         · next d r1 hd =>
           simp only [Option.some.injEq, Prod.mk.injEq] at ht
           obtain ⟨rfl, rfl⟩ := ht
-          have := (sat Char.isDigit).print_parse input d r1 hd
-          simpa [sat, ATerm.flatten] using this
+          simpa [ATerm.flatten] using sat_consumed hd
         · simp at ht
     -- `addTail` exactness at length `n`
     have haddtail : ∀ input : List Char, input.length = n → ∀ acc,
@@ -227,15 +249,15 @@ every `AExpr` is a seed term left-folded over its `+`-chained steps, and the gre
 /-! ### Leaf parse reductions (raw results, no subtype plumbing) -/
 
 private theorem tok_parse_hit (c : Char) (rest : List Char) :
-    (tok c).parse (c :: rest) = some (⟨(), PUnit.unit⟩, ⟨rest, by simp⟩) := by
-  simp [tok, tokParse]
+    tokParse c (c :: rest) = some ((), ⟨rest, by simp⟩) := by
+  simp [tokParse]
 
 private theorem tok_parse_miss {t c : Char} (rest : List Char) (h : c ≠ t) :
-    (tok t).parse (c :: rest) = none := by simp [tok, tokParse, h]
+    tokParse t (c :: rest) = none := by simp [tokParse, h]
 
 private theorem sat_parse_hit {pred : Char → Bool} {c : Char} (hc : pred c = true) (rest : List Char) :
-    (sat pred).parse (c :: rest) = some (⟨⟨c, hc⟩, PUnit.unit⟩, ⟨rest, by simp⟩) := by
-  simp [sat, satParse, hc]
+    satParse pred (c :: rest) = some (⟨c, hc⟩, ⟨rest, by simp⟩) := by
+  simp [satParse, hc]
 
 /-- Extract the raw parse result (with its progress subtype) from the projected `.map` form. -/
 private theorem map_proj_eq_some {V : Type} {input : List Char}
@@ -315,16 +337,13 @@ theorem roundtrip_all (n : Nat) :
         dsimp only
         split
         · next fst r3 heq =>
-          have e1 := (tok ')').print_parse r2.val fst r3 heq
-          have hr3v : r3.val = rest := by simpa [tok] using e1.trans hr2
+          have e1 := tok_consumed heq
+          have hr3v : r3.val = rest := by simpa using e1.trans hr2
           simp only [Option.map_some, hr3v]
         · next heq =>
           exfalso
-          have hrun : (tok ')').run r2.val = none := by simp [IsoParser.run, heq]
-          rw [hr2] at hrun
-          have hr : (tok ')').run (')' :: rest) = some (⟨(), PUnit.unit⟩, rest) := by
-            simp [IsoParser.run, tok_parse_hit]
-          rw [hr] at hrun; simp at hrun
+          rw [hr2, tok_parse_hit] at heq
+          simp at heq
     -- `term` round-trip for length `≤ n` (seed can equal `n`; steps are `< n`)
     have htermLE : ∀ t : ATerm, t.flatten.length ≤ n → ∀ rest,
         (parseTerm (t.flatten ++ rest)).map (fun z => (z.1, z.2.val)) = some (t, rest) := by
@@ -342,9 +361,9 @@ theorem roundtrip_all (n : Nat) :
       induction steps with
       | nil =>
         intro _ acc rest hrest
-        have hmiss : (tok '+').parse rest = none := by
+        have hmiss : tokParse '+' rest = none := by
           cases rest with
-          | nil => exact parse_nil _
+          | nil => rfl
           | cons c cs => refine tok_parse_miss cs ?_; intro h; subst h; exact hrest rfl
         show (parseAddTail acc rest).1 = acc ∧ (parseAddTail acc rest).2.val = rest
         rw [parseAddTail, hmiss]

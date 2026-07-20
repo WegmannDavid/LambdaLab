@@ -61,13 +61,13 @@ So keywords are ordinary tokens, and what stops a term parser from swallowing th
 becomes the two facts a language declares below. -/
 
 /-- The FOLLOW a type must accept: exactly `:=`. -/
-abbrev followAssign : Token → Bool := fun t => decide (t = kwAssign)
+abbrev followAssign : Token → Prop := fun t => t = kwAssign
 
 /-- The FOLLOW a term must accept: exactly `def` (the next command). -/
-abbrev followDef : Token → Bool := fun t => decide (t = kwDef)
+abbrev followDef : Token → Prop := fun t => t = kwDef
 
 /-- FIRST is **unconstrained** by the vernacular, so the interface simply allows everything. -/
-abbrev anyTok : Token → Bool := fun _ => true
+abbrev anyTok : Token → Prop := fun _ => True
 
 /-- A **pluggable language**: a term parser and a type parser. That is the whole interface.
 Everything above it — commands, programs, and the file round-trip — is *derived*.
@@ -91,10 +91,10 @@ structure Language where
   Tm : Type
   Ty : Type
 
-  /-- The type parser: must stop at `:=` rather than swallowing the assignment. Trivial annotation
-  (`fun _ => PUnit`): an exact parser makes no printing choices, so this is a genuine iso. -/
-  pTy : IsoParser Token anyTok followAssign Ty (fun _ => PUnit)
+  /-- The type parser: must stop at `:=` rather than swallowing the assignment. **Aligned**
+  (source = value = `Ty`), so a parsed type re-prints directly. -/
+  pTy : IsoParser Token anyTok followAssign Ty Ty
   /-- The term parser: must stop at a command boundary (`def`). -/
-  pTm : IsoParser Token anyTok followDef Tm (fun _ => PUnit)
+  pTm : IsoParser Token anyTok followDef Tm Tm
 
 end LambdaLab.Language1

@@ -2,541 +2,363 @@ import LambdaLab.IsoParser.Basic
 import LambdaLab.NEList
 
 /-!
-# `IsoParser` combinators (annotation-carrying)
+# `IsoParser` combinators (split source/value model)
 
-Each combinator builds the value **and** the annotation family. No-choice leaves (`sat`, `tok`) have
-`Ann = fun _ => PUnit`; `ws` collects a whitespace gap; `seq` pairs annotations; `many1` collects a
-dependent list of them.
+Each combinator rebuilds the round-trip law as it goes, so every parser assembled from these is
+correct by construction. The toolkit:
+
+* **leaves** — `sat` (a predicate-restricted symbol; aligned source), `tok` (a literal symbol;
+  the source is *polymorphic*, so keywords need no `comap`);
+* **plumbing** — `comap` (adapt the source), `map` (adapt the value);
+* **sequencing** — `bind`, an *indexed* monadic bind (the seam `FIRST(k) ⊆ FOLLOW(p)` is its one
+  obligation; `Notation.lean`'s `gdo` provides the do-syntax);
+* **choice** — `orElse` (FIRST-disjoint; source and value are sums);
+* **repetition** — `many1` (one-or-more; source `NEList w`), `chainl` (a seed then zero-or-more
+  steps — the left-associative chain shape).
+
+Composite parse functions are **named** (`bindParse`, `orElseParse`, `many1Parse`, `chainlParse`):
+rewriting the input of an applied function has a clean motive, an inline `match` does not.
 -/
 
 namespace LambdaLab.IsoParser
 
-variable {α : Type}
+variable {α : Type} {fst fol f₁ fo₁ f₂ fo₂ : α → Prop} {w w' v v' : Type}
 
-/-! ## `sat` / `tok` — no-choice leaves -/
+/-! ## Helpers -/
 
-/-- Parse one token satisfying `pred`. -/
-def satParse (pred : α → Bool) : (input : List α) →
-    Option ((Σ _ : { a : α // pred a = true }, PUnit) × { r : List α // r.length < input.length })
-  | [] => none
-  | hd :: tl => if h : pred hd then some (⟨⟨hd, h⟩, PUnit.unit⟩, ⟨tl, by simp⟩) else none
+/-- Recover a raw parse result (with its progress witness) from an erased equation — the generic
+form of `run_eq_some`, for any named parse function. -/
+theorem map_val_eq_some {β : Type} {input : List α}
+    {o : Option (β × { r : List α // r.length < input.length })} {b : β} {rest : List α}
+    (h : o.map (fun z => (z.1, z.2.val)) = some (b, rest)) :
+    ∃ r, o = some (b, r) ∧ r.val = rest := by
+  cases o with
+  | none => simp at h
+  | some z =>
+    obtain ⟨b', r⟩ := z
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact ⟨r, rfl, rfl⟩
 
-/-- **One token satisfying `pred`.** No choice, so `Ann = PUnit`. FIRST = `pred`, FOLLOW = `⊤`. -/
-def sat (pred : α → Bool) :
-    IsoParser α pred (fun _ => true) { a : α // pred a = true } (fun _ => PUnit) where
-  parse := satParse pred
-  print a _ := [a.val]
-  firstOk c rest hc := by simp [satParse, hc]
-  parse_print x u rest _ := by obtain ⟨⟩ := u; simp [satParse, x.property]
-  print_parse input xa r h := by
-    cases input with
-    | nil => simp [satParse] at h
-    | cons hd tl =>
-      simp only [satParse] at h
-      split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h; rfl
-      · simp at h
-
-/-- Parse a literal token `t`. -/
-def tokParse [DecidableEq α] (t : α) : (input : List α) →
-    Option ((Σ _ : Unit, PUnit) × { r : List α // r.length < input.length })
-  | [] => none
-  | hd :: tl => if hd = t then some (⟨(), PUnit.unit⟩, ⟨tl, by simp⟩) else none
-
-/-- **A literal token `t`.** Value `Unit`, `Ann = PUnit`. FIRST `(· = t)`, FOLLOW `⊤`. -/
-def tok [DecidableEq α] (t : α) :
-    IsoParser α (fun c => decide (c = t)) (fun _ => true) Unit (fun _ => PUnit) where
-  parse := tokParse t
-  print _ _ := [t]
-  firstOk c rest hc := by
-    have : ¬ c = t := by simpa using hc
-    simp [tokParse, this]
-  parse_print x u rest _ := by obtain ⟨⟩ := u; obtain ⟨⟩ := x; simp [tokParse]
-  print_parse input xa r h := by
-    obtain ⟨⟨⟩, ⟨⟩⟩ := xa
-    cases input with
-    | nil => simp [tokParse] at h
-    | cons hd tl =>
-      simp only [tokParse] at h
-      split at h
-      · rename_i hp
-        obtain ⟨-, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
-        subst hp; rfl
-      · simp at h
-
-/-! ## Helper lemmas -/
-
-variable {fst fol : α → Bool} {v : Type} {Ann : v → Type}
-
-/-- Recover the underlying `parse` result from a `run` equation. -/
-theorem run_eq_some {p : IsoParser α fst fol v Ann} {input : List α}
-    {xa : Σ x : v, Ann x} {rest : List α} (h : p.run input = some (xa, rest)) :
-    ∃ r : { r : List α // r.length < input.length }, p.parse input = some (xa, r) ∧ r.val = rest := by
-  unfold IsoParser.run at h
-  rcases hpp : p.parse input with _ | ⟨xa', r⟩
-  · rw [hpp] at h; simp at h
-  · rw [hpp] at h; simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h; exact ⟨r, rfl, rfl⟩
-
-/-- `parse` fails on empty input. -/
-theorem parse_nil (p : IsoParser α fst fol v Ann) : p.parse [] = none := by
-  have h := p.run_nil; unfold IsoParser.run at h
-  rcases hpp : p.parse [] with _ | x
-  · rfl
-  · rw [hpp] at h; simp at h
-
-/-- A printed value is never empty. -/
-theorem print_ne_nil (p : IsoParser α fst fol v Ann) (x : v) (a : Ann x) :
-    p.print x a ≠ [] := by
-  intro h
-  have hr := p.run_print_nil x a
-  rw [h, p.run_nil] at hr
+/-- A printed output starts with a FIRST symbol (no continuation hypothesis — printing then
+parsing succeeds terminally, so `firstOk` pins the head). -/
+theorem print_head_fst (p : IsoParser α fst fol w v) (a : w) (c : α) (cs : List α)
+    (h : (p.print a).2 = c :: cs) : fst c := by
+  refine Classical.byContradiction fun hf => ?_
+  have hr := p.roundtrip a
+  unfold IsoParser.run at hr
+  rw [h, p.firstOk c cs hf] at hr
   simp at hr
 
-/-- A printed value starts with a FIRST token. -/
-theorem print_head_fst (p : IsoParser α fst fol v Ann) (x : v) (a : Ann x)
-    (c : α) (cs : List α) (h : p.print x a = c :: cs) : fst c = true := by
-  cases hc : fst c with
-  | true => rfl
-  | false =>
-    exfalso
-    have hr := p.run_print_nil x a
-    rw [h] at hr
-    unfold IsoParser.run at hr
-    rw [p.firstOk c cs hc] at hr
-    simp at hr
-
-/-- `print x a ++ rest` has a `g`-admissible head, for any `g ⊇ FIRST`. -/
-theorem headIn_print_append (p : IsoParser α fst fol v Ann) {g : α → Bool}
-    (hg : ∀ c, fst c = true → g c = true) (x : v) (a : Ann x) (rest : List α) :
-    HeadIn g (p.print x a ++ rest) := by
+/-- `print a ++ rest` has a `g`-admissible head, for any `g ⊇ FIRST` — the printed output is
+nonempty, so its head (a FIRST symbol) is the head of the whole. -/
+theorem headIn_print_append (p : IsoParser α fst fol w v) {g : α → Prop}
+    (hg : ∀ c, fst c → g c) (a : w) (rest : List α) :
+    HeadIn g ((p.print a).2 ++ rest) := by
   intro d hd
-  obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (print_ne_nil p x a)
+  obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (p.print_ne_nil a)
   rw [hcs, List.cons_append, List.head?_cons, Option.some.injEq] at hd
   subst hd
-  exact hg c (print_head_fst p x a c cs hcs)
+  exact hg c (print_head_fst p a c cs hcs)
 
-private theorem and_left_of {a b : Bool} (h : (a && b) = true) : a = true := by
-  cases a with | true => rfl | false => simp at h
+/-! ## Leaves -/
 
-private theorem and_right_of {a b : Bool} (h : (a && b) = true) : b = true := by
-  cases a with | true => simpa using h | false => simp at h
+/-- Parse one symbol satisfying `pred`. -/
+def satParse (pred : α → Bool) : (input : List α) →
+    Option ({ a : α // pred a = true } × { r : List α // r.length < input.length })
+  | [] => none
+  | hd :: tl => if h : pred hd then some (⟨hd, h⟩, ⟨tl, by simp⟩) else none
 
-/-! ## `seq` — sequencing, pairing annotations -/
+/-- **One symbol satisfying `pred`** — aligned (source = value). FIRST = `pred`, FOLLOW = ⊤. -/
+def sat (pred : α → Bool) :
+    IsoParser α (fun c => pred c = true) (fun _ => True)
+      { a : α // pred a = true } { a : α // pred a = true } where
+  parse := satParse pred
+  print d := (d, [d.val])
+  firstOk c rest hc := by simp [satParse, hc]
+  ok d rest _ := by simp [satParse, d.property]
 
-/-- Parse `p` then `q`. -/
-def seqParse {f1 fo1 f2 fo2 : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
-    (p : IsoParser α f1 fo1 a Aa) (q : IsoParser α f2 fo2 b Ab) : (input : List α) →
-    Option ((Σ xy : a × b, Aa xy.1 × Ab xy.2) × { r : List α // r.length < input.length })
-  | input =>
+/-- Parse a literal symbol `t`. -/
+def tokParse [DecidableEq α] (t : α) : (input : List α) →
+    Option (Unit × { r : List α // r.length < input.length })
+  | [] => none
+  | hd :: tl => if hd = t then some ((), ⟨tl, by simp⟩) else none
+
+/-- **A literal symbol `t`.** The *source is polymorphic* (printing is constant), so a keyword
+plugs into any product source without a `comap`. FIRST `(· = t)`, FOLLOW ⊤. -/
+def tok [DecidableEq α] (t : α) : IsoParser α (· = t) (fun _ => True) w Unit where
+  parse := tokParse t
+  print _ := ((), [t])
+  firstOk c rest hc := by simp [tokParse, hc]
+  ok a rest _ := by simp [tokParse]
+
+/-! ## Plumbing -/
+
+/-- **Adapt the source**: print from `w'` by first projecting to `w`. Parse (and the value the
+law returns) are untouched. This is how a product node works: each sub-parser `comap`s the
+projection it needs. -/
+def comap (g : w' → w) (p : IsoParser α fst fol w v) : IsoParser α fst fol w' v where
+  parse := p.parse
+  print a' := p.print (g a')
+  firstOk := p.firstOk
+  ok a' rest h := p.ok (g a') rest h
+
+/-- **Adapt the value**; the leftover (and its progress proof) pass through. -/
+def map (f : v → v') (p : IsoParser α fst fol w v) : IsoParser α fst fol w v' where
+  parse input := (p.parse input).map (fun br => (f br.1, br.2))
+  print a := (f (p.print a).1, (p.print a).2)
+  firstOk c rest hc := by rw [p.firstOk c rest hc]; rfl
+  ok a rest h := by
+    obtain ⟨r, hp, hv⟩ := map_val_eq_some (p.ok a rest h)
+    show ((p.parse ((p.print a).2 ++ rest)).map _).map _ = _
+    rw [hp]
+    simp [hv]
+
+/-! ## Sequencing — the indexed monadic bind -/
+
+/-- The composite parse, named for clean motives. Progress composes by transitivity. -/
+def bindParse (p : IsoParser α f₁ fo₁ w v) (k : v → IsoParser α f₂ fo₂ w v') :
+    (input : List α) → Option (v' × { r : List α // r.length < input.length }) :=
+  fun input =>
     match p.parse input with
     | none => none
-    | some (sx, r1) =>
-      match q.parse r1.val with
+    | some (b, r) =>
+      match (k b).parse r.val with
       | none => none
-      | some (sy, r2) =>
-        some (⟨(sx.1, sy.1), (sx.2, sy.2)⟩, ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)
+      | some (c, r') => some (c, ⟨r'.val, Nat.lt_trans r'.property r.property⟩)
 
-/-- **Sequence two parsers**, pairing their annotations. Seam `FIRST(q) ⊆ FOLLOW(p)`. -/
-def seq {f1 fo1 f2 fo2 : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
-    (p : IsoParser α f1 fo1 a Aa) (q : IsoParser α f2 fo2 b Ab)
-    (hseam : ∀ c, f2 c = true → fo1 c = true) :
-    IsoParser α f1 fo2 (a × b) (fun xy => Aa xy.1 × Ab xy.2) where
-  parse := seqParse p q
-  print xy axy := p.print xy.1 axy.1 ++ q.print xy.2 axy.2
-  firstOk c rest hc := by simp [seqParse, p.firstOk c rest hc]
-  parse_print xy axy rest hr := by
-    obtain ⟨x, y⟩ := xy
-    obtain ⟨ax, ay⟩ := axy
-    have h1 : HeadIn fo1 (q.print y ay ++ rest) := headIn_print_append q hseam y ay rest
-    obtain ⟨r1, hp1, hv1⟩ := run_eq_some (p.run_print x ax (q.print y ay ++ rest) h1)
-    have hq : q.run r1.val = some (⟨y, ay⟩, rest) := by rw [hv1]; exact q.run_print y ay rest hr
-    obtain ⟨r2, hp2, hv2⟩ := run_eq_some hq
-    rw [show p.print (x, y).1 (ax, ay).1 ++ q.print (x, y).2 (ax, ay).2 ++ rest
-          = p.print x ax ++ (q.print y ay ++ rest) from by simp [List.append_assoc]]
-    simp only [seqParse, hp1, hp2, Option.map_some]
+/-- **Monadic bind** — possible because `k`'s *type* pins its FIRST/FOLLOW independently of the
+parsed value (the indexed-monad discipline). The seam `FIRST(k) ⊆ FOLLOW(p)` is its one
+obligation: inside `p >>= k`, `p`'s continuation starts with whatever `k` prints, and
+`head_first` turns that into a FOLLOW-admissible continuation for `p`'s law. -/
+def bind (p : IsoParser α f₁ fo₁ w v) (k : v → IsoParser α f₂ fo₂ w v')
+    (hseam : ∀ c, f₂ c → fo₁ c) : IsoParser α f₁ fo₂ w v' where
+  parse := bindParse p k
+  print a :=
+    (((k (p.print a).1).print a).1, (p.print a).2 ++ ((k (p.print a).1).print a).2)
+  firstOk c rest hc := by
+    show bindParse p k (c :: rest) = none
+    simp only [bindParse]
+    rw [p.firstOk c rest hc]
+  ok a rest hrest := by
+    have h1 : HeadIn fo₁ (((k (p.print a).1).print a).2 ++ rest) :=
+      fun c hc => hseam c ((k (p.print a).1).head_first a rest hrest c hc)
+    obtain ⟨r1, hp1, hv1⟩ := map_val_eq_some (p.ok a _ h1)
+    have hkrun : ((k (p.print a).1).parse r1.val).map (fun z => (z.1, z.2.val))
+        = some (((k (p.print a).1).print a).1, rest) := by
+      rw [hv1]; exact (k (p.print a).1).ok a rest hrest
+    obtain ⟨r2, hp2, hv2⟩ := map_val_eq_some hkrun
+    show (bindParse p k (((p.print a).2 ++ ((k (p.print a).1).print a).2) ++ rest)).map
+          (fun z => (z.1, z.2.val))
+        = some (((k (p.print a).1).print a).1, rest)
+    rw [show ((p.print a).2 ++ ((k (p.print a).1).print a).2) ++ rest
+          = (p.print a).2 ++ (((k (p.print a).1).print a).2 ++ rest) from List.append_assoc ..]
+    simp only [bindParse]
+    rw [hp1]
+    dsimp only
+    rw [hp2]
     simp [hv2]
-  print_parse input xab r h := by
-    simp only [seqParse] at h
-    split at h
-    · simp at h
-    · next sx r1 hp1 =>
-      split at h
-      · simp at h
-      · next sy r2 hp2 =>
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨hxab, rfl⟩ := h
-        subst hxab
-        have e1 := p.print_parse input sx r1 hp1
-        have e2 := q.print_parse r1.val sy r2 hp2
-        show p.print sx.1 sx.2 ++ q.print sy.1 sy.2 ++ r2.val = input
-        rw [List.append_assoc, e2, e1]
 
-/-! ## `many1` — one or more, collecting a list of annotations -/
+/-! ## Choice — FIRST-disjoint alternation -/
 
-/-- The annotation of a `many1` value: one element-annotation per element. -/
-def ManyAnn {v : Type} (Ann : v → Type) : List v → Type
-  | [] => PUnit
-  | x :: xs => Ann x × ManyAnn Ann xs
-
-/-- Print a list of values with their annotations. -/
-def many1Print (p : IsoParser α fst fol v Ann) :
-    (l : List v) → ManyAnn Ann l → List α
-  | [], _ => []
-  | x :: xs, a => p.print x a.1 ++ many1Print p xs a.2
-
-/-- Parse one-or-more `p`, greedily, collecting values and annotations. -/
-def many1Parse (p : IsoParser α fst fol v Ann) : (input : List α) →
-    Option ((Σ nel : NEList v, ManyAnn Ann nel.toList) × { r : List α // r.length < input.length })
-  | input =>
+/-- Try `p`, else `q`; named for clean motives. -/
+def orElseParse (p : IsoParser α f₁ fol w v) (q : IsoParser α f₂ fol w' v') :
+    (input : List α) → Option ((v ⊕ v') × { r : List α // r.length < input.length }) :=
+  fun input =>
     match p.parse input with
-    | none => none
-    | some (sx, r) =>
-      match many1Parse p r.val with
-      | none => some (⟨(sx.1, []), (sx.2, PUnit.unit)⟩, r)
-      | some (snel, r2) =>
-        some (⟨(sx.1, snel.1.toList), (sx.2, snel.2)⟩,
-              ⟨r2.val, Nat.lt_trans r2.property r.property⟩)
-  termination_by input => input.length
-  decreasing_by exact r.property
-
-theorem many1Parse_none {p : IsoParser α fst fol v Ann} {input : List α}
-    (h : p.parse input = none) : many1Parse p input = none := by
-  rw [many1Parse, h]
-
-theorem many1Parse_cons {p : IsoParser α fst fol v Ann} {input : List α}
-    {sx : Σ x : v, Ann x} {r : { r : List α // r.length < input.length }}
-    (h : p.parse input = some (sx, r)) :
-    many1Parse p input =
-      (match many1Parse p r.val with
-        | none => some (⟨(sx.1, []), (sx.2, PUnit.unit)⟩, r)
-        | some (snel, r2) =>
-          some (⟨(sx.1, snel.1.toList), (sx.2, snel.2)⟩,
-                ⟨r2.val, Nat.lt_trans r2.property r.property⟩)) := by
-  rw [many1Parse, h]
-
-/-- **Round-trip for `many1`.** -/
-theorem many1Parse_run (p : IsoParser α fst fol v Ann)
-    (hrep : ∀ c, fst c = true → fol c = true) :
-    ∀ (x : v) (xs : List v) (a : ManyAnn Ann (x :: xs)) (rest : List α),
-      HeadIn (fun c => fol c && !fst c) rest →
-      (many1Parse p (many1Print p (x :: xs) a ++ rest)).map (fun z => (z.1, z.2.val))
-        = some (⟨(x, xs), a⟩, rest) := by
-  intro x xs
-  induction xs generalizing x with
-  | nil =>
-    intro a rest hr
-    obtain ⟨a1, ⟨⟩⟩ := a
-    have hfol : HeadIn fol rest := fun c hc => and_left_of (hr c hc)
-    rw [show many1Print p (x :: []) (a1, PUnit.unit) = p.print x a1 by simp [many1Print]]
-    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x a1 rest hfol)
-    rw [many1Parse_cons hpar]
-    have hstop : p.parse r.val = none := by
-      rw [hrv]
-      cases rest with
-      | nil => exact parse_nil p
-      | cons c cs => exact p.firstOk c cs (by simpa using and_right_of (hr c (by simp)))
-    rw [many1Parse_none hstop]
-    simp [hrv]
-  | cons y ys ih =>
-    intro a rest hr
-    obtain ⟨a1, arest⟩ := a
-    have hMore : HeadIn fol (many1Print p (y :: ys) arest ++ rest) := by
-      rw [show many1Print p (y :: ys) arest ++ rest
-            = p.print y arest.1 ++ (many1Print p ys arest.2 ++ rest) by
-          simp [many1Print, List.append_assoc]]
-      exact headIn_print_append p hrep y arest.1 _
-    rw [show many1Print p (x :: y :: ys) (a1, arest) ++ rest
-          = p.print x a1 ++ (many1Print p (y :: ys) arest ++ rest) by
-        simp [many1Print, List.append_assoc]]
-    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x a1 _ hMore)
-    rw [many1Parse_cons hpar]
-    have ihy := ih y arest rest hr
-    rw [← hrv] at ihy
-    rcases hM : many1Parse p r.val with _ | ⟨snel, r2⟩
-    · rw [hM] at ihy; simp at ihy
-    · rw [hM] at ihy
-      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at ihy
-      obtain ⟨hsnel, hr2⟩ := ihy
-      subst hsnel
-      simp [NEList.toList, hr2]
-
-/-- **Exactness for `many1`.** -/
-theorem many1Parse_exact (p : IsoParser α fst fol v Ann) :
-    ∀ (n : Nat) (input : List α), input.length = n →
-      ∀ (snel : Σ nel : NEList v, ManyAnn Ann nel.toList)
-        (r : { r : List α // r.length < input.length }),
-        many1Parse p input = some (snel, r) →
-        many1Print p snel.1.toList snel.2 ++ r.val = input := by
-  intro n
-  induction n using Nat.strongRecOn with
-  | ind n ih =>
-    intro input hn snel r hpar
-    rcases hp : p.parse input with _ | ⟨sx, r0⟩
-    · rw [many1Parse_none hp] at hpar; simp at hpar
-    · rw [many1Parse_cons hp] at hpar
-      rcases hM : many1Parse p r0.val with _ | ⟨snel', r2⟩
-      · rw [hM] at hpar
-        simp only [Option.some.injEq, Prod.mk.injEq] at hpar
-        obtain ⟨hsnel, rfl⟩ := hpar
-        subst hsnel
-        simp only [NEList.toList, many1Print, List.append_nil]
-        exact p.print_parse input sx r0 hp
-      · rw [hM] at hpar
-        simp only [Option.some.injEq, Prod.mk.injEq] at hpar
-        obtain ⟨hsnel, rfl⟩ := hpar
-        subst hsnel
-        have hr0 := ih r0.val.length (hn ▸ r0.property) r0.val rfl snel' r2 hM
-        show p.print sx.1 sx.2 ++ many1Print p snel'.1.toList snel'.2 ++ r2.val = input
-        rw [List.append_assoc, hr0]
-        exact p.print_parse input sx r0 hp
-
-/-- **One-or-more `p`**, collecting `ManyAnn` — a list of the elements' annotations. -/
-def many1 (p : IsoParser α fst fol v Ann) (hrep : ∀ c, fst c = true → fol c = true) :
-    IsoParser α fst (fun c => fol c && !fst c) (NEList v) (fun nel => ManyAnn Ann nel.toList) where
-  parse := many1Parse p
-  print nel a := many1Print p nel.toList a
-  firstOk c rest hc := many1Parse_none (p.firstOk c rest hc)
-  parse_print nel a rest hr := by
-    obtain ⟨x, xs⟩ := nel
-    exact many1Parse_run p hrep x xs a rest hr
-  print_parse input snel r h := many1Parse_exact p input.length input rfl snel r h
-
-/-! ## `hide` — move a value into the annotation -/
-
-/-- **Hide a value in the annotation.** The value becomes `Unit`; what was the value (with its
-annotation) becomes *the choice*. This is how a whitespace run's characters become an annotation. -/
-def hide {V : Type} {PAnn : V → Type} (p : IsoParser α fst fol V PAnn) :
-    IsoParser α fst fol Unit (fun _ => Σ x : V, PAnn x) where
-  parse input := (p.parse input).map (fun z => (⟨(), z.1⟩, z.2))
-  print _ sxa := p.print sxa.1 sxa.2
-  firstOk c rest hc := by simp [p.firstOk c rest hc]
-  parse_print u sxa rest hr := by
-    obtain ⟨x, ax⟩ := sxa
-    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x ax rest hr)
-    simp [hpar, hrv]
-  print_parse input usxa r h := by
-    rcases hp : p.parse input with _ | ⟨sx, r'⟩
-    · rw [hp] at h; simp at h
-    · rw [hp] at h
-      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨husxa, rfl⟩ := h
-      subst husxa
-      exact p.print_parse input sx r' hp
-
-/-! ## `orElse` — alternation (FIRST-disjoint) -/
-
-/-- Try `p`, else `q`. -/
-def orElseParse {f1 f2 fol : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
-    (p : IsoParser α f1 fol a Aa) (q : IsoParser α f2 fol b Ab) : (input : List α) →
-    Option ((Σ s : a ⊕ b, Sum.elim Aa Ab s) × { r : List α // r.length < input.length })
-  | input =>
-    match p.parse input with
-    | some (sx, r) => some (⟨Sum.inl sx.1, sx.2⟩, r)
+    | some (b, r) => some (Sum.inl b, r)
     | none =>
       match q.parse input with
-      | some (sy, r) => some (⟨Sum.inr sy.1, sy.2⟩, r)
+      | some (b', r) => some (Sum.inr b', r)
       | none => none
 
-/-- **Alternation.** Value is a sum; annotation is `Sum.elim`. Seam: `FIRST(q)` tokens make `p` fail
-(FIRST-disjoint), so the choice is deterministic and round-trips. Both share FOLLOW. -/
-def orElse {f1 f2 fol : α → Bool} {a b : Type} {Aa : a → Type} {Ab : b → Type}
-    (p : IsoParser α f1 fol a Aa) (q : IsoParser α f2 fol b Ab)
-    (hdisj : ∀ c, f2 c = true → f1 c = false) :
-    IsoParser α (fun c => f1 c || f2 c) fol (a ⊕ b) (Sum.elim Aa Ab) where
+/-- **Alternation.** Source and value are sums; FIRST is the union; both branches share FOLLOW.
+`hdisj` (`FIRST(q) ⊆ ¬FIRST(p)`) makes the biased choice deterministic: `q`'s printed output
+starts with a `FIRST(q)` symbol, so `firstOk` makes `p` fail on it. Progress makes this the
+*only* obligation (`print_ne_nil` covers the empty-output hazard). -/
+def orElse (p : IsoParser α f₁ fol w v) (q : IsoParser α f₂ fol w' v')
+    (hdisj : ∀ c, f₂ c → ¬ f₁ c) :
+    IsoParser α (fun c => f₁ c ∨ f₂ c) fol (w ⊕ w') (v ⊕ v') where
   parse := orElseParse p q
   print
-    | .inl x, ann => p.print x ann
-    | .inr y, ann => q.print y ann
+    | Sum.inl a  => (Sum.inl (p.print a).1, (p.print a).2)
+    | Sum.inr a' => (Sum.inr (q.print a').1, (q.print a').2)
   firstOk c rest hc := by
-    simp only [Bool.or_eq_false_iff] at hc
-    simp [orElseParse, p.firstOk c rest hc.1, q.firstOk c rest hc.2]
-  parse_print s ann rest hr := by
-    cases s with
-    | inl x =>
-      obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x ann rest hr)
-      simp only [orElseParse, hpar]
-      simp [hrv]
-    | inr y =>
-      have hpn : p.parse (q.print y ann ++ rest) = none := by
-        obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil (print_ne_nil q y ann)
-        rw [hcs, List.cons_append]
-        exact p.firstOk c (cs ++ rest) (hdisj c (print_head_fst q y ann c cs hcs))
-      obtain ⟨r, hpar, hrv⟩ := run_eq_some (q.run_print y ann rest hr)
-      simp only [orElseParse, hpn, hpar]
-      simp [hrv]
-  print_parse input sann r h := by
-    simp only [orElseParse] at h
-    split at h
-    · next sx r0 hp =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨hsann, rfl⟩ := h
-      subst hsann
-      exact p.print_parse input sx r0 hp
-    · split at h
-      · next sy r0 hq =>
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨hsann, rfl⟩ := h
-        subst hsann
-        exact q.print_parse input sy r0 hq
-      · simp at h
+    show orElseParse p q (c :: rest) = none
+    simp only [orElseParse]
+    rw [p.firstOk c rest (fun h => hc (Or.inl h)),
+        q.firstOk c rest (fun h => hc (Or.inr h))]
+  ok a rest hrest := by
+    cases a with
+    | inl a =>
+      obtain ⟨r, hp, hv⟩ := map_val_eq_some (p.ok a rest hrest)
+      show (orElseParse p q ((p.print a).2 ++ rest)).map (fun z => (z.1, z.2.val))
+          = some (Sum.inl (p.print a).1, rest)
+      simp only [orElseParse]
+      rw [hp]
+      simp [hv]
+    | inr a' =>
+      have hpnone : p.parse ((q.print a').2 ++ rest) = none := by
+        cases hout : (q.print a').2 with
+        | nil => exact absurd hout (q.print_ne_nil a')
+        | cons c cs =>
+          have hc2 : f₂ c := q.head_first a' rest hrest c (by rw [hout]; rfl)
+          exact p.firstOk c (cs ++ rest) (hdisj c hc2)
+      obtain ⟨r, hq, hv⟩ := map_val_eq_some (q.ok a' rest hrest)
+      show (orElseParse p q ((q.print a').2 ++ rest)).map (fun z => (z.1, z.2.val))
+          = some (Sum.inr (q.print a').1, rest)
+      simp only [orElseParse]
+      rw [hpnone, hq]
+      simp [hv]
 
-/-! ## `imapT` — relabel the value along an iso (trivial annotation) -/
+/-! ## Repetition — `many1` and `chainl` -/
 
-/-- **Relabel the value** along an iso `f`/`g`, keeping the trivial `PUnit` annotation. Used to map a
-combinator's sum-of-products value into a target type (e.g. an `Expr` constructor). -/
-def imapT {a b : Type} (f : a → b) (g : b → a)
-    (hgf : ∀ x, g (f x) = x) (hfg : ∀ y, f (g y) = y)
-    (p : IsoParser α fst fol a (fun _ => PUnit)) :
-    IsoParser α fst fol b (fun _ => PUnit) where
-  parse input := (p.parse input).map (fun z => (⟨f z.1.1, PUnit.unit⟩, z.2))
-  print y _ := p.print (g y) PUnit.unit
-  firstOk c rest hc := by simp [p.firstOk c rest hc]
-  parse_print y u rest hr := by
-    obtain ⟨⟩ := u
-    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print (g y) PUnit.unit rest hr)
-    simp [hpar, hrv, hfg]
-  print_parse input yu r h := by
-    rcases hp : p.parse input with _ | ⟨⟨sxv, ⟨⟩⟩, r'⟩
-    · rw [hp] at h; simp at h
-    · rw [hp] at h
-      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨hyu, rfl⟩ := h
-      subst hyu
-      show p.print (g (f sxv)) PUnit.unit ++ r'.val = input
-      rw [hgf sxv]
-      exact p.print_parse input ⟨sxv, PUnit.unit⟩ r' hp
-
-/-! ## `trivialize` — collapse a no-choice annotation to `PUnit` -/
-
-/-- **Collapse a trivial annotation to `PUnit`.** When the annotation is uniquely determined
-(`huniq`), it carries no information — e.g. the nested `PUnit` products `seq`/`many1`/`orElse` leave
-behind. This normalizes it so the value can be reshaped by `imapT`. -/
-def trivialize (p : IsoParser α fst fol v Ann) (dflt : ∀ x, Ann x)
-    (huniq : ∀ x (a : Ann x), a = dflt x) :
-    IsoParser α fst fol v (fun _ => PUnit) where
-  parse input := (p.parse input).map (fun z => (⟨z.1.1, PUnit.unit⟩, z.2))
-  print x _ := p.print x (dflt x)
-  firstOk c rest hc := by simp [p.firstOk c rest hc]
-  parse_print x u rest hr := by
-    obtain ⟨⟩ := u
-    obtain ⟨r, hpar, hrv⟩ := run_eq_some (p.run_print x (dflt x) rest hr)
-    simp [hpar, hrv]
-  print_parse input xu r h := by
-    rcases hp : p.parse input with _ | ⟨sx, r'⟩
-    · rw [hp] at h; simp at h
-    · rw [hp] at h
-      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨hxu, rfl⟩ := h
-      subst hxu
-      show p.print sx.1 (dflt sx.1) ++ r'.val = input
-      rw [← huniq sx.1 sx.2]
-      exact p.print_parse input sx r' hp
-
-/-! ## `chainl` — a seed followed by zero-or-more steps (for left-recursion / juxtaposition) -/
-
-variable {fo : α → Bool}
-
-/-- Parse `seed`, then zero-or-more `step`s (reusing `many1Parse`: after the seed, either a `many1`
-of steps or none). Value `a × List b`. -/
-def chainlParse {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
-    (seed : IsoParser α fs fo a As) (step : IsoParser α ft fo b Ab) : (input : List α) →
-    Option ((Σ pr : a × List b, As pr.1 × ManyAnn Ab pr.2) × { r : List α // r.length < input.length })
+/-- Parse one-or-more `p`, greedily. -/
+def many1Parse (p : IsoParser α fst fol w v) : (input : List α) →
+    Option (NEList v × { r : List α // r.length < input.length })
   | input =>
-    match seed.parse input with
+    match p.parse input with
     | none => none
-    | some (sa, r1) =>
-      match many1Parse step r1.val with
-      | none => some (⟨(sa.1, []), (sa.2, PUnit.unit)⟩, r1)
-      | some (snel, r2) =>
-        some (⟨(sa.1, snel.1.toList), (sa.2, snel.2)⟩,
-              ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)
+    | some (b, r) =>
+      match many1Parse p r.val with
+      | none => some ((b, []), r)
+      | some (nel, r2) => some ((b, nel.toList), ⟨r2.val, Nat.lt_trans r2.property r.property⟩)
+termination_by input => input.length
+decreasing_by exact r.property
 
-theorem chainlParse_seedNone {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
-    {seed : IsoParser α fs fo a As} {step : IsoParser α ft fo b Ab} {input : List α}
-    (h : seed.parse input = none) : chainlParse seed step input = none := by
-  rw [chainlParse, h]
+/-- The printed values of a source list. -/
+def many1PrintV (p : IsoParser α fst fol w v) : List w → List v
+  | [] => []
+  | a :: as => (p.print a).1 :: many1PrintV p as
 
-theorem chainlParse_seedSome {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
-    {seed : IsoParser α fs fo a As} {step : IsoParser α ft fo b Ab} {input : List α}
-    {sa : Σ x : a, As x} {r1 : { r : List α // r.length < input.length }}
-    (h : seed.parse input = some (sa, r1)) :
-    chainlParse seed step input =
-      (match many1Parse step r1.val with
-        | none => some (⟨(sa.1, []), (sa.2, PUnit.unit)⟩, r1)
-        | some (snel, r2) =>
-          some (⟨(sa.1, snel.1.toList), (sa.2, snel.2)⟩,
-                ⟨r2.val, Nat.lt_trans r2.property r1.property⟩)) := by
-  rw [chainlParse, h]
+/-- The concatenated outputs of a source list. -/
+def many1PrintOut (p : IsoParser α fst fol w v) : List w → List α
+  | [] => []
+  | a :: as => (p.print a).2 ++ many1PrintOut p as
 
-/-- **Seed then zero-or-more steps**, left-recursion structurally (value `a × List b`; fold into a
-tree with `imapT`). Seed and step share FOLLOW `fo`; `hrep : FIRST(step) ⊆ fo`. -/
-def chainl {fs ft : α → Bool} {a b : Type} {As : a → Type} {Ab : b → Type}
-    (seed : IsoParser α fs fo a As) (step : IsoParser α ft fo b Ab)
-    (hrep : ∀ c, ft c = true → fo c = true) :
-    IsoParser α fs (fun c => fo c && !ft c) (a × List b) (fun pr => As pr.1 × ManyAnn Ab pr.2) where
-  parse := chainlParse seed step
-  print pr ann := seed.print pr.1 ann.1 ++ many1Print step pr.2 ann.2
-  firstOk c rest hc := chainlParse_seedNone (seed.firstOk c rest hc)
-  parse_print pr ann rest hr := by
-    obtain ⟨sv, steps⟩ := pr
-    obtain ⟨asv, asteps⟩ := ann
+/-- **Round-trip for `many1`**, in printed form; by induction on the source list. `hrep`
+("an element's own output may follow an element") is `FIRST ⊆ FOLLOW`. -/
+theorem many1Parse_run (p : IsoParser α fst fol w v) (hrep : ∀ c, fst c → fol c) :
+    ∀ (as : List w) (a : w) (rest : List α), HeadIn (fun c => fol c ∧ ¬ fst c) rest →
+      (many1Parse p ((p.print a).2 ++ (many1PrintOut p as ++ rest))).map
+          (fun z => (z.1, z.2.val))
+        = some (((p.print a).1, many1PrintV p as), rest) := by
+  intro as
+  induction as with
+  | nil =>
+    intro a rest hrest
+    simp only [many1PrintOut, many1PrintV, List.nil_append]
+    have hfol : HeadIn fol rest := fun c hc => (hrest c hc).1
+    obtain ⟨r, hp, hv⟩ := map_val_eq_some (p.ok a rest hfol)
+    rw [many1Parse, hp]
+    dsimp only
+    have hstop : p.parse r.val = none := by
+      rw [hv]
+      cases rest with
+      | nil => exact p.run_nil
+      | cons c cs => exact p.firstOk c cs (hrest c rfl).2
+    have hm : many1Parse p r.val = none := by rw [many1Parse, hstop]
+    rw [hm]
+    simp [hv]
+  | cons a2 as' ih =>
+    intro a rest hrest
+    simp only [many1PrintOut, many1PrintV]
+    have hcont : HeadIn fol ((p.print a2).2 ++ (many1PrintOut p as' ++ rest)) :=
+      headIn_print_append p hrep a2 _
+    obtain ⟨r, hp, hv⟩ := map_val_eq_some (p.ok a _ hcont)
+    have hih' : (many1Parse p r.val).map (fun z => (z.1, z.2.val))
+        = some (((p.print a2).1, many1PrintV p as'), rest) := by
+      rw [hv]; exact ih a2 rest hrest
+    obtain ⟨r2, hm2, hv2⟩ := map_val_eq_some hih'
+    rw [show (p.print a).2 ++ (((p.print a2).2 ++ many1PrintOut p as') ++ rest)
+          = (p.print a).2 ++ ((p.print a2).2 ++ (many1PrintOut p as' ++ rest)) from by
+        rw [List.append_assoc]]
+    rw [many1Parse, hp]
+    dsimp only
+    rw [hm2]
+    simp [hv2, NEList.toList]
+
+/-- **One-or-more `p`.** Source `NEList w`, value `NEList v` — aligned when `p` is. FOLLOW
+computes: the continuation may not start another element. -/
+def many1 (p : IsoParser α fst fol w v) (hrep : ∀ c, fst c → fol c) :
+    IsoParser α fst (fun c => fol c ∧ ¬ fst c) (NEList w) (NEList v) where
+  parse := many1Parse p
+  print nel := (((p.print nel.1).1, many1PrintV p nel.2),
+                (p.print nel.1).2 ++ many1PrintOut p nel.2)
+  firstOk c rest hc := by
+    show many1Parse p (c :: rest) = none
+    rw [many1Parse, p.firstOk c rest hc]
+  ok nel rest hrest := by
+    obtain ⟨a, as⟩ := nel
+    show (many1Parse p (((p.print a).2 ++ many1PrintOut p as) ++ rest)).map _ = _
+    rw [List.append_assoc]
+    exact many1Parse_run p hrep as a rest hrest
+
+/-- A seed, then zero-or-more steps (reusing `many1Parse`); named for clean motives. -/
+def chainlParse (pSeed : IsoParser α f₁ fol w v) (pStep : IsoParser α f₂ fol w' v') :
+    (input : List α) → Option ((v × List v') × { r : List α // r.length < input.length }) :=
+  fun input =>
+    match pSeed.parse input with
+    | none => none
+    | some (b, r) =>
+      match many1Parse pStep r.val with
+      | none => some ((b, []), r)
+      | some (nel, r2) => some ((b, nel.toList), ⟨r2.val, Nat.lt_trans r2.property r.property⟩)
+
+/-- **A left-associative chain**: `seed (step)*`. Source `w × List w'`, value `v × List v'`;
+seed and steps share FOLLOW, and `hseam` (`FIRST(step) ⊆ FOLLOW`) covers both the seed→step seam
+and step repetition. -/
+def chainl (pSeed : IsoParser α f₁ fol w v) (pStep : IsoParser α f₂ fol w' v')
+    (hseam : ∀ c, f₂ c → fol c) :
+    IsoParser α f₁ (fun c => fol c ∧ ¬ f₂ c) (w × List w') (v × List v') where
+  parse := chainlParse pSeed pStep
+  print aw := (((pSeed.print aw.1).1, many1PrintV pStep aw.2),
+               (pSeed.print aw.1).2 ++ many1PrintOut pStep aw.2)
+  firstOk c rest hc := by
+    show chainlParse pSeed pStep (c :: rest) = none
+    simp only [chainlParse]
+    rw [pSeed.firstOk c rest hc]
+  ok aw rest hrest := by
+    obtain ⟨a, steps⟩ := aw
     cases steps with
     | nil =>
-      obtain ⟨⟩ := asteps
-      have hfo : HeadIn fo rest := fun c hc => and_left_of (hr c hc)
-      obtain ⟨r1, hpar, hrv⟩ := run_eq_some (seed.run_print sv asv rest hfo)
-      simp only [many1Print]
-      rw [List.append_nil, chainlParse_seedSome hpar]
-      have hstop : step.parse r1.val = none := by
-        rw [hrv]
+      have hfol : HeadIn fol rest := fun c hc => (hrest c hc).1
+      obtain ⟨r, hp, hv⟩ := map_val_eq_some (pSeed.ok a rest hfol)
+      show (chainlParse pSeed pStep (((pSeed.print a).2 ++ many1PrintOut pStep []) ++ rest)).map
+            (fun z => (z.1, z.2.val))
+          = some (((pSeed.print a).1, many1PrintV pStep []), rest)
+      rw [show ((pSeed.print a).2 ++ many1PrintOut pStep []) ++ rest
+            = (pSeed.print a).2 ++ rest from by simp [many1PrintOut]]
+      simp only [many1PrintV, chainlParse]
+      rw [hp]
+      dsimp only
+      have hstop : pStep.parse r.val = none := by
+        rw [hv]
         cases rest with
-        | nil => exact parse_nil step
-        | cons c cs => exact step.firstOk c cs (by simpa using and_right_of (hr c (by simp)))
-      rw [many1Parse_none hstop]
-      simp [hrv]
-    | cons x xs =>
-      obtain ⟨a1, arest⟩ := asteps
-      have hMore : HeadIn fo (many1Print step (x :: xs) (a1, arest) ++ rest) := by
-        rw [show many1Print step (x :: xs) (a1, arest) ++ rest
-              = step.print x a1 ++ (many1Print step xs arest ++ rest) by
-            simp [many1Print, List.append_assoc]]
-        exact headIn_print_append step hrep x a1 _
-      rw [show seed.print (sv, x :: xs).1 (asv, a1, arest).1
-            ++ many1Print step (sv, x :: xs).2 (asv, a1, arest).2 ++ rest
-            = seed.print sv asv ++ (many1Print step (x :: xs) (a1, arest) ++ rest) by
+        | nil => exact pStep.run_nil
+        | cons c cs => exact pStep.firstOk c cs (hrest c rfl).2
+      have hm : many1Parse pStep r.val = none := by rw [many1Parse, hstop]
+      rw [hm]
+      simp [hv]
+    | cons s2 ss =>
+      have hcont : HeadIn fol ((pStep.print s2).2 ++ (many1PrintOut pStep ss ++ rest)) :=
+        headIn_print_append pStep hseam s2 _
+      obtain ⟨r, hp, hv⟩ := map_val_eq_some (pSeed.ok a _ hcont)
+      have hih' : (many1Parse pStep r.val).map (fun z => (z.1, z.2.val))
+          = some (((pStep.print s2).1, many1PrintV pStep ss), rest) := by
+        rw [hv]; exact many1Parse_run pStep hseam ss s2 rest hrest
+      obtain ⟨r2, hm2, hv2⟩ := map_val_eq_some hih'
+      show (chainlParse pSeed pStep
+              (((pSeed.print a).2 ++ many1PrintOut pStep (s2 :: ss)) ++ rest)).map
+            (fun z => (z.1, z.2.val)) = _
+      simp only [many1PrintOut, many1PrintV]
+      rw [show ((pSeed.print a).2 ++ ((pStep.print s2).2 ++ many1PrintOut pStep ss)) ++ rest
+            = (pSeed.print a).2 ++ ((pStep.print s2).2 ++ (many1PrintOut pStep ss ++ rest)) from by
           simp [List.append_assoc]]
-      obtain ⟨r1, hpar, hrv⟩ := run_eq_some (seed.run_print sv asv _ hMore)
-      rw [chainlParse_seedSome hpar]
-      have hrun := many1Parse_run step hrep x xs (a1, arest) rest hr
-      rw [← hrv] at hrun
-      rcases hM : many1Parse step r1.val with _ | ⟨snel, r2⟩
-      · rw [hM] at hrun; simp at hrun
-      · rw [hM] at hrun
-        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrun
-        obtain ⟨hsnel, hr2⟩ := hrun
-        subst hsnel
-        simp [NEList.toList, hr2]
-  print_parse input prann r h := by
-    rcases hp : seed.parse input with _ | ⟨sa, r1⟩
-    · rw [chainlParse_seedNone hp] at h; simp at h
-    · rw [chainlParse_seedSome hp] at h
-      rcases hM : many1Parse step r1.val with _ | ⟨snel, r2⟩
-      · rw [hM] at h
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨hpr, rfl⟩ := h
-        subst hpr
-        show seed.print sa.1 sa.2 ++ many1Print step [] PUnit.unit ++ r1.val = input
-        simp only [many1Print, List.append_nil]
-        exact seed.print_parse input sa r1 hp
-      · rw [hM] at h
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨hpr, rfl⟩ := h
-        subst hpr
-        have hex := many1Parse_exact step r1.val.length r1.val rfl snel r2 hM
-        show seed.print sa.1 sa.2 ++ many1Print step snel.1.toList snel.2 ++ r2.val = input
-        rw [List.append_assoc, hex]
-        exact seed.print_parse input sa r1 hp
+      simp only [chainlParse]
+      rw [hp]
+      dsimp only
+      rw [hm2]
+      simp [hv2, NEList.toList]
 
 end LambdaLab.IsoParser
