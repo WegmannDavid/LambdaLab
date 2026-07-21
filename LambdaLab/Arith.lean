@@ -1,9 +1,109 @@
-import LambdaLab.IsoParser.Combinators
+import LambdaLab.Language1.Biparser
+import LambdaLab.IsoParser.Mixfix.Biparser
+import LambdaLab.IsoParser.Adapters
 
 /-!
-# Recursive grammar via a mutual WF recursion + lexicographic measure — validation
+# Arithmetic — the running example, end to end
 
-The counterpart to `Arith.lean`, but **recursive** (parentheses), so it exercises the design that
+One file, three layers of the same toy language, each exercising a different part of the
+`IsoParser` stack. They were previously scattered across `IsoParser/Arith.lean`,
+`IsoParser/ArithRec.lean` and `Language1/Arith.lean`.
+
+* `Combinator` — `number (+ number)*`, and a two-level precedence variant. Built *purely* from
+  `sat`/`tok`/`many1`/`gdo`/`chainl`, with no recursion, so the round-trip law comes entirely from
+  the combinators: zero sorries, nothing to prove by hand.
+* `Recursive` — the same grammar plus parentheses, so it needs real recursion. A mutual
+  well-founded `def` on the lexicographic measure `(input.length, level)`, with both laws
+  (`exact_all`, `parseExpr_print`) proved by hand. Zero sorries.
+* the language itself — the mixfix arithmetic vernacular as a `Language1.Language`, plugged into
+  the verified mixfix parser. **Its round-trip law is conditional** (see the section note).
+
+The older `ParserOld`/`CBiparser` arithmetic fixtures are deliberately *not* here: they are the
+test fixtures for proof files in their own stacks and live next to them.
+-/
+
+namespace LambdaLab.Arith
+
+/-! ## Combinator-only grammar
+
+`number (+ number)*`, left-associative, built purely from `sat`/`tok`/`many1`/`gdo`/`chainl`. No
+recursion (no parens), so the round-trip law comes **entirely from the combinators** — zero
+sorries. Both parsers are **aligned** (source type = value type), so a parsed value can be
+re-printed directly and `#eval` confirms the round-trip.
+-/
+
+namespace Combinator
+
+open LambdaLab.IsoParser
+
+abbrev Digit := { c : Char // c.isDigit = true }
+
+/-- One or more digits. -/
+def number := many1 (sat Char.isDigit) (fun _ _ => trivial)
+
+/-- `+ number`. -/
+def addStep : IsoParser Char (· = '+') (fun c => True ∧ ¬ c.isDigit = true)
+    (NEList Digit) (NEList Digit) := gdo
+  let _p ← tok '+'
+  let n ← number
+  return n
+
+/-- `number (+ number)*`, left-associative (structural value: seed × steps). -/
+def expr := chainl number addStep
+  (by intro c hc; subst hc; exact ⟨trivial, by decide⟩)
+
+/-- Round-trip a fully-consumed string through the parsed value (aligned, so it re-prints). -/
+def roundtrip (s : String) : Option String :=
+  match expr.run s.toList with
+  | some (v, []) => some (String.ofList (expr.print v).2)
+  | _ => none
+
+#eval roundtrip "1+2+3"     -- some "1+2+3"
+#eval roundtrip "42"        -- some "42"
+#eval roundtrip "7+80+900"  -- some "7+80+900"
+#eval roundtrip "1++2"      -- none  (malformed)
+#eval roundtrip "+1"        -- none
+
+/-! ### With precedence — `expr = term (+ term)*`, `term = number (* number)*` -/
+
+/-- `* number`. -/
+def mulStep : IsoParser Char (· = '*') (fun c => True ∧ ¬ c.isDigit = true)
+    (NEList Digit) (NEList Digit) := gdo
+  let _p ← tok '*'
+  let n ← number
+  return n
+
+/-- `number (* number)*`. -/
+def term := chainl number mulStep
+  (by intro c hc; subst hc; exact ⟨trivial, by decide⟩)
+
+/-- `+ term`. -/
+def addStepT : IsoParser Char (· = '+')
+    (fun c => (True ∧ ¬ c.isDigit = true) ∧ ¬ c = '*')
+    (NEList Digit × List (NEList Digit)) (NEList Digit × List (NEList Digit)) := gdo
+  let _p ← tok '+'
+  let t ← term
+  return t
+
+/-- `term (+ term)*` — full two-level precedence grammar. -/
+def exprPrec := chainl term addStepT
+  (by intro c hc; subst hc; exact ⟨⟨trivial, by decide⟩, by decide⟩)
+
+def roundtripP (s : String) : Option String :=
+  match exprPrec.run s.toList with
+  | some (v, []) => some (String.ofList (exprPrec.print v).2)
+  | _ => none
+
+#eval roundtripP "1+2*3"        -- some "1+2*3"  (parses as 1+(2*3), prints back)
+#eval roundtripP "2*3+4"        -- some "2*3+4"
+#eval roundtripP "1*2*3"        -- some "1*2*3"
+#eval roundtripP "10*20+30*40"  -- some "10*20+30*40"
+
+end Combinator
+
+/-! ## Recursive grammar via a mutual WF recursion + lexicographic measure
+
+The counterpart to `Combinator`, but **recursive** (parentheses), so it exercises the design that
 resolves the recursion↔combinators gap:
 
 * the recursion is a plain **mutual well-founded `def`** (not a `fix` combinator), terminating on the
@@ -18,13 +118,13 @@ resolves the recursion↔combinators gap:
 Grammar: `expr = term (+ term)*` (left-assoc), `term = digit | ( expr )`.
 -/
 
-namespace LambdaLab.IsoParser.ArithRec
+namespace Recursive
 
 open LambdaLab.IsoParser
 
 abbrev Digit := { c : Char // c.isDigit = true }
 
-/-! ## The syntax trees (mutual) -/
+/-! ### The syntax trees (mutual) -/
 
 mutual
 inductive ATerm where
@@ -37,7 +137,7 @@ inductive AExpr where
   deriving Repr
 end
 
-/-! ## Flatten (the printer) -/
+/-! ### Flatten (the printer) -/
 
 mutual
 def ATerm.flatten : ATerm → List Char
@@ -48,7 +148,7 @@ def AExpr.flatten : AExpr → List Char
   | .add e t => e.flatten ++ ('+' :: t.flatten)
 end
 
-/-! ## The parser: one mutual WF recursion, lexicographic measure `(length, level)` -/
+/-! ### The parser: one mutual WF recursion, lexicographic measure `(length, level)` -/
 
 mutual
   /-- `term = digit | ( expr )`. Level `0`. -/
@@ -96,7 +196,7 @@ mutual
   termination_by (input.length, 0)
 end
 
-/-! ## Compute / round-trip sanity -/
+/-! ### Compute / round-trip sanity -/
 
 def parse? (s : String) : Option AExpr :=
   match parseExpr s.toList with
@@ -114,7 +214,7 @@ def roundtrip (s : String) : Option String :=
 #eval roundtrip "1+"             -- none
 #eval roundtrip "(1"             -- none
 
-/-! ## Exactness (`print_parse`): whatever the parser consumed, `flatten` reproduces exactly.
+/-! ### Exactness (`print_parse`): whatever the parser consumed, `flatten` reproduces exactly.
 
 By strong induction on `input.length`. Every recursive call except the `expr → term` seed strictly
 shortens the input (so it is covered by the IH); the seed is same-length, handled by proving
@@ -239,14 +339,14 @@ theorem exact_all (n : Nat) :
         _ = t.flatten ++ s1.val := rfl
         _ = input := htermc
 
-/-! ## Round-trip (`parse_print`): print a tree, parse it back, recover it.
+/-! ### Round-trip (`parse_print`): print a tree, parse it back, recover it.
 
 The hard direction — the greedy left-associative reconstruction (the analogue of CBiparser's open
 `parseExpr_exact`). Structural induction on `AExpr` fails on `add e t`: after parsing `e`, the input
 continues with `+`, so `e` is never parsed as a standalone sub-expression. The fix is the **spine** —
 every `AExpr` is a seed term left-folded over its `+`-chained steps, and the greedy fold rebuilds it. -/
 
-/-! ### Leaf parse reductions (raw results, no subtype plumbing) -/
+/-! #### Leaf parse reductions (raw results, no subtype plumbing) -/
 
 private theorem tok_parse_hit (c : Char) (rest : List Char) :
     tokParse c (c :: rest) = some ((), ⟨rest, by simp⟩) := by
@@ -272,7 +372,7 @@ private theorem map_proj_eq_some {V : Type} {input : List Char}
       obtain ⟨rfl, rfl⟩ := h
       exact ⟨r, rfl, rfl⟩
 
-/-! ### The spine -/
+/-! #### The spine -/
 
 /-- The first (leftmost) term of an expression's left-associative chain. -/
 def AExpr.seed : AExpr → ATerm
@@ -302,7 +402,7 @@ theorem AExpr.flatten_spine : ∀ e : AExpr,
       rw [show (AExpr.add e' t).flatten = e'.flatten ++ ('+' :: t.flatten) from rfl,
         AExpr.flatten_spine e', List.append_assoc]
 
-/-! ### The round-trip -/
+/-! #### The round-trip -/
 
 /-- Both trees at once, by strong induction on the flattened length. `term` accepts any continuation
 (self-delimiting); `expr` needs `rest` to not start with `+` (else the greedy fold consumes it). -/
@@ -424,4 +524,104 @@ theorem parseExpr_print (e : AExpr) :
   have h := (roundtrip_all e.flatten.length).2 e rfl [] (by simp)
   rw [List.append_nil] at h; exact h
 
-end LambdaLab.IsoParser.ArithRec
+end Recursive
+
+/-! ## The language: a real plug-in vernacular on the `IsoParser` mixfix
+
+Types are the three number sets `N`, `Z`, `R`. Terms are the **mixfix** arithmetic grammar —
+parentheses, application by juxtaposition, `*` binding tighter than `+` — built on the
+self-contained `IsoParser.Mixfix` stack (abstract token alphabet, explicit `rank`), with no
+`CBiparser` dependency.
+
+A language author supplies exactly a `Grammar` (operators, precedence with explicit `rank`) plus the
+two boundary adapters. The grammar is *lighter* than the CBiparser one: no `tighter_wf`,
+`juxtUnique`, `headsDistinct`, or `interiorTerminates` — the parser needs only the precedence rank.
+
+### ⚠ The round-trip law here is CONDITIONAL
+
+`Mixfix.mixfix`'s `ok` (the greedy left-associative round-trip) is still an open `sorry`, so
+`arithLanguage`'s round-trip laws depend on `sorryAx`. The parser itself does not: it `#eval`s and
+runs. Discharging that one lemma turns these laws unconditional with no change here.
+
+Note the contrast with `Recursive` above: that section proves exactly this shape of greedy
+left-associative reconstruction by hand, for a fixed grammar.
+-/
+
+open LambdaLab.IsoParser LambdaLab.IsoParser.Mixfix LambdaLab.Language1
+
+/-- A token literal of the vernacular's alphabet. -/
+def tkA (s : String) (h : CBiparser.isToken isSep s = true := by decide) : Token := ⟨s, h⟩
+
+/-- Operators: parentheses, application (juxtaposition), `_ * _`, `_ + _`. -/
+inductive ASym | paren | app | times | plus
+  deriving DecidableEq, Repr
+
+/-- The tokens `isVar` must reject — including the vernacular keywords, so `def` is not a variable. -/
+def aReserved : List Token :=
+  [tkA "(", tkA ")", tkA "+", tkA "*", tkA "def", tkA ":", tkA ":="]
+
+def aTighter : ASym → List ASym
+  | .plus  => [.times]
+  | .times => [.app]
+  | .app   => [.paren]
+  | .paren => []
+
+def aRank : ASym → Nat
+  | .paren => 0 | .app => 1 | .times => 2 | .plus => 3
+
+def aOp : ASym → Operator Token Unit
+  | .paren => .closed (.cons (tkA "(") () (.last (tkA ")")))
+  | .app   => .juxt
+  | .times => .infxl (.last (tkA "*"))
+  | .plus  => .infxl (.last (tkA "+"))
+
+def aEntry : Entry Token Unit where
+  Op := ASym
+  operator := aOp
+  ops := [.paren, .app, .times, .plus]
+  ops_complete := by intro o; cases o <;> decide
+  loosest := [.plus]
+  tighter := aTighter
+  rank := aRank
+  topRank := 4
+  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [aTighter, aRank]
+  rank_lt_topRank := by intro o; cases o <;> decide
+  isVar := fun t => decide (t ∉ aReserved)
+
+/-- The grammar — much lighter than the CBiparser one: precedence `rank` and nothing else. -/
+def aGrammar : Grammar Token where
+  Ent := Unit
+  entry := fun _ => aEntry
+
+/-! ### Types: the three number sets -/
+
+/-- `N`, `Z`, `R`. -/
+def isNumSet (t : Token) : Bool :=
+  t.val == "N" || t.val == "Z" || t.val == "R"
+
+abbrev NumSet := { t : Token // isNumSet t = true }
+
+/-! ### The language -/
+
+/-- The term parser stops at a command boundary. **Derived**, not declared. -/
+theorem follow_def : follow (G := aGrammar) () (tkA "def") = true := by decide
+
+def arithLanguage : Language where
+  Tm := Expr aGrammar () .loosest
+  Ty := NumSet
+
+  -- types: a single token drawn from {N, Z, R}. FOLLOW is ⊤, so `:=` may follow.
+  pTy := ((sat isNumSet).weakenFollow (fun _ _ => trivial)).enlargeFirst
+    (fun _ hf => absurd trivial hf)
+
+  -- terms: the mixfix parser. Its FIRST is already `anyTok`; its FOLLOW is the grammar's,
+  -- narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
+  pTm :=
+    (mixfix (G := aGrammar) () .loosest).weakenFollow
+      (by
+        intro t ht
+        have h : t = kwDef := ht
+        subst h
+        exact follow_def)
+
+end LambdaLab.Arith

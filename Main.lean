@@ -1,4 +1,4 @@
-import LambdaLab.Language1.Arith
+import LambdaLab.Arith
 
 /-!
 # Arithmetic vernacular demo
@@ -12,11 +12,11 @@ would read back to the same tree.
 * `lake exe playground path/to/file`   — parse the given file
 
 Note: the *parser* here is the verified mixfix parser; the round-trip *proof* for this language is
-still conditional on the open unambiguity lemmas (see `LambdaLab/Language1/Arith.lean`). The
+still conditional on the open unambiguity lemmas (see `LambdaLab/Arith.lean`). The
 executable exercises the running parser, not the proof.
 -/
 
-open LambdaLab.Language1
+open LambdaLab.Language1 LambdaLab.Arith
 
 /-- Recover a non-empty program from the flat command list `parseFile` returns. -/
 def toProgram : List (Command arithLanguage) → Option (Program arithLanguage)
