@@ -550,7 +550,7 @@ left-associative reconstruction by hand, for a fixed grammar.
 open LambdaLab.IsoParser LambdaLab.IsoParser.Mixfix LambdaLab.Language1
 
 /-- A token literal of the vernacular's alphabet. -/
-def tkA (s : String) (h : CBiparser.isToken isSep s = true := by decide) : Token := ⟨s, h⟩
+def tkA (s : String) (h : isToken isSep s = true := by decide) : Token := ⟨s, h⟩
 
 /-- Operators: parentheses, application (juxtaposition), `_ * _`, `_ + _`. -/
 inductive ASym | paren | app | times | plus

@@ -1,9 +1,9 @@
 import LambdaLab.IsoParser.Basic
-import LambdaLab.CBiparser.Token
+import LambdaLab.IsoParser.Token
 
 namespace LambdaLab.Language1
 
-open LambdaLab.CBiparser LambdaLab.IsoParser
+open LambdaLab.IsoParser
 
 /-! ## Lexemes
 
@@ -20,15 +20,15 @@ So neither is representable. Which characters separate tokens is a parameter: `i
 /-- Which characters separate tokens. A token is a maximal run of non-separator characters. -/
 def isSep (c : Char) : Bool := c.isWhitespace
 
-/-- The parser's alphabet — **derived**, by instantiating `CBiparser.Token` at our separator.
-It is not a type of our own: the tokenizer that actually produces these lives in
-`CBiparser/Tokenizer.lean` and knows nothing about this vernacular, so the two must agree by
-construction rather than by coincidence. By construction, printing a `Token` and re-lexing
-recovers it.
+/-- The parser's alphabet — **derived**, by instantiating `IsoParser.Token` at our separator.
+It is not a type of our own: the alphabet is fixed above the vernacular, in
+`IsoParser/Token.lean`, which knows nothing about this vernacular, so any tokenizer and this
+parser must agree by construction rather than by coincidence. By construction, printing a
+`Token` and re-lexing recovers it.
 
-`CBiparser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
+`IsoParser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
 discharged by `decide`. -/
-abbrev Token := _root_.LambdaLab.CBiparser.Token isSep
+abbrev Token := _root_.LambdaLab.IsoParser.Token isSep
 
 /-! ## The vernacular -/
 
