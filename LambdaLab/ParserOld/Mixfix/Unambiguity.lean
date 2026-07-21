@@ -1,5 +1,4 @@
 import LambdaLab.ParserOld.Mixfix.Verified
-import LambdaLab.ParserOld.Mixfix.Example
 import LambdaLab.ParserOld.Mixfix.Ambiguity
 
 /-!
@@ -19,10 +18,9 @@ adjacent holes, no adjacent name parts — are enforced by construction in
 `Operator`/`Notation.toParts`).
 
 `Grammar.UniqueNameParts` is the user-facing certificate: a per-grammar,
-finitely-checkable condition (`arith_uniqueNameParts` below is discharged by
-`cases`+`simp`). The counterexample grammar of `Ambiguity.lean` fails it
-exactly at the token reuse that made it ambiguous
-(`amb_not_uniqueNameParts`).
+finitely-checkable condition, discharged by `cases`+`simp`. The counterexample
+grammar of `Ambiguity.lean` fails it exactly at the token reuse that made it
+ambiguous (`amb_not_uniqueNameParts`).
 
 The implication `unambiguous_of_uniqueNameParts` is *stated* here with the
 supporting counting lemma proved (`count_flatten_expr`: under unique name
@@ -213,22 +211,6 @@ mutual
 end
 
 /-! ## Witnesses -/
-
-/-- `arith` has unique name parts: `n`, `(`, `)`, `+`, `*` each belong to one
-operator, once. -/
-theorem arith_uniqueNameParts : arith.UniqueNameParts where
-  nodup o := by
-    cases o <;> simp [symOp, Operator.nameTokens, Notation.toTokens]
-  owner o₁ o₂ t h₁ h₂ := by
-    cases o₁ <;> cases o₂ <;>
-      simp_all [symOp, Operator.nameTokens, Notation.toTokens] <;>
-      (rcases h₂ with rfl | rfl <;>
-        simp_all [symOp, Operator.nameTokens, Notation.toTokens])
-  varDisjoint t hvar o := by
-    intro hmem
-    have hnotin : t ∉ ["n", "(", ")", "+", "*", "-", "!", "^", "\\lambda", "."] :=
-      of_decide_eq_true hvar
-    exact hnotin (by cases o <;> simp_all [symOp, Operator.nameTokens, Notation.toTokens])
 
 /-- The ambiguous grammar of `Ambiguity.lean` fails the condition exactly at
 the reused `*`: it is a name part of both `wrap` and `mul`. -/

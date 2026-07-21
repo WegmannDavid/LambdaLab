@@ -1,11 +1,11 @@
 import LambdaLab.CBiparser.Mixfix.Biparser
-import LambdaLab.CBiparser.Mixfix.Example
 
 /-!
 # Regression: the parser must be independent of operator ORDER
 
-This file exists because the parser was once **wrong here**, and the bug was invisible in
-`arith` (which has a single loosest operator). It is kept as a regression test.
+This file exists because the parser was once **wrong here**, and the bug was invisible in any
+grammar with a single loosest operator. It is kept as a regression test, and carries its own
+self-contained grammar (`qG`/`qG'`).
 
 ## The bug (fixed by longest-match in `Parse.lean`)
 
@@ -45,6 +45,12 @@ namespace LambdaLab.CBiparser.Mixfix
 
 /-! ## A grammar with two incomparable infix operators at the loosest level -/
 
+/-- Space is the only separator. -/
+def qSep : Char → Bool := fun c => c == ' '
+
+/-- A separator-free token literal; the proof is discharged by `decide`. -/
+def tk (s : String) (h : isToken qSep s = true := by decide) : Token qSep := ⟨s, h⟩
+
 inductive Q | paren | app | plus | times
   deriving DecidableEq, Repr
 
@@ -59,16 +65,16 @@ theorem qWf : WellFounded (fun b a => b ∈ qTighter a) :=
     (fun {x y} (h : x ∈ qTighter y) => by cases x <;> cases y <;> simp_all [qTighter, qRank])
     (measure qRank).wf
 
-def qOp : Q → Operator arithSep Unit
+def qOp : Q → Operator qSep Unit
   | .paren => .closed (.cons (tk "(") () (.last (tk ")")))
   | .app   => .juxt
   | .plus  => .infxl (.last (tk "+"))
   | .times => .infxl (.last (tk "*"))
 
-def qPreserved : List (Token arithSep) := [tk "(", tk ")", tk "+", tk "*"]
+def qPreserved : List (Token qSep) := [tk "(", tk ")", tk "+", tk "*"]
 
 /-- `times` listed **before** `plus`. Both are `infxl`, both loosest, incomparable. -/
-def qEntry : Entry arithSep Unit where
+def qEntry : Entry qSep Unit where
   Op := Q
   operator := qOp
   ops := [.paren, .app, .plus, .times]
@@ -83,20 +89,22 @@ def qEntry : Entry arithSep Unit where
       simp_all [qOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens, tk]
   varDisjoint := by intro o; cases o <;> decide
 
-def qG : Grammar :=
-  { arith with
-    entry := fun _ => qEntry
-    interiorTerminates := by
-      intro _ o _ t h
-      cases o <;>
-        simp [qEntry, qOp, Operator.holeFollowers, Notation.holeFollowers,
-          Notation.firstTok] at h
-      obtain ⟨-, rfl⟩ := h
-      exact ⟨by decide, by intro o'; cases o' <;> decide⟩ }
+def qG : Grammar where
+  Ent := Unit
+  isSep := qSep
+  sepWitness := ⟨' ', by decide⟩
+  entry := fun _ => qEntry
+  interiorTerminates := by
+    intro _ o _ t h
+    cases o <;>
+      simp [qEntry, qOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h
+    obtain ⟨-, rfl⟩ := h
+    exact ⟨by decide, by intro o'; cases o' <;> decide⟩
 
 /-- The same grammar with the two operators listed the other way round. -/
 def qG' : Grammar :=
-  { arith with
+  { qG with
     entry := fun _ => { qEntry with loosest := [.plus, .times] }
     interiorTerminates := by
       intro _ o _ t h
