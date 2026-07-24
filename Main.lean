@@ -1,4 +1,5 @@
 import LambdaLab.Arith
+import LambdaLab.Language1.Pipeline
 
 /-!
 # Arithmetic vernacular demo
@@ -11,27 +12,18 @@ would read back to the same tree.
 * `lake exe playground`                — parse the bundled `examples/demo.arith`
 * `lake exe playground path/to/file`   — parse the given file
 
-Note: the *parser* here is the verified mixfix parser; the round-trip *proof* for this language is
-still conditional on the open unambiguity lemmas (see `LambdaLab/Arith.lean`). The
-executable exercises the running parser, not the proof.
+`parseFile`/`renderProgram` are the framework's `Language.pipeline` API — the whole front end is
+one `Abs` morphism `List Char ⇝ Program`. Note: the *parser* here is the verified mixfix parser;
+the round-trip *proof* for this language is still conditional on the open mixfix `ok` lemma (see
+`LambdaLab/Arith.lean`). The executable exercises the running parser, not the proof.
 -/
 
 open LambdaLab.Language1 LambdaLab.Arith
 
-/-- Recover a non-empty program from the flat command list `parseFile` returns. -/
-def toProgram : List (Command arithLanguage) → Option (Program arithLanguage)
-  | []      => none
-  | c :: cs => some (c, cs)
-
-/-- Parse `src`, then re-render it. `none` if the file is not a well-formed program.
-
-`parseFile` requires the *entire* character stream to be consumed, but the tokenizer leaves any
-trailing whitespace (a final newline, say) as leftover characters even though it tokenizes to
-nothing. Trimming is a preprocessing choice on the way in — it does not touch the verified core,
-and `renderProgram` never emits trailing separators, so the round-trip theorem is unaffected. -/
+/-- Parse `src`, then re-render it canonically. `none` if the file is not a well-formed program.
+The tokenizer stage absorbs all whitespace (including a trailing newline), so no trimming. -/
 def roundtrip (src : String) : Option String := do
-  let cmds ← arithLanguage.parseFile src.trim
-  let prog ← toProgram cmds
+  let prog ← arithLanguage.parseFile src
   some (arithLanguage.renderProgram prog)
 
 def run (label : String) (src : String) : IO Unit := do
