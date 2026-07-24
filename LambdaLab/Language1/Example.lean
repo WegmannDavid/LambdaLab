@@ -1,5 +1,6 @@
 import LambdaLab.Language1.Biparser
 import LambdaLab.Parser.IsoParser.Adapters
+import LambdaLab.Abstraction2.Tokenizer
 
 /-!
 # A plug-in language
@@ -59,5 +60,33 @@ spelling `ann`, not only the canonical one. -/
 example (p : Program trivialLanguage) (ann : Program.Ann trivialLanguage p) :
     trivialLanguage.parser.run (trivialLanguage.parser.print ann) = some (p, []) :=
   trivialLanguage.parser_roundtrip p ann
+
+/-! ## The full pipeline: `List Char ⇝ Program`
+
+Compose the tokenizer (`Abstraction2/Tokenizer.lean`) with the language's `Abs` morphism: one
+morphism from raw characters to parsed commands, whose annotation is everything the source wrote
+that the program forgot — the whitespace gaps and (per command) the surface spellings. Since
+`trivialLanguage` is sorry-free, the whole pipeline is too. -/
+
+/-- `List Char ⇝ Program trivialLanguage`, with the composite annotation inferred:
+`Σ` (the file's spellings) `,` (the whitespace gaps of its token rendering). -/
+def charPipeline :=
+  (LambdaLab.Abstraction2.tokenizer (sep := isSep) ' ' (by decide)).comp
+    trivialLanguage.abstraction
+
+/-- Parse a file, print the declared names. -/
+def parseNames (s : String) : Option (List String) :=
+  (charPipeline.abstract s.toList).map fun p => p.toList.map (fun c => c.name.val.val)
+
+/-- Parse a file, re-render it canonically (single spaces, canonical spellings). -/
+def reprint (s : String) : Option String :=
+  (charPipeline.abstract s.toList).map fun p =>
+    String.ofList (charPipeline.realize (charPipeline.default (a := p)))
+
+#eval parseNames "def x : A := e   def y : B := f"   -- some ["x", "y"]
+#eval reprint    "def x : A := e   def y : B := f"   -- some "def x : A := e def y : B := f"
+#eval reprint    "  def   x :   A := e  "            -- some "def x : A := e"   (normalized)
+#eval parseNames "def x : A e"                       -- none  (missing `:=`)
+#eval parseNames ""                                  -- none  (a program is non-empty)
 
 end LambdaLab.Language1
