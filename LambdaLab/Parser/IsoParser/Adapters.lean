@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Basic
 
 /-!
 # Plug-in boundary adapters: `weakenFollow` / `enlargeFirst`
@@ -12,7 +12,7 @@ its parser to a fixed interface (`IsoParser α anyTok followKey …`):
   FIRST promises less; widening all the way to `⊤` makes it vacuous.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 variable {α : Type} {fst fol : α → Prop} {w v : Type}
 
@@ -33,4 +33,4 @@ def IsoParser.enlargeFirst {fst' : α → Prop} (h : ∀ c, ¬ fst' c → ¬ fst
   firstOk c rest hc := p.firstOk c rest (h c hc)
   ok := p.ok
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

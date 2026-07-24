@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Basic
 
 /-!
 # `fix` — recursion **with the law**
@@ -19,7 +19,7 @@ pays only its one-layer step. The nested-parens validation at the bottom is the 
 example.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 variable {α : Type} {fst fol : α → Prop} {w v : Type}
 
@@ -156,4 +156,4 @@ def pParens : IsoParser Char (fun c => c = 'a' ∨ c = '(') (fun _ => True) Nat 
 example (n : Nat) : pParens.run (pParens.print n).2 = some ((pParens.print n).1, []) :=
   pParens.roundtrip n
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

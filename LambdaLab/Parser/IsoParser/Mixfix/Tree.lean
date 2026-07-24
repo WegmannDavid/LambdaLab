@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Mixfix.Basic
+import LambdaLab.Parser.IsoParser.Mixfix.Basic
 
 /-!
 # Mixfix parse trees — precedence-indexed `Expr`, and `flatten`
@@ -8,7 +8,7 @@ node). `flatten` is the printer: it walks the tree back to its token list. Both 
 over the abstract token alphabet `Tok`.
 -/
 
-namespace LambdaLab.IsoParser.Mixfix
+namespace LambdaLab.Parser.IsoParser.Mixfix
 
 variable {Tok : Type}
 
@@ -78,4 +78,4 @@ mutual
     | .hole ex ps      => ex.flatten ++ ps.flatten
 end
 
-end LambdaLab.IsoParser.Mixfix
+end LambdaLab.Parser.IsoParser.Mixfix

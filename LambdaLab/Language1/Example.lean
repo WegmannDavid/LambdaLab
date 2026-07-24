@@ -1,5 +1,5 @@
 import LambdaLab.Language1.Biparser
-import LambdaLab.IsoParser.Adapters
+import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
 # A plug-in language
@@ -11,7 +11,7 @@ round-trip proof all come back **for free**.
 
 namespace LambdaLab.Language1
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 /-- Terms and types are both a bare identifier.
 

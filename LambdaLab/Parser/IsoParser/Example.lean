@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Notation
+import LambdaLab.Parser.IsoParser.Notation
 
 /-!
 # `IsoParser` demo — the split-model idioms
@@ -15,9 +15,9 @@ The three shapes a grammar is built from, each with its round-trip law arriving 
 model, which has no annotation family: only canonical-form languages are genuine isos here.)
 -/
 
-namespace LambdaLab.IsoParser.Example
+namespace LambdaLab.Parser.IsoParser.Example
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 abbrev Digit := { c : Char // c.isDigit = true }
 
@@ -72,4 +72,4 @@ example (v : Digit ⊕ Digit) :
     digitOrEq.run (digitOrEq.print v).2 = some ((digitOrEq.print v).1, []) :=
   digitOrEq.roundtrip v
 
-end LambdaLab.IsoParser.Example
+end LambdaLab.Parser.IsoParser.Example

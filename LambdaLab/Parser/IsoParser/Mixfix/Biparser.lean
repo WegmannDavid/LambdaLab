@@ -1,5 +1,5 @@
-import LambdaLab.IsoParser.Mixfix.Sound
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Mixfix.Sound
+import LambdaLab.Parser.IsoParser.Basic
 
 /-!
 # The general mixfix `IsoParser`
@@ -17,9 +17,9 @@ source = value = the tree, `print` is `flatten`.
   split model; it remains available standalone in `Sound.lean`.
 -/
 
-namespace LambdaLab.IsoParser.Mixfix
+namespace LambdaLab.Parser.IsoParser.Mixfix
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 variable {Tok : Type} [DecidableEq Tok] {G : Grammar Tok}
 
@@ -63,4 +63,4 @@ def mixfix (e : G.Ent) (l : Level (G.entry e)) :
     -- The greedy left-associative reconstruction — CBiparser's open `parseExpr_exact` analogue.
     sorry
 
-end LambdaLab.IsoParser.Mixfix
+end LambdaLab.Parser.IsoParser.Mixfix

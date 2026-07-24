@@ -177,16 +177,16 @@ section Demo
 
 def sepSp (c : Char) : Bool := c == ' '
 
-private def lpT : IsoParser.Token sepSp := ⟨"(", by decide⟩
-private def rpT : IsoParser.Token sepSp := ⟨")", by decide⟩
+private def lpT : Parser.IsoParser.Token sepSp := ⟨"(", by decide⟩
+private def rpT : Parser.IsoParser.Token sepSp := ⟨")", by decide⟩
 
-private def isVarT (t : IsoParser.Token sepSp) : Bool := decide (t ≠ lpT) && decide (t ≠ rpT)
+private def isVarT (t : Parser.IsoParser.Token sepSp) : Bool := decide (t ≠ lpT) && decide (t ≠ rpT)
 
 private theorem lp_ne_rp : lpT ≠ rpT := by decide
 
 /-- `List Char ⇝ {var}`: tokenize, then strip redundant parens around a variable. -/
 def parenVarPipeline :
-    Abstraction (List Char) { t : IsoParser.Token sepSp // isVarT t = true }
+    Abstraction (List Char) { t : Parser.IsoParser.Token sepSp // isVarT t = true }
       (fun v => Σ x : Nat × Unit, Gaps sepSp (wrap lpT rpT x.1 [v.1])) :=
   (tokenizer ' ' rfl).comp ((atom isVarT).parens lpT rpT (atom_neverWrapped lp_ne_rp))
 

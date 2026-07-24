@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Combinators
+import LambdaLab.Parser.IsoParser.Combinators
 
 /-!
 # General mixfix grammar — self-contained (independent of `CBiparser`)
@@ -17,7 +17,7 @@ Precedence is a DAG: `tighter o` are the operators *immediately* tighter than `o
 source operators where parsing starts; incomparable operators must be parenthesized.
 -/
 
-namespace LambdaLab.IsoParser.Mixfix
+namespace LambdaLab.Parser.IsoParser.Mixfix
 
 /-! ## Operator notations -/
 
@@ -154,4 +154,4 @@ structure Grammar (Tok : Type) where
   Ent : Type
   entry : Ent → Entry Tok Ent
 
-end LambdaLab.IsoParser.Mixfix
+end LambdaLab.Parser.IsoParser.Mixfix

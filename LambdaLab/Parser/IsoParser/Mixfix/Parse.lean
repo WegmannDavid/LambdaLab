@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Mixfix.Tree
+import LambdaLab.Parser.IsoParser.Mixfix.Tree
 
 /-!
 # The general mixfix parser — a mutual well-founded recursion
@@ -13,7 +13,7 @@ Ported in shape from the `CBiparser` parser, but self-contained: abstract token 
 the precedence `rank`/`topRank` are grammar *fields* (so the measure is immediate).
 -/
 
-namespace LambdaLab.IsoParser.Mixfix
+namespace LambdaLab.Parser.IsoParser.Mixfix
 
 variable {Tok : Type}
 
@@ -353,4 +353,4 @@ mutual
       | exact Prod.Lex.left _ _ (by have := s.length_lt; omega)
 end
 
-end LambdaLab.IsoParser.Mixfix
+end LambdaLab.Parser.IsoParser.Mixfix

@@ -1,6 +1,6 @@
 import LambdaLab.Language1.Biparser
-import LambdaLab.IsoParser.Mixfix.Biparser
-import LambdaLab.IsoParser.Adapters
+import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
 # Arithmetic — the running example, end to end
@@ -34,7 +34,7 @@ re-printed directly and `#eval` confirms the round-trip.
 
 namespace Combinator
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 abbrev Digit := { c : Char // c.isDigit = true }
 
@@ -120,7 +120,7 @@ Grammar: `expr = term (+ term)*` (left-assoc), `term = digit | ( expr )`.
 
 namespace Recursive
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 abbrev Digit := { c : Char // c.isDigit = true }
 
@@ -547,7 +547,7 @@ Note the contrast with `Recursive` above: that section proves exactly this shape
 left-associative reconstruction by hand, for a fixed grammar.
 -/
 
-open LambdaLab.IsoParser LambdaLab.IsoParser.Mixfix LambdaLab.Language1
+open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language1
 
 /-- A token literal of the vernacular's alphabet. -/
 def tkA (s : String) (h : isToken isSep s = true := by decide) : Token := ⟨s, h⟩

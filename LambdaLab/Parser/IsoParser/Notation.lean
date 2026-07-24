@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Combinators
+import LambdaLab.Parser.IsoParser.Combinators
 
 /-!
 # `gdo` — do-notation for the indexed monad
@@ -13,7 +13,7 @@ decidable atoms (e.g. `¬('B'.isDigit = true)`). Bring anything unusual into sco
 before the block.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 /-- Discharge a `bind` seam: `∀ c, FIRST₂ c → FOLLOW₁ c`. -/
 macro "seam" : tactic => `(tactic| (
@@ -35,4 +35,4 @@ macro_rules
         acc ← `(bind $(ps[j]!) (fun $(xs[j]!) => $acc) (by seam))
       return acc
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

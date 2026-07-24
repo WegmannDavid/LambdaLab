@@ -1,5 +1,5 @@
 import LambdaLab.Language1.Vernacular
-import LambdaLab.IsoParser.Notation
+import LambdaLab.Parser.IsoParser.Notation
 
 /-!
 # The vernacular biparser, derived — now lossy
@@ -25,8 +25,8 @@ values are parsed, spellings are printed, and the annotation family records the 
 
 namespace LambdaLab.Language1
 
-open LambdaLab.IsoParser
-open LambdaLab.LossyParser (LossyParser)
+open LambdaLab.Parser.IsoParser
+open LambdaLab.Parser.LossyParser (LossyParser)
 open LambdaLab.Abstraction2 (Abstraction)
 
 /-- An identifier: one non-keyword lexeme. Aligned: source and value are `Name`, so a keyword

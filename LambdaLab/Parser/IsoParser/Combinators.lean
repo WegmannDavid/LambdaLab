@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Basic
 import LambdaLab.NEList
 
 /-!
@@ -20,7 +20,7 @@ Composite parse functions are **named** (`bindParse`, `orElseParse`, `many1Parse
 rewriting the input of an applied function has a clean motive, an inline `match` does not.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 variable {α : Type} {fst fol f₁ fo₁ f₂ fo₂ : α → Prop} {w w' v v' : Type}
 
@@ -361,4 +361,4 @@ def chainl (pSeed : IsoParser α f₁ fol w v) (pStep : IsoParser α f₂ fol w'
       rw [hm2]
       simp [hv2, NEList.toList]
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

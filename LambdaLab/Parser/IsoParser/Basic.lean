@@ -28,7 +28,7 @@ Free theorems from progress-in-the-type: `run_nil` (every parser fails on `[]`) 
 `print_ne_nil` (printed output is nonempty) — so alternation needs only FIRST-disjointness.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 variable {α : Type} {fst fol : α → Prop} {w v : Type}
 
@@ -132,4 +132,4 @@ theorem IsoParser.print_val_eq (p : IsoParser α fst fol w v)
   rw [h, p.roundtrip a'] at h1
   exact (congrArg Prod.fst (Option.some.inj h1)).symm
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

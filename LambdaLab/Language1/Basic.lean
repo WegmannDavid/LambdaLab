@@ -1,10 +1,10 @@
-import LambdaLab.LossyParser.Basic
-import LambdaLab.IsoParser.Token
+import LambdaLab.Parser.LossyParser.Basic
+import LambdaLab.Parser.IsoParser.Token
 
 namespace LambdaLab.Language1
 
-open LambdaLab.IsoParser
-open LambdaLab.LossyParser (LossyParser)
+open LambdaLab.Parser.IsoParser
+open LambdaLab.Parser.LossyParser (LossyParser)
 
 /-! ## Lexemes
 
@@ -29,7 +29,7 @@ parser must agree by construction rather than by coincidence. By construction, p
 
 `IsoParser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
 discharged by `decide`. -/
-abbrev Token := _root_.LambdaLab.IsoParser.Token isSep
+abbrev Token := _root_.LambdaLab.Parser.IsoParser.Token isSep
 
 /-! ## The vernacular -/
 

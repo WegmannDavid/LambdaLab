@@ -1,6 +1,6 @@
 import Mathlib.Tactic
 import LambdaLab.Abstraction2.Basic
-import LambdaLab.IsoParser.Tokenize
+import LambdaLab.Parser.IsoParser.Tokenize
 
 /-!
 # The tokenizer as a morphism of `Abs` (v3) — the first `Lossless` instance
@@ -31,7 +31,7 @@ such presentations — the choice here is proof-reuse, not doctrine.
 
 namespace LambdaLab.Abstraction2
 
-open LambdaLab.IsoParser
+open LambdaLab.Parser.IsoParser
 
 variable {sep : Char → Bool}
 

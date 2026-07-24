@@ -1,5 +1,5 @@
-import LambdaLab.IsoParser.Token
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Token
+import LambdaLab.Parser.IsoParser.Basic
 
 /-!
 # The tokenizer — forward direction
@@ -24,7 +24,7 @@ split back off (`takeWhile_append_word`), non-emptiness stops a token from vanis
 (`tokens_token`'s head case).
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 variable {sep : Char → Bool}
 
@@ -200,4 +200,4 @@ theorem tokens_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, sep c = true) :
       rw [List.cons_append, tokens_sep_cons (hg c List.mem_cons_self),
         ih (fun x hx => hg x (List.mem_cons_of_mem _ hx))]
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser

@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Mixfix.Parse
+import LambdaLab.Parser.IsoParser.Mixfix.Parse
 
 /-!
 # Parser soundness (exactness): a parse flattens back to the consumed input
@@ -11,7 +11,7 @@ well-founded parser. It needs no grammar side-conditions — exactness is uncond
 Ported in shape from the `CBiparser` proof, adapted to the abstract token alphabet.
 -/
 
-namespace LambdaLab.IsoParser.Mixfix
+namespace LambdaLab.Parser.IsoParser.Mixfix
 
 variable {Tok : Type} {G : Grammar Tok}
 
@@ -223,4 +223,4 @@ theorem parseExpr_sound (e : G.Ent) (l : Level (G.entry e)) (tkns : List Tok) :
                    simp_all [Expr.flatten, Parts.flatten, List.append_assoc])
                 | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)))
 
-end LambdaLab.IsoParser.Mixfix
+end LambdaLab.Parser.IsoParser.Mixfix

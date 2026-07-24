@@ -1,4 +1,4 @@
-import LambdaLab.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Basic
 import LambdaLab.Abstraction2.Basic
 
 /-!
@@ -44,13 +44,13 @@ FIRST/FOLLOW and progress-in-the-type are kept verbatim from `IsoParser`, so the
 mechanical; nothing downstream depends on the word.)
 -/
 
--- `p.toLossyParser` dot-notation forces declarations under `LambdaLab.IsoParser.IsoParser`,
+-- `p.toLossyParser` dot-notation forces declarations under `LambdaLab.Parser.IsoParser.IsoParser`,
 -- which this linter dislikes; the repetition is inherited from IsoParser's own naming.
 set_option linter.dupNamespace false
 
-namespace LambdaLab.LossyParser
+namespace LambdaLab.Parser.LossyParser
 
-open LambdaLab.IsoParser (HeadIn HeadIn_nil IsoParser)
+open LambdaLab.Parser.IsoParser (HeadIn HeadIn_nil IsoParser)
 open LambdaLab.Abstraction2 (Abstraction)
 
 variable {α : Type} {fst fol : α → Prop} {w v V : Type} {Ann : V → Type}
@@ -147,7 +147,7 @@ end LossyParser
 /-- Convert back from a `Σ`-source `IsoParser` (the shape `toIsoParser` and combinators over it
 produce): if the printed value is the index (`echo`), the family is a genuine annotation family.
 This keeps the *pretty* family — unlike the fiber of `toLossyParser`. -/
-def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserSigma {Ann : V → Type}
+def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserSigma {Ann : V → Type}
     (p : IsoParser α fst fol (Σ v : V, Ann v) V) (dflt : ∀ {v : V}, Ann v)
     (echo : ∀ s : Σ v : V, Ann v, (p.print s).1 = s.1) :
     LossyParser α fst fol V Ann where
@@ -161,7 +161,7 @@ def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserSigma {Ann : V → Type}
 
 /-- An aligned parser whose printer echoes its source, as a `LossyParser` with **trivial**
 annotation — the embedding of canonical-form-only (lossless) languages into the lossy interface. -/
-def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser α fst fol v v)
+def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser α fst fol v v)
     (echo : ∀ a : v, (p.print a).1 = a) :
     LossyParser α fst fol v (fun _ => Unit) where
   parse := p.parse
@@ -175,7 +175,7 @@ def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser α fst
 /-- An `IsoParser` as a `LossyParser`: the annotation family over `b` is the **fiber of `print`**
 — every source that prints to `b`. The split model stores no value→source section, so the
 canonical annotation is the one datum to supply: `canon` with `hcanon`. -/
-def _root_.LambdaLab.IsoParser.IsoParser.toLossyParser (p : IsoParser α fst fol w v)
+def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParser (p : IsoParser α fst fol w v)
     (canon : v → w) (hcanon : ∀ b : v, (p.print (canon b)).1 = b) :
     LossyParser α fst fol v (fun b => { a : w // (p.print a).1 = b }) where
   parse := p.parse
@@ -189,9 +189,9 @@ def _root_.LambdaLab.IsoParser.IsoParser.toLossyParser (p : IsoParser α fst fol
 
 /-- The aligned case (`w = v`, printer echoes its source — e.g. mixfix): the section is `id`,
 so the `LossyParser` is free. -/
-def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserAligned (p : IsoParser α fst fol v v)
+def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserAligned (p : IsoParser α fst fol v v)
     (echo : ∀ a : v, (p.print a).1 = a) :
     LossyParser α fst fol v (fun b => { a : v // (p.print a).1 = b }) :=
   p.toLossyParser id echo
 
-end LambdaLab.LossyParser
+end LambdaLab.Parser.LossyParser

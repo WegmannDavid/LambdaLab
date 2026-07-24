@@ -25,7 +25,7 @@ token literal as `⟨"def", by decide⟩` — and it is why `Language1` can simp
 `abbrev Token := IsoParser.Token isSep` instead of defining a parallel type of its own.
 -/
 
-namespace LambdaLab.IsoParser
+namespace LambdaLab.Parser.IsoParser
 
 /-- A predicate-restricted string. -/
 abbrev Restricted (P : String → Bool) : Type := { s : String // P s = true }
@@ -84,4 +84,4 @@ theorem Token.eq_of_toList {sep : Char → Bool} {t u : Token sep}
   apply String.ext
   exact h
 
-end LambdaLab.IsoParser
+end LambdaLab.Parser.IsoParser
