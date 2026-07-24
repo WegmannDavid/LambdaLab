@@ -1,9 +1,10 @@
-import LambdaLab.IsoParser.Basic
+import LambdaLab.LossyParser.Basic
 import LambdaLab.IsoParser.Token
 
 namespace LambdaLab.Language1
 
 open LambdaLab.IsoParser
+open LambdaLab.LossyParser (LossyParser)
 
 /-! ## Lexemes
 
@@ -91,10 +92,18 @@ structure Language where
   Tm : Type
   Ty : Type
 
-  /-- The type parser: must stop at `:=` rather than swallowing the assignment. **Aligned**
-  (source = value = `Ty`), so a parsed type re-prints directly. -/
-  pTy : IsoParser Token anyTok followAssign Ty Ty
-  /-- The term parser: must stop at a command boundary (`def`). -/
-  pTm : IsoParser Token anyTok followDef Tm Tm
+  /-- Surface spellings a type value may have beyond the canonical one — redundant parens,
+  sugar, elided (`_`) annotations. `fun _ => Unit` for a canonical-form-only language. -/
+  AnnTy : Ty → Type
+  /-- Surface spellings a term value may have. -/
+  AnnTm : Tm → Type
+
+  /-- The type parser: must stop at `:=` rather than swallowing the assignment. **Lossy**:
+  parses to the value, prints any annotated spelling; `pTy.default` is the canonical printer.
+  A lossless (`IsoParser`) parser plugs in via `toLossyParserUnit`. -/
+  pTy : LossyParser Token anyTok followAssign Ty AnnTy
+  /-- The term parser: must stop at a command boundary (`def`). Lossy — this is what lets a
+  language *truncate*: accept `((((a))))`, remember only `a`, and still round-trip. -/
+  pTm : LossyParser Token anyTok followDef Tm AnnTm
 
 end LambdaLab.Language1

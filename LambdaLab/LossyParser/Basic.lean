@@ -129,9 +129,48 @@ theorem Exact.lossless {p : LossyParser α fst fol V Ann} (hp : p.Exact) :
             ∃ ann : Ann v', p.toAbstraction.realize ann = cs)
       · exact absurd h'' (by simp)
 
+/-- A `LossyParser` as an `IsoParser` whose source is the **annotated values** `Σ v, Ann v`.
+`print₁` is the index — definitionally — which is what makes `echo` proofs of composites built
+from converted parsers reduce to `rfl`/eta. Round trip with `toLossyParserSigma` to run the
+existing `IsoParser` combinators (`gdo`, `many1`, …) over lossy components. -/
+def toIsoParser (p : LossyParser α fst fol V Ann) :
+    IsoParser α fst fol (Σ v : V, Ann v) V where
+  parse := p.parse
+  print s := (s.1, p.print s.2)
+  firstOk := p.firstOk
+  ok s rest h := p.ok s.1 s.2 rest h
+
 end LossyParser
 
 /-! ## `IsoParser → LossyParser` -/
+
+/-- Convert back from a `Σ`-source `IsoParser` (the shape `toIsoParser` and combinators over it
+produce): if the printed value is the index (`echo`), the family is a genuine annotation family.
+This keeps the *pretty* family — unlike the fiber of `toLossyParser`. -/
+def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserSigma {Ann : V → Type}
+    (p : IsoParser α fst fol (Σ v : V, Ann v) V) (dflt : ∀ {v : V}, Ann v)
+    (echo : ∀ s : Σ v : V, Ann v, (p.print s).1 = s.1) :
+    LossyParser α fst fol V Ann where
+  parse := p.parse
+  print {v} ann := (p.print ⟨v, ann⟩).2
+  default := dflt
+  firstOk := p.firstOk
+  ok v ann rest h := by
+    have hk := p.ok ⟨v, ann⟩ rest h
+    rwa [echo ⟨v, ann⟩] at hk
+
+/-- An aligned parser whose printer echoes its source, as a `LossyParser` with **trivial**
+annotation — the embedding of canonical-form-only (lossless) languages into the lossy interface. -/
+def _root_.LambdaLab.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser α fst fol v v)
+    (echo : ∀ a : v, (p.print a).1 = a) :
+    LossyParser α fst fol v (fun _ => Unit) where
+  parse := p.parse
+  print {b} _ := (p.print b).2
+  default := ()
+  firstOk := p.firstOk
+  ok b _ rest h := by
+    have hk := p.ok b rest h
+    rwa [echo b] at hk
 
 /-- An `IsoParser` as a `LossyParser`: the annotation family over `b` is the **fiber of `print`**
 — every source that prints to `b`. The split model stores no value→source section, so the

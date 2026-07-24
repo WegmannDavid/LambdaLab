@@ -22,10 +22,12 @@ key token (sound: the round-trip is antitone in FOLLOW). -/
 def trivialLanguage : Language where
   Tm := Name
   Ty := Name
-  pTy := ((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
-    (fun _ hf => absurd trivial hf)
-  pTm := ((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
-    (fun _ hf => absurd trivial hf)
+  AnnTy := fun _ => Unit
+  AnnTm := fun _ => Unit
+  pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
+    (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
+  pTm := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
+    (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
 
 /-- `def x : A := e` — one command. -/
 def prog : Program trivialLanguage :=
@@ -36,22 +38,26 @@ def prog2 : Program trivialLanguage :=
   (Command.decl ⟨⟨"x", by decide⟩, by decide⟩ ⟨⟨"A", by decide⟩, by decide⟩ ⟨⟨"e", by decide⟩, by decide⟩,
    [Command.decl ⟨⟨"y", by decide⟩, by decide⟩ ⟨⟨"B", by decide⟩, by decide⟩ ⟨⟨"f", by decide⟩, by decide⟩])
 
+/-- The canonical spelling of a program — `print` at the `default` annotation. -/
+def canonPrint (p : Program trivialLanguage) : List Token :=
+  trivialLanguage.parser.print (trivialLanguage.parser.default (v := p))
+
 -- printing:  ["def", "x", ":", "A", ":=", "e"]
-#eval (trivialLanguage.parser.print prog).2.map (·.val)
+#eval (canonPrint prog).map (·.val)
 -- and back — the leftover is `[]`, i.e. the whole file was consumed:
-#eval (trivialLanguage.parser.run (trivialLanguage.parser.print prog).2).map (·.2.map (·.val))
+#eval (trivialLanguage.parser.run (canonPrint prog)).map (·.2.map (·.val))
 -- the parsed names, recovered:
-#eval (trivialLanguage.parser.run (trivialLanguage.parser.print prog).2).map
+#eval (trivialLanguage.parser.run (canonPrint prog)).map
         (fun r => r.1.toList.map (fun c => c.name.val.val))
 
 -- two commands round-trip too — the `many1` seam ("no further `def`") holds at end-of-input
-#eval (trivialLanguage.parser.print prog2).2.map (·.val)
-#eval (trivialLanguage.parser.run (trivialLanguage.parser.print prog2).2).isSome
+#eval (canonPrint prog2).map (·.val)
+#eval (trivialLanguage.parser.run (canonPrint prog2)).isSome
 
-/-- The round-trip, instantiated: **free**, inherited from the framework. -/
-example (p : Program trivialLanguage) :
-    trivialLanguage.parser.run (trivialLanguage.parser.print p).2
-      = some ((trivialLanguage.parser.print p).1, []) :=
-  trivialLanguage.parser_roundtrip p
+/-- The round-trip, instantiated: **free**, inherited from the framework — now for *any*
+spelling `ann`, not only the canonical one. -/
+example (p : Program trivialLanguage) (ann : Program.Ann trivialLanguage p) :
+    trivialLanguage.parser.run (trivialLanguage.parser.print ann) = some (p, []) :=
+  trivialLanguage.parser_roundtrip p ann
 
 end LambdaLab.Language1

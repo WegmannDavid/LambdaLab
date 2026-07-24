@@ -610,18 +610,24 @@ def arithLanguage : Language where
   Tm := Expr aGrammar () .loosest
   Ty := NumSet
 
+  -- Both parsers are lossless (canonical-form only), so their annotations are trivial;
+  -- `toLossyParserUnit` embeds them into the lossy interface. A future truncating term
+  -- parser (redundant parens, sugar) would supply a real `AnnTm` instead.
+  AnnTy := fun _ => Unit
+  AnnTm := fun _ => Unit
+
   -- types: a single token drawn from {N, Z, R}. FOLLOW is ⊤, so `:=` may follow.
-  pTy := ((sat isNumSet).weakenFollow (fun _ _ => trivial)).enlargeFirst
-    (fun _ hf => absurd trivial hf)
+  pTy := (((sat isNumSet).weakenFollow (fun _ _ => trivial)).enlargeFirst
+    (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
 
   -- terms: the mixfix parser. Its FIRST is already `anyTok`; its FOLLOW is the grammar's,
   -- narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   pTm :=
-    (mixfix (G := aGrammar) () .loosest).weakenFollow
+    ((mixfix (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht
         subst h
-        exact follow_def)
+        exact follow_def)).toLossyParserUnit (fun _ => rfl)
 
 end LambdaLab.Arith
