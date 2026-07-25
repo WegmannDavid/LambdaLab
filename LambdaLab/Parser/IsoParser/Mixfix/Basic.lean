@@ -154,4 +154,65 @@ structure Grammar (Tok : Type) where
   Ent : Type
   entry : Ent → Entry Tok Ent
 
+/-! ## Decidability of the precedence relations
+
+Reachability through `tighter`, decided by a **fuel-based** search (fuel = the rank, which
+strictly decreases along `tighter`) — fuel rather than well-founded recursion so the kernel can
+evaluate it, i.e. so grammar-shaped side conditions are dischargeable `by decide`. -/
+
+/-- Fuel-bounded reachability: `a = b`, or a `tighter` step then recurse. -/
+def teqFuel {Op : Type} [DecidableEq Op] (t : Op → List Op) : Nat → Op → Op → Bool
+  | 0, a, b => a == b
+  | n + 1, a, b => a == b || (t a).any fun c => teqFuel t n c b
+
+theorem teqFuel_sound {Op : Type} [DecidableEq Op] {t : Op → List Op} :
+    ∀ {n : Nat} {a b : Op}, teqFuel t n a b = true → TighterEq t a b := by
+  intro n
+  induction n with
+  | zero =>
+      intro a b h
+      rw [teqFuel, beq_iff_eq] at h
+      exact h ▸ .refl
+  | succ n ih =>
+      intro a b h
+      rw [teqFuel, Bool.or_eq_true, beq_iff_eq, List.any_eq_true] at h
+      rcases h with rfl | ⟨c, hc, hrec⟩
+      · exact .refl
+      · exact .step hc (ih hrec)
+
+theorem teqFuel_complete {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] :
+    ∀ {a b : E.Op}, TighterEq E.tighter a b →
+      ∀ {n : Nat}, E.rank a ≤ n → teqFuel E.tighter n a b = true := by
+  intro a b h
+  induction h with
+  | refl =>
+      intro n _
+      cases n <;> simp [teqFuel]
+  | step hmem _ ih =>
+      intro n hn
+      cases n with
+      | zero => exact absurd (E.rank_tighter _ _ hmem) (by omega)
+      | succ n =>
+          rw [teqFuel, Bool.or_eq_true, List.any_eq_true]
+          exact Or.inr ⟨_, hmem, ih (by have := E.rank_tighter _ _ hmem; omega)⟩
+
+instance {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] (a b : E.Op) :
+    Decidable (TighterEq E.tighter a b) :=
+  decidable_of_iff (teqFuel E.tighter (E.rank a) a b = true)
+    ⟨teqFuel_sound, fun h => teqFuel_complete E h (Nat.le_refl _)⟩
+
+theorem tighter_iff {Op : Type} {t : Op → List Op} {a b : Op} :
+    Tighter t a b ↔ ∃ c ∈ t a, TighterEq t c b := by
+  constructor
+  · intro h
+    cases h with
+    | base hmem => exact ⟨b, hmem, .refl⟩
+    | step hmem hrest => exact ⟨_, hmem, hrest.toTighterEq⟩
+  · rintro ⟨c, hc, hrest⟩
+    exact Tighter.ofMemTighterEq hc hrest
+
+instance {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] (a b : E.Op) :
+    Decidable (Tighter E.tighter a b) :=
+  decidable_of_iff (∃ c ∈ E.tighter a, TighterEq E.tighter c b) tighter_iff.symm
+
 end LambdaLab.Parser.IsoParser.Mixfix

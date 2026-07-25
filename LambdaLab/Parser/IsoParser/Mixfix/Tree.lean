@@ -25,6 +25,15 @@ def Level.condition {Tok Ent : Type} {E : Entry Tok Ent} (l : Level E) : E.Op �
   | Level.tighterEq a => fun b => TighterEq E.tighter a b
   | Level.loosest     => fun b => ∃ a, a ∈ E.loosest ∧ TighterEq E.tighter a b
 
+/-- Level conditions are decidable (via the fuel-based reachability), so grammar-shaped side
+conditions discharge `by decide`. -/
+instance {Tok Ent : Type} {E : Entry Tok Ent} [DecidableEq E.Op] (l : Level E) (o : E.Op) :
+    Decidable (l.condition o) :=
+  match l with
+  | Level.tighter _   => inferInstanceAs (Decidable (Tighter _ _ _))
+  | Level.tighterEq _ => inferInstanceAs (Decidable (TighterEq _ _ _))
+  | Level.loosest     => inferInstanceAs (Decidable (∃ a, a ∈ E.loosest ∧ TighterEq _ a o))
+
 /-- A piece of an operator's body: a literal name token, or a **hole** referencing an entry `e` at a
 precedence level within it (recursive or cross-entry — the same construct). -/
 inductive Part (G : Grammar Tok) where

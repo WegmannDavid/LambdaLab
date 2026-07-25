@@ -1,6 +1,7 @@
 import LambdaLab.Language1.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.Truncation
+import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
@@ -638,14 +639,16 @@ def tyGrammar : Grammar Token where
   Ent := Unit
   entry := fun _ => tEntry
 
-/-! ### The truncated term AST
+/-! ### The truncated term AST — via the generic `Rules` bundle
 
 The mixfix parser is an iso parser: its `Expr` trees still contain the parentheses. The type the
-user actually wants has none — parens are *grouping*, not structure. `truncTm` is the recursive
-map that forgets them (`( e ) ↦ e`, everything else structural), `injTm` the canonical injection
-back (parens exactly around compound operands), and `truncate` chains the mixfix parser with this
-pair into a `LossyParser` whose annotation over `x` is — derived automatically — the **fiber**
-`{ t : Expr … // truncTm t = x }`: every tree spelling `x`. -/
+user actually wants has none. Everything below is *instructions*, not machinery: the `Rules`
+bundle (`Parser/Truncation/Mixfix.lean`) states how each operator maps into `ATm` and how an
+`ATm` canonically spells back; the fold, the paren-inserting injection, and the section theorem
+are all derived generically. Every law here is `rfl`, `decide`, or `simp`-shaped. -/
+
+section Truncation
+open LambdaLab.Parser.Truncation.Mixfix
 
 /-- Arithmetic terms, parens-free: what `Expr aGrammar` is *about*. -/
 inductive ATm where
@@ -654,95 +657,50 @@ inductive ATm where
   | mul : ATm → ATm → ATm
   | add : ATm → ATm → ATm
 
-/-- The truncation — the user-written recursive map, one clause per operator:
-`( e ) ↦ e`, `a b ↦ app`, `a * b ↦ mul`, `a + b ↦ add`, variables to variables. -/
-def truncTm : ∀ {l : Level aEntry}, Expr aGrammar () l → ATm
-  | _, .var t h => .var t h
-  | _, .op .paren _ (.namePart _ (.hole e (.namePart _ .nil))) => truncTm e
-  | _, .op .app   _ (.hole a (.hole b .nil))                  => .app (truncTm a) (truncTm b)
-  | _, .op .times _ (.hole a (.namePart _ (.hole b .nil)))    => .mul (truncTm a) (truncTm b)
-  | _, .op .plus  _ (.hole a (.namePart _ (.hole b .nil)))    => .add (truncTm a) (truncTm b)
-termination_by _ e => e.size
-decreasing_by all_goals (simp [Expr.size, Parts.size]; omega)
+/-- TC will not unfold `aGrammar.entry e` to `aEntry` (nor `.Op` to `ASym`) by itself, so hand
+it the instances in the exact projected forms the generic machinery asks for. -/
+instance : DecidableEq aEntry.Op := inferInstanceAs (DecidableEq ASym)
+instance : ∀ e : aGrammar.Ent, DecidableEq (aGrammar.entry e).Op :=
+  fun _ => inferInstanceAs (DecidableEq ASym)
 
-/-! Precedence witnesses for the injection: `paren` sits below every operator, and every operator
-is reachable from the loosest level. (`List.Mem.head _` rather than `by decide`: the membership
-determines `TighterEq.step`'s middle operator, so elaboration needs it as a term.) -/
+/-- A structural size (constructor counts one) — `omega`-friendly, unlike the opaque `sizeOf`. -/
+def ATm.size : ATm → Nat
+  | .var _ _ => 1
+  | .app a b => a.size + b.size + 1
+  | .mul a b => a.size + b.size + 1
+  | .add a b => a.size + b.size + 1
 
-private def teqParenApp   : TighterEq aTighter .app   .paren := .step (List.Mem.head _) .refl
-private def teqParenTimes : TighterEq aTighter .times .paren := .step (List.Mem.head _) teqParenApp
-private def teqParenPlus  : TighterEq aTighter .plus  .paren := .step (List.Mem.head _) teqParenTimes
-private def tParenApp     : Tighter aTighter .app   .paren := .base (List.Mem.head _)
-private def tParenTimes   : Tighter aTighter .times .paren := .step (List.Mem.head _) tParenApp
-private def tParenPlus    : Tighter aTighter .plus  .paren := .step (List.Mem.head _) tParenTimes
+/-- The truncation instructions: one clause per operator each way, plus the paren designation
+and the bookkeeping laws — all discharged by `rfl`/`decide`/`simp`. -/
+def aRules : Rules aGrammar (fun _ => ATm) where
+  var t h := .var t h
+  op o vs :=
+    match o, vs with
+    | .paren, (e, _)    => e
+    | .app,   (a, b, _) => .app a b
+    | .times, (a, b, _) => .mul a b
+    | .plus,  (a, b, _) => .add a b
+  dest x :=
+    match x with
+    | .var t h => .var t h
+    | .app a b => .node .app (a, b, PUnit.unit)
+    | .mul a b => .node .times (a, b, PUnit.unit)
+    | .add a b => .node .plus (a, b, PUnit.unit)
+  parenOp _ := .paren
+  lp _ := tkA "("
+  rp _ := tkA ")"
+  paren_eq _ := rfl
+  holesOk := by rintro ⟨⟩ o; cases o <;> decide
+  topOk := by rintro ⟨⟩ o; cases o <;> decide
+  alg_dest := by rintro _ (⟨t, h⟩ | ⟨a, b⟩ | ⟨a, b⟩ | ⟨a, b⟩) <;> rfl
+  op_paren _ := rfl
+  size := ATm.size
+  dest_size := by
+    rintro _ (⟨t, h⟩ | ⟨a, b⟩ | ⟨a, b⟩ | ⟨a, b⟩)
+    · trivial
+    all_goals exact ⟨by simp +arith [ATm.size], by simp +arith [ATm.size], trivial⟩
 
-private def condL (o : ASym) (h : TighterEq aTighter .plus o) :
-    Level.condition (E := aEntry) .loosest o := ⟨.plus, List.Mem.head _, h⟩
-
-mutual
-/-- The canonical injection: rebuild the tree, parenthesizing exactly the compound operands. -/
-def injTm : ATm → Expr aGrammar () .loosest
-  | .var t h => .var t h
-  | .app a b => .op .app (condL .app (.step (List.Mem.head _) (.step (List.Mem.head _) .refl)))
-      (.hole (atomize teqParenApp a) (.hole (atomize tParenApp b) .nil))
-  | .mul a b => .op .times (condL .times (.step (List.Mem.head _) .refl))
-      (.hole (atomize teqParenTimes a) (.namePart _ (.hole (atomize tParenTimes b) .nil)))
-  | .add a b => .op .plus (condL .plus .refl)
-      (.hole (atomize teqParenPlus a) (.namePart _ (.hole (atomize tParenPlus b) .nil)))
-termination_by x => (sizeOf x, 0)
-
-/-- An operand: variables sit at every level bare; anything compound gets parenthesized, which
-puts it at whatever level `hp` demands. (The cases are spelled out — a catch-all would generate
-conditional equations `simp` cannot use.) -/
-def atomize {l : Level aEntry} (hp : Level.condition l ASym.paren) : ATm → Expr aGrammar () l
-  | .var t h => .var t h
-  | .app a b => .op .paren hp (.namePart _ (.hole (injTm (.app a b)) (.namePart _ .nil)))
-  | .mul a b => .op .paren hp (.namePart _ (.hole (injTm (.mul a b)) (.namePart _ .nil)))
-  | .add a b => .op .paren hp (.namePart _ (.hole (injTm (.add a b)) (.namePart _ .nil)))
-termination_by x => (sizeOf x, 1)
-end
-
-mutual
-/-- The injection sections the truncation: the round-trip witness `truncate` needs. -/
-theorem truncTm_injTm : ∀ x : ATm, truncTm (injTm x) = x
-  | .var t h => by simp only [injTm, truncTm]
-  | .app a b => by
-      rw [injTm, truncTm.eq_def]
-      show ATm.app (truncTm (atomize (l := .tighterEq .app) teqParenApp a)) (truncTm (atomize (l := .tighter .app) tParenApp b))
-        = ATm.app a b
-      rw [truncTm_atomize a (l := .tighterEq .app) teqParenApp,
-        truncTm_atomize b (l := .tighter .app) tParenApp]
-  | .mul a b => by
-      rw [injTm, truncTm.eq_def]
-      show ATm.mul (truncTm (atomize (l := .tighterEq .times) teqParenTimes a)) (truncTm (atomize (l := .tighter .times) tParenTimes b))
-        = ATm.mul a b
-      rw [truncTm_atomize a (l := .tighterEq .times) teqParenTimes,
-        truncTm_atomize b (l := .tighter .times) tParenTimes]
-  | .add a b => by
-      rw [injTm, truncTm.eq_def]
-      show ATm.add (truncTm (atomize (l := .tighterEq .plus) teqParenPlus a)) (truncTm (atomize (l := .tighter .plus) tParenPlus b))
-        = ATm.add a b
-      rw [truncTm_atomize a (l := .tighterEq .plus) teqParenPlus,
-        truncTm_atomize b (l := .tighter .plus) tParenPlus]
-termination_by x => (sizeOf x, 0)
-
-theorem truncTm_atomize : ∀ (x : ATm) {l : Level aEntry} (hp : Level.condition l ASym.paren),
-    truncTm (atomize hp x) = x
-  | .var t h, _, _ => by simp only [atomize, truncTm]
-  | .app a b, _, hp => by
-      rw [atomize, truncTm.eq_def]
-      show truncTm (injTm (ATm.app a b)) = ATm.app a b
-      exact truncTm_injTm (ATm.app a b)
-  | .mul a b, _, hp => by
-      rw [atomize, truncTm.eq_def]
-      show truncTm (injTm (ATm.mul a b)) = ATm.mul a b
-      exact truncTm_injTm (ATm.mul a b)
-  | .add a b, _, hp => by
-      rw [atomize, truncTm.eq_def]
-      show truncTm (injTm (ATm.add a b)) = ATm.add a b
-      exact truncTm_injTm (ATm.add a b)
-termination_by x => (sizeOf x, 1)
-end
+end Truncation
 
 /-! ### The language -/
 
@@ -761,7 +719,8 @@ def arithLanguage : Language where
   -- the fiber of `truncTm` — every tree spelling `x` — so `((((a))))` parses to `a` and any
   -- spelling round-trips.
   AnnTy := fun _ => Unit
-  AnnTm := fun x => { t : Expr aGrammar () .loosest // truncTm t = x }
+  AnnTm := fun x => { t : Expr aGrammar () .loosest //
+    LambdaLab.Parser.Truncation.Mixfix.truncExpr aRules t = x }
 
   -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
   -- because `:=` is in it (`follow_assign`).
@@ -781,6 +740,6 @@ def arithLanguage : Language where
         intro t ht
         have h : t = kwDef := ht
         subst h
-        exact follow_def)).truncate (fun _ => rfl) truncTm injTm truncTm_injTm
+        exact follow_def) |> aRules.truncateParser) (fun _ => rfl)
 
 end LambdaLab.Arith
