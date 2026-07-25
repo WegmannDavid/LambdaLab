@@ -528,9 +528,10 @@ end Recursive
 
 /-! ## The language: a real plug-in vernacular on the `IsoParser` mixfix
 
-Types are the three number sets `N`, `Z`, `R`. Terms are the **mixfix** arithmetic grammar —
-parentheses, application by juxtaposition, `*` binding tighter than `+` — built on the
-self-contained `IsoParser.Mixfix` stack (abstract token alphabet, explicit `rank`), with no
+Both sides come from the mixfix engine, as trees. Terms are the arithmetic grammar —
+parentheses, application by juxtaposition, `*` binding tighter than `+`. Types are their own
+little grammar — atoms `N`, `Z`, `R`, a right-associative arrow `_ -> _`, parentheses. Built on
+the self-contained `IsoParser.Mixfix` stack (abstract token alphabet, explicit `rank`), with no
 `CBiparser` dependency.
 
 A language author supplies exactly a `Grammar` (operators, precedence with explicit `rank`) plus the
@@ -593,22 +594,60 @@ def aGrammar : Grammar Token where
   Ent := Unit
   entry := fun _ => aEntry
 
-/-! ### Types: the three number sets -/
+/-! ### Types: their own mixfix grammar
 
-/-- `N`, `Z`, `R`. -/
+Types are trees too: atoms `N`, `Z`, `R`, a right-associative function arrow `_ -> _`, and
+parentheses. Same recipe as the term grammar, so `Ty` is an `Expr` and `pTy` is `mixfix` — both
+sides of the language now come from the one engine. -/
+
+/-- The type atoms: `N`, `Z`, `R` — the only tokens the type grammar treats as variables, so
+keywords and operators are excluded for free. -/
 def isNumSet (t : Token) : Bool :=
   t.val == "N" || t.val == "Z" || t.val == "R"
 
-abbrev NumSet := { t : Token // isNumSet t = true }
+/-- Type operators: parentheses and the function arrow. -/
+inductive TSym | paren | arrow
+  deriving DecidableEq, Repr
+
+def tTighter : TSym → List TSym
+  | .arrow => [.paren]
+  | .paren => []
+
+def tRank : TSym → Nat
+  | .paren => 0 | .arrow => 1
+
+def tOp : TSym → Operator Token Unit
+  | .paren => .closed (.cons (tkA "(") () (.last (tkA ")")))
+  | .arrow => .infxr (.last (tkA "->"))
+
+def tEntry : Entry Token Unit where
+  Op := TSym
+  operator := tOp
+  ops := [.paren, .arrow]
+  ops_complete := by intro o; cases o <;> decide
+  loosest := [.arrow]
+  tighter := tTighter
+  rank := tRank
+  topRank := 2
+  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [tTighter, tRank]
+  rank_lt_topRank := by intro o; cases o <;> decide
+  isVar := isNumSet
+
+def tyGrammar : Grammar Token where
+  Ent := Unit
+  entry := fun _ => tEntry
 
 /-! ### The language -/
 
 /-- The term parser stops at a command boundary. **Derived**, not declared. -/
 theorem follow_def : follow (G := aGrammar) () (tkA "def") = true := by decide
 
+/-- The type parser stops at the assignment. **Derived**, not declared. -/
+theorem follow_assign : follow (G := tyGrammar) () (tkA ":=") = true := by decide
+
 def arithLanguage : Language where
   Tm := Expr aGrammar () .loosest
-  Ty := NumSet
+  Ty := Expr tyGrammar () .loosest
 
   -- Both parsers are lossless (canonical-form only), so their annotations are trivial;
   -- `toLossyParserUnit` embeds them into the lossy interface. A future truncating term
@@ -616,9 +655,15 @@ def arithLanguage : Language where
   AnnTy := fun _ => Unit
   AnnTm := fun _ => Unit
 
-  -- types: a single token drawn from {N, Z, R}. FOLLOW is ⊤, so `:=` may follow.
-  pTy := (((sat isNumSet).weakenFollow (fun _ _ => trivial)).enlargeFirst
-    (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
+  -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
+  -- because `:=` is in it (`follow_assign`).
+  pTy :=
+    ((mixfix (G := tyGrammar) () .loosest).weakenFollow
+      (by
+        intro t ht
+        have h : t = kwAssign := ht
+        subst h
+        exact follow_assign)).toLossyParserUnit (fun _ => rfl)
 
   -- terms: the mixfix parser. Its FIRST is already `anyTok`; its FOLLOW is the grammar's,
   -- narrowed to `def` — sound exactly because `def` is in it (`follow_def`).

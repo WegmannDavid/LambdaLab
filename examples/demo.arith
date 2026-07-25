@@ -2,3 +2,4 @@ def double : N := a + a
 def poly : Z := a + b * c
 def apply : R := f ( x + y ) z
 def chain : N := a + b + c * d
+def curried : N -> Z -> R := f x y
