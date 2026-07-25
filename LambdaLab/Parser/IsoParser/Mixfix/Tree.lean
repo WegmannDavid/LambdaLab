@@ -78,4 +78,18 @@ mutual
     | .hole ex ps      => ex.flatten ++ ps.flatten
 end
 
+mutual
+  /-- A structural size, every constructor counting one — the termination measure for recursions
+  over `Expr` (e.g. truncations): the auto-generated `sizeOf` of this mutual indexed family has
+  no usable spec lemmas, and the padding makes subterm goals pure arithmetic. -/
+  def Expr.size {G : Grammar Tok} {e : G.Ent} {l : Level (G.entry e)} : Expr G e l → Nat
+    | .op _ _ ps => 1 + ps.size
+    | .var _ _   => 1
+
+  def Parts.size {G : Grammar Tok} {shape : List (Part G)} : Parts G shape → Nat
+    | .nil             => 0
+    | .namePart _ ps   => 1 + ps.size
+    | .hole ex ps      => 1 + ex.size + ps.size
+end
+
 end LambdaLab.Parser.IsoParser.Mixfix

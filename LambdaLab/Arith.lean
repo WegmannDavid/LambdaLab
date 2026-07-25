@@ -637,6 +637,112 @@ def tyGrammar : Grammar Token where
   Ent := Unit
   entry := fun _ => tEntry
 
+/-! ### The truncated term AST
+
+The mixfix parser is an iso parser: its `Expr` trees still contain the parentheses. The type the
+user actually wants has none — parens are *grouping*, not structure. `truncTm` is the recursive
+map that forgets them (`( e ) ↦ e`, everything else structural), `injTm` the canonical injection
+back (parens exactly around compound operands), and `truncate` chains the mixfix parser with this
+pair into a `LossyParser` whose annotation over `x` is — derived automatically — the **fiber**
+`{ t : Expr … // truncTm t = x }`: every tree spelling `x`. -/
+
+/-- Arithmetic terms, parens-free: what `Expr aGrammar` is *about*. -/
+inductive ATm where
+  | var : (t : Token) → aEntry.isVar t = true → ATm
+  | app : ATm → ATm → ATm
+  | mul : ATm → ATm → ATm
+  | add : ATm → ATm → ATm
+
+/-- The truncation — the user-written recursive map, one clause per operator:
+`( e ) ↦ e`, `a b ↦ app`, `a * b ↦ mul`, `a + b ↦ add`, variables to variables. -/
+def truncTm : ∀ {l : Level aEntry}, Expr aGrammar () l → ATm
+  | _, .var t h => .var t h
+  | _, .op .paren _ (.namePart _ (.hole e (.namePart _ .nil))) => truncTm e
+  | _, .op .app   _ (.hole a (.hole b .nil))                  => .app (truncTm a) (truncTm b)
+  | _, .op .times _ (.hole a (.namePart _ (.hole b .nil)))    => .mul (truncTm a) (truncTm b)
+  | _, .op .plus  _ (.hole a (.namePart _ (.hole b .nil)))    => .add (truncTm a) (truncTm b)
+termination_by _ e => e.size
+decreasing_by all_goals (simp [Expr.size, Parts.size]; omega)
+
+/-! Precedence witnesses for the injection: `paren` sits below every operator, and every operator
+is reachable from the loosest level. (`List.Mem.head _` rather than `by decide`: the membership
+determines `TighterEq.step`'s middle operator, so elaboration needs it as a term.) -/
+
+private def teqParenApp   : TighterEq aTighter .app   .paren := .step (List.Mem.head _) .refl
+private def teqParenTimes : TighterEq aTighter .times .paren := .step (List.Mem.head _) teqParenApp
+private def teqParenPlus  : TighterEq aTighter .plus  .paren := .step (List.Mem.head _) teqParenTimes
+private def tParenApp     : Tighter aTighter .app   .paren := .base (List.Mem.head _)
+private def tParenTimes   : Tighter aTighter .times .paren := .step (List.Mem.head _) tParenApp
+private def tParenPlus    : Tighter aTighter .plus  .paren := .step (List.Mem.head _) tParenTimes
+
+private def condL (o : ASym) (h : TighterEq aTighter .plus o) :
+    Level.condition (E := aEntry) .loosest o := ⟨.plus, List.Mem.head _, h⟩
+
+mutual
+/-- The canonical injection: rebuild the tree, parenthesizing exactly the compound operands. -/
+def injTm : ATm → Expr aGrammar () .loosest
+  | .var t h => .var t h
+  | .app a b => .op .app (condL .app (.step (List.Mem.head _) (.step (List.Mem.head _) .refl)))
+      (.hole (atomize teqParenApp a) (.hole (atomize tParenApp b) .nil))
+  | .mul a b => .op .times (condL .times (.step (List.Mem.head _) .refl))
+      (.hole (atomize teqParenTimes a) (.namePart _ (.hole (atomize tParenTimes b) .nil)))
+  | .add a b => .op .plus (condL .plus .refl)
+      (.hole (atomize teqParenPlus a) (.namePart _ (.hole (atomize tParenPlus b) .nil)))
+termination_by x => (sizeOf x, 0)
+
+/-- An operand: variables sit at every level bare; anything compound gets parenthesized, which
+puts it at whatever level `hp` demands. (The cases are spelled out — a catch-all would generate
+conditional equations `simp` cannot use.) -/
+def atomize {l : Level aEntry} (hp : Level.condition l ASym.paren) : ATm → Expr aGrammar () l
+  | .var t h => .var t h
+  | .app a b => .op .paren hp (.namePart _ (.hole (injTm (.app a b)) (.namePart _ .nil)))
+  | .mul a b => .op .paren hp (.namePart _ (.hole (injTm (.mul a b)) (.namePart _ .nil)))
+  | .add a b => .op .paren hp (.namePart _ (.hole (injTm (.add a b)) (.namePart _ .nil)))
+termination_by x => (sizeOf x, 1)
+end
+
+mutual
+/-- The injection sections the truncation: the round-trip witness `truncate` needs. -/
+theorem truncTm_injTm : ∀ x : ATm, truncTm (injTm x) = x
+  | .var t h => by simp only [injTm, truncTm]
+  | .app a b => by
+      rw [injTm, truncTm.eq_def]
+      show ATm.app (truncTm (atomize (l := .tighterEq .app) teqParenApp a)) (truncTm (atomize (l := .tighter .app) tParenApp b))
+        = ATm.app a b
+      rw [truncTm_atomize a (l := .tighterEq .app) teqParenApp,
+        truncTm_atomize b (l := .tighter .app) tParenApp]
+  | .mul a b => by
+      rw [injTm, truncTm.eq_def]
+      show ATm.mul (truncTm (atomize (l := .tighterEq .times) teqParenTimes a)) (truncTm (atomize (l := .tighter .times) tParenTimes b))
+        = ATm.mul a b
+      rw [truncTm_atomize a (l := .tighterEq .times) teqParenTimes,
+        truncTm_atomize b (l := .tighter .times) tParenTimes]
+  | .add a b => by
+      rw [injTm, truncTm.eq_def]
+      show ATm.add (truncTm (atomize (l := .tighterEq .plus) teqParenPlus a)) (truncTm (atomize (l := .tighter .plus) tParenPlus b))
+        = ATm.add a b
+      rw [truncTm_atomize a (l := .tighterEq .plus) teqParenPlus,
+        truncTm_atomize b (l := .tighter .plus) tParenPlus]
+termination_by x => (sizeOf x, 0)
+
+theorem truncTm_atomize : ∀ (x : ATm) {l : Level aEntry} (hp : Level.condition l ASym.paren),
+    truncTm (atomize hp x) = x
+  | .var t h, _, _ => by simp only [atomize, truncTm]
+  | .app a b, _, hp => by
+      rw [atomize, truncTm.eq_def]
+      show truncTm (injTm (ATm.app a b)) = ATm.app a b
+      exact truncTm_injTm (ATm.app a b)
+  | .mul a b, _, hp => by
+      rw [atomize, truncTm.eq_def]
+      show truncTm (injTm (ATm.mul a b)) = ATm.mul a b
+      exact truncTm_injTm (ATm.mul a b)
+  | .add a b, _, hp => by
+      rw [atomize, truncTm.eq_def]
+      show truncTm (injTm (ATm.add a b)) = ATm.add a b
+      exact truncTm_injTm (ATm.add a b)
+termination_by x => (sizeOf x, 1)
+end
+
 /-! ### The language -/
 
 /-- The term parser stops at a command boundary. **Derived**, not declared. -/
@@ -646,14 +752,15 @@ theorem follow_def : follow (G := aGrammar) () (tkA "def") = true := by decide
 theorem follow_assign : follow (G := tyGrammar) () (tkA ":=") = true := by decide
 
 def arithLanguage : Language where
-  Tm := Expr aGrammar () .loosest
+  Tm := ATm
   Ty := Expr tyGrammar () .loosest
 
-  -- Both parsers are lossless (canonical-form only), so their annotations are trivial;
-  -- `toLossyParserUnit` embeds them into the lossy interface. A future truncating term
-  -- parser (redundant parens, sugar) would supply a real `AnnTm` instead.
+  -- Types stay lossless (canonical-form only): trivial annotation via `toLossyParserUnit`.
+  -- Terms are TRUNCATED: the value is the parens-free `ATm`, and the annotation over `x` is
+  -- the fiber of `truncTm` — every tree spelling `x` — so `((((a))))` parses to `a` and any
+  -- spelling round-trips.
   AnnTy := fun _ => Unit
-  AnnTm := fun _ => Unit
+  AnnTm := fun x => { t : Expr aGrammar () .loosest // truncTm t = x }
 
   -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
   -- because `:=` is in it (`follow_assign`).
@@ -665,14 +772,14 @@ def arithLanguage : Language where
         subst h
         exact follow_assign)).toLossyParserUnit (fun _ => rfl)
 
-  -- terms: the mixfix parser. Its FIRST is already `anyTok`; its FOLLOW is the grammar's,
-  -- narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
+  -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
+  -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   pTm :=
     ((mixfix (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht
         subst h
-        exact follow_def)).toLossyParserUnit (fun _ => rfl)
+        exact follow_def)).truncate (fun _ => rfl) truncTm injTm truncTm_injTm
 
 end LambdaLab.Arith

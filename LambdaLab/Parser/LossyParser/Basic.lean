@@ -50,7 +50,7 @@ set_option linter.dupNamespace false
 
 namespace LambdaLab.Parser.LossyParser
 
-open LambdaLab.Parser.IsoParser (HeadIn HeadIn_nil IsoParser)
+open LambdaLab.Parser.IsoParser (HeadIn HeadIn_nil IsoParser run_eq_some)
 open LambdaLab.Abstraction2 (Abstraction)
 
 variable {α : Type} {fst fol : α → Prop} {w v V : Type} {Ann : V → Type}
@@ -158,6 +158,31 @@ def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserSigma {Ann : V → 
   ok v ann rest h := by
     have hk := p.ok ⟨v, ann⟩ rest h
     rwa [echo ⟨v, ann⟩] at hk
+
+/-- **Truncation**: chain an aligned, echoing `IsoParser` with a projection `f` into the type the
+user actually wants (dropping parens, sugar, …), plus an injection `g` sectioning it (`sect` —
+e.g. re-inserting parens around compound operands). The result is a `LossyParser` whose
+annotation over `x` is **the fiber of `f`** — every tree spelling `x` — derived automatically,
+so the lossy round-trip covers every spelling and `default = g` is the canonical one.
+
+`toLossyParserUnit` below is the degenerate case `f = g = id`. -/
+def _root_.LambdaLab.Parser.IsoParser.IsoParser.truncate {c' : Type}
+    (p : IsoParser α fst fol v v) (echo : ∀ a : v, (p.print a).1 = a)
+    (f : v → c') (g : c' → v) (sect : ∀ x, f (g x) = x) :
+    LossyParser α fst fol c' (fun x => { t : v // f t = x }) where
+  parse input := (p.parse input).map (fun z => (f z.1, z.2))
+  print ann := (p.print ann.1).2
+  default {x} := ⟨g x, sect x⟩
+  firstOk c rest hc := by
+    show ((p.parse (c :: rest)).map _) = none
+    rw [p.firstOk c rest hc]
+    rfl
+  ok x ann rest h := by
+    obtain ⟨r, hp, hv⟩ := run_eq_some (p.ok ann.1 rest h)
+    show (((p.parse ((p.print ann.1).2 ++ rest)).map _).map _) = some (x, rest)
+    rw [hp]
+    simp only [Option.map_some]
+    rw [hv, echo ann.1, ann.2]
 
 /-- An aligned parser whose printer echoes its source, as a `LossyParser` with **trivial**
 annotation — the embedding of canonical-form-only (lossless) languages into the lossy interface. -/
