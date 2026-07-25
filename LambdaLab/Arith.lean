@@ -1,5 +1,6 @@
 import LambdaLab.Language1.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
