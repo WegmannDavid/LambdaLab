@@ -1,158 +1,230 @@
 import LambdaLab.Stlc.Named.Basic
-import LambdaLab.Language1.Basic
+import LambdaLab.Language1.Biparser
+import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.IsoParser.Adapters
+import LambdaLab.Parser.Truncation.Mixfix
 
 /-!
-# Quick-and-dirty STLC instance of `Language1.Language`
+# STLC as a `Language1.Language` — derived from the mixfix engine
 
-The mixfix-based surface parser (`Stlc/Named/Syntax/`) is currently un-ported to
-the multi-entry `Grammar` and does not build, so this file **hand-rolls** the two
-payload parsers by recursive descent instead of going through the grammar:
+The lambda-calculus instance, built exactly like `Arith.lean`: grammars in, everything else
+derived. The one genuinely new feature exercised here is a **multi-entry grammar**: the binder
+`x` in `\lambda x . e` must parse as a single variable, not a term, so it is a cross-entry hole
+into a second entry whose only operator is a paren (so `\lambda ( x ) . e` is legal surface
+syntax — the harmless price of the generic `Rules` bundle wanting a paren per entry).
 
-* `pTm` — terms: variables, application by juxtaposition (left-assoc), parenthesized
-  groups, and `\lambda x . body`. Every binder gets the annotation `Ty.mvar 0`
-  (fresh-var handling deferred — all zero for now).
-* `pTy` — types: `*` (base), `->` (right-assoc arrow), parenthesized groups.
+* terms — `paren`/`app` (juxtaposition)/`lam`, truncated by a `Rules` bundle into the
+  parens-free surface AST `STm`. Inherited `prefx` limitation: a lambda body cannot be a *bare*
+  lambda — write `\lambda x . ( \lambda y . e )`.
+* types — `*`, right-associative `->`, parens; kept as trees (`Unit` annotation), as in Arith.
 
-Both are `partial` (no termination proof), `parse`-only, `render` naive, and the
-round-trip `complete` is `sorry`. This is scaffolding to exercise the vernacular
-`Language.parser`, not a verified front end.
+`STm` deliberately carries **no type annotations** (`Rules.alg_dest` — destruct-then-rebuild is
+the identity — would force every annotation to a fixed value anyway). The bridge to the typed
+`Stlc.Named.Term` is `STm.toTerm`, which annotates every binder with `Ty.mvar 0` for now; making
+those mvars distinct (the old `Syntax/Truncate.lean` counter) is the elaborator boundary's job,
+deferred.
 -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.ParserOld
-open LambdaLab.Language1
+open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language1
+open LambdaLab.Parser.Truncation.Mixfix
 
-/-- Tokens that may not be read as a term variable / binder name: the term
-delimiters and the vernacular keywords (so a body stops at the next `def`). -/
-def tmReserved : List Token := ["(", ")", "\\lambda", ".", "def", ":", ":="]
+/-- A token literal of the vernacular's alphabet. -/
+def tkS (s : String) (h : isToken isSep s = true := by decide) : Language1.Token := ⟨s, h⟩
 
-/-! ## Shared consumption helpers (return a `RightSublist` of the *given* list) -/
+/-- Tokens no variable may be: grammar name-parts and vernacular keywords. -/
+def sReserved : List Language1.Token :=
+  [tkS "(", tkS ")", tkS "\\lambda", tkS ".", tkS "def", tkS ":", tkS ":="]
 
-/-- Consume the exact token `t` at the head. -/
-private def eat (t : Token) : (l : List Token) → Option (RightSublist l)
-  | []        => none
-  | x :: rest => if x = t then some (RightSublist.cons x rest) else none
+def isVarTok (t : Language1.Token) : Bool := decide (t ∉ sReserved)
 
-/-- Consume any single non-reserved token (a variable / name). -/
-private def eatVar (reserved : List Token) : (l : List Token) → Option (Token × RightSublist l)
-  | []        => none
-  | x :: rest => if x ∈ reserved then none else some (x, RightSublist.cons x rest)
+/-! ## The term grammar: two entries -/
 
-/-! ## Term parser -/
+/-- The two syntactic categories: terms, and the binder sub-language. -/
+inductive SEnt | tm | var
+  deriving DecidableEq, Repr
 
-mutual
-  /-- An atom: a parenthesized term or a single variable. -/
-  private partial def parseAtom : (l : List Token) → Option (Term × RightSublist l)
-    | "(" :: rest =>
-        let s0 := RightSublist.cons "(" rest
-        match parseTerm s0.list with
-        | none         => none
-        | some (t, st) =>
-            let s1 := s0.trans st
-            match eat ")" s1.list with
-            | none    => none
-            | some sc => some (t, s1.trans sc)
-    | l =>
-        match eatVar tmReserved l with
-        | none          => none
-        | some (x, sx)  => some (Term.var x, sx)
+/-- Term operators. -/
+inductive SSym | paren | app | lam
+  deriving DecidableEq, Repr
 
-  /-- An application: one atom, then greedily fold further atoms (left-assoc). -/
-  private partial def parseApp (l : List Token) : Option (Term × RightSublist l) :=
-    match parseAtom l with
-    | none         => none
-    | some (f, sf) => parseAppLoop f sf
+/-- Binder-entry operators: only grouping. -/
+inductive BSym | paren
+  deriving DecidableEq, Repr
 
-  /-- Fold zero or more argument atoms onto `acc`. Always succeeds (`some`); the
-  `Option` is only there to make the dependent return type inhabited for `partial`. -/
-  private partial def parseAppLoop (acc : Term) {l : List Token} (s : RightSublist l) :
-      Option (Term × RightSublist l) :=
-    match parseAtom s.list with
-    | none          => some (acc, s)
-    | some (x, sx)  => parseAppLoop (Term.app acc x) (s.trans sx)
+def tmEntry : Entry Language1.Token SEnt where
+  Op := SSym
+  operator
+    | .paren => .closed (.cons (tkS "(") .tm (.last (tkS ")")))
+    | .app   => .juxt
+    | .lam   => .prefx (.cons (tkS "\\lambda") .var (.last (tkS ".")))
+  ops := [.paren, .app, .lam]
+  ops_complete := by intro o; cases o <;> decide
+  loosest := [.lam]
+  tighter
+    | .lam   => [.app]
+    | .app   => [.paren]
+    | .paren => []
+  rank
+    | .paren => 0 | .app => 1 | .lam => 2
+  topRank := 3
+  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
+  rank_lt_topRank := by intro o; cases o <;> decide
+  isVar := isVarTok
 
-  /-- A term (loosest): a lambda, or an application. -/
-  private partial def parseTerm : (l : List Token) → Option (Term × RightSublist l)
-    | "\\lambda" :: rest =>
-        let s0 := RightSublist.cons "\\lambda" rest
-        match eatVar tmReserved s0.list with
-        | none              => none
-        | some (name, sName) =>
-            let s1 := s0.trans sName
-            match eat "." s1.list with
-            | none      => none
-            | some sDot =>
-                let s2 := s1.trans sDot
-                match parseTerm s2.list with
-                | none            => none
-                | some (body, sB) => some (Term.lam name (Ty.mvar 0) body, s2.trans sB)
-    | l => parseApp l
-end
+def varEntry : Entry Language1.Token SEnt where
+  Op := BSym
+  operator
+    | .paren => .closed (.cons (tkS "(") .var (.last (tkS ")")))
+  ops := [.paren]
+  ops_complete := by intro o; cases o <;> decide
+  loosest := [.paren]
+  tighter | .paren => []
+  rank | .paren => 0
+  topRank := 1
+  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
+  rank_lt_topRank := by intro o; cases o <;> decide
+  isVar := isVarTok
 
-/-- Naive canonical printer: variables bare, applications and lambdas fully
-parenthesized (annotation dropped). -/
-private def renderTm : Term → List Token
-  | .var x        => [x]
-  | .app f a      => ["("] ++ renderTm f ++ renderTm a ++ [")"]
-  | .lam x _ body => ["(", "\\lambda", x, "."] ++ renderTm body ++ [")"]
+def stlcGrammar : Grammar Language1.Token where
+  Ent := SEnt
+  entry | .tm => tmEntry | .var => varEntry
 
-/-- The STLC term parser (parse-only, unverified). -/
-def pTerm : TruncatingParser Token Term where
-  parse l  := (parseTerm l).toList
-  render   := renderTm
-  complete := by sorry
+instance : DecidableEq tmEntry.Op := inferInstanceAs (DecidableEq SSym)
+instance : DecidableEq varEntry.Op := inferInstanceAs (DecidableEq BSym)
+instance : ∀ e : stlcGrammar.Ent, DecidableEq (stlcGrammar.entry e).Op
+  | .tm => inferInstanceAs (DecidableEq SSym)
+  | .var => inferInstanceAs (DecidableEq BSym)
 
-/-! ## Type parser -/
+/-! ## The surface AST and the truncation rules -/
 
-mutual
-  /-- A type atom: `*` (base) or a parenthesized type. -/
-  private partial def parseTyAtom : (l : List Token) → Option (Ty × RightSublist l)
-    | "*" :: rest => some (Ty.base, RightSublist.cons "*" rest)
-    | "(" :: rest =>
-        let s0 := RightSublist.cons "(" rest
-        match parseTyArrow s0.list with
-        | none         => none
-        | some (t, st) =>
-            let s1 := s0.trans st
-            match eat ")" s1.list with
-            | none    => none
-            | some sc => some (t, s1.trans sc)
-    | _ => none
+/-- A binder name. -/
+abbrev VName := { t : Language1.Token // isVarTok t = true }
 
-  /-- An arrow chain `A -> B -> …`, right-associative. -/
-  private partial def parseTyArrow (l : List Token) : Option (Ty × RightSublist l) :=
-    match parseTyAtom l with
-    | none         => none
-    | some (a, sa) =>
-        match eat "->" sa.list with
-        | none      => some (a, sa)
-        | some sArr =>
-            let s1 := sa.trans sArr
-            match parseTyArrow s1.list with
-            | none         => some (a, sa)
-            | some (b, sb) => some (Ty.arrow a b, s1.trans sb)
-end
+/-- Surface terms, parens-free and annotation-free. -/
+inductive STm where
+  | var : (t : Language1.Token) → isVarTok t = true → STm
+  | app : STm → STm → STm
+  | lam : VName → STm → STm
 
-/-- Naive canonical printer: `*`, arrows fully parenthesized, mvars as `?n`. -/
-private def renderTy : Ty → List Token
-  | .base      => ["*"]
-  | .arrow a b => ["("] ++ renderTy a ++ ["->"] ++ renderTy b ++ [")"]
-  | .mvar n    => ["?" ++ toString n]
+def STm.size : STm → Nat
+  | .var _ _ => 1
+  | .app f a => f.size + a.size + 1
+  | .lam _ b => b.size + 2
 
-/-- The STLC type parser (parse-only, unverified). -/
-def pType : TruncatingParser Token Ty where
-  parse l  := (parseTyArrow l).toList
-  render   := renderTy
-  complete := by sorry
+/-- The bridge to the typed calculus: every binder annotated `Ty.mvar 0` (all-zero for now;
+distinct mvars are the elaborator boundary's job). -/
+def STm.toTerm : STm → Term
+  | .var t _ => .var t.val
+  | .app f a => .app f.toTerm a.toTerm
+  | .lam x b => .lam x.1.val (Ty.mvar 0) b.toTerm
 
-/-! ## The instance -/
+/-- Target of the truncation, per entry. -/
+def CS : SEnt → Type
+  | .tm => STm
+  | .var => VName
 
-/-- STLC as a `Language1.Language` (quick and dirty, parse only). -/
-def stlcLang : Language where
-  Tm   := Term
-  Ty   := Ty
-  pTm  := pTerm
-  pTy  := pType
+/-- The truncation instructions: `( e ) ↦ e` in both entries, `f a ↦ app`, `\lambda x . b ↦ lam`. -/
+def sRules : Rules stlcGrammar CS where
+  var {e} t h :=
+    match e, h with
+    | .tm, h => STm.var t h
+    | .var, h => ⟨t, h⟩
+  op {e} o vs :=
+    match e, o, vs with
+    | .tm, .paren, (t, _)    => t
+    | .tm, .app,   (f, a, _) => .app f a
+    | .tm, .lam,   (x, b, _) => .lam x b
+    | .var, .paren, (x, _)   => x
+  dest {e} x :=
+    match e, x with
+    | .tm, STm.var t h => .var t h
+    | .tm, STm.app f a => .node .app (f, a, PUnit.unit)
+    | .tm, STm.lam x b => .node .lam (x, b, PUnit.unit)
+    | .var, x => .var x.1 x.2
+  parenOp | .tm => SSym.paren | .var => BSym.paren
+  lp _ := tkS "("
+  rp _ := tkS ")"
+  paren_eq | .tm => rfl | .var => rfl
+  holesOk := by intro e o; cases e <;> cases o <;> decide
+  topOk := by intro e o; cases e <;> cases o <;> decide
+  alg_dest := by
+    intro e x
+    cases e
+    · cases x <;> rfl
+    · rfl
+  op_paren := by intro e y; cases e <;> rfl
+  size {e} :=
+    match e with
+    | .tm => STm.size
+    | .var => fun _ => 1
+  dest_size := by
+    intro e x
+    cases e
+    · cases x with
+      | var t h => trivial
+      | app f a => exact ⟨by simp +arith [STm.size], by simp +arith [STm.size], trivial⟩
+      | lam x b => exact ⟨by simp +arith [STm.size], by simp +arith [STm.size], trivial⟩
+    · trivial
+
+/-! ## The type grammar: `*`, right-associative `->`, parens -/
+
+def isTyAtom (t : Language1.Token) : Bool := t.val == "*"
+
+inductive TySym | paren | arrow
+  deriving DecidableEq, Repr
+
+def styEntry : Entry Language1.Token Unit where
+  Op := TySym
+  operator
+    | .paren => .closed (.cons (tkS "(") () (.last (tkS ")")))
+    | .arrow => .infxr (.last (tkS "->"))
+  ops := [.paren, .arrow]
+  ops_complete := by intro o; cases o <;> decide
+  loosest := [.arrow]
+  tighter
+    | .arrow => [.paren]
+    | .paren => []
+  rank | .paren => 0 | .arrow => 1
+  topRank := 2
+  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
+  rank_lt_topRank := by intro o; cases o <;> decide
+  isVar := isTyAtom
+
+def styGrammar : Grammar Language1.Token where
+  Ent := Unit
+  entry := fun _ => styEntry
+
+/-! ## The language -/
+
+/-- The term parser stops at a command boundary. **Derived**, not declared. -/
+theorem sFollow_def : follow (G := stlcGrammar) SEnt.tm (tkS "def") = true := by decide
+
+/-- The type parser stops at the assignment. **Derived**, not declared. -/
+theorem tyFollow_assign : follow (G := styGrammar) () (tkS ":=") = true := by decide
+
+def stlcLanguage : Language where
+  Tm := STm
+  Ty := Expr styGrammar () .loosest
+
+  AnnTy := fun _ => Unit
+  AnnTm := fun x => { t : Expr stlcGrammar SEnt.tm .loosest // truncExpr sRules t = x }
+
+  pTy :=
+    ((mixfix (G := styGrammar) () .loosest).weakenFollow
+      (by
+        intro t ht
+        have h : t = kwAssign := ht
+        subst h
+        exact tyFollow_assign)).toLossyParserUnit (fun _ => rfl)
+
+  pTm :=
+    ((mixfix (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
+      (by
+        intro t ht
+        have h : t = kwDef := ht
+        subst h
+        exact sFollow_def) |> sRules.truncateParser) (fun _ => rfl)
 
 end LambdaLab.Stlc.Named
