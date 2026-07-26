@@ -82,11 +82,35 @@ def aEntry : Entry Token Unit where
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [aTighter, aRank]
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := fun t => decide (t ∉ aReserved)
+  headsDistinct := by
+    intro o₁ o₂ h₁ h
+    cases o₁ <;> cases o₂ <;>
+      simp_all [aOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
+      exact absurd h (by decide)
+  varDisjoint := by
+    intro o t ht
+    cases o <;>
+      simp only [aOp, Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
 
 /-- The grammar — much lighter than the CBiparser one: precedence `rank` and nothing else. -/
 def aGrammar : Grammar Token where
   Ent := Unit
   entry := fun _ => aEntry
+  interiorTerminates := by
+    intro e o e' t h
+    cases e <;> cases e' <;> cases o <;>
+      simp only [aEntry, aOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h <;>
+      cases h <;>
+      first
+        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
+        | (rename_i h'; cases h')
+
 
 /-! ### Types: their own mixfix grammar
 
@@ -126,10 +150,34 @@ def tEntry : Entry Token Unit where
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [tTighter, tRank]
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isNumSet
+  headsDistinct := by
+    intro o₁ o₂ h₁ h
+    cases o₁ <;> cases o₂ <;>
+      simp_all [tOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
+      exact absurd h (by decide)
+  varDisjoint := by
+    intro o t ht
+    cases o <;>
+      simp only [tOp, Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
 
 def tyGrammar : Grammar Token where
   Ent := Unit
   entry := fun _ => tEntry
+  interiorTerminates := by
+    intro e o e' t h
+    cases e <;> cases e' <;> cases o <;>
+      simp only [tEntry, tOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h <;>
+      cases h <;>
+      first
+        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
+        | (rename_i h'; cases h')
+
 
 /-! ### The truncated term AST — via the generic `Rules` bundle
 
@@ -194,63 +242,13 @@ def aRules : Rules aGrammar (fun _ => ATm) where
 
 end Truncation
 
-/-! ### The grammars' lexical conditions, and unambiguity
+/-! ### Unambiguity
 
-`mixfix` asks for two facts about a grammar (see `Parser/IsoParser/Mixfix/Complete.lean`):
-
-* `Lawful` — heads distinct, no operator token is a variable, and interior seams terminate.
-  Finite data once entry and operator are concrete, so it is a `cases`-then-`decide` script.
-* `Unambiguous` — `flatten` is injective. **Not** decidable (it quantifies over all trees) and
-  not yet derivable from the lexical conditions, so it is assumed here. `Ambiguity.lean` proves
-  the round-trip law is *false* without it, so it cannot simply be dropped. -/
-
-theorem aLawful : Lawful aGrammar := by
-  refine ⟨?_, ?_, ?_⟩
-  · intro e o₁ o₂ h₁ h
-    cases e <;> cases o₁ <;> cases o₂ <;>
-      simp_all [aGrammar, aEntry, aOp, Operator.headTok?, Operator.nameTokens,
-        Notation.toTokens] <;>
-      exact absurd h (by decide)
-  · intro e o t ht
-    cases e <;> cases o <;>
-      simp only [aGrammar, aEntry, aOp, Operator.nameTokens, Notation.toTokens,
-        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
-      first
-        | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
-  · intro e o e' t h
-    cases e <;> cases e' <;> cases o <;>
-      simp only [aGrammar, aEntry, aOp, Operator.holeFollowers, Notation.holeFollowers,
-        Notation.firstTok] at h <;>
-      cases h <;>
-      first
-        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
-        | (rename_i h'; cases h')
-
-theorem tyLawful : Lawful tyGrammar := by
-  refine ⟨?_, ?_, ?_⟩
-  · intro e o₁ o₂ h₁ h
-    cases e <;> cases o₁ <;> cases o₂ <;>
-      simp_all [tyGrammar, tEntry, tOp, Operator.headTok?, Operator.nameTokens,
-        Notation.toTokens] <;>
-      exact absurd h (by decide)
-  · intro e o t ht
-    cases e <;> cases o <;>
-      simp only [tyGrammar, tEntry, tOp, Operator.nameTokens, Notation.toTokens,
-        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
-      first
-        | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
-  · intro e o e' t h
-    cases e <;> cases e' <;> cases o <;>
-      simp only [tyGrammar, tEntry, tOp, Operator.holeFollowers, Notation.holeFollowers,
-        Notation.firstTok] at h <;>
-      cases h <;>
-      first
-        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
-        | (rename_i h'; cases h')
+The grammars' *lexical* conditions are discharged inline above, as `Entry`/`Grammar` fields.
+What `mixfix` still asks for is `Unambiguous` — `flatten` injective — which is **not** decidable
+(it quantifies over all trees) and not yet derivable from those fields, so it is assumed here.
+It cannot simply be dropped: a deterministic parser answers one tree per token list, so two
+distinct trees with one flattening could not both round-trip. -/
 
 /-- **Assumed**: the arithmetic term grammar is unambiguous. True (the operators have pairwise
 distinct heads and the precedence DAG fixes every hole's level), but deriving it from the
@@ -286,7 +284,7 @@ def arithLanguage : Language where
   -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
   -- because `:=` is in it (`follow_assign`).
   pTy :=
-    ((mixfix tyLawful tyUnambiguous (G := tyGrammar) () .loosest).weakenFollow
+    ((mixfix tyUnambiguous (G := tyGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwAssign := ht
@@ -296,7 +294,7 @@ def arithLanguage : Language where
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   pTm :=
-    ((mixfix aLawful aUnambiguous (G := aGrammar) () .loosest).weakenFollow
+    ((mixfix aUnambiguous (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht

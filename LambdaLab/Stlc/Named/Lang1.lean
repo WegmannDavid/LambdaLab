@@ -72,6 +72,20 @@ def tmEntry : Entry Language1.Token SEnt where
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isVarTok
+  headsDistinct := by
+    intro o₁ o₂ h₁ h
+    cases o₁ <;> cases o₂ <;>
+      simp_all [Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
+      exact absurd h (by decide)
+  varDisjoint := by
+    intro o t ht
+    cases o <;>
+      simp only [Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
 
 def varEntry : Entry Language1.Token SEnt where
   Op := BSym
@@ -86,10 +100,33 @@ def varEntry : Entry Language1.Token SEnt where
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isVarTok
+  headsDistinct := by
+    intro o₁ o₂ h₁ h
+    cases o₁ <;> cases o₂ <;>
+      simp_all [Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
+      exact absurd h (by decide)
+  varDisjoint := by
+    intro o t ht
+    cases o <;>
+      simp only [Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
 
 def stlcGrammar : Grammar Language1.Token where
   Ent := SEnt
   entry | .tm => tmEntry | .var => varEntry
+  interiorTerminates := by
+    intro e o e' t h
+    cases e <;> cases e' <;> cases o <;>
+      simp only [tmEntry, varEntry, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h <;>
+      cases h <;>
+      first
+        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
+        | (rename_i h'; cases h')
 
 instance : DecidableEq tmEntry.Op := inferInstanceAs (DecidableEq SSym)
 instance : DecidableEq varEntry.Op := inferInstanceAs (DecidableEq BSym)
@@ -191,63 +228,38 @@ def styEntry : Entry Language1.Token Unit where
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isTyAtom
+  headsDistinct := by
+    intro o₁ o₂ h₁ h
+    cases o₁ <;> cases o₂ <;>
+      simp_all [Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
+      exact absurd h (by decide)
+  varDisjoint := by
+    intro o t ht
+    cases o <;>
+      simp only [Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
 
 def styGrammar : Grammar Language1.Token where
   Ent := Unit
   entry := fun _ => styEntry
-
-/-! ## The grammars' lexical conditions, and unambiguity
-
-Same two obligations as `Arith.lean`. The term grammar is **two-entry**, so the scripts case on
-the entry as well; everything else is identical. -/
-
-theorem stlcLawful : Lawful stlcGrammar := by
-  refine ⟨?_, ?_, ?_⟩
-  · intro e o₁ o₂ h₁ h
-    cases e <;> cases o₁ <;> cases o₂ <;>
-      simp_all [stlcGrammar, tmEntry, varEntry, Operator.headTok?, Operator.nameTokens,
-        Notation.toTokens] <;>
-      exact absurd h (by decide)
-  · intro e o t ht
-    cases e <;> cases o <;>
-      simp only [stlcGrammar, tmEntry, varEntry, Operator.nameTokens, Notation.toTokens,
-        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
-      first
-        | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
-  · intro e o e' t h
+  interiorTerminates := by
+    intro e o e' t h
     cases e <;> cases e' <;> cases o <;>
-      simp only [stlcGrammar, tmEntry, varEntry, Operator.holeFollowers,
-        Notation.holeFollowers, Notation.firstTok] at h <;>
-      cases h <;>
-      first
-        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
-        | (rename_i h'; cases h')
-
-theorem styLawful : Lawful styGrammar := by
-  refine ⟨?_, ?_, ?_⟩
-  · intro e o₁ o₂ h₁ h
-    cases e <;> cases o₁ <;> cases o₂ <;>
-      simp_all [styGrammar, styEntry, Operator.headTok?, Operator.nameTokens,
-        Notation.toTokens] <;>
-      exact absurd h (by decide)
-  · intro e o t ht
-    cases e <;> cases o <;>
-      simp only [styGrammar, styEntry, Operator.nameTokens, Notation.toTokens,
-        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
-      first
-        | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
-  · intro e o e' t h
-    cases e <;> cases e' <;> cases o <;>
-      simp only [styGrammar, styEntry, Operator.holeFollowers, Notation.holeFollowers,
+      simp only [styEntry, Operator.holeFollowers, Notation.holeFollowers,
         Notation.firstTok] at h <;>
       cases h <;>
       first
         | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
         | (rename_i h'; cases h')
+
+/-! ## Unambiguity
+
+The lexical conditions are discharged inline in the grammars above. `Unambiguous` remains
+assumed, as in `Arith.lean`. -/
 
 /-- **Assumed**: the STLC term grammar is unambiguous (same status as `Arith.aUnambiguous`). -/
 theorem stlcUnambiguous : Unambiguous stlcGrammar := by
@@ -273,7 +285,7 @@ def stlcLanguage : Language where
   AnnTm := fun x => { t : Expr stlcGrammar SEnt.tm .loosest // truncExpr sRules t = x }
 
   pTy :=
-    ((mixfix styLawful styUnambiguous (G := styGrammar) () .loosest).weakenFollow
+    ((mixfix styUnambiguous (G := styGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwAssign := ht
@@ -281,7 +293,7 @@ def stlcLanguage : Language where
         exact tyFollow_assign)).toLossyParserUnit (fun _ => rfl)
 
   pTm :=
-    ((mixfix stlcLawful stlcUnambiguous (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
+    ((mixfix stlcUnambiguous (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht

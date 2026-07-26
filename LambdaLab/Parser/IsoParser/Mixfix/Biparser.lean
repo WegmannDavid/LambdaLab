@@ -14,17 +14,13 @@ Packages the self-contained mixfix parser as an `IsoParser` over the abstract to
 
 ## The two hypotheses are necessary, not incidental
 
-`mixfix` takes `Lawful G` and `Unambiguous G`. Both are forced:
+`mixfix` takes `Unambiguous G`. The grammar's *lexical* conditions live on `Entry`/`Grammar` as
+fields (they would otherwise thread through every parse lemma), so only injectivity of `flatten`
+remains as a hypothesis — and it is genuinely needed: any deterministic parser answers one tree
+per token list, so two distinct trees with one flattening cannot both round-trip.
 
-* without `Unambiguous`, the law is **false** — `Ambiguity.lean` proves it for a grammar with two
-  identically-spelled operators (`law_not_universal`), and the argument applies to any
-  deterministic parser;
-* without `Lawful`'s `interiorTerminates`, the greedy parser runs past the `)` of `( _ )` and a
-  printed tree does not parse back.
-
-`Lawful` is decidable for a concrete grammar (`by decide`). `Unambiguous` is not decidable
-(it quantifies over all trees), and deriving it from finitely-checkable lexical conditions is
-open — see the project notes on `UniqueNameParts` / Danielsson–Norell §4.
+`Unambiguous` is not decidable (it quantifies over all trees). Deriving it from the lexical
+fields is the open conjecture — empirically true over tens of thousands of grammars.
 -/
 
 namespace LambdaLab.Parser.IsoParser.Mixfix
@@ -34,14 +30,14 @@ open LambdaLab.Parser.IsoParser
 variable {Tok : Type} [DecidableEq Tok] {G : Grammar Tok}
 
 /-- **The general mixfix parser as an `IsoParser`.** Aligned; `print = flatten`. -/
-def mixfix (hL : Lawful G) (hU : Unambiguous G) (e : G.Ent) (l : Level (G.entry e)) :
+def mixfix (hU : Unambiguous G) (e : G.Ent) (l : Level (G.entry e)) :
     IsoParser Tok (fun _ => True) (fun t => follow e t = true)
       (Expr G e l) (Expr G e l) where
   parse input := (parseExpr e l input).map (fun z => (z.1, ⟨z.2.list, z.2.lt⟩))
   print t := (t, t.flatten)
   firstOk c rest hc := absurd trivial hc
   ok t rest hrest := by
-    have h := parseExpr_complete hL hU t rest hrest
+    have h := parseExpr_complete hU t rest hrest
     simp only [runExpr] at h
     simpa [Option.map_map] using h
 

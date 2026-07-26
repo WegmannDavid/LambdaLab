@@ -148,11 +148,42 @@ structure Entry (Tok Ent : Type) where
   rank_lt_topRank : ∀ o : Op, rank o < topRank
   /-- Recognizes variable (identifier) leaf tokens. -/
   isVar : Tok → Bool
+  /-- **Distinct operators have distinct leading tokens.** Lexical determinism for the token the
+  parser dispatches on. Without it a grammar can hold two operators with the *same* notation, and
+  then two distinct trees flatten alike — a deterministic parser answers one and the round-trip
+  law fails at the other. (A machine-checked counterexample lived in `Mixfix/Ambiguity.lean` at
+  commit `ef5bd1b`, before this field made such a grammar unrepresentable.)
+
+  Note this constrains only *lexical* distinctness. Heads may still be precedence-incomparable —
+  `a + b * c` with `+`/`*` unrelated simply fails to parse ("add parentheses"), which is sound. -/
+  headsDistinct : ∀ o₁ o₂ : Op, (operator o₁).headTok?.isSome = true →
+    (operator o₁).headTok? = (operator o₂).headTok? → o₁ = o₂
+  /-- **No operator name part is a variable token** — the variable half of the same lexical
+  determinism, so a token cannot be read as both a leaf and (part of) an operator. Ranges over the
+  operator's finite name-part list, so a concrete grammar discharges it by `decide`. -/
+  varDisjoint : ∀ (o : Op) (t : Tok), t ∈ (operator o).nameTokens → isVar t = false
 
 /-- A grammar: a family of entries over a shared token alphabet. -/
 structure Grammar (Tok : Type) where
   Ent : Type
   entry : Ent → Entry Tok Ent
+  /-- **Interior seams terminate** — `headsDistinct`'s analogue for the tokens that are not
+  leading. In `( _ )` the hole is parsed by entry `e'`, and the only thing that can stop that
+  parser is the token following the hole (here `)`), so that token must lie in **`e'`'s** FOLLOW:
+  neither an `e'`-variable nor the head of any `e'`-operator.
+
+  This lives on `Grammar`, not `Entry`, and it has to: a hole's entry is in general a *different*
+  entry from the operator's host (that is what `Notation.cons` carrying an `Ent` is for), and an
+  `Entry` cannot see its siblings. A two-entry grammar — exactly what a `Language` is, with types
+  and terms — can satisfy every `Entry` field and still break the law.
+
+  Without it the round-trip law is **false**: if `)` heads an operator of the hole's entry then
+  `follow e' ")" = false`, the greedy parser runs past the `)`, and the printed tree does not
+  parse back. Ranges over the operator's finite seam list, so `decide` discharges it. -/
+  interiorTerminates : ∀ (e : Ent) (o : (entry e).Op) (e' : Ent) (t : Tok),
+    (e', t) ∈ ((entry e).operator o).holeFollowers →
+      (entry e').isVar t = false ∧
+        ∀ o' : (entry e').Op, ((entry e').operator o').headTok? ≠ some t
 
 /-! ## Decidability of the precedence relations
 

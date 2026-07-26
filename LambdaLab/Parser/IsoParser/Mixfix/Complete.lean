@@ -19,15 +19,11 @@ Two hypotheses are genuinely necessary, not artifacts of the proof:
 * **`Unambiguous G`.** `Ambiguity.lean` exhibits a grammar with two operators sharing a notation
   and *proves* the law false for it (`law_not_universal`). Any deterministic parser returns one
   tree for one token list, so the other cannot round-trip. No proof effort removes this.
-* **`Lawful G`.** The three lexical conditions the lightweight `Grammar` deliberately omits.
-  `interiorTerminates` is the load-bearing one: in `( _ )` the only thing that can stop the
-  hole's parser is the following `)`, so `)` must lie in the **hole entry's** FOLLOW. Without it
-  the greedy parser runs past the `)` and a printed tree does not parse back. It lives here
-  rather than on `Entry` because a hole's entry is in general a *different* entry from the
-  operator's host, and an `Entry` cannot see its siblings.
-
-Both are decidable for a concrete grammar (finite operator and seam lists), so an instance
-discharges them by `decide`.
+The grammar's three **lexical** conditions (`headsDistinct`, `varDisjoint` on `Entry`;
+`interiorTerminates` on `Grammar`) are *fields*, not hypotheses: they would otherwise thread
+through all seven motives of `parseExpr_exact` and through the whole unambiguity development.
+Being fields, they also make a malformed grammar unrepresentable. Each is decidable for a
+concrete grammar, so an instance discharges it by `decide`.
 
 ## Why FOLLOW must be per-level
 
@@ -101,31 +97,13 @@ theorem followAt_of_follow {e : G.Ent} {l : Level (G.entry e)} {rest : List Tok}
     rw [this] at hcont; exact absurd hcont (by simp)
   · rw [hstart'] at hstart; exact absurd hstart (by simp)
 
-/-! ## The grammar's lexical conditions -/
+/-! ## Interior seams stop the hole's parser -/
 
-/-- The three lexical conditions the lightweight `Grammar` omits, bundled as a `Prop` so existing
-grammars need not change shape. Every clause ranges over finite lists, so a concrete grammar
-discharges the bundle by `decide`.
-
-Together they say: **every token has exactly one lexical role at every seam it can reach.** -/
-structure Lawful (G : Grammar Tok) : Prop where
-  /-- Distinct operators have distinct leading tokens (when they have one at all). -/
-  headsDistinct : ∀ (e : G.Ent) (o₁ o₂ : (G.entry e).Op),
-    ((G.entry e).operator o₁).headTok?.isSome = true →
-    ((G.entry e).operator o₁).headTok? = ((G.entry e).operator o₂).headTok? → o₁ = o₂
-  /-- No operator name part is a variable token. -/
-  varDisjoint : ∀ (e : G.Ent) (o : (G.entry e).Op) (t : Tok),
-    t ∈ ((G.entry e).operator o).nameTokens → (G.entry e).isVar t = false
-  /-- **Interior seams terminate**: the token after a hole lies in the *hole entry's* FOLLOW. -/
-  interiorTerminates : ∀ (e : G.Ent) (o : (G.entry e).Op) (e' : G.Ent) (t : Tok),
-    (e', t) ∈ ((G.entry e).operator o).holeFollowers →
-      (G.entry e').isVar t = false ∧
-        ∀ o' : (G.entry e').Op, ((G.entry e').operator o').headTok? ≠ some t
-
-/-- The payoff: an interior seam token stops the hole's parser. -/
-theorem follow_of_interior (hL : Lawful G) {e : G.Ent} {o : (G.entry e).Op} {e' : G.Ent} {t : Tok}
+/-- The payoff of `Grammar.interiorTerminates`: the token after a hole lies in the FOLLOW of the
+**hole's** entry, so the greedy sub-parser stops exactly there. -/
+theorem follow_of_interior {e : G.Ent} {o : (G.entry e).Op} {e' : G.Ent} {t : Tok}
     (h : (e', t) ∈ ((G.entry e).operator o).holeFollowers) : follow e' t = true := by
-  obtain ⟨hvar, hheads⟩ := hL.interiorTerminates e o e' t h
+  obtain ⟨hvar, hheads⟩ := G.interiorTerminates e o e' t h
   simp only [follow, Bool.and_eq_true, Bool.not_eq_true']
   constructor
   · simp only [startsOperand, Bool.or_eq_false_iff, hvar, true_and]
@@ -143,10 +121,6 @@ theorem follow_of_interior (hL : Lawful G) {e : G.Ent} {o : (G.entry e).Op} {e' 
     | some h' =>
         have hne : h' ≠ t := fun heq => hheads o' (by rw [hh, heq])
         simp [hne]
-
-/-! A concrete grammar discharges `Lawful` by casing on its (finite) entries and operators and
-deciding the resulting closed token facts — see `Arith.aLawful` for the ~15-line script, which
-transfers verbatim to any grammar (only the three definition names in the `simp` sets change). -/
 
 /-! ## Unambiguity -/
 
@@ -209,7 +183,7 @@ alternatives into opaque variables and severs the IHs), the cast lemmas
 `Parts.flatten_cast`/`Expr.reindex_flatten`/`juxtApp_flatten`/`infxlApp_flatten`, and
 `zetaDelta := true` for the `let`-bound left operand. `parseExpr.induct` already splits the
 nested matches — re-splitting them is what breaks the IHs. -/
-theorem parseExpr_exact (hL : Lawful G) {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
+theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
     (rest : List Tok) (hF : FollowAt e l rest) :
     ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
   sorry
@@ -217,11 +191,11 @@ theorem parseExpr_exact (hL : Lawful G) {e : G.Ent} {l : Level (G.entry e)} (t :
 /-- **Completeness**: printing a tree and parsing it back recovers *that* tree. Three lines from
 the decomposition — soundness turns "leftover = rest" into "the trees print alike", and
 unambiguity turns that into "the trees are equal". -/
-theorem parseExpr_complete (hL : Lawful G) (hU : Unambiguous G) {e : G.Ent}
+theorem parseExpr_complete (hU : Unambiguous G) {e : G.Ent}
     {l : Level (G.entry e)} (t : Expr G e l) (rest : List Tok)
     (hF : HeadIn (fun t => follow e t = true) rest) :
     runExpr e l (t.flatten ++ rest) = some (t, rest) := by
-  obtain ⟨t', ht'⟩ := parseExpr_exact hL t rest (followAt_of_follow hF)
+  obtain ⟨t', ht'⟩ := parseExpr_exact t rest (followAt_of_follow hF)
   have hsound : t'.flatten ++ rest = t.flatten ++ rest := by
     simp only [runExpr, Option.map_eq_some_iff] at ht'
     obtain ⟨x, hx, hxe⟩ := ht'
