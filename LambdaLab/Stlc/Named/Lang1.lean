@@ -16,7 +16,7 @@ syntax — the harmless price of the generic `Rules` bundle wanting a paren per 
 * terms — `paren`/`app` (juxtaposition)/`lam`, truncated by a `Rules` bundle into the
   parens-free surface AST `STm`. Inherited `prefx` limitation: a lambda body cannot be a *bare*
   lambda — write `λ x . ( λ y . e )`.
-* types — `*`, right-associative `→`, parens; kept as trees (`Unit` annotation), as in Arith.
+* types — `⋆`, right-associative `→`, parens; kept as trees (`Unit` annotation), as in Arith.
 
 `STm` deliberately carries **no type annotations** (`Rules.alg_dest` — destruct-then-rebuild is
 the identity — would force every annotation to a fixed value anyway). The bridge to the typed
@@ -168,9 +168,9 @@ def sRules : Rules stlcGrammar CS where
       | lam x b => exact ⟨by simp +arith [STm.size], by simp +arith [STm.size], trivial⟩
     · trivial
 
-/-! ## The type grammar: `*`, right-associative `→`, parens -/
+/-! ## The type grammar: `⋆`, right-associative `→`, parens -/
 
-def isTyAtom (t : Language1.Token) : Bool := t.val == "*"
+def isTyAtom (t : Language1.Token) : Bool := t.val == "⋆"
 
 inductive TySym | paren | arrow
   deriving DecidableEq, Repr
