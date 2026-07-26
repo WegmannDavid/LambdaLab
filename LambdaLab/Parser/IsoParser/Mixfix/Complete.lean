@@ -172,9 +172,43 @@ where `interiorTerminates` earns its keep (the `)` of `( _ )` stops the hole's p
 longest-match earns its keep (a candidate that really uses its operator consumes strictly more
 than one that falls through to a bare operand, so the parser cannot stop short).
 
-What remains is the induction: mutual, over the tree, mirroring `parseExpr.induct`'s seven
-motives, with the **shifted** statements on the two accumulator folds that `Sound.lean` needed
-(`acc.flatten ++ tkns`, not `tkns`). -/
+## Roadmap
+
+The induction is mutual over `parseExpr.induct`'s **seven** motives, exactly as `Sound.lean`'s.
+For each parse function, the statement to prove on `t.flatten ++ rest`:
+
+| function            | statement                                                              |
+|---------------------|------------------------------------------------------------------------|
+| `parseExpr`         | succeeds, leftover `= rest`                                             |
+| `parseExprList`     | ditto, *given* the printed tree's top operator is among the candidates  |
+| `parseParts`        | ditto for a body shape, operand by operand                              |
+| `parseJuxt`         | ditto for a whole application chain                                     |
+| `parseJuxtExtend`   | **shifted**: from `acc`, consumes the remaining chain (`acc.flatten ++ …`) |
+| `parseInfixL`       | ditto for a left-associative chain                                      |
+| `parseInfixLExtend` | **shifted**, as `parseJuxtExtend`                                       |
+
+The two accumulator folds need the *shifted* form (`acc.flatten ++ tkns`, not `tkns`) — stated
+unshifted the induction does not go through; `Sound.lean` hit the same wall and its `motive4`/
+`motive6` show the shape.
+
+Three places carry the real content, and each is where one hypothesis earns its keep:
+
+1. **Nothing stops short.** `longer` takes the longest match, and a candidate that genuinely uses
+   its operator consumes strictly more than one that falls through to a bare operand — so the
+   fold cannot stop early. Needs: the printed tree's own operator is a candidate at this level
+   (`Level.condition`), and its parse consumes everything it printed (the IH).
+2. **Nothing runs long.** The greedy folds must not eat into `rest`. This is `FollowAt`: at the
+   operand's level nothing in `rest` can continue the expression. Note the level-sensitivity —
+   at `loosest` a variable *does* continue (juxtaposition), at a tighter level it does not.
+3. **Interior seams stop the hole.** Inside `( _ )`, what stops the hole's parser is the `)`, via
+   `follow_of_interior` from `Lawful.interiorTerminates` — and it must be read at the *hole's*
+   entry, not the host's.
+
+Useful existing machinery: `longer_eq_some` and `orElse_eq_some` (a bare `split` generalises both
+alternatives into opaque variables and severs the IHs), the cast lemmas
+`Parts.flatten_cast`/`Expr.reindex_flatten`/`juxtApp_flatten`/`infxlApp_flatten`, and
+`zetaDelta := true` for the `let`-bound left operand. `parseExpr.induct` already splits the
+nested matches — re-splitting them is what breaks the IHs. -/
 theorem parseExpr_exact (hL : Lawful G) {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
     (rest : List Tok) (hF : FollowAt e l rest) :
     ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
