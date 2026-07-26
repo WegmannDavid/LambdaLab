@@ -1,49 +1,56 @@
 import LambdaLab.Arith
+import LambdaLab.Stlc.Named.Lang1
 import LambdaLab.Language1.Pipeline
 
 /-!
-# Arithmetic vernacular demo
+# Vernacular demo — two plugged-in languages, one derived pipeline
 
-Reads a source file in the `arithLanguage` vernacular — `def NAME : (N|Z|R) := EXPR`, one command
-per declaration, `EXPR` a mixfix arithmetic expression — parses it, and prints the AST back out as
-normalised source. Round-tripping the text is the whole point: the printed form is what the parser
-would read back to the same tree.
+Reads a source file, parses it through the framework-derived `List Char ⇝ Program` pipeline of
+the language matching its extension, and prints the program back out as normalised source:
 
-* `lake exe playground`                — parse the bundled `examples/demo.arith`
-* `lake exe playground path/to/file`   — parse the given file
+* `.arith` — `def NAME : TYPE := EXPR`, types `N`/`Z`/`R` with `->`, mixfix arithmetic terms
+  (truncated: redundant parens are forgotten and re-inserted canonically);
+* `.stlc`  — types `*` with `->`, lambda-calculus terms `\lambda x . e` (multi-entry grammar;
+  binder parens and redundant parens truncate away).
 
-`parseFile`/`renderProgram` are the framework's `Language.pipeline` API — the whole front end is
-one `Abs` morphism `List Char ⇝ Program`. Note: the *parser* here is the verified mixfix parser;
-the round-trip *proof* for this language is still conditional on the open mixfix `ok` lemma (see
-`LambdaLab/Arith.lean`). The executable exercises the running parser, not the proof.
+* `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
+* `lake exe playground path/to/file`   — parse the given file (language by extension)
+
+`parseFile`/`renderProgram` are `Language.pipeline`'s API — the whole front end is one `Abs`
+morphism per language. The *parsers* run verified code; the round-trip *proofs* are still
+conditional on the open mixfix `ok` lemma. The executable exercises the parsers, not the proofs.
 -/
 
-open LambdaLab.Language1 LambdaLab.Arith
+open LambdaLab.Language1 LambdaLab.Arith LambdaLab.Stlc.Named
 
-/-- Parse `src`, then re-render it canonically. `none` if the file is not a well-formed program.
-The tokenizer stage absorbs all whitespace (including a trailing newline), so no trimming. -/
-def roundtrip (src : String) : Option String := do
-  let prog ← arithLanguage.parseFile src
-  some (arithLanguage.renderProgram prog)
+/-- Parse `src` with `L`, then re-render it canonically. `none` if not a well-formed program. -/
+def roundtripWith (L : Language) (src : String) : Option String := do
+  let prog ← L.parseFile src
+  some (L.renderProgram prog)
 
-def run (label : String) (src : String) : IO Unit := do
+/-- Pick the language from the file extension (default: arith). -/
+def languageFor (path : String) : Language :=
+  if path.endsWith ".stlc" then stlcLanguage else arithLanguage
+
+def run (label : String) (L : Language) (src : String) : IO Unit := do
   IO.println s!"── {label} ──"
   IO.println "input:"
   for line in ((src.splitOn "\n").filter (fun l => !l.isEmpty)) do
     IO.println s!"  {line}"
-  match roundtrip src with
+  match roundtripWith L src with
   | some out =>
       IO.println "parsed & re-rendered:"
-      for line in out.splitOn "\n" do IO.println s!"  {line}"
+      IO.println s!"  {out}"
   | none => IO.println "  ⟹  rejected (not a well-formed program)"
   IO.println ""
+
+def runPath (path : String) : IO Unit := do
+  let src ← IO.FS.readFile path
+  run path (languageFor path) src
 
 def main (args : List String) : IO Unit := do
   match args with
   | [] =>
-      let path := "examples/demo.arith"
-      let src ← IO.FS.readFile path
-      run path src
-  | path :: _ =>
-      let src ← IO.FS.readFile path
-      run path src
+      runPath "examples/demo.arith"
+      runPath "examples/demo.stlc"
+  | path :: _ => runPath path

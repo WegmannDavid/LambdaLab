@@ -1,0 +1,4 @@
+def id : * -> * := \lambda x . x
+def const : * -> * -> * := \lambda x . ( \lambda y . x )
+def apply : ( * -> * ) -> * -> * := \lambda f . ( \lambda x . f x )
+def applied : * := ( \lambda x . x ) y
