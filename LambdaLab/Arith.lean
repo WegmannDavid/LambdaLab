@@ -24,7 +24,7 @@ namespace LambdaLab.Arith
 
 Both sides come from the mixfix engine, as trees. Terms are the arithmetic grammar —
 parentheses, application by juxtaposition, `*` binding tighter than `+`. Types are their own
-little grammar — atoms `N`, `Z`, `R`, a right-associative arrow `_ -> _`, parentheses. Built on
+little grammar — atoms `N`, `Z`, `R`, a right-associative arrow `_ → _`, parentheses. Built on
 the self-contained `IsoParser.Mixfix` stack (abstract token alphabet, explicit `rank`), with no
 `CBiparser` dependency.
 
@@ -90,7 +90,7 @@ def aGrammar : Grammar Token where
 
 /-! ### Types: their own mixfix grammar
 
-Types are trees too: atoms `N`, `Z`, `R`, a right-associative function arrow `_ -> _`, and
+Types are trees too: atoms `N`, `Z`, `R`, a right-associative function arrow `_ → _`, and
 parentheses. Same recipe as the term grammar, so `Ty` is an `Expr` and `pTy` is `mixfix` — both
 sides of the language now come from the one engine. -/
 
@@ -112,7 +112,7 @@ def tRank : TSym → Nat
 
 def tOp : TSym → Operator Token Unit
   | .paren => .closed (.cons (tkA "(") () (.last (tkA ")")))
-  | .arrow => .infxr (.last (tkA "->"))
+  | .arrow => .infxr (.last (tkA "→"))
 
 def tEntry : Entry Token Unit where
   Op := TSym
