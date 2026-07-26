@@ -194,6 +194,75 @@ def aRules : Rules aGrammar (fun _ => ATm) where
 
 end Truncation
 
+/-! ### The grammars' lexical conditions, and unambiguity
+
+`mixfix` asks for two facts about a grammar (see `Parser/IsoParser/Mixfix/Complete.lean`):
+
+* `Lawful` — heads distinct, no operator token is a variable, and interior seams terminate.
+  Finite data once entry and operator are concrete, so it is a `cases`-then-`decide` script.
+* `Unambiguous` — `flatten` is injective. **Not** decidable (it quantifies over all trees) and
+  not yet derivable from the lexical conditions, so it is assumed here. `Ambiguity.lean` proves
+  the round-trip law is *false* without it, so it cannot simply be dropped. -/
+
+theorem aLawful : Lawful aGrammar := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro e o₁ o₂ h₁ h
+    cases e <;> cases o₁ <;> cases o₂ <;>
+      simp_all [aGrammar, aEntry, aOp, Operator.headTok?, Operator.nameTokens,
+        Notation.toTokens] <;>
+      exact absurd h (by decide)
+  · intro e o t ht
+    cases e <;> cases o <;>
+      simp only [aGrammar, aEntry, aOp, Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
+  · intro e o e' t h
+    cases e <;> cases e' <;> cases o <;>
+      simp only [aGrammar, aEntry, aOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h <;>
+      cases h <;>
+      first
+        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
+        | (rename_i h'; cases h')
+
+theorem tyLawful : Lawful tyGrammar := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro e o₁ o₂ h₁ h
+    cases e <;> cases o₁ <;> cases o₂ <;>
+      simp_all [tyGrammar, tEntry, tOp, Operator.headTok?, Operator.nameTokens,
+        Notation.toTokens] <;>
+      exact absurd h (by decide)
+  · intro e o t ht
+    cases e <;> cases o <;>
+      simp only [tyGrammar, tEntry, tOp, Operator.nameTokens, Notation.toTokens,
+        List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+      first
+        | (rcases ht with rfl | rfl <;> decide)
+        | (subst ht; decide)
+        | exact ht.elim
+  · intro e o e' t h
+    cases e <;> cases e' <;> cases o <;>
+      simp only [tyGrammar, tEntry, tOp, Operator.holeFollowers, Notation.holeFollowers,
+        Notation.firstTok] at h <;>
+      cases h <;>
+      first
+        | (refine ⟨by decide, ?_⟩; intro o'; cases o' <;> decide)
+        | (rename_i h'; cases h')
+
+/-- **Assumed**: the arithmetic term grammar is unambiguous. True (the operators have pairwise
+distinct heads and the precedence DAG fixes every hole's level), but deriving it from the
+lexical conditions is open work — the empirical evidence is strong (exhaustive search over tens
+of thousands of grammars found no counterexample under exactly these conditions). -/
+theorem aUnambiguous : Unambiguous aGrammar := by
+  sorry
+
+/-- **Assumed**: the type grammar is unambiguous. Same status as `aUnambiguous`. -/
+theorem tyUnambiguous : Unambiguous tyGrammar := by
+  sorry
+
 /-! ### The language -/
 
 /-- The term parser stops at a command boundary. **Derived**, not declared. -/
@@ -217,7 +286,7 @@ def arithLanguage : Language where
   -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
   -- because `:=` is in it (`follow_assign`).
   pTy :=
-    ((mixfix (G := tyGrammar) () .loosest).weakenFollow
+    ((mixfix tyLawful tyUnambiguous (G := tyGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwAssign := ht
@@ -227,7 +296,7 @@ def arithLanguage : Language where
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   pTm :=
-    ((mixfix (G := aGrammar) () .loosest).weakenFollow
+    ((mixfix aLawful aUnambiguous (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht

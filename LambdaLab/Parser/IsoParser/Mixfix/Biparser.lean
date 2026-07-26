@@ -1,20 +1,30 @@
-import LambdaLab.Parser.IsoParser.Mixfix.Sound
-import LambdaLab.Parser.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Mixfix.Complete
 
 /-!
 # The general mixfix `IsoParser`
 
-Packages the self-contained mixfix parser as an `IsoParser` over the abstract token alphabet —
-the independent counterpart of `IsoParser/Mixfix.lean` (which reuses `CBiparser`). **Aligned**:
-source = value = the tree, `print` is `flatten`.
+Packages the self-contained mixfix parser as an `IsoParser` over the abstract token alphabet.
+**Aligned**: source = value = the tree, `print` is `flatten`.
 
-* **FIRST = ⊤** (`firstOk` vacuous).
-* **FOLLOW** carries the content: the computed `follow` — tokens at which the greedy parser
-  provably stops (neither an operand-starter nor an expression-continuer).
-* **`ok`** (the round-trip) is the greedy left-associative reconstruction — the genuinely hard
-  direction (the analogue of `CBiparser`'s open `parseExpr_exact`), left as a `sorry` here.
-* The **exactness** direction is *proved* (`parseExpr_sound`, sorry-free) but has no field in the
-  split model; it remains available standalone in `Sound.lean`.
+* **FIRST = ⊤** (`firstOk` vacuous) — exactly what `Language1`'s interface asks for.
+* **FOLLOW** carries the content: the computed `follow` (`Complete.lean`) — tokens at which the
+  greedy parser provably stops.
+* **`ok`** is *derived* (`parseExpr_complete`) from the decomposition in `Complete.lean`, given
+  the grammar's two hypotheses.
+
+## The two hypotheses are necessary, not incidental
+
+`mixfix` takes `Lawful G` and `Unambiguous G`. Both are forced:
+
+* without `Unambiguous`, the law is **false** — `Ambiguity.lean` proves it for a grammar with two
+  identically-spelled operators (`law_not_universal`), and the argument applies to any
+  deterministic parser;
+* without `Lawful`'s `interiorTerminates`, the greedy parser runs past the `)` of `( _ )` and a
+  printed tree does not parse back.
+
+`Lawful` is decidable for a concrete grammar (`by decide`). `Unambiguous` is not decidable
+(it quantifies over all trees), and deriving it from finitely-checkable lexical conditions is
+open — see the project notes on `UniqueNameParts` / Danielsson–Norell §4.
 -/
 
 namespace LambdaLab.Parser.IsoParser.Mixfix
@@ -23,44 +33,16 @@ open LambdaLab.Parser.IsoParser
 
 variable {Tok : Type} [DecidableEq Tok] {G : Grammar Tok}
 
-/-! ## FOLLOW — the tokens at which the parser provably stops -/
-
-/-- Can this token **start an operand** of entry `e`? A variable can, as can the leading token of
-an operator that does not begin with a hole (`closed`/`prefx`). -/
-def startsOperand (e : G.Ent) (t : Tok) : Bool :=
-  (G.entry e).isVar t ||
-    (G.entry e).ops.any (fun o =>
-      let op := (G.entry e).operator o
-      !op.startsWithHole &&
-        (match op.headTok? with
-         | some h => decide (h = t)
-         | none   => false))
-
-/-- Can this token **continue** an expression of entry `e`? Exactly the leading token of an
-operator that begins with a hole (`infx`/`infxl`/`infxr`/`postfx`). -/
-def continuesExpr (e : G.Ent) (t : Tok) : Bool :=
-  (G.entry e).ops.any (fun o =>
-    let op := (G.entry e).operator o
-    op.startsWithHole &&
-      (match op.headTok? with
-       | some h => decide (h = t)
-       | none   => false))
-
-/-- **FOLLOW**: a token stops the parser iff it can neither start an operand nor continue one. -/
-def follow (e : G.Ent) : Tok → Bool :=
-  fun t => !startsOperand e t && !continuesExpr e t
-
-/-! ## The `IsoParser` -/
-
 /-- **The general mixfix parser as an `IsoParser`.** Aligned; `print = flatten`. -/
-def mixfix (e : G.Ent) (l : Level (G.entry e)) :
+def mixfix (hL : Lawful G) (hU : Unambiguous G) (e : G.Ent) (l : Level (G.entry e)) :
     IsoParser Tok (fun _ => True) (fun t => follow e t = true)
       (Expr G e l) (Expr G e l) where
   parse input := (parseExpr e l input).map (fun z => (z.1, ⟨z.2.list, z.2.lt⟩))
   print t := (t, t.flatten)
   firstOk c rest hc := absurd trivial hc
-  ok := by
-    -- The greedy left-associative reconstruction — CBiparser's open `parseExpr_exact` analogue.
-    sorry
+  ok t rest hrest := by
+    have h := parseExpr_complete hL hU t rest hrest
+    simp only [runExpr] at h
+    simpa [Option.map_map] using h
 
 end LambdaLab.Parser.IsoParser.Mixfix
