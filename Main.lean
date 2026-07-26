@@ -10,7 +10,7 @@ the language matching its extension, and prints the program back out as normalis
 
 * `.arith` — `def NAME : TYPE := EXPR`, types `N`/`Z`/`R` with `->`, mixfix arithmetic terms
   (truncated: redundant parens are forgotten and re-inserted canonically);
-* `.stlc`  — types `*` with `->`, lambda-calculus terms `\lambda x . e` (multi-entry grammar;
+* `.stlc`  — types `*` with `->`, lambda-calculus terms `λ x . e` (multi-entry grammar;
   binder parens and redundant parens truncate away).
 
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`

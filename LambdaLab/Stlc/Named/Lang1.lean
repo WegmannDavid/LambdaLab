@@ -9,13 +9,13 @@ import LambdaLab.Parser.Truncation.Mixfix
 
 The lambda-calculus instance, built exactly like `Arith.lean`: grammars in, everything else
 derived. The one genuinely new feature exercised here is a **multi-entry grammar**: the binder
-`x` in `\lambda x . e` must parse as a single variable, not a term, so it is a cross-entry hole
-into a second entry whose only operator is a paren (so `\lambda ( x ) . e` is legal surface
+`x` in `λ x . e` must parse as a single variable, not a term, so it is a cross-entry hole
+into a second entry whose only operator is a paren (so `λ ( x ) . e` is legal surface
 syntax — the harmless price of the generic `Rules` bundle wanting a paren per entry).
 
 * terms — `paren`/`app` (juxtaposition)/`lam`, truncated by a `Rules` bundle into the
   parens-free surface AST `STm`. Inherited `prefx` limitation: a lambda body cannot be a *bare*
-  lambda — write `\lambda x . ( \lambda y . e )`.
+  lambda — write `λ x . ( λ y . e )`.
 * types — `*`, right-associative `->`, parens; kept as trees (`Unit` annotation), as in Arith.
 
 `STm` deliberately carries **no type annotations** (`Rules.alg_dest` — destruct-then-rebuild is
@@ -35,7 +35,7 @@ def tkS (s : String) (h : isToken isSep s = true := by decide) : Language1.Token
 
 /-- Tokens no variable may be: grammar name-parts and vernacular keywords. -/
 def sReserved : List Language1.Token :=
-  [tkS "(", tkS ")", tkS "\\lambda", tkS ".", tkS "def", tkS ":", tkS ":="]
+  [tkS "(", tkS ")", tkS "λ", tkS ".", tkS "def", tkS ":", tkS ":="]
 
 def isVarTok (t : Language1.Token) : Bool := decide (t ∉ sReserved)
 
@@ -58,7 +58,7 @@ def tmEntry : Entry Language1.Token SEnt where
   operator
     | .paren => .closed (.cons (tkS "(") .tm (.last (tkS ")")))
     | .app   => .juxt
-    | .lam   => .prefx (.cons (tkS "\\lambda") .var (.last (tkS ".")))
+    | .lam   => .prefx (.cons (tkS "λ") .var (.last (tkS ".")))
   ops := [.paren, .app, .lam]
   ops_complete := by intro o; cases o <;> decide
   loosest := [.lam]
@@ -125,7 +125,7 @@ def CS : SEnt → Type
   | .tm => STm
   | .var => VName
 
-/-- The truncation instructions: `( e ) ↦ e` in both entries, `f a ↦ app`, `\lambda x . b ↦ lam`. -/
+/-- The truncation instructions: `( e ) ↦ e` in both entries, `f a ↦ app`, `λ x . b ↦ lam`. -/
 def sRules : Rules stlcGrammar CS where
   var {e} t h :=
     match e, h with
