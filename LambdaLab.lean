@@ -47,6 +47,7 @@ import LambdaLab.Substitution.Unification.MGU
 --     latter). Kept, not deleted, because the ParserIso idea is still wanted.
 --   * Abstraction2.Sketch -- the intentionally sorried spec of the target pipeline.
 --   * Playground.*, Parser.IsoParser.Playground -- the prototype trail, kept as history.
+import LambdaLab.Parser.Numeral
 import LambdaLab.Abstraction.Basic
 import LambdaLab.Abstraction.Bicat
 import LambdaLab.Abstraction2.Basic

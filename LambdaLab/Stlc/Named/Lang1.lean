@@ -1,9 +1,10 @@
 import LambdaLab.Stlc.Named.Basic
+import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Language1.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix
-import Mathlib.Data.Nat.Digits.Defs
+import LambdaLab.Parser.Numeral
 
 /-!
 # STLC as a `Language1.Language` — types land in `Stlc.Ty`
@@ -39,51 +40,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language1
 open LambdaLab.Parser.Truncation.Mixfix
-
-/-! ## Metavariable tokens: `?n` -/
-
-def digitChar (d : Nat) : Char := Char.ofNat (48 + d)
-def charDigit (c : Char) : Nat := c.toNat - 48
-def isDigitChar (c : Char) : Bool := decide (48 ≤ c.toNat ∧ c.toNat ≤ 57)
-
-/-- Everything needed about a decimal digit's character, by exhaustion. -/
-theorem digitChar_spec : ∀ {d : Nat}, d < 10 →
-    charDigit (digitChar d) = d ∧ isSep (digitChar d) = false ∧ isDigitChar (digitChar d) = true
-  | 0, _ => by decide | 1, _ => by decide | 2, _ => by decide | 3, _ => by decide
-  | 4, _ => by decide | 5, _ => by decide | 6, _ => by decide | 7, _ => by decide
-  | 8, _ => by decide | 9, _ => by decide
-
-/-- Decimal characters of `n`, most significant first; never empty. -/
-def natChars (n : Nat) : List Char :=
-  if n = 0 then ['0'] else ((Nat.digits 10 n).map digitChar).reverse
-
-def charsNat (cs : List Char) : Nat := Nat.ofDigits 10 ((cs.map charDigit).reverse)
-
-theorem natChars_spec (n : Nat) :
-    natChars n ≠ [] ∧ ∀ c ∈ natChars n, isSep c = false ∧ isDigitChar c = true := by
-  unfold natChars
-  split
-  · exact ⟨by simp, by intro c hc; simp at hc; subst hc; exact ⟨by decide, by decide⟩⟩
-  · next h =>
-      refine ⟨?_, ?_⟩
-      · simp only [ne_eq, List.reverse_eq_nil_iff, List.map_eq_nil_iff]
-        exact Nat.digits_ne_nil_iff_ne_zero.mpr h
-      · intro c hc
-        simp only [List.mem_reverse, List.mem_map] at hc
-        obtain ⟨d, hd, rfl⟩ := hc
-        have := digitChar_spec (Nat.digits_lt_base (by norm_num) hd)
-        exact ⟨this.2.1, this.2.2⟩
-
-theorem charsNat_natChars (n : Nat) : charsNat (natChars n) = n := by
-  unfold natChars charsNat
-  split
-  · next h => subst h; decide
-  · next h =>
-      rw [List.map_reverse, List.reverse_reverse, List.map_map]
-      have hid : ∀ d ∈ Nat.digits 10 n, (charDigit ∘ digitChar) d = id d :=
-        fun d hd => (digitChar_spec (Nat.digits_lt_base (by norm_num) hd)).1
-      rw [List.map_congr_left hid, List.map_id]
-      exact Nat.ofDigits_digits 10 n
+open LambdaLab.Parser.Numeral (isDigitChar isNatTok natTok natOfTok)
 
 /-! ## The token alphabet -/
 
@@ -95,40 +52,27 @@ def sReserved : List Language1.Token :=
 
 def isVarTok (t : Language1.Token) : Bool := decide (t ∉ sReserved)
 
+/-- Digits are separator-free for this vernacular (`isSep` is whitespace). -/
+theorem digit_not_sep : ∀ c, isDigitChar c = true → isSep c = false :=
+  fun _ h => LambdaLab.Parser.Numeral.isDigitChar_not_whitespace h
+
 /-- `?` followed by at least one decimal digit. -/
-def isMvarTok (t : Language1.Token) : Bool :=
-  match t.val.toList with
-  | '?' :: ds => !ds.isEmpty && ds.all isDigitChar
-  | _ => false
+def isMvarTok (t : Language1.Token) : Bool := isNatTok '?' t
 
 /-- Type atoms: the base type `⋆`, and metavariables `?n`. -/
 def isTyAtom (t : Language1.Token) : Bool := (t.val == "⋆") || isMvarTok t
 
 /-- The token spelling `?n`. -/
-def mvarTok (n : Nat) : Language1.Token :=
-  ⟨String.ofList ('?' :: natChars n), isToken_iff.mpr (by
-    rw [String.toList_ofList]
-    refine ⟨?_, by simp⟩
-    intro c hc
-    rcases List.mem_cons.mp hc with rfl | hc'
-    · decide
-    · exact ((natChars_spec n).2 c hc').1)⟩
+def mvarTok (n : Nat) : Language1.Token := natTok '?' (by decide) digit_not_sep n
 
 /-- Read the index back out of a `?n` token. -/
-def tokMvar (t : Language1.Token) : Nat := charsNat t.val.toList.tail
+def tokMvar (t : Language1.Token) : Nat := natOfTok t
 
-theorem tokMvar_mvarTok (n : Nat) : tokMvar (mvarTok n) = n := by
-  simp only [tokMvar, mvarTok, String.toList_ofList, List.tail_cons]
-  exact charsNat_natChars n
+theorem tokMvar_mvarTok (n : Nat) : tokMvar (mvarTok n) = n :=
+  LambdaLab.Parser.Numeral.natOfTok_natTok _ _ _ n
 
-theorem isMvarTok_mvarTok (n : Nat) : isMvarTok (mvarTok n) = true := by
-  have hs := natChars_spec n
-  simp only [isMvarTok, mvarTok, String.toList_ofList]
-  simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true]
-  refine ⟨?_, fun c hc => (hs.2 c hc).2⟩
-  cases hh : natChars n with
-  | nil => exact absurd hh hs.1
-  | cons a as => simp
+theorem isMvarTok_mvarTok (n : Nat) : isMvarTok (mvarTok n) = true :=
+  LambdaLab.Parser.Numeral.isNatTok_natTok _ _ _ n
 
 theorem isTyAtom_mvarTok (n : Nat) : isTyAtom (mvarTok n) = true := by
   simp [isTyAtom, isMvarTok_mvarTok n]
@@ -258,10 +202,7 @@ inductive STm where
   | app : STm → STm → STm
   | lam : VName → Ty → STm → STm
 
-def Ty.size : Ty → Nat
-  | .base => 1
-  | .mvar _ => 1
-  | .arrow a b => a.size + b.size + 1
+-- `Ty.size` (`Typing/Unification.lean`) is reused as the type-side termination measure.
 
 def STm.size : STm → Nat
   | .var _ _ => 1
