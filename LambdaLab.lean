@@ -11,6 +11,7 @@ import LambdaLab.Stlc.DeBruijn.Reducibility
 import LambdaLab.Stlc.DeBruijn.Properties
 import LambdaLab.Stlc.DeBruijn.Preservation
 import LambdaLab.Stlc.DeBruijn.Confluence
+import LambdaLab.Stlc.Named.Name
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step.Basic
 import LambdaLab.Stlc.Named.Step.MStep
