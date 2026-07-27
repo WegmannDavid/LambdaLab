@@ -1,6 +1,7 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Language1.Biparser
+import LambdaLab.Language1.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix
@@ -50,7 +51,7 @@ def tkS (s : String) (h : isToken isSep s = true := by decide) : Language1.Token
 def sReserved : List Language1.Token :=
   [tkS "(", tkS ")", tkS "λ", tkS ".", tkS ":", tkS "→", tkS "⋆", tkS "def", tkS ":="]
 
-def isVarTok (t : Language1.Token) : Bool := decide (t ∉ sReserved)
+def isVarTok (t : Language1.Token) : Bool := isFree sReserved t
 
 /-- Digits are separator-free for this vernacular (`isSep` is whitespace). -/
 theorem digit_not_sep : ∀ c, isDigitChar c = true → isSep c = false :=
@@ -192,7 +193,10 @@ instance : ∀ e : stlcGrammar.Ent, DecidableEq (stlcGrammar.entry e).Op
 
 /-! ## Surface terms, and the truncation into them -/
 
-abbrev VName := { t : Language1.Token // isVarTok t = true }
+/-- Binder names: any token the grammar has not reserved. Being a `FreeName`, this is a
+`NameAlphabet` with no proof obligation here — `Language1/FreeName.lean` discharges it once for
+every language. -/
+abbrev VName := FreeName sReserved
 
 /-- Surface terms: `Term` with variable names restricted to non-keyword tokens. The binder's
 annotation is a real `Ty`, taken from the source — there is nothing left for the parser to

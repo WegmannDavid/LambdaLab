@@ -59,6 +59,7 @@ import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example
 import LambdaLab.Language1.NameAlphabet
 import LambdaLab.Language1.Basic
+import LambdaLab.Language1.FreeName
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.Example
 import LambdaLab.Language1.Pipeline
