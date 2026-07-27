@@ -34,3 +34,49 @@ import LambdaLab.Substitution.Unification.Basic
 import LambdaLab.Substitution.Unification.Soundness
 import LambdaLab.Substitution.Unification.Completeness
 import LambdaLab.Substitution.Unification.MGU
+
+
+-- The parser stack, the categorical layer, the vernacular and the example languages.
+--
+-- These were previously outside the root, so `lake build` did not typecheck them and files
+-- could (and did) rot undetected. Everything live is imported here now.
+--
+-- Deliberately excluded, each for a reason:
+--   * Abstraction.Parser / Abstraction.Tokenizer -- the v2 `Abs` instances, broken since the
+--     CBiparser deletion and awaiting a v3 port (Abstraction2.Tokenizer already supersedes the
+--     latter). Kept, not deleted, because the ParserIso idea is still wanted.
+--   * Abstraction2.Sketch -- the intentionally sorried spec of the target pipeline.
+--   * Playground.*, Parser.IsoParser.Playground -- the prototype trail, kept as history.
+import LambdaLab.Abstraction.Basic
+import LambdaLab.Abstraction.Bicat
+import LambdaLab.Abstraction2.Basic
+import LambdaLab.Abstraction2.Bicat
+import LambdaLab.Abstraction2.Parens
+import LambdaLab.Abstraction2.Tokenizer
+import LambdaLab.Arith
+import LambdaLab.Inductive.Basic
+import LambdaLab.Inductive.Example
+import LambdaLab.Language1.Basic
+import LambdaLab.Language1.Biparser
+import LambdaLab.Language1.Example
+import LambdaLab.Language1.Pipeline
+import LambdaLab.Language1.Vernacular
+import LambdaLab.NEList
+import LambdaLab.Parser.IsoParser.Adapters
+import LambdaLab.Parser.IsoParser.Basic
+import LambdaLab.Parser.IsoParser.Combinators
+import LambdaLab.Parser.IsoParser.Example
+import LambdaLab.Parser.IsoParser.Fix
+import LambdaLab.Parser.IsoParser.Mixfix.Basic
+import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.IsoParser.Mixfix.Complete
+import LambdaLab.Parser.IsoParser.Mixfix.Parse
+import LambdaLab.Parser.IsoParser.Mixfix.Sound
+import LambdaLab.Parser.IsoParser.Mixfix.Tree
+import LambdaLab.Parser.IsoParser.Notation
+import LambdaLab.Parser.IsoParser.Token
+import LambdaLab.Parser.IsoParser.Tokenize
+import LambdaLab.Parser.LossyParser.Basic
+import LambdaLab.Parser.Truncation
+import LambdaLab.Parser.Truncation.Mixfix
+import LambdaLab.Stlc.Named.Lang1
