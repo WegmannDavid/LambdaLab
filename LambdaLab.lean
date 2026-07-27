@@ -61,6 +61,8 @@ import LambdaLab.Language1.NameAlphabet
 import LambdaLab.Language1.Basic
 import LambdaLab.Language1.Context
 import LambdaLab.Language1.FreeName
+import LambdaLab.Language1.Elaboratable
+import LambdaLab.Language1.Elaboration
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.Example
 import LambdaLab.Language1.Pipeline
