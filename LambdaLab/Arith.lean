@@ -1,4 +1,5 @@
 import LambdaLab.Language1.Biparser
+import LambdaLab.Language1.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
@@ -81,7 +82,7 @@ def aEntry : Entry Token Unit where
   topRank := 4
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [aTighter, aRank]
   rank_lt_topRank := by intro o; cases o <;> decide
-  isVar := fun t => decide (t ∉ aReserved)
+  isVar := isFree aReserved
   headsDistinct := by
     intro o₁ o₂ h₁ h
     cases o₁ <;> cases o₂ <;>
@@ -293,6 +294,10 @@ def arithLanguage : Language where
 
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
+  isVarName := isFree aReserved
+  varAlphabet := inferInstance
+  keywords_excluded := by decide
+
   pTm :=
     ((mixfix aUnambiguous (G := aGrammar) () .loosest).weakenFollow
       (by

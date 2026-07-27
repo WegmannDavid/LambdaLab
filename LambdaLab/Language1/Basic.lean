@@ -1,5 +1,6 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
+import LambdaLab.Language1.NameAlphabet
 
 namespace LambdaLab.Language1
 
@@ -43,11 +44,25 @@ def kwAssign : Token := ⟨":=",  by decide⟩
 def isVernacularKeyword (t : Token) : Bool :=
   t.val == "def" || t.val == ":" || t.val == ":="
 
+/-- The vernacular's own keywords, as a list — so a language can be *checked* against them by
+`decide`. Quantifying the exclusion over this finite list, rather than over all of `Token`, is
+what keeps `Language.keywords_excluded` decidable. -/
+def vernacularReserved : List Token := [kwDef, kwColon, kwAssign]
+
+/-- Tokens available as names: everything the given list has not reserved. The `NameAlphabet`
+instance for the resulting subtype lives in `FreeName.lean` (it needs a fresh-name generator);
+the definitions live here so that `Name` below, and `Language.isVarName`, can be stated in terms
+of them. -/
+def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
+
+/-- The name alphabet determined by a reserved list. -/
+abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
+
 /-- A name is any non-keyword lexeme. The subtype is load-bearing: a `Command` holding the name
 `def` would print a lexeme the parser reads back as a keyword. -/
-def isName (t : Token) : Bool := !isVernacularKeyword t
+abbrev isName : Token → Bool := isFree vernacularReserved
 
-abbrev Name := { t : Token // isName t = true }
+abbrev Name := FreeName vernacularReserved
 
 /-! ## The plug-in interface
 
@@ -105,5 +120,30 @@ structure Language where
   /-- The term parser: must stop at a command boundary (`def`). Lossy — this is what lets a
   language *truncate*: accept `((((a))))`, remember only `a`, and still round-trip. -/
   pTm : LossyParser Token anyTok followDef Tm AnnTm
+
+  /-- Which tokens may name a variable — and hence a declaration.
+
+  The vernacular uses this *same* notion for a declaration's name, so `def f : T := e` puts `f`
+  in scope as an ordinary term variable, with no injection between two kinds of name. -/
+  isVarName : Token → Bool
+  /-- Names must form a `NameAlphabet`: decidable, hashable, and inexhaustible (capture-avoiding
+  substitution has to invent names). A language that simply excludes a finite reserved list gets
+  this from `FreeName`'s instance — `isVarName := isFree myReserved` and `inferInstance`. One
+  with a genuine lexical class ("identifiers start with a letter") supplies its own, which is
+  why this is a field rather than being derived from a reserved list. -/
+  varAlphabet : NameAlphabet { t : Token // isVarName t = true }
+  /-- Variable names may not collide with the vernacular's keywords: a declaration named `def`
+  would make the file parser mis-split commands.
+
+  Note what this does *not* have to say. A language's own grammar keywords are already excluded —
+  the mixfix `Entry.varDisjoint` field proves no operator name part satisfies `isVar`. This field
+  covers exactly the gap that proof cannot reach, since a grammar knows nothing about the
+  vernacular wrapped around it. -/
+  keywords_excluded : ∀ k ∈ vernacularReserved, isVarName k = false
+
+/-- A language's variable names — and its declaration names, which are the same thing. -/
+abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
+
+instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
 
 end LambdaLab.Language1

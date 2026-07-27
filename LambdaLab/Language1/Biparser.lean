@@ -29,9 +29,11 @@ open LambdaLab.Parser.IsoParser
 open LambdaLab.Parser.LossyParser (LossyParser)
 open LambdaLab.Abstraction2 (Abstraction)
 
-/-- An identifier: one non-keyword lexeme. Aligned: source and value are `Name`, so a keyword
-source is unrepresentable. -/
-def pName : IsoParser Token (fun t => isName t = true) (fun _ => True) Name Name := sat isName
+/-- An identifier: one token the language admits as a variable name. Aligned: source and value
+are `Var L`, so a name the language would reject is unrepresentable. -/
+def Language.pName (L : Language) :
+    IsoParser Token (fun t => L.isVarName t = true) (fun _ => True) (Var L) (Var L) :=
+  sat L.isVarName
 
 /-! ## The command -/
 
@@ -47,7 +49,7 @@ before. -/
 def Language.commandIso (L : Language) :
     IsoParser Token (· = kwDef) followDef (Σ c : Command L, Command.Ann L c) (Command L) := gdo
   let _kw ← tok kwDef
-  let n ← comap (fun s => s.1.name) pName
+  let n ← comap (fun s => s.1.name) L.pName
   let _c ← tok kwColon
   let ty ← comap (fun s => ⟨s.1.ty, s.2.1⟩) L.pTy.toIsoParser
   let _a ← tok kwAssign

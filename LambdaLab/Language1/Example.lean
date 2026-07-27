@@ -1,4 +1,5 @@
 import LambdaLab.Language1.Pipeline
+import LambdaLab.Language1.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
@@ -24,6 +25,11 @@ def trivialLanguage : Language where
   Ty := Name
   AnnTy := fun _ => Unit
   AnnTm := fun _ => Unit
+  -- Variables are any non-keyword lexeme — the same `Name` the terms themselves are.
+  isVarName := isName
+  varAlphabet := inferInstance
+  keywords_excluded := by decide
+
   pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
   pTm := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst

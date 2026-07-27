@@ -5,17 +5,19 @@ namespace LambdaLab.Language1
 
 /-- A single declaration: `def NAME : TYPE := BODY`.
 
-The name is a `Name` (non-keyword), not a raw `String`: a command holding the name `"def"`
-would print a lexeme the parser reads back as a keyword, breaking the round-trip. Same medicine
-as everywhere else — make the bad source unrepresentable. -/
+The name is the language's *own* variable name (`Var L`), not a raw `String` and not a separate
+vernacular notion. Two things follow. A command holding the name `def` is unrepresentable, so it
+cannot print a lexeme the parser reads back as a keyword. And a declared name is directly usable
+as a term variable — `def f : T := e` puts `f` in scope for what follows, with no injection
+between two kinds of name. -/
 inductive Command (L : Language) where
-  | decl : Name → L.Ty → L.Tm → Command L
+  | decl : Var L → L.Ty → L.Tm → Command L
 
 namespace Command
 
 variable {L : Language}
 
-def name : Command L → Name    | .decl n _ _ => n
+def name : Command L → Var L   | .decl n _ _ => n
 def ty   : Command L → L.Ty    | .decl _ t _ => t
 def tm   : Command L → L.Tm    | .decl _ _ b => b
 

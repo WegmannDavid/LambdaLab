@@ -313,6 +313,12 @@ def stlcLanguage : Language where
         subst h
         exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl)
 
+  isVarName := isVarTok
+  -- `isVarTok` is a plain `def`, so instance search will not unfold it to `isFree sReserved`;
+  -- name the target type instead.
+  varAlphabet := inferInstanceAs (NameAlphabet (FreeName sReserved))
+  keywords_excluded := by decide
+
   pTm :=
     ((mixfix stlcUnambiguous (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
       (by

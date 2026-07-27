@@ -23,11 +23,8 @@ namespace LambdaLab.Language1
 
 open LambdaLab.Parser.IsoParser
 
-/-- Tokens available as variable names: everything the language has not reserved. -/
-def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
-
-/-- The name alphabet determined by a reserved list. -/
-abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
+-- `isFree` and `FreeName` are declared in `Basic.lean`, so that `Name` and
+-- `Language.isVarName` can be phrased with them; this file adds the instance.
 
 /-! ## A supply of arbitrarily long tokens -/
 
