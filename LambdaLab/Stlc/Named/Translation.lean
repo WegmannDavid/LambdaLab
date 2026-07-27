@@ -38,6 +38,8 @@ that are quotient-friendly (e.g. confluence, preservation up to α).
 
 namespace LambdaLab.Stlc.Named
 
+open LambdaLab.Language1 (freshFor freshFor_not_in)
+
 /-! ## Type translation -/
 
 def Ty.toDB : Ty → Stlc.DeBruijn.Ty
@@ -72,14 +74,14 @@ theorem lookupVar_lt_length (x : String) (Γ : List String) (h : x ∈ Γ) :
 
 /-! ## Term translation -/
 
-def Term.toDB (Γ : List String) : Term → Stlc.DeBruijn.Term
+def Term.toDB (Γ : List String) : (Term String) → Stlc.DeBruijn.Term
   | .var x => Stlc.DeBruijn.Term.var (lookupVar x Γ)
   | .lam x τ body => Stlc.DeBruijn.Term.lam τ.toDB (body.toDB (x :: Γ))
   | .app e₁ e₂ => Stlc.DeBruijn.Term.app (e₁.toDB Γ) (e₂.toDB Γ)
 
 /-! ## Translation only depends on the lookup of free variables -/
 
-theorem Term.toDB_relevant : ∀ (e : Term) {Γ Γ' : List String},
+theorem Term.toDB_relevant : ∀ (e : (Term String)) {Γ Γ' : List String},
     (∀ x ∈ e.freeVars, lookupVar x Γ = lookupVar x Γ') →
     e.toDB Γ = e.toDB Γ' := by
   intro e
@@ -87,7 +89,7 @@ theorem Term.toDB_relevant : ∀ (e : Term) {Γ Γ' : List String},
 
 /-! ## Translation respects α-renaming -/
 
-theorem Term.toDB_rename : ∀ (e : Term) (Γ₁ Γ₂ : List String) (y z : String),
+theorem Term.toDB_rename : ∀ (e : (Term String)) (Γ₁ Γ₂ : List String) (y z : String),
     z ∉ e.allVars → z ≠ y → y ∉ Γ₁ → z ∉ Γ₁ →
     e.toDB (Γ₁ ++ y :: Γ₂) = (e.rename y z).toDB (Γ₁ ++ z :: Γ₂) := by
   intro e
@@ -139,7 +141,7 @@ shadows). On the de Bruijn side, this corresponds to a single `shift`
 at position `Γ₁.length`.
 -/
 
-theorem Term.toDB_insert : ∀ (e : Term) (Γ₁ Γ₂ : List String) (w : String),
+theorem Term.toDB_insert : ∀ (e : (Term String)) (Γ₁ Γ₂ : List String) (w : String),
     w ∈ Γ₁ →
     e.toDB (Γ₁ ++ w :: Γ₂) = (e.toDB (Γ₁ ++ Γ₂)).shift Γ₁.length := by
   intro e
@@ -171,7 +173,7 @@ If `w` is fresh in `e` (not free), then inserting it anywhere in the
 context is a single de Bruijn shift at the corresponding position.
 -/
 
-theorem Term.toDB_insert_fresh : ∀ (e : Term) (Γ₁ Γ₂ : List String) (w : String),
+theorem Term.toDB_insert_fresh : ∀ (e : (Term String)) (Γ₁ Γ₂ : List String) (w : String),
     w ∉ e.freeVars →
     e.toDB (Γ₁ ++ w :: Γ₂) = (e.toDB (Γ₁ ++ Γ₂)).shift Γ₁.length := by
   intro e
@@ -201,7 +203,7 @@ theorem Term.toDB_insert_fresh : ∀ (e : Term) (Γ₁ Γ₂ : List String) (w :
 
 /-! ## Translation respects extending the context with fresh binders -/
 
-theorem Term.toDB_shift_context : ∀ (Γ₁ Γ₂ : List String) (e : Term),
+theorem Term.toDB_shift_context : ∀ (Γ₁ Γ₂ : List String) (e : (Term String)),
     (∀ y ∈ Γ₁, y ∉ e.freeVars) →
     e.toDB (Γ₁ ++ Γ₂) = iterShift0 Γ₁.length (e.toDB Γ₂) := by
   intro Γ₁
@@ -229,8 +231,8 @@ We use `Nat`-induction on a `body.size` upper bound because the named
 not structurally smaller than the input lam.
 -/
 
-private theorem Term.toDB_subst_aux : ∀ (n : Nat) (e : Term), e.size ≤ n →
-    ∀ (Γ₁ Γ₂ : List String) (x : String) (v : Term),
+private theorem Term.toDB_subst_aux : ∀ (n : Nat) (e : (Term String)), e.size ≤ n →
+    ∀ (Γ₁ Γ₂ : List String) (x : String) (v : (Term String)),
     v.freeVars ⊆ Γ₂ →
     x ∉ Γ₁ →
     (∀ y ∈ Γ₁, y ∉ v.freeVars) →
@@ -316,7 +318,7 @@ private theorem Term.toDB_subst_aux : ∀ (n : Nat) (e : Term), e.size ≤ n →
           have h2 := ih e₂ (by grind [Term.size]) Γ₁ Γ₂ x v hvfv hxΓ hvΓ
           grind [Term.subst, Term.toDB, Stlc.DeBruijn.Term.subst]
 
-theorem Term.toDB_subst (e : Term) (Γ₁ Γ₂ : List String) (x : String) (v : Term)
+theorem Term.toDB_subst (e : (Term String)) (Γ₁ Γ₂ : List String) (x : String) (v : (Term String))
     (hvfv : v.freeVars ⊆ Γ₂)
     (hxΓ : x ∉ Γ₁)
     (hvΓ : ∀ y ∈ Γ₁, y ∉ v.freeVars) :
@@ -327,13 +329,13 @@ theorem Term.toDB_subst (e : Term) (Γ₁ Γ₂ : List String) (x : String) (v :
 
 /-! ## Free variables under rename and subst -/
 
-theorem Term.freeVars_rename_subset : ∀ (e : Term) (y z : String) (w : String),
+theorem Term.freeVars_rename_subset : ∀ (e : (Term String)) (y z : String) (w : String),
     w ∈ (e.rename y z).freeVars → (w ∈ e.freeVars ∧ w ≠ y) ∨ w = z := by
   intro e
   induction e <;> intro y z w hw <;> grind [Term.rename, Term.freeVars]
 
-private theorem Term.freeVars_subst_subset_aux : ∀ (n : Nat) (e : Term), e.size ≤ n →
-    ∀ (x : String) (v : Term) (w : String),
+private theorem Term.freeVars_subst_subset_aux : ∀ (n : Nat) (e : (Term String)), e.size ≤ n →
+    ∀ (x : String) (v : (Term String)) (w : String),
     w ∈ (e.subst x v).freeVars → (w ∈ e.freeVars ∧ w ≠ x) ∨ w ∈ v.freeVars := by
   intro n
   induction n with
@@ -380,13 +382,13 @@ private theorem Term.freeVars_subst_subset_aux : ∀ (n : Nat) (e : Term), e.siz
               have := ih e₂ (by grind [Term.size]) x v w h
               grind [Term.freeVars]
 
-theorem Term.freeVars_subst_subset (e : Term) (x : String) (v : Term) (w : String) :
+theorem Term.freeVars_subst_subset (e : (Term String)) (x : String) (v : (Term String)) (w : String) :
     w ∈ (e.subst x v).freeVars → (w ∈ e.freeVars ∧ w ≠ x) ∨ w ∈ v.freeVars :=
   Term.freeVars_subst_subset_aux e.size e (Nat.le_refl _) x v w
 
 /-! ## Reduction preserves the "free variables ⊆ Γ" invariant -/
 
-theorem Step.preserves_freeVars : ∀ {e e' : Term},
+theorem Step.preserves_freeVars : ∀ {e e' : (Term String)},
     e ⟶ e' → ∀ w ∈ e'.freeVars, w ∈ e.freeVars := by
   intro e e' hstep
   induction hstep with
@@ -398,7 +400,7 @@ theorem Step.preserves_freeVars : ∀ {e e' : Term},
   | appL _ ih => intro w hw; grind [Term.freeVars]
   | appR _ ih => intro w hw; grind [Term.freeVars]
 
-theorem MStep.preserves_freeVars : ∀ {e e' : Term},
+theorem MStep.preserves_freeVars : ∀ {e e' : (Term String)},
     e ⟶* e' → ∀ w ∈ e'.freeVars, w ∈ e.freeVars := by
   intro e e' hms
   induction hms with
@@ -407,7 +409,7 @@ theorem MStep.preserves_freeVars : ∀ {e e' : Term},
 
 /-! ## Step simulation -/
 
-theorem Step.toDB_step : ∀ {e e' : Term} (Γ : List String),
+theorem Step.toDB_step : ∀ {e e' : (Term String)} (Γ : List String),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶ e' →
     Stlc.DeBruijn.MStep (e.toDB Γ) (e'.toDB Γ) := by
@@ -444,7 +446,7 @@ to β, and the congruence rules recurse to that base case). This is the
 key fact that makes named SN follow from DB SN: an infinite named
 reduction sequence would translate to an infinite DB reduction. -/
 
-theorem Step.toDB_pos : ∀ {e e' : Term} (Γ : List String),
+theorem Step.toDB_pos : ∀ {e e' : (Term String)} (Γ : List String),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶ e' →
     ∃ d_mid, Stlc.DeBruijn.Step (e.toDB Γ) d_mid ∧
@@ -482,7 +484,7 @@ theorem Step.toDB_pos : ∀ {e e' : Term} (Γ : List String),
 
 /-! ## Multi-step simulation -/
 
-theorem MStep.toDB_step : ∀ {e e' : Term} (Γ : List String),
+theorem MStep.toDB_step : ∀ {e e' : (Term String)} (Γ : List String),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶* e' →
     Stlc.DeBruijn.MStep (e.toDB Γ) (e'.toDB Γ) := by
@@ -596,7 +598,7 @@ theorem CtxCompat.fromCtx (Γ : Ctx) (binders : List String)
 
 /-! ## Forward typing translation -/
 
-theorem HasType.toDB : ∀ (e : Term) {Γ : Ctx} {τ : Ty},
+theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ →
     ∀ (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx),
     (∀ x ∈ e.freeVars, x ∈ binders) →
@@ -651,7 +653,7 @@ theorem HasType.toDB : ∀ (e : Term) {Γ : Ctx} {τ : Ty},
 Phrased in terms of an arbitrary de Bruijn type `t`; the named result
 type is `Ty.fromDB t`. -/
 
-theorem HasType.fromDB : ∀ (e : Term) {Γ : Ctx} (binders : List String)
+theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx} (binders : List String)
     (db_ctx : Stlc.DeBruijn.Ctx) (t : Stlc.DeBruijn.Ty),
     e.AnnotsGround →
     (∀ x ∈ e.freeVars, x ∈ binders) →

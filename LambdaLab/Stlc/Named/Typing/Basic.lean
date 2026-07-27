@@ -31,7 +31,7 @@ def Ctx.cons (x : String) (τ : Ty) (Γ : Ctx) : Ctx :=
     simp only [Bool.false_eq_true, ↓reduceIte, hxy]
     rw [← Std.HashMap.get?_eq_getElem?]
 
-inductive HasType : Ctx → Term → Ty → Prop where
+inductive HasType : Ctx → (Term String) → Ty → Prop where
   | var : Γ.get? x = some τ → HasType Γ (.var x) τ
   | lam : HasType (Γ.cons x τ₁) body τ₂ →
           HasType Γ (.lam x τ₁ body) (τ₁ ⇒ τ₂)
@@ -58,7 +58,7 @@ theorem Ctx.Ground.cons {Γ : Ctx} {x : String} {τ : Ty}
 /-- Under a ground context and ground annotations, the inferred type
 is ground. Used to discharge the existential `τ₁` in app-cases when
 bridging to the de Bruijn variant. -/
-theorem HasType.ground_result : ∀ {e : Term} {Γ : Ctx} {τ : Ty},
+theorem HasType.ground_result : ∀ {e : (Term String)} {Γ : Ctx} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ → τ.Ground := by
   intro e
   induction e with

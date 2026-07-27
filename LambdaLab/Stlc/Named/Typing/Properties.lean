@@ -28,7 +28,7 @@ theorem HasType.cong : ∀ {Γ Γ' : Ctx} {e τ},
   | app _ _ ih₁ ih₂ => exact HasType.app (ih₁ hcong) (ih₂ hcong)
 
 /-- Every free variable of a typed term is bound in the context. -/
-theorem HasType.freeVars_in_ctx : ∀ (e : Term) {Γ τ},
+theorem HasType.freeVars_in_ctx : ∀ (e : (Term String)) {Γ τ},
     HasType Γ e τ → ∀ x, x ∈ e.freeVars → ∃ σ, Γ.get? x = some σ := by
   intro e
   induction e with
@@ -65,7 +65,7 @@ theorem HasType.closed_no_free {e τ} (h : HasType Ctx.empty e τ) :
   cases heq
 
 /-- Typing only depends on `Γ`'s value at the term's free variables. -/
-theorem HasType.relevant : ∀ (e : Term) {Γ Γ' : Ctx} {τ},
+theorem HasType.relevant : ∀ (e : (Term String)) {Γ Γ' : Ctx} {τ},
     HasType Γ e τ → (∀ x ∈ e.freeVars, Γ.get? x = Γ'.get? x) → HasType Γ' e τ := by
   intro e
   induction e with
@@ -124,7 +124,7 @@ theorem Ctx.pSubst_cons_get? (Γ : Ctx) (σ : Subst Ty)
 /-- **Stability of `HasType` under type substitution.** Applying any
 substitution to all three of context, term, and type preserves the
 typing derivation. Proved by structural induction on the derivation. -/
-theorem HasType.subst {Γ : Ctx} {e : Term} {τ : Ty}
+theorem HasType.subst {Γ : Ctx} {e : (Term String)} {τ : Ty}
     (h : HasType Γ e τ) (ρ : Subst Ty) :
     HasType (HasSubst.pSubst Γ ρ)
             (HasSubst.pSubst e ρ)
@@ -154,12 +154,12 @@ theorem HasType.var_inv {Γ : Ctx} {x : String} {τ : Ty}
     (h : HasType Γ (.var x) τ) : Γ.get? x = some τ := by
   cases h with | var h_get => exact h_get
 
-theorem HasType.lam_inv {Γ : Ctx} {x : String} {α : Ty} {body : Term} {τ : Ty}
+theorem HasType.lam_inv {Γ : Ctx} {x : String} {α : Ty} {body : (Term String)} {τ : Ty}
     (h : HasType Γ (.lam x α body) τ) :
     ∃ β : Ty, τ = (α ⇒ β) ∧ HasType (Γ.cons x α) body β := by
   cases h with | lam h_body => exact ⟨_, rfl, h_body⟩
 
-theorem HasType.app_inv {Γ : Ctx} {e₁ e₂ : Term} {τ : Ty}
+theorem HasType.app_inv {Γ : Ctx} {e₁ e₂ : (Term String)} {τ : Ty}
     (h : HasType Γ (.app e₁ e₂) τ) :
     ∃ α : Ty, HasType Γ e₁ (α ⇒ τ) ∧ HasType Γ e₂ α := by
   cases h with | app h₁ h₂ => exact ⟨_, h₁, h₂⟩

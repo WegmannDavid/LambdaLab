@@ -9,7 +9,7 @@ lambda and application — same shape as the de Bruijn `MStep`.
 
 namespace LambdaLab.Stlc.Named
 
-inductive MStep : Term → Term → Prop where
+inductive MStep : (Term String) → (Term String) → Prop where
   | refl : MStep e e
   | head : e ⟶ e' → MStep e' e'' → MStep e e''
 

@@ -19,7 +19,7 @@ namespace LambdaLab.Stlc.Named
 /-- Computable redex picker: leftmost-outermost. Returns `some ⟨e', s⟩`
 where `s : Step e e'` if `e` has any redex; `none` if `e` is in
 β-normal form. -/
-def Term.findReductStep : (e : Term) → Option ((e' : Term) ×' Step e e')
+def Term.findReductStep : (e : (Term String)) → Option ((e' : (Term String)) ×' Step e e')
   | .var _                  => none
   | .lam x τ body           =>
       match body.findReductStep with
@@ -38,7 +38,7 @@ def Term.findReductStep : (e : Term) → Option ((e' : Term) ×' Step e e')
 /-- An SN-witnessed term. The Subtype packages the `SN` proof so we can
 attach a `WellFoundedRelation` whose underlying relation is `Step` on
 the term components. -/
-abbrev SNTerm := { e : Term // SN e }
+abbrev SNTerm := { e : (Term String) // SN e }
 
 instance : WellFoundedRelation SNTerm where
   rel := fun a b => Step b.val a.val
@@ -50,7 +50,7 @@ instance : WellFoundedRelation SNTerm where
         exact ih e' hs⟩
 
 /-- Total evaluator: returns the normal form of `e` given an `SN` proof. -/
-def Term.eval (e : Term) (h : SN e) : Term :=
+def Term.eval (e : (Term String)) (h : SN e) : (Term String) :=
   match e.findReductStep with
   | none         => e
   | some ⟨e', s⟩ => Term.eval e' (h.unfold s)
@@ -58,8 +58,8 @@ termination_by (⟨e, h⟩ : SNTerm)
 
 /-- Any well-typed term has a normal form (given the bridge
 preconditions: ground context and ground annotations). -/
-def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty}
-    (hΓ : Γ.Ground) (hag : e.AnnotsGround) (ht : HasType Γ e τ) : Term :=
+def HasType.eval {Γ : Ctx} {e : (Term String)} {τ : Ty}
+    (hΓ : Γ.Ground) (hag : e.AnnotsGround) (ht : HasType Γ e τ) : (Term String) :=
   Term.eval e (HasType.sn hΓ hag ht)
 
 end LambdaLab.Stlc.Named

@@ -22,7 +22,7 @@ world: their translations multi-step to a common de Bruijn term.
 We do not claim joint convergence on named terms — that would require
 α-equivalence, since freshness choices in `Term.subst` make β
 nondeterministic on syntactic terms. -/
-theorem MStep.confluent : ∀ {e e₁ e₂ : Term} (Γ : List String),
+theorem MStep.confluent : ∀ {e e₁ e₂ : (Term String)} (Γ : List String),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶* e₁ → e ⟶* e₂ →
     ∃ d, Stlc.DeBruijn.MStep (e₁.toDB Γ) d ∧

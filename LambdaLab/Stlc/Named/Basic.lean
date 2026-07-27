@@ -1,7 +1,14 @@
+import LambdaLab.Language1.NameAlphabet
+
 /-!
 # Simply Typed Lambda Calculus (STLC), named-variable presentation
 
-Variables are `String`s. Substitution is *capture-avoiding*: when entering a
+Variables are drawn from any `NameAlphabet N`: the development only decides equality of names and
+generates fresh ones (`Term.subst`'s α-renaming branch). `String` is the usual instance and
+everything downstream is stated at `Term String`; a *parser* can instead pick a name type whose
+values are already valid surface tokens, so a parsed term needs no separate surface AST.
+
+Originally variables were `String`s. Substitution is *capture-avoiding*: when entering a
 binder whose bound variable would capture a free variable of the substituted
 value, the binder is α-renamed to a fresh name first.
 
@@ -11,6 +18,10 @@ the α-renaming branch, we recurse on `body.rename y z` whose size equals
 -/
 
 namespace LambdaLab.Stlc.Named
+
+open LambdaLab.Language1 (NameAlphabet freshFor freshFor_not_in)
+
+variable {N : Type} [NameAlphabet N]
 
 /-! ## Types -/
 
@@ -47,89 +58,52 @@ abbrev Ty.Ground (τ : Ty) : Prop := τ.isGround = true
 
 /-! ## Terms -/
 
-inductive Term where
-  | var : String → Term
-  | lam : String → Ty → Term → Term
-  | app : Term → Term → Term
+inductive Term (N : Type) where
+  | var : N → Term N
+  | lam : N → Ty → Term N → Term N
+  | app : Term N → Term N → Term N
   deriving Repr
 
 /-- Every type annotation inside `e` is ground (no `.mvar`). -/
-def Term.AnnotsGround : Term → Prop
+def Term.AnnotsGround : Term N → Prop
   | .var _        => True
   | .lam _ τ body => τ.Ground ∧ body.AnnotsGround
   | .app e₁ e₂    => e₁.AnnotsGround ∧ e₂.AnnotsGround
 
 /-! ## Free variables and term size -/
 
-def Term.freeVars : Term → List String
+def Term.freeVars : Term N → List N
   | .var x        => [x]
   | .lam y _ body => body.freeVars.filter (· ≠ y)
   | .app e₁ e₂    => e₁.freeVars ++ e₂.freeVars
 
 /-- All variables (free and bound) appearing in a term — used to pick a
 fresh name that's also fresh from binders, not just free variables. -/
-def Term.allVars : Term → List String
+def Term.allVars : Term N → List N
   | .var x        => [x]
   | .lam y _ body => y :: body.allVars
   | .app e₁ e₂    => e₁.allVars ++ e₂.allVars
 
-def Term.size : Term → Nat
+def Term.size : Term N → Nat
   | .var _        => 1
   | .lam _ _ body => 1 + body.size
   | .app e₁ e₂    => 1 + e₁.size + e₂.size
 
 /-- Every free variable is also an `allVars` entry. -/
-theorem Term.freeVars_subset_allVars (e : Term) (x : String) :
+theorem Term.freeVars_subset_allVars (e : Term N) (x : N) :
     x ∈ e.freeVars → x ∈ e.allVars := by
   induction e <;> grind [Term.freeVars, Term.allVars]
 
-/-! ## Fresh-variable generator
-
-`freshFor used` returns a string strictly longer than every string in `used`,
-hence not present in `used`.
--/
-
-def freshFor (used : List String) : String :=
-  String.ofList (List.replicate ((used.map String.length).foldr max 0 + 1) 'a')
-
-/-- Every element of `l` is bounded above by `l.foldr max 0`. -/
-private theorem le_foldr_max :
-    ∀ (l : List Nat) (a : Nat), a ∈ l → a ≤ l.foldr max 0 := by
-  intro l
-  induction l with
-  | nil => intro a hl; cases hl
-  | cons x xs ih =>
-      intro a hl
-      simp only [List.foldr_cons]
-      rcases List.mem_cons.mp hl with rfl | h
-      · exact Nat.le_max_left _ _
-      · exact Nat.le_trans (ih a h) (Nat.le_max_right _ _)
-
-/-- `freshFor used` is not in `used`: it has length strictly greater than
-every string in `used`. -/
-theorem freshFor_not_in (used : List String) : freshFor used ∉ used := by
-  intro h_in
-  have h_len_in : (freshFor used).length ∈ used.map String.length :=
-    List.mem_map.mpr ⟨freshFor used, h_in, rfl⟩
-  have h_le : (freshFor used).length ≤ (used.map String.length).foldr max 0 :=
-    le_foldr_max _ _ h_len_in
-  have h_eq : (freshFor used).length = (used.map String.length).foldr max 0 + 1 := by
-    show (String.ofList
-        (List.replicate ((used.map String.length).foldr max 0 + 1) 'a')).length = _
-    rw [String.length_ofList]
-    exact List.length_replicate
-  omega
-
 /-! ## Renaming (var-for-var, structurally recursive) -/
 
-def Term.rename : Term → String → String → Term
+def Term.rename : Term N → N → N → Term N
   | .var x,        y, z => if x = y then .var z else .var x
   | .lam x τ body, y, z =>
       if x = y then .lam x τ body
       else .lam x τ (body.rename y z)
   | .app e₁ e₂,    y, z => .app (e₁.rename y z) (e₂.rename y z)
 
-theorem Term.rename_size (e : Term) (y z : String) :
+theorem Term.rename_size (e : Term N) (y z : N) :
     (e.rename y z).size = e.size := by
   induction e with
   | var x =>
@@ -148,7 +122,7 @@ crossing a binder `λy:τ. body` whose `y` would capture a free variable of
 `v`, we α-rename `y` to a fresh `z` before recursing.
 -/
 
-def Term.subst (e : Term) (x : String) (v : Term) : Term :=
+def Term.subst (e : Term N) (x : N) (v : Term N) : Term N :=
   match e with
   | .var y => if x = y then v else .var y
   | .lam y τ body =>
@@ -173,12 +147,12 @@ namespace LambdaLab.Stlc.Named.Examples
 open LambdaLab.Stlc.Named
 
 /-- `λx:ι. x` -/
-def idBase : Term := .lam "x" .base (.var "x")
+def idBase : Term String := .lam "x" .base (.var "x")
 
 /-- `λf:ι⇒ι. f` -/
-def idArr : Term := .lam "f" (.base ⇒ .base) (.var "f")
+def idArr : Term String := .lam "f" (.base ⇒ .base) (.var "f")
 
 /-- `(λf:ι⇒ι. f) (λx:ι. x)` -/
-def app1 : Term := .app idArr idBase
+def app1 : Term String := .app idArr idBase
 
 end LambdaLab.Stlc.Named.Examples

@@ -23,13 +23,13 @@ open LambdaLab.Language
 /-- Placeholder: returns the input term. To be replaced by
 `HasType.eval` once the elaborator threads `Ground`/`AnnotsGround`
 witnesses through. -/
-private def evalStub {Γ : Ctx} {e : Term} {τ : Ty}
-    (_ : HasType Γ e τ) : Term := e
+private def evalStub {Γ : Ctx} {e : (Term String)} {τ : Ty}
+    (_ : HasType Γ e τ) : (Term String) := e
 
 /-- The canonical `Language` for named STLC. -/
 def lang : Language where
   Ty := Ty
-  Term := Term
+  Term := Term String
   tyDecEq := inferInstance
   tyHasSubst := inferInstance
   freshTy := Ty.mvar

@@ -90,17 +90,17 @@ walks `e`, applying `σ` to each annotation. -/
 
 namespace Term
 
-def tyIsFree : Term → Nat → Prop
+def tyIsFree : (Term String) → Nat → Prop
   | .var _,        _ => False
   | .lam _ τ body, n => HasVars.isFree τ n ∨ tyIsFree body n
   | .app e₁ e₂,    n => tyIsFree e₁ n ∨ tyIsFree e₂ n
 
-def tyFresh : Term → Nat
+def tyFresh : (Term String) → Nat
   | .var _        => 0
   | .lam _ τ body => max (HasVars.fresh τ) (tyFresh body)
   | .app e₁ e₂    => max (tyFresh e₁) (tyFresh e₂)
 
-theorem tyFresh_gt_tyIsFree : ∀ (e : Term) (n : Nat),
+theorem tyFresh_gt_tyIsFree : ∀ (e : (Term String)) (n : Nat),
     tyIsFree e n → n < tyFresh e := by
   intro e
   induction e with
@@ -118,7 +118,7 @@ theorem tyFresh_gt_tyIsFree : ∀ (e : Term) (n : Nat),
       · exact Nat.lt_of_lt_of_le (ih₁ _ h₁) (Nat.le_max_left _ _)
       · exact Nat.lt_of_lt_of_le (ih₂ _ h₂) (Nat.le_max_right _ _)
 
-def tyPSubst : Term → Subst Ty → Term
+def tyPSubst : (Term String) → Subst Ty → (Term String)
   | .var x,        _ => .var x
   | .lam x τ body, σ => .lam x (HasSubst.pSubst τ σ) (tyPSubst body σ)
   | .app e₁ e₂,    σ => .app (tyPSubst e₁ σ) (tyPSubst e₂ σ)
@@ -126,7 +126,7 @@ def tyPSubst : Term → Subst Ty → Term
 /-- `tyPSubst` preserves `Term.size`, since it only modifies type
 annotations, not term structure. Needed for the well-founded recursion
 in `W`'s app case, whose second recursive call is on `pSubst e₂ σ₁`. -/
-theorem tyPSubst_size (e : Term) (σ : Subst Ty) :
+theorem tyPSubst_size (e : (Term String)) (σ : Subst Ty) :
     (Term.tyPSubst e σ).size = e.size := by
   induction e with
   | var _ => rfl
@@ -135,12 +135,12 @@ theorem tyPSubst_size (e : Term) (σ : Subst Ty) :
 
 end Term
 
-instance : HasVars Term where
+instance : HasVars (Term String) where
   isFree := Term.tyIsFree
   fresh  := Term.tyFresh
   fresh_gt_free := Term.tyFresh_gt_tyIsFree
 
-instance : HasSubst Term Ty where
+instance : HasSubst (Term String) Ty where
   pSubst := Term.tyPSubst
 
 /-! ## `pSubst ∅` is the identity on `Term` and on `Ctx` (up to lookup).
@@ -149,7 +149,7 @@ For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
 doesn't hold, but every `get?` agrees, which is enough for typing
 proofs (via `HasType.cong`). -/
 
-@[simp] theorem Term.tyPSubst_empty (e : Term) :
+@[simp] theorem Term.tyPSubst_empty (e : (Term String)) :
     Term.tyPSubst e (∅ : Subst Ty) = e := by
   induction e with
   | var _ => rfl
@@ -257,7 +257,7 @@ theorem Ty.pSubst_comp (σ τ : Subst Ty) (t : Ty) :
 
 /-- **Soundness of `Subst.comp` for `Term`.** Same composition law, on
 the term substitution `tyPSubst` (which applies σ to annotations). -/
-theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : Term) :
+theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : (Term String)) :
     Term.tyPSubst e (Subst.comp σ τ) =
       Term.tyPSubst (Term.tyPSubst e τ) σ := by
   induction e with
@@ -269,7 +269,7 @@ theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : Term) :
 
 /-- `HasSubst.pSubst`-flavored corollary of `tyPSubst_comp`, for use in
 proofs that prefer the class API. -/
-theorem Term.pSubst_comp (σ τ : Subst Ty) (e : Term) :
+theorem Term.pSubst_comp (σ τ : Subst Ty) (e : (Term String)) :
     HasSubst.pSubst e (Subst.comp σ τ) =
       HasSubst.pSubst (HasSubst.pSubst e τ) σ :=
   Term.tyPSubst_comp σ τ e
@@ -292,7 +292,7 @@ Specializations of `Signature.pSubst_insert_fresh`: extending σ with a
 fresh-from-target binding is action-preserving on terms and (key-by-key)
 on contexts. -/
 
-theorem Term.tyPSubst_insert_fresh (e : Term) (σ : Subst Ty)
+theorem Term.tyPSubst_insert_fresh (e : (Term String)) (σ : Subst Ty)
     (k : Nat) (v : Ty) (h_fresh : ¬ HasVars.isFree e k) :
     Term.tyPSubst e (σ.insert k v) = Term.tyPSubst e σ := by
   induction e with

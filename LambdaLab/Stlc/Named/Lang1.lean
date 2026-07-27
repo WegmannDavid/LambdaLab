@@ -25,13 +25,17 @@ Nobody writes `?7` by hand; the intended surface for "infer this" is `_`, which 
 belongs in a lossy layer above, whose annotation records which binders were elided. That is the
 `annotated | infer` split of `Abstraction2/Sketch.lean`.
 
-## Why terms still go through `STm`
+## The parser lands in `Term` itself
 
-`Ty` can be a parser value type; `Term` cannot, for a reason unrelated to annotations:
-`Term.var`/`Term.lam` take an arbitrary `String`, so `Term.var "def"` and `Term.var ""` exist and
-have no printable spelling — `Term` is wider than the printable set. `STm` is `Term` with names
-restricted to non-keyword tokens; `STm.toTerm` just forgets that restriction. (A subtype
-`{t : Term // names are tokens}` would remove `STm` entirely; it is the natural next step.)
+There is no surface AST. `Term` is parametric in its name alphabet (`Stlc/Named/Basic.lean`), so
+terms parse into `Term VName`, named by the non-reserved tokens — and `VName` is `FreeName
+sReserved`, whose `NameAlphabet` instance `Language1/FreeName.lean` proves once for every
+language.
+
+That closes the last gap. `Term String` would *not* work: `Term.var "def"` and `Term.var ""`
+exist and have no spelling, so `Term String` is wider than the printable set. Restricting the
+name type — rather than wrapping terms in a subtype or duplicating the AST — is what makes the
+value type exactly what the token string determines.
 
 The grammar is a single three-entry grammar — terms, binders, types — so `pTm` and `pTy` are the
 same engine at different entries, and the binder's `: T` is an ordinary cross-entry hole.
@@ -198,29 +202,23 @@ instance : ∀ e : stlcGrammar.Ent, DecidableEq (stlcGrammar.entry e).Op
 every language. -/
 abbrev VName := FreeName sReserved
 
-/-- Surface terms: `Term` with variable names restricted to non-keyword tokens. The binder's
-annotation is a real `Ty`, taken from the source — there is nothing left for the parser to
-invent. -/
-inductive STm where
-  | var : (t : Language1.Token) → isVarTok t = true → STm
-  | app : STm → STm → STm
-  | lam : VName → Ty → STm → STm
+/-- So `Term VName` is `Repr`-able (the derived instance needs one for the name type). -/
+instance : Repr VName := ⟨fun v _ => repr v.1.val⟩
 
--- `Ty.size` (`Typing/Unification.lean`) is reused as the type-side termination measure.
+/-! Terms parse **directly into `Term VName`** — the STLC term type, named by non-reserved
+tokens. There is no surface AST: `?n` makes every `Ty` spellable and the mandatory binder
+annotation means the parser invents nothing, so `Term` itself round-trips.
 
-def STm.size : STm → Nat
-  | .var _ _ => 1
-  | .app f a => f.size + a.size + 1
-  | .lam _ τ b => τ.size + b.size + 2
-
-/-- Forget the name restriction. No metavariables are invented: the source wrote them. -/
-def STm.toTerm : STm → Term
-  | .var t _ => .var t.val
-  | .app f a => .app f.toTerm a.toTerm
-  | .lam x τ b => .lam x.1.val τ b.toTerm
+The measure below is the one `Rules.dest_size` needs and is *not* `Term.size`: the lam node's
+operands now include the annotation `τ`, so the measure has to dominate `Ty.size τ` as well.
+`Rules.size` is a field of the bundle, so this stays local. -/
+def tmSize : Term VName → Nat
+  | .var _ => 1
+  | .app f a => tmSize f + tmSize a + 1
+  | .lam _ τ b => τ.size + tmSize b + 2
 
 def CS : SEnt → Type
-  | .tm => STm
+  | .tm => Term VName
   | .var => VName
   | .ty => Ty
 
@@ -229,7 +227,7 @@ def CS : SEnt → Type
 def sRules : Rules stlcGrammar CS where
   var {e} t h :=
     match e, h with
-    | .tm, h => STm.var t h
+    | .tm, h => Term.var ⟨t, h⟩
     | .var, h => ⟨t, h⟩
     | .ty, _ => if isMvarTok t then Ty.mvar (tokMvar t) else Ty.base
   op {e} o vs :=
@@ -242,9 +240,9 @@ def sRules : Rules stlcGrammar CS where
     | .ty, .arrow, (a, b, _)    => .arrow a b
   dest {e} x :=
     match e, x with
-    | .tm, STm.var t h  => .var t h
-    | .tm, STm.app f a  => .node .app (f, a, PUnit.unit)
-    | .tm, STm.lam x τ b => .node .lam (x, τ, b, PUnit.unit)
+    | .tm, Term.var x    => .var x.1 x.2
+    | .tm, Term.app f a  => .node .app (f, a, PUnit.unit)
+    | .tm, Term.lam x τ b => .node .lam (x, τ, b, PUnit.unit)
     | .var, x => .var x.1 x.2
     | .ty, Ty.base      => .var (tkS "⋆") (by decide)
     | .ty, Ty.mvar n    => .var (mvarTok n) (isTyAtom_mvarTok n)
@@ -272,18 +270,18 @@ def sRules : Rules stlcGrammar CS where
   op_paren := by intro e y; cases e <;> rfl
   size {e} :=
     match e with
-    | .tm => STm.size
+    | .tm => tmSize
     | .var => fun _ => 1
     | .ty => Ty.size
   dest_size := by
     intro e x
     cases e
     · cases x with
-      | var t h => trivial
-      | app f a => exact ⟨by simp +arith [STm.size], by simp +arith [STm.size], trivial⟩
+      | var x => trivial
+      | app f a => exact ⟨by simp +arith [tmSize], by simp +arith [tmSize], trivial⟩
       | lam x τ b =>
-          exact ⟨by simp +arith [STm.size], by simp +arith [STm.size],
-                 by simp +arith [STm.size], trivial⟩
+          exact ⟨by simp +arith [tmSize], by simp +arith [tmSize],
+                 by simp +arith [tmSize], trivial⟩
     · trivial
     · cases x with
       | base => trivial
@@ -302,7 +300,7 @@ theorem stlcUnambiguous : Unambiguous stlcGrammar := by
   sorry
 
 def stlcLanguage : Language where
-  Tm := STm
+  Tm := Term VName
   Ty := Ty
   AnnTy := fun x => { t : Expr stlcGrammar SEnt.ty .loosest // truncExpr sRules t = x }
   AnnTm := fun x => { t : Expr stlcGrammar SEnt.tm .loosest // truncExpr sRules t = x }

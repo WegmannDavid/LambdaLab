@@ -26,7 +26,7 @@ namespace LambdaLab.Stlc.Named
 
 /-! ## Named SN (mirroring the DB definition) -/
 
-inductive SN : Term → Prop where
+inductive SN : (Term String) → Prop where
   | intro : (∀ e', Step e e' → SN e') → SN e
 
 theorem SN.unfold : ∀ {e e'}, SN e → Step e e' → SN e'
@@ -49,7 +49,7 @@ of `d`. This lets us advance through the (potentially multi-step) DB
 trace produced by a single named step. -/
 
 private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d →
-    ∀ (e : Term) (binders : List String),
+    ∀ (e : (Term String)) (binders : List String),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     Stlc.DeBruijn.MStep d (e.toDB binders) →
     SN e := by
@@ -71,7 +71,7 @@ private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d
           rename_i d_mid_d
           exact ihStep d_mid_d h_step_d e' binders hfv' (rest_d.trans hsim)
 
-theorem SN.fromDB : ∀ (e : Term) (binders : List String),
+theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     Stlc.DeBruijn.SN (e.toDB binders) → SN e :=
   fun e binders hfv hsn =>
@@ -82,7 +82,7 @@ theorem SN.fromDB : ∀ (e : Term) (binders : List String),
 /-- Every well-typed named term is strongly normalizing.
 
 Bridge preconditions: Γ and e's annotations must be ground. -/
-theorem HasType.sn : ∀ {Γ : Ctx} {e : Term} {τ : Ty},
+theorem HasType.sn : ∀ {Γ : Ctx} {e : (Term String)} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ → SN e := by
   intro Γ e τ hΓ hag ht
   let binders := e.freeVars

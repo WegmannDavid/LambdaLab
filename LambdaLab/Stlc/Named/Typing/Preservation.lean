@@ -26,7 +26,7 @@ correspondence is meaningful only for fully-elaborated terms (no
 `inf`/`mvar`). The caller must also supply that the reduct's
 annotations are ground (`hag'`); β-reduction can substitute a term
 into many positions, so this is shown separately. -/
-theorem HasType.preservation : ∀ {Γ : Ctx} {e e' : Term} {τ : Ty},
+theorem HasType.preservation : ∀ {Γ : Ctx} {e e' : (Term String)} {τ : Ty},
     Γ.Ground → e.AnnotsGround → e'.AnnotsGround →
     HasType Γ e τ → e ⟶ e' → HasType Γ e' τ := by
   intro Γ e e' τ hΓ hag hag' ht hs
