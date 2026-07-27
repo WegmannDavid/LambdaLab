@@ -150,12 +150,25 @@ def STm.size : STm → Nat
   | .app f a => f.size + a.size + 1
   | .lam _ b => b.size + 2
 
-/-- The bridge to the typed calculus: every binder annotated `Ty.mvar 0` (all-zero for now;
-distinct mvars are the elaborator boundary's job). -/
-def STm.toTerm : STm → Term
-  | .var t _ => .var t.val
-  | .app f a => .app f.toTerm a.toTerm
-  | .lam x b => .lam x.1.val (Ty.mvar 0) b.toTerm
+/-- The bridge to the typed calculus, threading a fresh-metavariable counter: binder `k` (in
+left-to-right order) is annotated `Ty.mvar k`.
+
+The counter is not cosmetic. `Term.lam` demands a type annotation and the surface has none, so
+each binder needs a *distinct* metavariable for the elaborator to solve — annotating them all
+`Ty.mvar 0` would silently force every binder in a term to have the same type
+(`λ f . ( λ x . f x )` would be unsolvable). -/
+def STm.toTermAux : Nat → STm → Term × Nat
+  | n, .var t _ => (.var t.val, n)
+  | n, .app f a =>
+      let (tf, n₁) := STm.toTermAux n f
+      let (ta, n₂) := STm.toTermAux n₁ a
+      (.app tf ta, n₂)
+  | n, .lam x b =>
+      let (tb, n₁) := STm.toTermAux (n + 1) b
+      (.lam x.1.val (Ty.mvar n) tb, n₁)
+
+/-- The bridge to the typed calculus: distinct `Ty.mvar`s, one per binder. -/
+def STm.toTerm (t : STm) : Term := (STm.toTermAux 0 t).1
 
 /-- Target of the truncation, per entry. -/
 def CS : SEnt → Type
