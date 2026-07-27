@@ -1,15 +1,17 @@
 import Std.Data.HashMap
 
 /-!
-# `NameAlphabet` — what the named development needs of a variable name
+# `NameAlphabet` — what an object language needs of a variable name
 
-`Stlc/Named` is parametric in the type of variable names. Everything in it — renaming,
-capture-avoiding substitution, typing, reduction, confluence, normalization — treats a name as
-opaque; the *only* operations it performs are deciding equality, keying a context, and
-generating a name not already in use. That is the whole interface:
+A named object language should be parametric in its type of variable names. Everything a
+named presentation does — renaming, capture-avoiding substitution, typing, reduction,
+confluence, normalization — treats a name as opaque; the *only* operations performed are
+deciding equality, keying a context, and generating a name not already in use. That is the
+whole interface:
 
 * `DecidableEq` — substitution and typing compare names;
-* `Hashable` — the context is a `Std.HashMap` keyed by names;
+* `Hashable` — contexts are `Std.HashMap`s keyed by names (both `Language.Context` and
+  `Stlc.Named.Ctx`);
 * `freshFor` + `freshFor_not_in` — capture-avoiding substitution must rename a binder out of the
   way, so it needs a name outside any given finite set.
 
@@ -19,16 +21,20 @@ already known to be well-formed surface tokens (`Lang1.VName`), instead of `Stri
 put proofs inside the data and force `Subtype.ext` into every lemma; a parameter costs nothing at
 use sites.
 
+It lives here rather than under `Stlc/` because nothing about it is STLC-specific, and because
+the *semantic* interface next door has the same hard-wiring: `Language.Context Ty` is a
+`Std.HashMap String Ty`, and would be parameterized by the same `N`.
+
 ## Status: this class is the *first step* of that parameterization, and is not yet used
 
-`Term` is still `String`-named. The remaining work is to thread `{N} [NameAlphabet N]` through
-`Stlc/Named`; an attempt at it is recorded in the notes. What this file already establishes is the
-main design fact: **the interface is this small.** Renaming, substitution, typing, reduction,
-confluence and normalization touch a name only through decidable equality, hashing, and fresh-name
-generation — nothing else. Delete this file if the parameterization is abandoned.
+`Stlc.Named.Term` is still `String`-named, as is `Language.Context`. The remaining work is to
+thread `{N} [NameAlphabet N]` through both. What this file already establishes is the main design
+fact: **the interface is this small.** Across all 14 files of `Stlc/Named`, `String`-specific code
+was confined to one 30-line block (the fresh-name generator and its proof, now below), used at
+three call sites. Delete this file if the parameterization is abandoned.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Language
 
 /-- A type usable as variable names: decidable equality, hashable, and an inexhaustible supply. -/
 class NameAlphabet (N : Type) extends Hashable N where
@@ -79,4 +85,4 @@ instance : NameAlphabet String where
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Language

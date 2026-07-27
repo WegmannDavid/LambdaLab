@@ -11,7 +11,6 @@ import LambdaLab.Stlc.DeBruijn.Reducibility
 import LambdaLab.Stlc.DeBruijn.Properties
 import LambdaLab.Stlc.DeBruijn.Preservation
 import LambdaLab.Stlc.DeBruijn.Confluence
-import LambdaLab.Stlc.Named.Name
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step.Basic
 import LambdaLab.Stlc.Named.Step.MStep
@@ -25,6 +24,7 @@ import LambdaLab.Stlc.Named.Step.Eval
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.W
+import LambdaLab.Language.Name
 import LambdaLab.Language.Basic
 import LambdaLab.Language.Check
 import LambdaLab.Substitution.Basic
