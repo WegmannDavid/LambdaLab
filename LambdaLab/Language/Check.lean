@@ -53,9 +53,11 @@ abbrev TypingClaim (L : Language) (Γ : Context L.Ty)
 
 /-- Why a single declaration failed to type-check. -/
 inductive DeclError (Ty : Type) where
-  /-- Inference itself failed (unbound variable, applied non-function,
-  argument-type mismatch). -/
-  | inferError : TypeError Ty → DeclError Ty
+  /-- Elaboration refuted the body at the declared type. Payload-free: `ElaborationResult.error`
+  carries a *refutation* (`Elaboration … → False`), not a diagnostic, so there is no `TypeError`
+  to propagate. Restoring diagnostics means giving `ElaborationResult.error` a payload again —
+  a decision for the elaborator, not for this file. -/
+  | inferError : DeclError Ty
   /-- Inference succeeded but the inferred type doesn't match the
   declared one. -/
   | typeMismatch : (declared inferred : Ty) → DeclError Ty
@@ -72,7 +74,7 @@ carries σ and a `HasType` derivation about the σ-substituted triple. -/
 def Decl.check (L : Language) (Γ : Context L.Ty) (d : Decl L) :
     Decl.CheckResult L Γ d :=
   match L.elaborate Γ d.body d.type with
-  | .error err _ => .error (.inferError err)
+  | .error _ => .error .inferError
   | .ok ⟨σ, proof, _mgu⟩ => .ok ⟨σ, proof⟩
 
 /-! ## Per-command errors -/
@@ -83,9 +85,9 @@ inductive CommandError (Ty : Type) where
   and the reason. -/
   | inDecl  : (declName : String) → DeclError Ty → CommandError Ty
   /-- An `eval` command's body failed to infer a type. -/
-  | inEval  : TypeError Ty → CommandError Ty
+  | inEval  : CommandError Ty
   /-- A `check` command's body failed to infer a type. -/
-  | inCheck : TypeError Ty → CommandError Ty
+  | inCheck : CommandError Ty
 
 /-! ## Program-level checking -/
 
@@ -148,7 +150,7 @@ def Program.check (L : Language) :
   | Γ, .eval e :: rest    =>
       let τ := L.freshTy (HasVars.fresh e)
       match L.elaborate Γ e τ with
-      | .error err _              => .error (.atCommand (.inEval err))
+      | .error _                  => .error (.atCommand .inEval)
       | .ok ⟨σ, proof, _mgu⟩      =>
           match Program.check L Γ rest with
           | .error err => .error err
@@ -156,7 +158,7 @@ def Program.check (L : Language) :
   | Γ, .check e :: rest   =>
       let τ := L.freshTy (HasVars.fresh e)
       match L.elaborate Γ e τ with
-      | .error err _              => .error (.atCommand (.inCheck err))
+      | .error _                  => .error (.atCommand .inCheck)
       | .ok ⟨σ, proof, _mgu⟩      =>
           match Program.check L Γ rest with
           | .error err => .error err
