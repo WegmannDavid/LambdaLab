@@ -10,8 +10,8 @@ deciding equality, keying a context, and generating a name not already in use. T
 whole interface:
 
 * `DecidableEq` — substitution and typing compare names;
-* `Hashable` — contexts are `Std.HashMap`s keyed by names (both `Language.Context` and
-  `Stlc.Named.Ctx`);
+* `Hashable` — contexts are `Std.HashMap`s keyed by names (`Stlc.Named.Ctx`, and the legacy
+  `Language.Context`);
 * `freshFor` + `freshFor_not_in` — capture-avoiding substitution must rename a binder out of the
   way, so it needs a name outside any given finite set.
 
@@ -21,20 +21,26 @@ already known to be well-formed surface tokens (`Lang1.VName`), instead of `Stri
 put proofs inside the data and force `Subtype.ext` into every lemma; a parameter costs nothing at
 use sites.
 
-It lives here rather than under `Stlc/` because nothing about it is STLC-specific, and because
-the *semantic* interface next door has the same hard-wiring: `Language.Context Ty` is a
-`Std.HashMap String Ty`, and would be parameterized by the same `N`.
+It lives in `Language1/` because that is the live language interface — the one that will absorb
+the elaboration side (typing relation, elaborator, evaluator) currently sitting in `Language/`,
+which is kept only as a reference. Nothing about the class is STLC-specific, and both context
+types it is meant to serve (`Stlc.Named.Ctx` and `Language.Context`) are `Std.HashMap String Ty`
+today.
+
+The module is `NameAlphabet`, not `Name`: `Language1.Name` is already the vernacular's
+declaration-name type.
 
 ## Status: this class is the *first step* of that parameterization, and is not yet used
 
 `Stlc.Named.Term` is still `String`-named, as is `Language.Context`. The remaining work is to
-thread `{N} [NameAlphabet N]` through both. What this file already establishes is the main design
+thread `{N} [NameAlphabet N]` through the named development, and — when elaboration moves into
+`Language1` — through the context type it brings with it. What this file already establishes is the main design
 fact: **the interface is this small.** Across all 14 files of `Stlc/Named`, `String`-specific code
 was confined to one 30-line block (the fresh-name generator and its proof, now below), used at
 three call sites. Delete this file if the parameterization is abandoned.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Language1
 
 /-- A type usable as variable names: decidable equality, hashable, and an inexhaustible supply. -/
 class NameAlphabet (N : Type) extends Hashable N where
@@ -85,4 +91,4 @@ instance : NameAlphabet String where
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in
 
-end LambdaLab.Language
+end LambdaLab.Language1

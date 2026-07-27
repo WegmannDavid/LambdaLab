@@ -24,7 +24,6 @@ import LambdaLab.Stlc.Named.Step.Eval
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.W
-import LambdaLab.Language.Name
 import LambdaLab.Language.Basic
 import LambdaLab.Language.Check
 import LambdaLab.Substitution.Basic
@@ -58,6 +57,7 @@ import LambdaLab.Abstraction2.Tokenizer
 import LambdaLab.Arith
 import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example
+import LambdaLab.Language1.NameAlphabet
 import LambdaLab.Language1.Basic
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.Example
