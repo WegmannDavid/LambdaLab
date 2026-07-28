@@ -1,6 +1,7 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
 import LambdaLab.Language1.NameAlphabet
+import LambdaLab.Language1.Elaboration
 
 namespace LambdaLab.Language1
 
@@ -141,9 +142,44 @@ structure Language where
   vernacular wrapped around it. -/
   keywords_excluded : ∀ k ∈ vernacularReserved, isVarName k = false
 
+  /-- Substituting type metavariables inside a type… -/
+  tyHasSubst : HasSubst Ty Ty
+  /-- …inside a term (its annotations)… -/
+  tmHasSubst : HasSubst Tm Ty
+  /-- …and inside a context. A field rather than an instance: it is not derivable from the other
+  two. -/
+  ctxHasSubst : HasSubst (Context { t : Token // isVarName t = true } Ty) Ty
+  /-- A fresh type metavariable from an index. Callers wanting full inference pass one of these
+  as the expected type and read the answer out of the returned substitution. -/
+  freshTy : Nat → Ty
+  /-- The empty substitution is the identity on types — needed when the elaborator solves
+  nothing. -/
+  tyPSubstEmpty : ∀ t : Ty, HasSubst.pSubst t (∅ : Subst Ty) = t
+
+  /-- The declarative typing relation. Contexts are keyed by the language's own variable names,
+  which are also its declaration names, so `def f : T := e` extends the context with `f`
+  directly. -/
+  HasType : Context { t : Token // isVarName t = true } Ty → Tm → Ty → Prop
+  /-- The elaborator: fit `e` at the (possibly metavariable-laden) expected type `τ`, returning a
+  principal-type witness or a refutation.
+
+  Why the witness carries a substitution: the lighter signature one reaches for first,
+  `Γ → e → Option (Σ τ, HasType Γ e τ)`, is wrong for Hindley–Milner. `W` does not establish
+  `HasType Γ e τ`; it establishes that *some* substitution makes the triple type, and the
+  un-substituted judgement cannot be recovered. Hence the σ, and hence the three `HasSubst`
+  fields above. -/
+  elaborate : (Γ : Context { t : Token // isVarName t = true } Ty) → (e : Tm) → (τ : Ty) →
+    @ElaborationResult _ varAlphabet Ty Tm tyHasSubst tmHasSubst ctxHasSubst HasType Γ e τ
+  /-- Evaluate a well-typed term. Taking the derivation as input keeps this total: only
+  well-typed terms reduce. -/
+  eval : ∀ {Γ : Context { t : Token // isVarName t = true } Ty} {e : Tm} {τ : Ty},
+    HasType Γ e τ → Tm
+
 /-- A language's variable names — and its declaration names, which are the same thing. -/
 abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
 
 instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
+
+attribute [instance] Language.tyHasSubst Language.tmHasSubst Language.ctxHasSubst
 
 end LambdaLab.Language1
