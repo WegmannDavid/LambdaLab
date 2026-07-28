@@ -20,11 +20,6 @@ open LambdaLab.Parser.IsoParser
 so anything may follow). Adapt both to what the interface asks for: `enlargeFirst` widens FIRST
 up to `anyTok` (sound: `firstOk` is a negative claim); `weakenFollow` narrows FOLLOW down to the
 key token (sound: the round-trip is antitone in FOLLOW). -/
--- Trivial substitution structures, as *instances*, so `elaborate`'s type — which mentions the
--- fields being defined — can still resolve them.
-local instance : HasSubst Name Name := trivialHasSubst _ _
-local instance : HasSubst (Context Name Name) Name := trivialHasSubst _ _
-
 def trivialLanguage : Language where
   Tm := Name
   Ty := Name
@@ -34,18 +29,6 @@ def trivialLanguage : Language where
   isVarName := isName
   varAlphabet := inferInstance
   keywords_excluded := by decide
-
-  -- No typing discipline: every term has every type. Enough to satisfy the interface, and it
-  -- documents honestly that this language has no semantics.
-  tyHasSubst := inferInstance
-  tmHasSubst := inferInstance
-  ctxHasSubst := inferInstance
-  freshTy := fun _ => ⟨⟨"A", by decide⟩, by decide⟩
-  tyPSubstEmpty := fun _ => rfl
-  HasType := fun _ _ _ => True
-  -- `pSubst` is definitionally the identity here, so `∅` is most general by `rfl`.
-  elaborate := fun _ _ _ => .ok ⟨∅, trivial, fun _ _ => ⟨∅, fun _ => rfl⟩⟩
-  eval := fun {_ e _} _ => e
 
   pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)

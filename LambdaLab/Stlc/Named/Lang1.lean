@@ -2,7 +2,6 @@ import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.FreeName
-import LambdaLab.Language1.Elaboration
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix
@@ -300,20 +299,6 @@ deriving it from the lexical fields is the open conjecture. -/
 theorem stlcUnambiguous : Unambiguous stlcGrammar := by
   sorry
 
-/-! ### Semantics — a placeholder
-
-STLC has a real typing relation and a real elaborator, but they are stated at `Term String` and a
-`String`-keyed `Ctx`, while this language's terms are `Term VName`. Parameterizing `HasType`, `W`
-and `Term.elaborate` in the name alphabet — the treatment `Term` itself already received — is the
-one remaining step; until then the semantic fields are filled trivially.
-
-Note the type side is *not* a placeholder: `Ty` genuinely has `HasSubst` (from
-`Typing/Unification.lean`) and `freshTy` is the real `Ty.mvar`. Only the term and context sides
-are stubbed. -/
-
-local instance : HasSubst (Term VName) Ty := trivialHasSubst _ _
-local instance : HasSubst (Context VName Ty) Ty := trivialHasSubst _ _
-
 def stlcLanguage : Language where
   Tm := Term VName
   Ty := Ty
@@ -329,19 +314,6 @@ def stlcLanguage : Language where
         exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl)
 
   isVarName := isVarTok
-  tyHasSubst := inferInstance
-  tmHasSubst := inferInstance
-  ctxHasSubst := inferInstance
-  freshTy := Ty.mvar
-  tyPSubstEmpty := Signature.pSubst_empty
-  HasType := fun _ _ _ => True
-  -- `∅` is most general: take `τ = σ'` and use that `∅` acts as the identity on types. (Unlike
-  -- the other two languages this cannot be `rfl` — the *type* substitution here is the real one.)
-  elaborate := fun _ _ _ =>
-    .ok ⟨∅, trivial, fun σ' _ => ⟨σ', fun t => by
-      show HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t (∅ : Subst Ty)) σ'
-      rw [show HasSubst.pSubst t (∅ : Subst Ty) = t from Signature.pSubst_empty t]⟩⟩
-  eval := fun {_ e _} _ => e
   varAlphabet := inferInstance
   keywords_excluded := by decide
 

@@ -51,26 +51,4 @@ inductive ElaborationResult {Ty Tm : Type}
   | error : (Elaboration HasType Γ e τ → False) → ElaborationResult HasType Γ e τ
   | ok    : Elaboration HasType Γ e τ → ElaborationResult HasType Γ e τ
 
-/-! ## Trivial typing
-
-A language with no typing discipline — or one whose real elaborator is not yet wired up — still
-has to fill the semantic fields. These make that cheap: nothing is a metavariable, so
-substitution is the identity, every term has every type, and elaboration always succeeds with the
-empty substitution (which is vacuously most general, since every substitution acts as identity).
--/
-
-/-- No metavariables: substitution is the identity. -/
-def trivialHasSubst (α β : Type) : HasSubst α β where
-  isFree _ _ := False
-  fresh _ := 0
-  fresh_gt_free := fun _ _ h => h.elim
-  pSubst t _ := t
-
-/-- With `trivialHasSubst`, the empty substitution is most general — everything acts as the
-identity, so any `σ'` is matched by taking `τ = ∅`. -/
-theorem trivial_moreGeneral {α : Type} [inst : HasSubst α α]
-    (hid : ∀ (t : α) (σ : Subst α), HasSubst.pSubst t σ = t) (σ σ' : Subst α) :
-    MoreGeneral σ σ' :=
-  ⟨∅, fun t => by rw [hid t σ', hid (HasSubst.pSubst t σ) ∅, hid t σ]⟩
-
 end LambdaLab.Language1

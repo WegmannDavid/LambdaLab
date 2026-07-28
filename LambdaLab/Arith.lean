@@ -1,6 +1,5 @@
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.FreeName
-import LambdaLab.Language1.Elaboration
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
@@ -271,15 +270,6 @@ theorem follow_def : follow (G := aGrammar) () (tkA "def") = true := by decide
 /-- The type parser stops at the assignment. **Derived**, not declared. -/
 theorem follow_assign : follow (G := tyGrammar) () (tkA ":=") = true := by decide
 
--- Arithmetic has no typing discipline; the semantic fields are filled trivially. Declared as
--- instances so `elaborate`'s type, which mentions the fields being defined, can resolve them.
-local instance : HasSubst (Expr tyGrammar () .loosest) (Expr tyGrammar () .loosest) :=
-  trivialHasSubst _ _
-local instance : HasSubst ATm (Expr tyGrammar () .loosest) := trivialHasSubst _ _
-local instance : HasSubst
-    (Context { t : Token // isFree aReserved t = true } (Expr tyGrammar () .loosest))
-    (Expr tyGrammar () .loosest) := trivialHasSubst _ _
-
 def arithLanguage : Language where
   Tm := ATm
   Ty := Expr tyGrammar () .loosest
@@ -305,14 +295,6 @@ def arithLanguage : Language where
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   isVarName := isFree aReserved
-  tyHasSubst := inferInstance
-  tmHasSubst := inferInstance
-  ctxHasSubst := inferInstance
-  freshTy := fun _ => .var (tkA "N") (by decide)
-  tyPSubstEmpty := fun _ => rfl
-  HasType := fun _ _ _ => True
-  elaborate := fun _ _ _ => .ok ⟨∅, trivial, fun _ _ => ⟨∅, fun _ => rfl⟩⟩
-  eval := fun {_ e _} _ => e
   varAlphabet := inferInstance
   keywords_excluded := by decide
 
