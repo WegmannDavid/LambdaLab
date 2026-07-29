@@ -122,7 +122,13 @@ def Subst.restrictBelow {α : Type} (σ : Subst α) (n : Nat) : Subst α :=
 above the threshold the result is `none`. -/
 theorem Subst.restrictBelow_get? {α : Type} (σ : Subst α) (n k : Nat) :
     (Subst.restrictBelow σ n).get? k = if k < n then σ.get? k else none := by
-  sorry
+  rw [Subst.restrictBelow, Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_filter]
+  -- `getElem?_filter` phrases the predicate at the *stored* key; `getKey_eq` (a `simp` lemma,
+  -- available since `Nat` is `LawfulBEq`) identifies it with `k`, after which the filter is
+  -- constantly true or constantly false.
+  by_cases h : k < n <;>
+    simp [h, Std.HashMap.get?_eq_getElem?, Option.filter] <;>
+    cases σ[k]? <;> rfl
 
 /-- For an arbitrary `f : α → Nat`, the foldr of `max` over a list bounds
 `f a` from above whenever `a` is in the list. Used to prove
