@@ -1,5 +1,7 @@
 import LambdaLab.Language1.Elaboratable
 import LambdaLab.Abstraction2.Basic
+import LambdaLab.Language1.Typing
+import LambdaLab.Language1.Pipeline
 
 /-!
 # Elaboration as a pipeline stage — why `ElaboratableLanguage`'s laws are the ones they are
@@ -21,6 +23,18 @@ It exists as a justification, not for its own sake. The interface carries exactl
 
 Removing any one of the three makes `elabStage` unbuildable; adding a fourth is not needed for it.
 That is the sense in which the law set is right.
+
+## …and the same stage at the vernacular level
+
+`Typing.lean` folds all four of those through a whole file. `programStage` is the resulting
+morphism `Program ⇝ elaborated Program`, and composing it after `Language.pipeline` gives
+
+```
+List Char ⇝ List Token ⇝ Program ⇝ elaborated Program
+```
+
+— the entire front end, type checking included, as one `Abs` morphism, derived from a filled-in
+`ElaboratableLanguage` and nothing else.
 -/
 
 namespace LambdaLab.Language1
@@ -51,5 +65,49 @@ def elabStage (L : ElaboratableLanguage) (Γ : Context (Var L.toLanguage) L.Ty) 
         obtain ⟨heq1, heq2⟩ := L.elaborates_unique q.property ann.property
         simp only [Option.map_some, Option.some.injEq]
         exact Subtype.ext (Prod.ext heq1 heq2)
+
+/-! ## The vernacular level -/
+
+/-- The **elaborable programs**: those some source file means. Same reason as `Elaborable` — an
+arbitrary `Program` of already-elaborated commands need not be anything the elaborator produces,
+and `default` would have no surface form to offer for it. -/
+def ElaborableProgram (L : ElaboratableLanguage) : Type :=
+  { p' : Program L.toLanguage // ∃ p, Program.Elaborates L p p' }
+
+/-- **Elaborating a file as an `Abs` morphism**: the written program to its meaning, annotated by
+the programs that mean it. Every field is the corresponding lift from `Typing.lean`. -/
+def programStage (L : ElaboratableLanguage) :
+    Abstraction (Program L.toLanguage) (ElaborableProgram L)
+      (fun p' => { p : Program L.toLanguage // Program.Elaborates L p p'.val }) where
+  abstract p := (Program.elaborate L p).map fun q => ⟨q.val, p, q.property⟩
+  realize ann := ann.val
+  default {p'} := ⟨Program.quote L p'.val, p'.property.elim fun _ h => Program.quote_elaborates h⟩
+  abstract_realize p' ann := by
+    show ((Program.elaborate L ann.val).map _) = some p'
+    have hsome := Program.elaborate_complete ann.property
+    cases hq : Program.elaborate L ann.val with
+    | none => rw [hq] at hsome; simp at hsome
+    | some q =>
+        simp only [Option.map_some, Option.some.injEq]
+        exact Subtype.ext (Program.elaborates_unique q.property ann.property)
+
+/-- **The whole front end**: characters to an elaborated program, in `Abs`. Parsing and
+elaboration are one morphism, so the round-trip law covers both — `realize` of any annotation
+re-parses *and* re-elaborates to exactly the value it indexes. -/
+def ElaboratableLanguage.pipeline (L : ElaboratableLanguage) :
+    Abstraction (List Char) (ElaborableProgram L)
+      (fun p' => Σ ann : { p : Program L.toLanguage // Program.Elaborates L p p'.val },
+        Σ a : Program.Ann L.toLanguage ann.val, Gaps isSep (L.parser.print a)) :=
+  L.toLanguage.pipeline.comp (programStage L)
+
+/-- Parse *and* elaborate a source file. -/
+def ElaboratableLanguage.elaborateFile (L : ElaboratableLanguage) (s : String) :
+    Option (ElaborableProgram L) :=
+  L.pipeline.abstract s.toList
+
+/-- Render an elaborated program canonically — quoted back to surface form, then printed. -/
+def ElaboratableLanguage.renderElaborated (L : ElaboratableLanguage) (p' : ElaborableProgram L) :
+    String :=
+  String.ofList (L.pipeline.realize (L.pipeline.default (a := p')))
 
 end LambdaLab.Language1
