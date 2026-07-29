@@ -24,8 +24,8 @@ which is what lets the type parser produce `Stlc.Ty` itself rather than a syntax
 
 Nobody writes `?7` by hand; the intended surface for "infer this" is `_`, which is deliberately
 *not* here yet. `_` cannot join the lossless core — it does not determine an index — so it
-belongs in a lossy layer above, whose annotation records which binders were elided. That is the
-`annotated | infer` split of `Abstraction2/Sketch.lean`.
+belongs in a lossy layer above, whose annotation records which binders were elided — an
+`annotated | infer` split, with the elision living in the annotation rather than the value.
 
 ## The parser lands in `Term` itself
 

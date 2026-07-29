@@ -143,7 +143,7 @@ re-elaborates to exactly `p`. Free, as before. -/
 example (p : ElaborableProgram trivialElaboratable)
     (ann : Σ a : { q // Program.Elaborates trivialElaboratable q p.val },
       Σ b : Program.Ann trivialElaboratable.toLanguage a.val,
-        Abstraction2.Gaps isSep (trivialElaboratable.parser.print b)) :
+        Abstraction.Gaps isSep (trivialElaboratable.parser.print b)) :
     trivialElaboratable.pipeline.abstract (trivialElaboratable.pipeline.realize ann) = some p :=
   trivialElaboratable.pipeline.abstract_realize p ann
 

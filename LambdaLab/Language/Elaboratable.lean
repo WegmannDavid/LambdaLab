@@ -24,7 +24,7 @@ unresolved output, and such a declaration then simply fails to elaborate. Nothin
 
 ## Why exactly these laws
 
-The laws are the ones that make elaboration a stage of the `Abstraction2` pipeline — no more.
+The laws are the ones that make elaboration a stage of the `Abstraction` pipeline — no more.
 Reading them off `Abstraction`'s fields with the annotation over an elaborated `t'` taken to be
 its **fiber** (`{ t // Elaborates Γ t t' τ τ' }`, the surface forms meaning it, exactly as the
 parser's truncation does):

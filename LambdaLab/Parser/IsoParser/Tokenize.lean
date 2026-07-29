@@ -10,7 +10,7 @@ nothing else — a tokenizer knows nothing about grammars.
 This is the salvaged core of the deleted `CBiparser/Tokenizer.lean`: the `tokens` function and its
 splitting laws only. The residual-tracking machinery (`dropToks`, `viaTokens`) that composed it
 with token-level biparsers is deliberately not ported — whole-artifact pipeline stages
-(`Abstraction2/Tokenizer.lean`) compose by `Option.bind` and never need a replayable leftover.
+(`Abstraction/Tokenizer.lean`) compose by `Option.bind` and never need a replayable leftover.
 
 ## The seam
 

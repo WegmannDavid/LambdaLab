@@ -39,19 +39,13 @@ import LambdaLab.Substitution.Unification.MGU
 -- These were previously outside the root, so `lake build` did not typecheck them and files
 -- could (and did) rot undetected. Everything live is imported here now.
 --
--- Deliberately excluded, each for a reason:
---   * Abstraction.Parser / Abstraction.Tokenizer -- the v2 `Abs` instances, broken since the
---     CBiparser deletion and awaiting a v3 port (Abstraction2.Tokenizer already supersedes the
---     latter). Kept, not deleted, because the ParserIso idea is still wanted.
---   * Abstraction2.Sketch -- the intentionally sorried spec of the target pipeline.
+-- Deliberately excluded:
 --   * Playground.*, Parser.IsoParser.Playground -- the prototype trail, kept as history.
 import LambdaLab.Parser.Numeral
 import LambdaLab.Abstraction.Basic
 import LambdaLab.Abstraction.Bicat
-import LambdaLab.Abstraction2.Basic
-import LambdaLab.Abstraction2.Bicat
-import LambdaLab.Abstraction2.Parens
-import LambdaLab.Abstraction2.Tokenizer
+import LambdaLab.Abstraction.Parens
+import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Arith
 import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example

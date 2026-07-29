@@ -1,10 +1,10 @@
 import Mathlib.Tactic
-import LambdaLab.Abstraction2.Tokenizer
+import LambdaLab.Abstraction.Tokenizer
 
 /-!
 # Redundant parentheses — the first *lossy* parser stage
 
-`Sketch.lean`'s `parse` stage: a parser that accepts `((((a))))`, abstracts it to just `a`, and
+The pipeline's `parse` stage: a parser that accepts `((((a))))`, abstracts it to just `a`, and
 canonically prints it back as `a`. The forgotten information — how many redundant parens the
 source wrote — goes in the annotation, so the stage is still `Lossless`.
 
@@ -23,14 +23,14 @@ lossy parsing lives at the `Abstraction` level, built compositionally:
 end with `rp`, else the stripper would eat one pair too many. For `atom` this is free from
 `lp ≠ rp` (a single token cannot be both). `Lossless` is inherited: `Lossless.parens`.
 
-Scope: this wraps the *whole* input in parens (the Sketch's toy grammar), not parens at every node
+Scope: this wraps the *whole* input in parens (a toy grammar), not parens at every node
 of a recursive grammar — that generalization is the mixfix-as-`Abs` port, later.
 
 The bottom of the file composes `tokenizer ⋙ parens atom` into the first two-stage pipeline
 `List Char ⇝ {var}` and `#eval`s the round trip.
 -/
 
-namespace LambdaLab.Abstraction2
+namespace LambdaLab.Abstraction
 
 variable {Tok V : Type} {Ann : V → Type}
 
@@ -167,7 +167,7 @@ theorem atom_neverWrapped {isVar : Tok → Bool} {lp rp : Tok} (hlprp : lp ≠ r
   rw [List.getLast?_singleton, Option.some.injEq] at h2
   exact hlprp (h1.symm.trans h2)
 
-/-! ## The Sketch's example, end to end: `((((a)))) ↦ a`
+/-! ## The motivating example, end to end: `((((a)))) ↦ a`
 
 Compose the tokenizer with the parens-wrapped atom: the first two-stage pipeline. Its composite
 annotation is `Σ (depth, ()), Gaps` — everything the source wrote that the abstract value forgot:
@@ -209,4 +209,4 @@ private def roundtrip (s : String) : Option String :=
 
 end Demo
 
-end LambdaLab.Abstraction2
+end LambdaLab.Abstraction

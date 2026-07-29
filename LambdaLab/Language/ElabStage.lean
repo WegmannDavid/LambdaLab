@@ -1,12 +1,12 @@
 import LambdaLab.Language.Elaboratable
-import LambdaLab.Abstraction2.Basic
+import LambdaLab.Abstraction.Basic
 import LambdaLab.Language.Typing
 import LambdaLab.Language.Pipeline
 
 /-!
 # Elaboration as a pipeline stage — why `ElaboratableLanguage`'s laws are the ones they are
 
-`Abstraction2` stages compose into the front end: `List Char ⇝ List Token ⇝ Program`. This file
+`Abstraction` stages compose into the front end: `List Char ⇝ List Token ⇝ Program`. This file
 builds the *next* stage, `(written term, written type) ⇝ (its meaning)`, out of
 `ElaboratableLanguage` and nothing else.
 
@@ -39,7 +39,7 @@ List Char ⇝ List Token ⇝ Program ⇝ elaborated Program
 
 namespace LambdaLab.Language
 
-open LambdaLab.Abstraction2
+open LambdaLab.Abstraction
 
 /-- The **elaborable** pairs at `Γ`: those some surface form means. This, not all of `Tm × Ty`,
 is what elaboration abstracts *onto* — `Abstraction.default` is total over the abstract type, so

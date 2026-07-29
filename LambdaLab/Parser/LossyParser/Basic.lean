@@ -1,5 +1,5 @@
 import LambdaLab.Parser.IsoParser.Basic
-import LambdaLab.Abstraction2.Basic
+import LambdaLab.Abstraction.Basic
 
 /-!
 # `LossyParser` — a consuming parser with an annotation family, the bridge to `Abs`
@@ -51,7 +51,7 @@ set_option linter.dupNamespace false
 namespace LambdaLab.Parser.LossyParser
 
 open LambdaLab.Parser.IsoParser (HeadIn HeadIn_nil IsoParser run_eq_some)
-open LambdaLab.Abstraction2 (Abstraction)
+open LambdaLab.Abstraction (Abstraction)
 
 variable {α : Type} {fst fol : α → Prop} {w v V : Type} {Ann : V → Type}
 

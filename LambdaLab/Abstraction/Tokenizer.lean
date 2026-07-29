@@ -1,9 +1,9 @@
 import Mathlib.Tactic
 import LambdaLab.Abstraction.Basic
-import LambdaLab.CBiparser.Tokenizer
+import LambdaLab.Parser.IsoParser.Tokenize
 
 /-!
-# The tokenizer as a morphism of `Abs` (indexed design)
+# The tokenizer as a morphism of `Abs` — the archetypal `Lossless` instance
 
 `List Char ⇝ List Token`. The lossy map is `tokens` (tokenize), which forgets the separators; the
 **annotation over a token sequence `ts` is exactly the gaps** — the separator runs that, interleaved
@@ -17,11 +17,22 @@ lead · t₁ · g₁ · t₂ · … · gₙ₋₁ · tₙ · trail
 whitespace strings tokenize to `[]`); the interior gaps `gᵢ` must be **non-empty**, else two tokens
 would fuse. Encoding that non-emptiness *in the type* (`NEGap` between tokens, `SepRun` at the ends)
 is what makes `abstract_realize` — tokenize the reconstruction and recover `ts` — go through.
+
+Tokenizing never fails, so `abstract` is `some ∘ tokens`; and the tokenizer forgets *only* the
+gaps, so it is the archetypal **`Lossless`** stage (`tokenizer_lossless`): every string is the
+realization of the gaps read off it. The same decomposition proof once discharged a
+`realize_complete` *law*, back when completeness was a field of the structure rather than a
+per-morphism predicate.
+
+The `Gaps` shape (a `structure` of leading run + per-token `Inner` gaps) is one presentation of the
+fiber grammar `sep* (tok (sep⁺ tok)* sep*)?`; a two-inductive presentation indexed by the token
+list is another. They present the same fibers, and `Abstraction.reindex` transports the morphism
+between such presentations — the choice here is proof-reuse, not doctrine.
 -/
 
 namespace LambdaLab.Abstraction
 
-open LambdaLab.CBiparser
+open LambdaLab.Parser.IsoParser
 
 variable {sep : Char → Bool}
 
@@ -79,28 +90,10 @@ def defaultInner (sc : Char) (hsc : sep sc = true) :
   | [_]          => emptyRun
   | _ :: u :: us => (scGap sc hsc, defaultInner sc hsc (u :: us))
 
-/-! ## `abstract ∘ realize = ts`
+/-! ## `abstract ∘ realize = some ts`
 
 Rendering the gaps and re-tokenizing recovers `ts`: the leading run is skipped, and each token is
 peeled off because the run following it is a separator (empty trailing, or non-empty interior). -/
-
-theorem tokens_nil : tokens sep [] = [] := by simp [tokens]
-
-theorem tokens_all_sep {g : List Char} (h : ∀ c ∈ g, sep c = true) : tokens sep g = [] := by
-  induction g with
-  | nil => exact tokens_nil
-  | cons c g' ih =>
-      rw [tokens_sep_cons (h c List.mem_cons_self)]
-      exact ih (fun x hx => h x (List.mem_cons_of_mem _ hx))
-
-theorem headIn_of_allSep {g : List Char} (h : ∀ c ∈ g, sep c = true) : HeadIn sep g := by
-  intro a ha
-  cases g with
-  | nil => simp at ha
-  | cons c cs =>
-      rw [List.head?_cons] at ha
-      simp only [Option.some.injEq] at ha; subst ha
-      exact h c List.mem_cons_self
 
 theorem tokens_realizeInner : ∀ (ts : List (Token sep)) (inner : Inner sep ts),
     tokens sep (realizeInner sep ts inner) = ts
@@ -113,7 +106,8 @@ theorem tokens_realizeInner : ∀ (ts : List (Token sep)) (inner : Inner sep ts)
       have hrw : realizeInner sep (t :: u :: us) gi
           = t.val.toList ++ (gi.1.val ++ realizeInner sep (u :: us) gi.2) := by
         simp [realizeInner, List.append_assoc]
-      have hhead : HeadIn sep (gi.1.val ++ realizeInner sep (u :: us) gi.2) := by
+      have hhead : HeadIn (fun c => sep c = true)
+          (gi.1.val ++ realizeInner sep (u :: us) gi.2) := by
         intro a ha
         cases hv : gi.1.val with
         | nil => exact absurd hv gi.1.2.1
@@ -126,7 +120,7 @@ theorem tokens_realizeInner : ∀ (ts : List (Token sep)) (inner : Inner sep ts)
 /-! ## `realize` is surjective onto every character string (faithful decomposition)
 
 Every `cs` is the realization of the gaps read off it: the leading separators, then each maximal
-token followed by its trailing/interior separators. -/
+token followed by its trailing/interior separators. This discharges `Lossless`. -/
 
 /-- Prepend a token `t` (with a new leading run) in front of the gaps `g'`. The old leading run of
 `g'` becomes the gap after `t` — which must be non-empty when `g'` still has tokens (`hne`). -/
@@ -144,7 +138,7 @@ theorem realize_consGaps (t : Token sep) (newLead : SepRun sep) {ts : List (Toke
     Gaps.realize (consGaps t newLead g' hne)
       = newLead.val ++ (t.val.toList ++ Gaps.realize g') := by
   cases ts with
-  | nil => simp [Gaps.realize, consGaps, consInner, realizeInner, List.append_assoc]
+  | nil => simp [Gaps.realize, consGaps, consInner, realizeInner]
   | cons v vs => simp [Gaps.realize, consGaps, consInner, realizeInner, List.append_assoc]
 
 theorem realizeInner_head {v : Token sep} {vs : List (Token sep)} (inner : Inner sep (v :: vs)) :
@@ -204,7 +198,7 @@ theorem realize_complete_aux (cs : List Char) :
       let t : Token sep := Token.ofChars sep _ hwsep hwne
       have htchars : t.val.toList = (skipSep sep cs).takeWhile (fun x => !sep x) :=
         Token.ofChars_toList sep _ hwsep hwne
-      have hawhead : HeadIn sep (afterWord sep (skipSep sep cs)) := by
+      have hawhead : HeadIn (fun c => sep c = true) (afterWord sep (skipSep sep cs)) := by
         intro x hx
         cases haws : afterWord sep (skipSep sep cs) with
         | nil => rw [haws] at hx; simp at hx
@@ -254,15 +248,24 @@ theorem realize_complete_aux (cs : List Char) :
 /-! ## The tokenizer as a morphism of `Abs` -/
 
 /-- The tokenizer for separator predicate `sep`, with witness separator `sc`, as an abstraction
-`List Char ⇝ List Token`, whose annotation over `ts` is exactly the gaps `Gaps sep ts`. -/
+`List Char ⇝ List Token`, whose annotation over `ts` is exactly the gaps `Gaps sep ts`.
+Tokenizing is total, so `abstract` never fails. -/
 def tokenizer (sc : Char) (hsc : sep sc = true) :
     Abstraction (List Char) (List (Token sep)) (Gaps sep) where
-  abstract := tokens sep
+  abstract cs := some (tokens sep cs)
   realize := Gaps.realize
   default := ⟨emptyRun, defaultInner sc hsc _⟩
   abstract_realize := fun ts g => by
-    show tokens sep (g.leading.val ++ realizeInner sep ts g.inner) = ts
+    show some (tokens sep (g.leading.val ++ realizeInner sep ts g.inner)) = some ts
     rw [tokens_sep_prepend g.leading.2, tokens_realizeInner ts g.inner]
-  realize_complete := fun cs => realize_complete_aux cs
+
+/-- **The tokenizer forgets only the gaps**: every string is the realization of the gaps read off
+it. The archetypal `Lossless` stage. -/
+theorem tokenizer_lossless (sc : Char) (hsc : sep sc = true) :
+    (tokenizer sc hsc).Lossless := by
+  intro cs ts h
+  have hts : tokens sep cs = ts := Option.some.inj h
+  subst hts
+  exact realize_complete_aux cs
 
 end LambdaLab.Abstraction

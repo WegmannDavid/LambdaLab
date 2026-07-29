@@ -1,5 +1,5 @@
 import LambdaLab.Language.Biparser
-import LambdaLab.Abstraction2.Tokenizer
+import LambdaLab.Abstraction.Tokenizer
 
 /-!
 # The full pipeline: fill in a `Language`, get `List Char ⇝ Program`
@@ -24,7 +24,7 @@ tokenizer is Agda-style: tokens must be whitespace-separated — write `( x )`, 
 
 namespace LambdaLab.Language
 
-open LambdaLab.Abstraction2
+open LambdaLab.Abstraction
 
 /-- **The full pipeline** of a language: characters to program, in `Abs`. The annotation over a
 program pairs a spelling of every command with the whitespace gaps of the resulting token

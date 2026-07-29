@@ -27,7 +27,7 @@ namespace LambdaLab.Language
 
 open LambdaLab.Parser.IsoParser
 open LambdaLab.Parser.LossyParser (LossyParser)
-open LambdaLab.Abstraction2 (Abstraction)
+open LambdaLab.Abstraction (Abstraction)
 
 /-- An identifier: one token the language admits as a variable name. Aligned: source and value
 are `Var L`, so a name the language would reject is unrepresentable. -/
@@ -133,7 +133,7 @@ theorem Language.parser_roundtrip (L : Language) (prog : Program L)
 
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
 whose annotation is the file's surface spelling. Composes with the tokenizer
-(`Abstraction2/Tokenizer.lean`) for the `List Char` pipeline. -/
+(`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
 def Language.abstraction (L : Language) :
     Abstraction (List Token) (NEList (Command L)) (Program.Ann L) :=
   L.parser.toAbstraction
