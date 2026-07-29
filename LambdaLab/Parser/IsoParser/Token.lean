@@ -3,7 +3,7 @@
 
 The alphabet shared by the tokenizer and every token-level biparser. It lives here, above both, so
 that the tokenizer need not depend on the mixfix stack — a tokenizer knows nothing about
-grammars — and so that a *client* (`Language1`) can derive its own token type by instantiating
+grammars — and so that a *client* (`Language`) can derive its own token type by instantiating
 `sep` rather than rolling its own.
 
 A **token** is a string that is *non-empty* and contains *no separator character*. Both halves are
@@ -21,7 +21,7 @@ token consumed costs at least one character.
 ## Why the predicate is a `Bool`
 
 `isToken` is a **decidable Bool**, not a `Prop` conjunction. That is what lets a client write a
-token literal as `⟨"def", by decide⟩` — and it is why `Language1` can simply set
+token literal as `⟨"def", by decide⟩` — and it is why `Language` can simply set
 `abbrev Token := IsoParser.Token isSep` instead of defining a parallel type of its own.
 -/
 

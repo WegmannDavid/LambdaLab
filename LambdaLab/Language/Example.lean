@@ -1,6 +1,6 @@
-import LambdaLab.Language1.Pipeline
-import LambdaLab.Language1.ElabStage
-import LambdaLab.Language1.FreeName
+import LambdaLab.Language.Pipeline
+import LambdaLab.Language.ElabStage
+import LambdaLab.Language.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
@@ -11,7 +11,7 @@ what a language author actually has to supply — and that the file parser, prin
 round-trip proof all come back **for free**.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 open LambdaLab.Parser.IsoParser
 
@@ -147,4 +147,4 @@ example (p : ElaborableProgram trivialElaboratable)
     trivialElaboratable.pipeline.abstract (trivialElaboratable.pipeline.realize ann) = some p :=
   trivialElaboratable.pipeline.abstract_realize p ann
 
-end LambdaLab.Language1
+end LambdaLab.Language

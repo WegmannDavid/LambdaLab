@@ -1,6 +1,6 @@
-import LambdaLab.Language1.Vernacular
-import LambdaLab.Language1.Context
-import LambdaLab.Language1.Elaboratable
+import LambdaLab.Language.Vernacular
+import LambdaLab.Language.Context
+import LambdaLab.Language.Elaboratable
 
 /-!
 # Elaborating a whole program
@@ -35,7 +35,7 @@ nothing determines a `τ'` for it. A language that wants leaking simply permits 
 takes no position.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 variable {L : ElaboratableLanguage}
 
@@ -177,4 +177,4 @@ theorem Program.quote_elaborates {p p' : Program L.toLanguage}
   obtain ⟨⟨n, τ', e'⟩, cs'⟩ := p'
   exact Commands.quote_elaborates h
 
-end LambdaLab.Language1
+end LambdaLab.Language

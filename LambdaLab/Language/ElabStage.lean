@@ -1,7 +1,7 @@
-import LambdaLab.Language1.Elaboratable
+import LambdaLab.Language.Elaboratable
 import LambdaLab.Abstraction2.Basic
-import LambdaLab.Language1.Typing
-import LambdaLab.Language1.Pipeline
+import LambdaLab.Language.Typing
+import LambdaLab.Language.Pipeline
 
 /-!
 # Elaboration as a pipeline stage — why `ElaboratableLanguage`'s laws are the ones they are
@@ -37,7 +37,7 @@ List Char ⇝ List Token ⇝ Program ⇝ elaborated Program
 `ElaboratableLanguage` and nothing else.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 open LambdaLab.Abstraction2
 
@@ -110,4 +110,4 @@ def ElaboratableLanguage.renderElaborated (L : ElaboratableLanguage) (p' : Elabo
     String :=
   String.ofList (L.pipeline.realize (L.pipeline.default (a := p')))
 
-end LambdaLab.Language1
+end LambdaLab.Language

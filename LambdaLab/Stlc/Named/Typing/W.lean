@@ -3,7 +3,6 @@ import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Substitution.Unification.Soundness
 import LambdaLab.Substitution.Unification.MGU
-import LambdaLab.Language.Basic
 
 namespace LambdaLab.Stlc.Named
 
@@ -276,6 +275,40 @@ theorem W_principal_of_eq {Γ : Ctx String} {e : (Term String)} {τ : Ty} {σ σ
   rw [this]
   exact h_mgu
 
+/-! ## The elaboration boundary
+
+`Elaboration`/`ElaborationResult` used to live in a general `Language` interface. They are stated
+here instead, at STLC, because nothing else ever used them: the general interface's only instance
+was STLC's, and its parser-free `Language` struct has been superseded by `Language.Language`,
+whose elaboration side (`ElaboratableLanguage`) is deliberately substitution-free.
+
+What is kept is the part that interface got right and the synthetic one cannot say: `mgu` demands
+the returned substitution be *most general*, not merely one that works. `ElaboratableLanguage`
+can only demand determinism, so a language wanting principality has to state it — as here — in
+its own terms.
+-/
+
+/-- A **principal** solution for `(Γ, e, τ)`: a substitution that types the triple, and is more
+general than any other that does. `σ` is a field rather than an existential so callers can
+destructure it in `Type`-valued definitions. -/
+structure Elaboration (Γ : Ctx String) (e : Term String) (τ : Ty) : Type where
+  σ    : Subst Ty
+  hSat : HasType (HasSubst.pSubst Γ σ)
+                 (HasSubst.pSubst e σ)
+                 (HasSubst.pSubst τ σ)
+  mgu  : ∀ σ' : Subst Ty,
+           HasType (HasSubst.pSubst Γ σ')
+                   (HasSubst.pSubst e σ')
+                   (HasSubst.pSubst τ σ') →
+           MoreGeneral σ σ'
+
+/-- Elaborating `e` at `τ` under `Γ`: a principal solution, or a *proof* there is none. The error
+branch carries a refutation rather than a diagnostic — restoring diagnostics means giving it a
+payload. -/
+inductive ElaborationResult (Γ : Ctx String) (e : Term String) (τ : Ty) : Type where
+  | error : (Elaboration Γ e τ → False) → ElaborationResult Γ e τ
+  | ok    : Elaboration Γ e τ → ElaborationResult Γ e τ
+
 /-- The σ exposed to elaboration consumers: W's output pruned to keys
 strictly below the source-fresh threshold. The unpruned σ may bind W's
 internal scaffolding mvars; the pruned form drops those so the
@@ -284,14 +317,14 @@ private def elabσ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ_full : Su
   Subst.restrictBelow σ_full (srcFresh Γ e τ)
 
 def Term.elaborate :
-    (Γ : Ctx String) → (e : (Term String)) → (τ : Ty) → Language.ElaborationResult HasType Γ e τ
+    (Γ : Ctx String) → (e : (Term String)) → (τ : Ty) → ElaborationResult Γ e τ
   | Γ, e, τ =>
       match Heq : W Γ e τ with
       | none   =>
-          Language.ElaborationResult.error
+          ElaborationResult.error
             (fun ⟨_σ', hSat, _⟩ => W_complete hSat Heq)
       | some σ_full =>
-          Language.ElaborationResult.ok
+          ElaborationResult.ok
           { σ := elabσ Γ e τ σ_full
             hSat := by
               -- HasType on (Γ[σ_pruned], e[σ_pruned], τ[σ_pruned]) from

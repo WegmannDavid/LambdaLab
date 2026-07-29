@@ -1,6 +1,6 @@
 import LambdaLab.Arith
-import LambdaLab.Stlc.Named.Lang1
-import LambdaLab.Language1.Pipeline
+import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Language.Pipeline
 
 /-!
 # Vernacular demo — two plugged-in languages, one derived pipeline
@@ -25,7 +25,7 @@ morphism per language. The *parsers* run verified code; the round-trip *proofs* 
 conditional on the open mixfix `ok` lemma. The executable exercises the parsers, not the proofs.
 -/
 
-open LambdaLab.Language1 LambdaLab.Arith LambdaLab.Stlc.Named
+open LambdaLab.Language LambdaLab.Arith LambdaLab.Stlc.Named
 
 /-- Parse `src` with `L`, then re-render it canonically. `none` if not a well-formed program. -/
 def roundtripWith (L : Language) (src : String) : Option String := do

@@ -1,4 +1,4 @@
-import LambdaLab.Language1.NameAlphabet
+import LambdaLab.Language.NameAlphabet
 
 /-!
 # Typing contexts, parametric in the name alphabet
@@ -20,7 +20,7 @@ The lemmas are the two from `Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized 
 `decEq` supplies the `LawfulBEq` that `getElem?_insert` needs.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 variable {N : Type} [NameAlphabet N] {Ty : Type}
 
@@ -49,4 +49,4 @@ def Context.cons (x : N) (τ : Ty) (Γ : Context N Ty) : Context N Ty :=
     simp only [Bool.false_eq_true, ↓reduceIte, hxy]
     rw [← Std.HashMap.get?_eq_getElem?]
 
-end LambdaLab.Language1
+end LambdaLab.Language

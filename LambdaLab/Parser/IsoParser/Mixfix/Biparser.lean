@@ -6,7 +6,7 @@ import LambdaLab.Parser.IsoParser.Mixfix.Complete
 Packages the self-contained mixfix parser as an `IsoParser` over the abstract token alphabet.
 **Aligned**: source = value = the tree, `print` is `flatten`.
 
-* **FIRST = ⊤** (`firstOk` vacuous) — exactly what `Language1`'s interface asks for.
+* **FIRST = ⊤** (`firstOk` vacuous) — exactly what `Language`'s interface asks for.
 * **FOLLOW** carries the content: the computed `follow` (`Complete.lean`) — tokens at which the
   greedy parser provably stops.
 * **`ok`** is *derived* (`parseExpr_complete`) from the decomposition in `Complete.lean`, given

@@ -1,5 +1,5 @@
-import LambdaLab.Language1.Biparser
-import LambdaLab.Language1.FreeName
+import LambdaLab.Language.Biparser
+import LambdaLab.Language.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
@@ -8,7 +8,7 @@ import LambdaLab.Parser.IsoParser.Adapters
 /-!
 # Arithmetic — the running example language
 
-The mixfix arithmetic vernacular as a `Language1.Language`: two mixfix grammars (terms and
+The mixfix arithmetic vernacular as a `Language.Language`: two mixfix grammars (terms and
 types), a truncated term AST via the generic `Rules` bundle, and the plug-in instance — from
 which the framework derives the command parser, the file parser, the round-trip law, the `Abs`
 morphism, and the `List Char ⇝ Program` pipeline (`Main.lean` runs it).
@@ -43,7 +43,7 @@ Note the contrast with `Recursive` above: that section proves exactly this shape
 left-associative reconstruction by hand, for a fixed grammar.
 -/
 
-open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language1
+open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language
 
 /-- A token literal of the vernacular's alphabet. -/
 def tkA (s : String) (h : isToken isSep s = true := by decide) : Token := ⟨s, h⟩

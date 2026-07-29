@@ -1,137 +1,149 @@
-import LambdaLab.Substitution.Basic
-import Std.Data.HashMap
-
-
-/-!
-# Language interface
-
-A `Language` bundles the per-language hooks the vernacular needs:
-a typing relation, an algorithmic inferrer, and an evaluator. Anything
-that should work uniformly across object languages (type-checking,
-evaluation) is parametric on this structure.
-
-## Pinned design choices
-
-* **Contexts are name-keyed hashmaps:** `Context Ty := Std.HashMap String Ty`.
-  Shadowing is `insert` (overrides). De-Bruijn-style languages are not
-  required to instance `Language`.
-* **Inference returns a derivation.** `infer` produces a `CheckResult`
-  whose `ok` constructor carries a proof in the language's `HasType`,
-  so soundness is by construction.
-* **Evaluation only operates on well-typed terms.** `eval` takes a
-  derivation as input and returns a term; the obligation that "ill-typed
-  terms shouldn't reduce" is discharged at the type level rather than
-  by partiality.
--/
+import LambdaLab.Parser.LossyParser.Basic
+import LambdaLab.Parser.IsoParser.Token
+import LambdaLab.Language.NameAlphabet
 
 namespace LambdaLab.Language
 
-/-! ## Contexts -/
+open LambdaLab.Parser.IsoParser
+open LambdaLab.Parser.LossyParser (LossyParser)
 
-/-- A typing context: a hashmap from variable names to types. -/
-abbrev Context (Ty : Type) : Type := Std.HashMap String Ty
+/-! ## Lexemes
 
-/-- The empty context. -/
-def Context.empty {Ty : Type} : Context Ty := ∅
+The parser's alphabet is *tokens*, but tokens are printed back as text, so the token type has
+to be narrow enough that printing one and re-lexing it gives that same token back. Two ways it
+could fail, and they are the same failure we keep meeting — a source wider than the printable
+set:
 
-/-- Extend a context with a binding `x : τ`. The new binding shadows
-any previous binding of `x`. -/
-def Context.cons {Ty : Type} (x : String) (τ : Ty) (Γ : Context Ty) :
-    Context Ty :=
-  Γ.insert x τ
+* an **empty** token prints nothing, so it cannot be read back;
+* a token **containing a separator** prints as text that re-lexes into *two* tokens.
 
-/-! ## Type-check results -/
+So neither is representable. Which characters separate tokens is a parameter: `isSep`. -/
 
-/-- Errors that a type-checker can report. Parametric on the type
-universe `Ty` so callers can attach the offending types directly. -/
-inductive TypeError (Ty : Type) where
-  | unbound  : String → TypeError Ty
-  | notArrow : (actual : Ty) → TypeError Ty
-  | mismatch : (expected actual : Ty) → TypeError Ty
+/-- Which characters separate tokens. A token is a maximal run of non-separator characters. -/
+def isSep (c : Char) : Bool := c.isWhitespace
 
-/-- `Elaborable HasType Γ e τ` — `τ` is a *principal* type for `e`
-under `Γ`. Bundles a witness substitution `σ` with proofs that:
-* `σ` types the triple `(Γ, e, τ)` after pSubst;
-* `σ` is more general than every other substitution that types the
-  triple at `τ`.
+/-- The parser's alphabet — **derived**, by instantiating `IsoParser.Token` at our separator.
+It is not a type of our own: the alphabet is fixed above the vernacular, in
+`IsoParser/Token.lean`, which knows nothing about this vernacular, so any tokenizer and this
+parser must agree by construction rather than by coincidence. By construction, printing a
+`Token` and re-lexing recovers it.
 
-The type `τ` is a parameter (no `∃ τ`); `σ` lives as a structure field
-rather than an existential so callers can destructure it in
-`Type`-valued definitions. -/
-structure Elaboration {Ty Term : Type}
-    [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
-    (HasType : Context Ty → Term → Ty → Prop)
-    (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
-  σ    : Subst Ty
-  hSat : HasType (HasSubst.pSubst Γ σ)
-                 (HasSubst.pSubst e σ)
-                 (HasSubst.pSubst τ σ)
-  mgu  : ∀ σ' : Subst Ty,
-           HasType (HasSubst.pSubst Γ σ')
-                   (HasSubst.pSubst e σ')
-                   (HasSubst.pSubst τ σ') →
-           MoreGeneral σ σ'
+`IsoParser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
+discharged by `decide`. -/
+abbrev Token := _root_.LambdaLab.Parser.IsoParser.Token isSep
 
-/-- Result of elaborating `e` under `Γ`. The `ok` branch carries the
-inferred type `τ` and the `Elaborable Γ e τ` witness; the `error`
-branch carries a structured `TypeError` plus a uniform negative claim
-`∀ τ, ¬ Elaborable Γ e τ` (no type at all is a principal type for `e`). -/
-inductive ElaborationResult {Ty Term : Type}
-    [HasSubst Ty Ty] [HasSubst Term Ty] [HasSubst (Context Ty) Ty]
-    (HasType : Context Ty → Term → Ty → Prop)
-    (Γ : Context Ty) (e : Term) (τ : Ty) : Type where
-  | error : (Elaboration HasType Γ e τ → False) →
-            ElaborationResult HasType Γ e τ
-  | ok    : Elaboration HasType Γ e τ →
-            ElaborationResult HasType Γ e τ
+/-! ## The vernacular -/
 
-/-! ## The language interface -/
+/-- The reserved lexemes of the file format (`def NAME : TYPE := BODY`). A *language*'s own
+keywords (`\lambda`, `->`, …) are a separate, per-language concern living inside `pTm`/`pTy`,
+invisible here. -/
+def kwDef    : Token := ⟨"def", by decide⟩
+def kwColon  : Token := ⟨":",   by decide⟩
+def kwAssign : Token := ⟨":=",  by decide⟩
 
+def isVernacularKeyword (t : Token) : Bool :=
+  t.val == "def" || t.val == ":" || t.val == ":="
 
-/-- A complete object-language interface. Bundles syntax (`Ty`, `Term`),
-the declarative typing relation (`HasType`), the algorithmic inferrer
-(`elaborate`), and the evaluator (`eval`).
+/-- The vernacular's own keywords, as a list — so a language can be *checked* against them by
+`decide`. Quantifying the exclusion over this finite list, rather than over all of `Token`, is
+what keeps `Language.keywords_excluded` decidable. -/
+def vernacularReserved : List Token := [kwDef, kwColon, kwAssign]
 
-Deliberately *no* parser: the concrete-syntax side lives in
-`Language1.Language`, whose `pTy`/`pTm` are `IsoParser`s carrying their own
-round-trip laws. Keeping the two apart means a language can be typed and
-evaluated without committing to a surface syntax. -/
-structure Language : Type 1 where
-  /-- Types of the object language. -/
+/-- Tokens available as names: everything the given list has not reserved. The `NameAlphabet`
+instance for the resulting subtype lives in `FreeName.lean` (it needs a fresh-name generator);
+the definitions live here so that `Name` below, and `Language.isVarName`, can be stated in terms
+of them. -/
+def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
+
+/-- The name alphabet determined by a reserved list. -/
+abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
+
+/-- A name is any non-keyword lexeme. The subtype is load-bearing: a `Command` holding the name
+`def` would print a lexeme the parser reads back as a keyword. -/
+abbrev isName : Token → Bool := isFree vernacularReserved
+
+abbrev Name := FreeName vernacularReserved
+
+/-! ## The plug-in interface
+
+**Design note.** `Token` deliberately does *not* exclude the vernacular keywords. Making it do
+so is appealing — `pTm`/`pTy` then literally could not consume `def` — but it does not survive
+contact: `Language.parser` *must* consume those keywords, so it would need a different alphabet
+and a lift across alphabets. Worse, "a type may be followed by `:=`" would not even be
+*expressible*, since `:=` would not inhabit `pTy`'s FOLLOW domain.
+
+So keywords are ordinary tokens, and what stops a term parser from swallowing them is its
+**FOLLOW set** — the same mechanism by which a digit run stops at whitespace. The guarantee
+becomes the two facts a language declares below. -/
+
+/-- The FOLLOW a type must accept: exactly `:=`. -/
+abbrev followAssign : Token → Prop := fun t => t = kwAssign
+
+/-- The FOLLOW a term must accept: exactly `def` (the next command). -/
+abbrev followDef : Token → Prop := fun t => t = kwDef
+
+/-- FIRST is **unconstrained** by the vernacular, so the interface simply allows everything. -/
+abbrev anyTok : Token → Prop := fun _ => True
+
+/-- A **pluggable language**: a term parser and a type parser. That is the whole interface.
+Everything above it — commands, programs, and the file round-trip — is *derived*.
+
+**Why there are no FIRST fields.** FIRST never constrains anything here: `pTy` and `pTm` are
+each preceded by a fixed keyword (`:`, `:=`) whose FOLLOW is `⊤`, so their seams are
+`FIRST ⊆ ⊤` — true for any FIRST whatsoever. And `firstOk` is a purely *negative* claim
+("outside FIRST, I fail"), so widening FIRST only ever *weakens* it. So the interface asks for
+nothing: `anyTok`.
+
+**Why FOLLOW is pinned instead.** FOLLOW is what carries the real guarantee. `pTm`'s law at
+`followDef` says: *print a term, append anything starting with `def`, re-parse → you get the
+term back with the `def` untouched.* That is a **proof** that a term parser stops at a command
+boundary — and it is why the two seam obligations vanished; they are now definitionally true.
+
+**The plug-in boundary.** A language states its parser's *real* FIRST and FOLLOW and then adapts:
+widen FIRST up to `anyTok` (sound because `firstOk` is negative — a larger FIRST promises less) and
+narrow FOLLOW down to the key token (sound because the round-trip is antitone in FOLLOW, `HeadIn.mono`).
+Both are sound in exactly one direction, and that direction is the one you need. -/
+structure Language where
+  Tm : Type
   Ty : Type
-  /-- Terms of the object language. -/
-  Term : Type
-  /-- Decidable equality on types — needed by `infer` to compare types
-  in the application case. -/
-  tyDecEq : DecidableEq Ty
-  /-- Type-into-type substitution: how to apply a `Subst Ty` to a `Ty`
-  (typically derived from a `Signature Ty` instance). -/
-  tyHasSubst : HasSubst Ty Ty
-  /-- Construct a `Ty` mvar from a `Nat` index. Used by inferential
-  callers (`eval`/`check` commands) to pick a fresh type to feed into
-  `elaborate`. -/
-  freshTy : Nat → Ty
-  /-- The empty substitution acts as the identity on `Ty`. Required to
-  discharge the MGU witness in `ElaborateResult.ok` when the kernel
-  picks `σ = ∅`. Typically `Signature.pSubst_empty`. -/
-  tyPSubstEmpty : ∀ t : Ty, HasSubst.pSubst t (∅ : Subst Ty) = t
-  /-- Substituting `Ty`-metavariables inside a `Term` (replaces type
-  annotations). -/
-  termHasSubst : HasSubst Term Ty
-  /-- The declarative typing relation. -/
-  HasType : Context Ty → Term → Ty → Prop
-  /-- Bidirectional elaboration: fit `e` at the (possibly mvar-laden)
-  expected type `τ` under `Γ`, returning a substitution `σ` that closes
-  the existentials so `HasType` derives on the substituted triple. For
-  full inference, pass a fresh `Ty.mvar` as `τ`; the returned `σ` then
-  tells you what that mvar should be. -/
-  elaborate : (Γ : Context Ty) → (e : Term) → (τ : Ty)→
-          @ElaborationResult Ty Term tyHasSubst termHasSubst
-            (by infer_instance) HasType Γ e τ
-  /-- Evaluate a well-typed term. Taking the derivation as input keeps
-  this function total — only well-typed terms are reducible. -/
-  eval : ∀ {Γ : Context Ty} {e : Term} {τ : Ty}, HasType Γ e τ → Term
 
-attribute [instance] Language.tyDecEq Language.tyHasSubst Language.termHasSubst
+  /-- Surface spellings a type value may have beyond the canonical one — redundant parens,
+  sugar, elided (`_`) annotations. `fun _ => Unit` for a canonical-form-only language. -/
+  AnnTy : Ty → Type
+  /-- Surface spellings a term value may have. -/
+  AnnTm : Tm → Type
+
+  /-- The type parser: must stop at `:=` rather than swallowing the assignment. **Lossy**:
+  parses to the value, prints any annotated spelling; `pTy.default` is the canonical printer.
+  A lossless (`IsoParser`) parser plugs in via `toLossyParserUnit`. -/
+  pTy : LossyParser Token anyTok followAssign Ty AnnTy
+  /-- The term parser: must stop at a command boundary (`def`). Lossy — this is what lets a
+  language *truncate*: accept `((((a))))`, remember only `a`, and still round-trip. -/
+  pTm : LossyParser Token anyTok followDef Tm AnnTm
+
+  /-- Which tokens may name a variable — and hence a declaration.
+
+  The vernacular uses this *same* notion for a declaration's name, so `def f : T := e` puts `f`
+  in scope as an ordinary term variable, with no injection between two kinds of name. -/
+  isVarName : Token → Bool
+  /-- Names must form a `NameAlphabet`: decidable, hashable, and inexhaustible (capture-avoiding
+  substitution has to invent names). A language that simply excludes a finite reserved list gets
+  this from `FreeName`'s instance — `isVarName := isFree myReserved` and `inferInstance`. One
+  with a genuine lexical class ("identifiers start with a letter") supplies its own, which is
+  why this is a field rather than being derived from a reserved list. -/
+  varAlphabet : NameAlphabet { t : Token // isVarName t = true }
+  /-- Variable names may not collide with the vernacular's keywords: a declaration named `def`
+  would make the file parser mis-split commands.
+
+  Note what this does *not* have to say. A language's own grammar keywords are already excluded —
+  the mixfix `Entry.varDisjoint` field proves no operator name part satisfies `isVar`. This field
+  covers exactly the gap that proof cannot reach, since a grammar knows nothing about the
+  vernacular wrapped around it. -/
+  keywords_excluded : ∀ k ∈ vernacularReserved, isVarName k = false
+
+/-- A language's variable names — and its declaration names, which are the same thing. -/
+abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
+
+instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
 
 end LambdaLab.Language

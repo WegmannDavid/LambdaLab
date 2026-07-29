@@ -1,4 +1,4 @@
-import LambdaLab.Language1.Vernacular
+import LambdaLab.Language.Vernacular
 import LambdaLab.Parser.IsoParser.Notation
 
 /-!
@@ -23,7 +23,7 @@ values are parsed, spellings are printed, and the annotation family records the 
 `List Token ⇝ Program`, with the program's full surface spelling as the annotation.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 open LambdaLab.Parser.IsoParser
 open LambdaLab.Parser.LossyParser (LossyParser)
@@ -138,4 +138,4 @@ def Language.abstraction (L : Language) :
     Abstraction (List Token) (NEList (Command L)) (Program.Ann L) :=
   L.parser.toAbstraction
 
-end LambdaLab.Language1
+end LambdaLab.Language

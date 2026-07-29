@@ -1,4 +1,4 @@
-import LambdaLab.Language1.Biparser
+import LambdaLab.Language.Biparser
 import LambdaLab.Abstraction2.Tokenizer
 
 /-!
@@ -22,7 +22,7 @@ alphabet agreement between the two stages is by construction, not coincidence. N
 tokenizer is Agda-style: tokens must be whitespace-separated — write `( x )`, not `(x)`.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 open LambdaLab.Abstraction2
 
@@ -43,4 +43,4 @@ def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.pipeline.realize (L.pipeline.default (a := prog)))
 
-end LambdaLab.Language1
+end LambdaLab.Language

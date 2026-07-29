@@ -1,5 +1,5 @@
-import LambdaLab.Language1.Basic
-import LambdaLab.Language1.NameAlphabet
+import LambdaLab.Language.Basic
+import LambdaLab.Language.NameAlphabet
 
 /-!
 # `FreeName` — the name alphabet a language gets from its reserved list
@@ -19,7 +19,7 @@ The fresh-name generator is the classic trick: a run of `'a'`s longer than every
 Working with lengths avoids having to reason about the reserved tokens' spellings.
 -/
 
-namespace LambdaLab.Language1
+namespace LambdaLab.Language
 
 open LambdaLab.Parser.IsoParser
 
@@ -71,4 +71,4 @@ instance instNameAlphabetFreeName (reserved : List Token) : NameAlphabet (FreeNa
       List.mem_map.mpr ⟨_, hmem, rfl⟩
     exact aRun_maxLen_not_mem (List.mem_append_left _ hval)
 
-end LambdaLab.Language1
+end LambdaLab.Language

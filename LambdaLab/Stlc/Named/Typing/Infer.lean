@@ -10,14 +10,14 @@ unnecessary for deciding this judgement.
 
 That is not an accident of the implementation, it is what the surface syntax buys. The elaborator
 in `W.lean` exists for a *different* surface, one where a binder may be left unannotated; STLC's
-`Language1` grammar (`Stlc/Named/Lang1.lean`) deliberately does not admit that yet.
+`Language` grammar (`Stlc/Named/Lang.lean`) deliberately does not admit that yet.
 
 `infer` also gives uniqueness of types for free (`HasType.det`), since it is a function.
 -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language1 (NameAlphabet)
+open LambdaLab.Language (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N]
 
