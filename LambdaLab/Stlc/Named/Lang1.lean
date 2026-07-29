@@ -1,5 +1,7 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Stlc.Named.Typing.Infer
+import LambdaLab.Language1.ElabStage
 import LambdaLab.Language1.Biparser
 import LambdaLab.Language1.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
@@ -324,5 +326,38 @@ def stlcLanguage : Language where
         have h : t = kwDef := ht
         subst h
         exact sFollow_def) |> sRules.truncateParser) (fun _ => rfl)
+
+/-! ## …and a semantics
+
+The grammar annotates every binder, so elaboration has nothing to solve: `Elaborates` is the
+identity on the term and the type, carrying a `HasType` derivation. `W.lean` — the HM inferencer —
+is not used and cannot be, see below.
+
+**No metavariable survives a declaration.** `Ty.mvar` is *writable* here (`?0`), and `HasType`
+happily admits it: `⊢ λ x : ?0 . x : ?0 ⇒ ?0` is derivable. So refusing leakage is a real
+condition and this language imposes it, exactly as the interface intends — by restricting
+`Elaborates`, not by a field of `ElaboratableLanguage`. `def f : ?0 → ?0 := λ x : ?0 . x` is
+therefore rejected, and since `Typing.lean` puts the *elaborated* type into the context, nothing
+downstream can ever see an unsolved metavariable.
+-/
+
+/-- STLC as an elaboratable language. Sorry-free: the checker is `Typing/Infer.lean`. -/
+def stlcElaboratable : Language1.ElaboratableLanguage where
+  toLanguage := stlcLanguage
+  Elaborates Γ t t' τ τ' := t' = t ∧ τ' = τ ∧ HasType Γ t τ ∧ τ.Ground ∧ t.AnnotsGround
+  elaborates_unique h₁ h₂ := by
+    obtain ⟨rfl, rfl, -⟩ := h₁
+    obtain ⟨rfl, rfl, -⟩ := h₂
+    exact ⟨rfl, rfl⟩
+  elaborate Γ t τ :=
+    if h : HasType Γ t τ ∧ τ.Ground ∧ t.AnnotsGround then some ⟨(t, τ), rfl, rfl, h⟩ else none
+  elaborate_complete h := by
+    obtain ⟨rfl, rfl, h⟩ := h
+    simp only [dif_pos h]
+    rfl
+  quote t' τ' := (t', τ')
+  quote_elaborates h := by
+    obtain ⟨t, τ, rfl, rfl, h⟩ := h
+    exact ⟨rfl, rfl, h⟩
 
 end LambdaLab.Stlc.Named
