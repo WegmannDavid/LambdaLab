@@ -119,3 +119,108 @@ theorem unify_complete_unifier {α : Type} [Signature α] :
   refine unify_complete eqs u.toSubst (fun p hp => ?_)
   have h := hu p hp
   rwa [Unifier.apply_eq_pSubst_toSubst, Unifier.apply_eq_pSubst_toSubst] at h
+
+/-! ## Domain of the computed unifier
+
+`unify` never invents variables: everything it binds occurred free in the equations. Needed
+wherever the result is pruned by a freshness threshold (`Subst.restrictBelow`) — the pruning is
+only harmless because the domain is bounded.
+-/
+
+/-- Every variable `unifyList` binds was free in the equations it was given. -/
+theorem unifyList_keys {α : Type} [Signature α] :
+    ∀ (eqs : Equations α) (u : Unifier α), unifyList eqs = some u →
+      ∀ p ∈ u, HasVars.isFree eqs p.1 := by
+  intro eqs
+  induction eqs using unifyList.induct with
+  | case1 => intro u hu p hp; rw [unifyList] at hu; cases hu; cases hp
+  | case2 x y eqs' m hxv hyv ih =>
+      intro u hu p hp
+      have hu' : unifyList eqs' = some u := by grind [unifyList]
+      obtain ⟨q, hq, hqf⟩ := ih u hu' p hp
+      exact ⟨q, List.mem_cons_of_mem _ hq, hqf⟩
+  | case3 _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
+      intro u hu p hp
+      have hueq : (m, y) :: rest = u := by grind [unifyList]
+      subst hueq
+      have hxeq : x = Signature.var m := Signature.var_of_isVar x m hxv
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · exact ⟨(x, y), List.mem_cons_self, Or.inl (by rw [hxeq]; exact (Signature.var_isFree m m).mpr rfl)⟩
+      · obtain ⟨q, hq, hqf⟩ := ih rest hrest p hp'
+        rw [Equations.single_eq] at hq
+        rcases List.mem_map.mp hq with ⟨r, hr, hreq⟩
+        subst hreq
+        have : HasVars.isFree r.1 p.1 ∨ HasVars.isFree r.2 p.1 ∨ HasVars.isFree y p.1 := by
+          rcases hqf with h1 | h2
+          · rcases (Signature.single_isFree r.1 m y p.1).mp h1 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inl h
+            · exact Or.inr (Or.inr h)
+          · rcases (Signature.single_isFree r.2 m y p.1).mp h2 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inr (Or.inl h)
+            · exact Or.inr (Or.inr h)
+        rcases this with h | h | h
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inl h⟩
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inr h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inr h⟩
+  | case5 _ _ _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case6 _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
+      intro u hu p hp
+      have hueq : (m, x) :: rest = u := by grind [unifyList]
+      subst hueq
+      have hyeq : y = Signature.var m := Signature.var_of_isVar y m hyv
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · exact ⟨(x, y), List.mem_cons_self, Or.inr (by rw [hyeq]; exact (Signature.var_isFree m m).mpr rfl)⟩
+      · obtain ⟨q, hq, hqf⟩ := ih rest hrest p hp'
+        rw [Equations.single_eq] at hq
+        rcases List.mem_map.mp hq with ⟨r, hr, hreq⟩
+        subst hreq
+        have : HasVars.isFree r.1 p.1 ∨ HasVars.isFree r.2 p.1 ∨ HasVars.isFree x p.1 := by
+          rcases hqf with h1 | h2
+          · rcases (Signature.single_isFree r.1 m x p.1).mp h1 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inl h
+            · exact Or.inr (Or.inr h)
+          · rcases (Signature.single_isFree r.2 m x p.1).mp h2 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inr (Or.inl h)
+            · exact Or.inr (Or.inr h)
+        rcases this with h | h | h
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inl h⟩
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inr h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inl h⟩
+  | case8 _ _ _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case9 x y eqs' hxv hyv xs hdec ih =>
+      intro u hu p hp
+      have hu' : unifyList (xs ++ eqs') = some u := by grind [unifyList]
+      obtain ⟨q, hq, hqf⟩ := ih u hu' p hp
+      rcases List.mem_append.mp hq with hq_xs | hq_eqs'
+      · have hxs : HasVars.isFree xs p.1 := ⟨q, hq_xs, hqf⟩
+        rcases Signature.decomp_isFree x y xs p.1 hdec hxs with h | h
+        · exact ⟨(x, y), List.mem_cons_self, Or.inl h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inr h⟩
+      · exact ⟨q, List.mem_cons_of_mem _ hq_eqs', hqf⟩
+  | case10 _ _ _ _ _ _ => intro u hu; grind [unifyList]
+
+/-- Keys of `toSubst u` are the variables `u` binds. -/
+theorem Unifier.toSubst_mem_keys {α : Type} [Signature α] :
+    ∀ (u : Unifier α) (k : Nat), (Unifier.toSubst u).get? k ≠ none → ∃ p ∈ u, p.1 = k
+  | [], k, h => by
+      rw [Unifier.toSubst_nil] at h
+      simp [Std.HashMap.get?_eq_getElem?] at h
+  | (n, s) :: rest, k, h => by
+      rw [Unifier.toSubst_cons, Std.HashMap.get?_eq_getElem?,
+          Std.HashMap.getElem?_insert] at h
+      by_cases hnk : n = k
+      · exact ⟨(n, s), List.mem_cons_self, hnk⟩
+      · rw [if_neg (by simp [hnk])] at h
+        obtain ⟨p, hp, hpk⟩ :=
+          Unifier.toSubst_mem_keys rest k (by rwa [Std.HashMap.get?_eq_getElem?])
+        exact ⟨p, List.mem_cons_of_mem _ hp, hpk⟩
+
+/-- **Domain of `unify`.** Every variable the computed unifier binds was free in the equations. -/
+theorem unify_keys {α : Type} [Signature α] (eqs : Equations α) (σ : Subst α)
+    (h : unify eqs = some σ) (k : Nat) (hk : σ.get? k ≠ none) : HasVars.isFree eqs k := by
+  rw [unify, Option.map_eq_some_iff] at h
+  obtain ⟨u, hu, rfl⟩ := h
+  obtain ⟨p, hp, rfl⟩ := Unifier.toSubst_mem_keys u k hk
+  exact unifyList_keys eqs u hu p hp

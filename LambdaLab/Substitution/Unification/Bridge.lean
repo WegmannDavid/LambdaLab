@@ -813,6 +813,35 @@ private theorem foldr_max_ge {α : Type} [Signature α] {m : Nat} (f : Fin m →
       · exact Nat.le_max_right _ _
       · exact Nat.le_trans (foldr_max_ge f js i hj) (Nat.le_max_left _ _)
 
+/-- If every key of σ is below the threshold, restricting changes nothing, on any term at all. -/
+theorem Subst.restrictBelow_action_eq {α : Type} [Signature α] (σ : Subst α) (n : Nat)
+    (hkeys : ∀ k, σ.get? k ≠ none → k < n) (t : α) :
+    HasSubst.pSubst t (Subst.restrictBelow σ n) = HasSubst.pSubst t σ := by
+  simp only [Signature.hasSubst_pSubst_eq]
+  induction t using Signature.term_ind with
+  | var_case m =>
+      rw [Signature.pSubst_var, Signature.pSubst_var]
+      rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?,
+          Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?,
+          Subst.restrictBelow_get?]
+      by_cases hm : m < n
+      · rw [if_pos hm]
+      · rw [if_neg hm]
+        have hnone : σ.get? m = none := by
+          cases hgm : σ.get? m with
+          | none => rfl
+          | some v => exact absurd (hkeys m (by rw [hgm]; exact Option.some_ne_none v)) hm
+        rw [hnone]
+  | construct_case c args ih =>
+      rw [Signature.pSubst_construct, Signature.pSubst_construct]
+      congr 3
+      apply Signature.Vector.ofFn_get_eq_self
+      intro i
+      have h2 : (Vector.ofFn (fun j => Signature.pSubst (args.get j) σ)).get i
+              = Signature.pSubst (args.get i) σ := by
+        show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
+      rw [h2]; exact ih i
+
 /-- Restricting σ to keys below `n` doesn't change pSubst's action on
 any `t` whose free mvars are all below `n` (i.e. `HasVars.fresh t ≤ n`).
 This is the key lemma for option D in the principal-types story:
