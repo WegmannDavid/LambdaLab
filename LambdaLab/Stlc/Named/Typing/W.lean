@@ -331,11 +331,23 @@ def Term.elaborate :
           ElaborationResult.ok
           { σ := elabσ Γ e τ σ_full
             hSat := by
-              -- HasType on (Γ[σ_pruned], e[σ_pruned], τ[σ_pruned]) from
-              -- HasType on (Γ[σ_full], …) via pSubst_restrictBelow on
-              -- Γ, e, τ (whose fresh is bounded by srcFresh). Needs
-              -- Term/Ctx N specializations of pSubst_restrictBelow.
-              sorry
+              -- `HasType` on the *pruned* triple from `HasType` on the full one. Each of Γ, e, τ
+              -- has its free mvars below `srcFresh`, so dropping σ's bindings at or above that
+              -- threshold — which is exactly W's internal scaffolding — changes nothing.
+              have hbase := (W_correct Γ e τ σ_full Heq).toHasType
+              have hΓ : HasVars.fresh Γ ≤ srcFresh Γ e τ := Nat.le_max_left _ _
+              have he : HasVars.fresh e ≤ srcFresh Γ e τ :=
+                Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
+              have hτ : HasVars.fresh τ ≤ srcFresh Γ e τ :=
+                Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+              show HasType (HasSubst.pSubst Γ (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
+                     (HasSubst.pSubst e (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
+                     (HasSubst.pSubst τ (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
+              rw [Term.tyPSubst_restrictBelow e σ_full _ he,
+                  Signature.pSubst_restrictBelow σ_full _ τ hτ]
+              -- the context only agrees key-by-key, which is what `cong` wants
+              exact HasType.cong
+                (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ_full _ hΓ y).symm) hbase
             mgu := fun σ' h_σ' => W_principal_of_eq Heq h_σ' }
 
 end LambdaLab.Stlc.Named

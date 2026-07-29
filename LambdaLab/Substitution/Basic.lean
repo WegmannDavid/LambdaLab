@@ -223,3 +223,16 @@ instance {K V β : Type} [BEq K] [Hashable K] [HasVars K] [HasSubst V β] :
     · have h₁ : n < HasVars.fresh p.2 := HasVars.fresh_gt_free _ _ hv
       have h₂ : HasVars.fresh p.2 ≤ pairFresh p := Nat.le_max_right _ _
       exact Nat.lt_of_lt_of_le (Nat.lt_of_lt_of_le h₁ h₂) key
+
+/-- Every value stored in a hashmap has `fresh` bounded by the map's own — the map's `fresh` is a
+`max`-fold over its entries. It lives here because `pairFresh` is private to this file. Used to
+prune a substitution below a threshold without disturbing a context, the way
+`Signature.pSubst_restrictBelow` does for a single term. -/
+theorem HashMap.fresh_ge_get? {K V β : Type} [BEq K] [Hashable K] [LawfulBEq K]
+    [HasVars K] [HasSubst V β] (m : Std.HashMap K V) (k : K) (v : V)
+    (h : m.get? k = some v) : HasVars.fresh v ≤ HasVars.fresh m := by
+  have hmem : (k, v) ∈ m.toList := by
+    rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+    exact h
+  exact Nat.le_trans (Nat.le_max_right _ _)
+    (List.foldr_max_of_mem pairFresh m.toList (k, v) hmem)

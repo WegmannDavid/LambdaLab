@@ -331,4 +331,43 @@ theorem Ctx.pSubst_insert_fresh_get? (Γ : Std.HashMap N Ty)
           ← Std.HashMap.get?_eq_getElem?]
       exact hx
 
+/-! ## Pruning a substitution below a freshness threshold
+
+`Signature.pSubst_restrictBelow` says dropping σ's bindings at or above `n` doesn't change its
+action on anything whose free mvars are all below `n`. These are the two specializations the
+elaboration boundary needs: one for terms (whose mvars live in type annotations), one for
+contexts (`get?`-wise, since hashmap equality is not up to layout).
+-/
+
+theorem Term.tyPSubst_restrictBelow (e : Term N) (σ : Subst Ty) (n : Nat)
+    (h : HasVars.fresh e ≤ n) :
+    HasSubst.pSubst e (Subst.restrictBelow σ n) = HasSubst.pSubst e σ := by
+  induction e with
+  | var x => rfl
+  | lam x τ body ih =>
+      have hτ : HasVars.fresh τ ≤ n := Nat.le_trans (Nat.le_max_left _ _) h
+      have hb : HasVars.fresh body ≤ n := Nat.le_trans (Nat.le_max_right _ _) h
+      -- the IH is stated via `HasSubst.pSubst`; restate it in `tyPSubst` form (defeq) so `rw`
+      -- can see it under the constructor
+      have ihb : Term.tyPSubst body (Subst.restrictBelow σ n) = Term.tyPSubst body σ := ih hb
+      show Term.lam x _ _ = Term.lam x _ _
+      rw [Signature.pSubst_restrictBelow σ n τ hτ, ihb]
+  | app e₁ e₂ ih₁ ih₂ =>
+      have h₁ : HasVars.fresh e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) h
+      have h₂ : HasVars.fresh e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) h
+      have ih₁' : Term.tyPSubst e₁ (Subst.restrictBelow σ n) = Term.tyPSubst e₁ σ := ih₁ h₁
+      have ih₂' : Term.tyPSubst e₂ (Subst.restrictBelow σ n) = Term.tyPSubst e₂ σ := ih₂ h₂
+      show Term.app _ _ = Term.app _ _
+      rw [ih₁', ih₂']
+
+theorem Ctx.pSubst_restrictBelow_get? (Γ : Std.HashMap N Ty) (σ : Subst Ty) (n : Nat)
+    (h : HasVars.fresh Γ ≤ n) (x : N) :
+    (HasSubst.pSubst Γ (Subst.restrictBelow σ n)).get? x = (HasSubst.pSubst Γ σ).get? x := by
+  rw [HashMap.pSubst_get?, HashMap.pSubst_get?]
+  cases hx : Γ.get? x with
+  | none => rfl
+  | some τ =>
+      simp only [Option.map_some]
+      exact congrArg some (Signature.pSubst_restrictBelow σ n τ
+        (Nat.le_trans (HashMap.fresh_ge_get? Γ x τ hx) h))
 end LambdaLab.Stlc.Named

@@ -786,6 +786,18 @@ principal-types proof in `W.lean`: when W picks a fresh `mvar k`, any
 user-supplied σ' (which is freshness-blind to W's `k`) can be extended
 without affecting its action on the source. -/
 
+/-- Every element is bounded by a `max`-fold over any list containing its index. The `<` version
+of this is inlined in `fresh_gt_occurs`; the `≤` version is wanted here. -/
+private theorem foldr_max_ge {α : Type} [Signature α] {m : Nat} (f : Fin m → α) :
+    ∀ (l : List (Fin m)) (i : Fin m), i ∈ l →
+      Signature.fresh (f i) ≤ l.foldr (fun j acc => max acc (Signature.fresh (f j))) 0
+  | [],      _, h => absurd h (by simp)
+  | j :: js, i, h => by
+      simp only [List.foldr]
+      rcases List.mem_cons.mp h with rfl | hj
+      · exact Nat.le_max_right _ _
+      · exact Nat.le_trans (foldr_max_ge f js i hj) (Nat.le_max_left _ _)
+
 /-- Restricting σ to keys below `n` doesn't change pSubst's action on
 any `t` whose free mvars are all below `n` (i.e. `HasVars.fresh t ≤ n`).
 This is the key lemma for option D in the principal-types story:
@@ -796,7 +808,44 @@ theorem Signature.pSubst_restrictBelow {α : Type} [Signature α]
     (σ : Subst α) (n : Nat) (t : α)
     (h_fresh : HasVars.fresh t ≤ n) :
     HasSubst.pSubst t (Subst.restrictBelow σ n) = HasSubst.pSubst t σ := by
-  sorry
+  show Signature.pSubst t (Subst.restrictBelow σ n) = Signature.pSubst t σ
+  -- Same shape as `fresh_gt_occurs`: strong recursion on `size`, then split on `deconstruct`.
+  induction hk : Signature.size t using Nat.strongRecOn generalizing t with
+  | _ k ih =>
+    match hd : Signature.deconstruct t with
+    | Sum.inl m =>
+        -- A variable below the threshold looks itself up in the *unrestricted* σ.
+        have ht : t = Signature.var m := by
+          have := Signature.deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        subst ht
+        have hmn : m < n := by
+          have : Signature.fresh (Signature.var m : α) ≤ n := h_fresh
+          rw [Signature.fresh_var] at this; omega
+        rw [Signature.pSubst_var, Signature.pSubst_var]
+        rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?,
+            Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?,
+            Subst.restrictBelow_get?, if_pos hmn]
+    | Sum.inr ⟨c, args⟩ =>
+        -- Constructors recurse; each argument's `fresh` is bounded by the whole term's.
+        have ht : t = Signature.construct (Sum.inr ⟨c, args⟩) := by
+          have := Signature.deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        subst ht
+        rw [Signature.pSubst_construct, Signature.pSubst_construct]
+        refine congrArg (fun v => Signature.construct (Sum.inr ⟨c, v⟩)) ?_
+        refine congrArg Vector.ofFn (funext fun i => ?_)
+        have hsz : Signature.size (args.get i) <
+            Signature.size (Signature.construct (Sum.inr ⟨c, args⟩)) :=
+          Signature.size_lt_of_get hd i
+        refine ih (Signature.size (args.get i)) (hk ▸ hsz) (args.get i) ?_ rfl
+        have hle : Signature.fresh (args.get i) ≤
+            Signature.fresh (Signature.construct (Sum.inr ⟨c, args⟩)) := by
+          rw [Signature.fresh_construct]
+          exact foldr_max_ge (fun j => args.get j) _ i (List.mem_finRange i)
+        exact Nat.le_trans hle h_fresh
 
 theorem Signature.pSubst_insert_fresh {α : Type} [Signature α]
     (σ : Subst α) (k : Nat) (v : α) (t : α)
