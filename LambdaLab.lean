@@ -86,3 +86,4 @@ import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Mvars
+import LambdaLab.Stlc.Named.Solving

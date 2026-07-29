@@ -6,19 +6,23 @@ import LambdaLab.Substitution.Unification.MGU
 
 namespace LambdaLab.Stlc.Named
 
+open LambdaLab.Language (NameAlphabet)
+
+variable {N : Type} [NameAlphabet N] [HasVars N]
+
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `body`, `α`, and `τ`. Used by `W` and by `HasTypeW` to name the
 yet-to-be-inferred body type in the lam case so that the resulting
 substitution is determined (and, together with the unifier being an MGU,
 is itself an MGU). -/
-def freshIdxLam (Γ : Ctx String) (body : (Term String)) (α τ : Ty) : Nat :=
+def freshIdxLam (Γ : Ctx N) (body : (Term N)) (α τ : Ty) : Nat :=
   max (HasVars.fresh Γ) (max (HasVars.fresh body)
     (max (HasVars.fresh α) (HasVars.fresh τ)))
 
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `e₁`, `e₂`, and `τ`. Used by `W` and by `HasTypeW` to name the
 yet-to-be-inferred argument type in the app case. -/
-def freshIdxApp (Γ : Ctx String) (e₁ e₂ : (Term String)) (τ : Ty) : Nat :=
+def freshIdxApp (Γ : Ctx N) (e₁ e₂ : (Term N)) (τ : Ty) : Nat :=
   max (HasVars.fresh Γ) (max (HasVars.fresh e₁)
     (max (HasVars.fresh e₂) (HasVars.fresh τ)))
 
@@ -47,19 +51,19 @@ The constructors mirror standard W:
   the σ₁-refined argument type, on the σ₁-substituted term*. Refining
   the second premise via σ₁ is what makes soundness composable —
   otherwise σ₁ and σ₂ might disagree on shared metavariables. -/
-inductive HasTypeW : Ctx String → (Term String) → Ty → Subst Ty → Prop where
-  | var {Γ x τ τ' σ} :
+inductive HasTypeW : Ctx N → (Term N) → Ty → Subst Ty → Prop where
+  | var {Γ : Ctx N} {x : N} {τ τ' σ} :
       Γ.get? x = some τ' →
       unify [(τ, τ')] = some σ →
       HasTypeW Γ (Term.var x) τ σ
-  | lam {Γ x α body τ σ_body σ_unify} :
+  | lam {Γ : Ctx N} {x : N} {α body τ σ_body σ_unify} :
       HasTypeW (Γ.cons x α) body
                (Ty.mvar (freshIdxLam Γ body α τ)) σ_body →
       unify [(HasSubst.pSubst τ σ_body,
               HasSubst.pSubst (α ⇒ Ty.mvar (freshIdxLam Γ body α τ))
                               σ_body)] = some σ_unify →
       HasTypeW Γ (Term.lam x α body) τ (Subst.comp σ_unify σ_body)
-  | app {Γ e₁ e₂ τ σ₁ σ₂} :
+  | app {Γ : Ctx N} {e₁ e₂ τ σ₁ σ₂} :
       HasTypeW Γ e₁ (Ty.mvar (freshIdxApp Γ e₁ e₂ τ) ⇒ τ) σ₁ →
       HasTypeW (HasSubst.pSubst Γ σ₁)
                (HasSubst.pSubst e₂ σ₁)
@@ -80,7 +84,7 @@ derivation. The three constructor cases use, in order:
   substitutions agree at `comp σ₂ σ₁`, then combine via `HasType.app`
   and `HasType.cong` (for the context, which is only `get?`-extensional
   under the composition law). -/
-theorem HasTypeW.toHasType : ∀ {Γ : Ctx String} {e : (Term String)} {τ : Ty} {σ : Subst Ty},
+theorem HasTypeW.toHasType : ∀ {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ : Subst Ty},
     HasTypeW Γ e τ σ →
     HasType (HasSubst.pSubst Γ σ)
             (HasSubst.pSubst e σ)
@@ -142,7 +146,7 @@ succeeds). Three cases mirror the `HasTypeW` constructors:
   `τ[σ_body]` with `(α ⇒ β)[σ_body]`.
 * `e₁ e₂`: pick a fresh `α`, recurse on `e₁` at `α ⇒ τ` to get `σ₁`, then
   recurse on `e₂[σ₁]` in `Γ[σ₁]` at `α[σ₁]`. -/
-def W : (Γ : Ctx String) → (e : (Term String)) → (τ : Ty) → Option (Subst Ty)
+def W : (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → Option (Subst Ty)
   | Γ, .var x, τ =>
       match Γ.get? x with
       | none    => none
@@ -180,7 +184,7 @@ def W : (Γ : Ctx String) → (e : (Term String)) → (τ : Ty) → Option (Subs
 /-- **Correctness of `W`.** If `W` succeeds with σ, then `HasTypeW`
 holds at the same triple. Recursive proof, descending on `Term.size`
 along the same well-founded relation `W` itself uses. -/
-theorem W_correct : ∀ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ : Subst Ty),
+theorem W_correct : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ : Subst Ty),
     W Γ e τ = some σ → HasTypeW Γ e τ σ
   | Γ, .var x, τ, σ, h_W => by
       simp only [W] at h_W
@@ -224,7 +228,7 @@ theorem W_correct : ∀ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ : Su
 any of `Γ`, `e`, `τ`. Used by `W_principal` to prune W's internal
 fresh-mvar bindings from the substitution exposed at the elaboration
 boundary. -/
-def srcFresh (Γ : Ctx String) (e : (Term String)) (τ : Ty) : Nat :=
+def srcFresh (Γ : Ctx N) (e : (Term N)) (τ : Ty) : Nat :=
   max (HasVars.fresh Γ) (max (HasVars.fresh e) (HasVars.fresh τ))
 
 /-- **Principal types theorem for W (option D form).** For any σ' that
@@ -240,7 +244,7 @@ internal bindings, recovering the universal-`t` form.
 
 **Status:** statement updated; proofs are all `sorry`. Lifting the
 old var/lam/app sketches to the pruned form is the next task. -/
-theorem W_principal : ∀ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ' : Subst Ty),
+theorem W_principal : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ' : Subst Ty),
     HasType (HasSubst.pSubst Γ σ')
             (HasSubst.pSubst e σ')
             (HasSubst.pSubst τ σ') →
@@ -252,7 +256,7 @@ theorem W_principal : ∀ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ' :
   sorry
 
 /-- W succeeds whenever any substitution makes the triple well-typed. -/
-theorem W_complete {Γ : Ctx String} {e : (Term String)} {τ : Ty} {σ' : Subst Ty}
+theorem W_complete {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ' : Subst Ty}
     (h : HasType (HasSubst.pSubst Γ σ')
                  (HasSubst.pSubst e σ')
                  (HasSubst.pSubst τ σ')) :
@@ -263,7 +267,7 @@ theorem W_complete {Γ : Ctx String} {e : (Term String)} {τ : Ty} {σ' : Subst 
 
 /-- Corollary of `W_principal` once W's returned σ is fixed. Returns
 the pruned-σ form (option D). -/
-theorem W_principal_of_eq {Γ : Ctx String} {e : (Term String)} {τ : Ty} {σ σ' : Subst Ty}
+theorem W_principal_of_eq {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ σ' : Subst Ty}
     (h_W : W Γ e τ = some σ)
     (h : HasType (HasSubst.pSubst Γ σ')
                  (HasSubst.pSubst e σ')
@@ -291,7 +295,7 @@ its own terms.
 /-- A **principal** solution for `(Γ, e, τ)`: a substitution that types the triple, and is more
 general than any other that does. `σ` is a field rather than an existential so callers can
 destructure it in `Type`-valued definitions. -/
-structure Elaboration (Γ : Ctx String) (e : Term String) (τ : Ty) : Type where
+structure Elaboration (Γ : Ctx N) (e : Term N) (τ : Ty) : Type where
   σ    : Subst Ty
   hSat : HasType (HasSubst.pSubst Γ σ)
                  (HasSubst.pSubst e σ)
@@ -305,7 +309,7 @@ structure Elaboration (Γ : Ctx String) (e : Term String) (τ : Ty) : Type where
 /-- Elaborating `e` at `τ` under `Γ`: a principal solution, or a *proof* there is none. The error
 branch carries a refutation rather than a diagnostic — restoring diagnostics means giving it a
 payload. -/
-inductive ElaborationResult (Γ : Ctx String) (e : Term String) (τ : Ty) : Type where
+inductive ElaborationResult (Γ : Ctx N) (e : Term N) (τ : Ty) : Type where
   | error : (Elaboration Γ e τ → False) → ElaborationResult Γ e τ
   | ok    : Elaboration Γ e τ → ElaborationResult Γ e τ
 
@@ -313,11 +317,11 @@ inductive ElaborationResult (Γ : Ctx String) (e : Term String) (τ : Ty) : Type
 strictly below the source-fresh threshold. The unpruned σ may bind W's
 internal scaffolding mvars; the pruned form drops those so the
 `MoreGeneral` field's `∀ t` quantifier works against arbitrary σ'. -/
-private def elabσ (Γ : Ctx String) (e : (Term String)) (τ : Ty) (σ_full : Subst Ty) : Subst Ty :=
+private def elabσ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ_full : Subst Ty) : Subst Ty :=
   Subst.restrictBelow σ_full (srcFresh Γ e τ)
 
 def Term.elaborate :
-    (Γ : Ctx String) → (e : (Term String)) → (τ : Ty) → ElaborationResult Γ e τ
+    (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → ElaborationResult Γ e τ
   | Γ, e, τ =>
       match Heq : W Γ e τ with
       | none   =>
@@ -330,7 +334,7 @@ def Term.elaborate :
               -- HasType on (Γ[σ_pruned], e[σ_pruned], τ[σ_pruned]) from
               -- HasType on (Γ[σ_full], …) via pSubst_restrictBelow on
               -- Γ, e, τ (whose fresh is bounded by srcFresh). Needs
-              -- Term/Ctx String specializations of pSubst_restrictBelow.
+              -- Term/Ctx N specializations of pSubst_restrictBelow.
               sorry
             mgu := fun σ' h_σ' => W_principal_of_eq Heq h_σ' }
 

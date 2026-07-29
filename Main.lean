@@ -1,6 +1,7 @@
 import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Mvars
+import LambdaLab.Stlc.Named.Solving
 import LambdaLab.Language.Pipeline
 
 /-!
@@ -14,11 +15,10 @@ the language matching its extension, and prints the program back out as normalis
 * `.stlc`  — types `⋆` with `→`, lambda-calculus terms `λ x . e` (multi-entry grammar;
   binder parens and redundant parens truncate away), **and type checked**: `.stlc` files are run
   through `elaborateFile`, the parse-and-elaborate pipeline, which is one `Abs` morphism covering
-  both stages. Two policies are run: `stlcElaboratable` refuses to let an unsolved `?n` survive a
-  declaration, `stlcPermissive` allows it. `demo.stlc` writes metavariables and so parses under
-  both, elaborates under only the second — the stages fail independently, which is the point of
-  their being separate morphisms. See `Stlc/Named/Mvars.lean` for what `?n` actually means with
-  no inference stage wired in (an opaque atom, not a hole).
+  both stages. Three policies are run: `stlcElaboratable` refuses to let an unsolved `?n` survive
+  a declaration, `stlcPermissive` allows it, and `stlcSolving` runs algorithm W to *solve* it.
+  The first two treat `?n` as an opaque atom (see `Stlc/Named/Mvars.lean`); only the third makes
+  it a hole (`Stlc/Named/Solving.lean`).
 
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
 * `lake exe playground path/to/file`   — parse the given file (language by extension)
@@ -43,7 +43,8 @@ two passes glued together here. -/
 def languageFor (path : String) : Language × List (String × (String → Option String)) :=
   if path.endsWith ".stlc" then
     (stlcLanguage, [("elaborated (no mvars may survive)", strict),
-                    ("elaborated (mvars permitted)", permissive)])
+                    ("elaborated (mvars permitted)", permissive),
+                    ("elaborated (mvars solved by W)", solving)])
   else (arithLanguage, [])
 
 def run (label : String) (L : Language) (checks : List (String × (String → Option String)))
