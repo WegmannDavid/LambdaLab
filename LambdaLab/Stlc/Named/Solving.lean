@@ -33,8 +33,19 @@ bookkeeping.
 
 Rather than assume it, this file **requires** it: `Elaborates` says W solves the declaration
 *and* the solution is stable. A hypothetical term whose W-output were unstable simply does not
-elaborate. That is conservative, never unsound, and keeps the whole file sorry-free — and it is
-exactly the missing lemma, sitting where it can be discharged later by deleting the conjunct.
+elaborate. That is conservative, never unsound, and needs no `sorry` — and it is exactly the
+missing lemma, sitting where it can be discharged later by deleting the conjunct.
+
+## Exactly what is sorry-free
+
+Everything on the elaboration side: `#print axioms` gives `[propext, Classical.choice, Quot.sound]`
+for `solve`, `solveStable`, `solveStable_idem`, `solve_hasType`, `solveCert_isSome` — and for
+`W_correct` and `HasTypeW.toHasType` beneath them.
+
+`stlcSolving` itself does **not**: it reports `sorryAx`, inherited through
+`toLanguage := stlcLanguage`, whose parser rests on the assumed `stlcUnambiguous`
+(`Lang.lean`). That is the *parser's* open lemma, not the elaborator's, and the same is true of
+`stlcElaboratable`. Nothing here depends on `W_principal`.
 
 In practice the conjunct always holds, because `solve` also demands the output be ground, and
 nothing can substitute into a ground term or type.

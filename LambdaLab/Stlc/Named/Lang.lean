@@ -341,7 +341,9 @@ therefore rejected, and since `Typing.lean` puts the *elaborated* type into the 
 downstream can ever see an unsolved metavariable.
 -/
 
-/-- STLC as an elaboratable language. Sorry-free: the checker is `Typing/Infer.lean`. -/
+/-- STLC as an elaboratable language. The checker is `Typing/Infer.lean`, which is sorry-free;
+this bundle nonetheless reports `sorryAx`, inherited from `stlcLanguage`'s parser via
+`toLanguage` (the assumed `stlcUnambiguous` below). The elaboration side assumes nothing. -/
 def stlcElaboratable : Language.ElaboratableLanguage where
   toLanguage := stlcLanguage
   Elaborates Γ t t' τ τ' := t' = t ∧ τ' = τ ∧ HasType Γ t τ ∧ τ.Ground ∧ t.AnnotsGround
