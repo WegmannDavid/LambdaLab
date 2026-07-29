@@ -474,38 +474,44 @@ theorem Signature.decomp_apply_sound {α : Type} [Signature α] :
       simp [Unifier.apply_cons]
       exact h
 
-/-- **Decomposition under unifier.** If a unifier `l` equates `x` and `y`,
+/-- `HasSubst.pSubst` at the derived instance *is* `Signature.pSubst`. The lemmas below are
+stated in the `Signature` spelling, where `pSubst_var`/`pSubst_construct` apply; callers holding a
+`HasSubst` goal rewrite with this first. -/
+theorem Signature.hasSubst_pSubst_eq {α : Type} [Signature α] (t : α) (σ : Subst α) :
+    HasSubst.pSubst t σ = Signature.pSubst t σ := rfl
+
+/-- **Decomposition under unifier.** If a substitution `σ` equates `x` and `y`,
 and `decomp x y = some xs`, then `l` also equates each pair in `xs`.
 The reverse direction of `decomp_apply_sound`: in the fat typeclass this
 is the field `decomp_unifier_sound`; here it is a theorem from
 `apply_construct` and constructor injectivity. -/
 theorem Signature.decomp_unifier_sound {α : Type} [Signature α]
-    (x y : α) (xs : Equations α) (l : Unifier α)
+    (x y : α) (xs : Equations α) (σ : Subst α)
     (hd : Signature.decomp x y = some xs)
-    (hxy : l.apply x = l.apply y) :
-    ∀ p ∈ xs, l.apply p.1 = l.apply p.2 := by
+    (hxy : Signature.pSubst x σ = Signature.pSubst y σ) :
+    ∀ p ∈ xs, Signature.pSubst p.1 σ = Signature.pSubst p.2 σ := by
   obtain ⟨c, ax, ay, hxc, hyc, hxs⟩ := decomp_eq_some hd
   subst hxs
   rw [hxc, hyc] at hxy
-  rw [Unifier.apply_construct, Unifier.apply_construct] at hxy
+  rw [Signature.pSubst_construct, Signature.pSubst_construct] at hxy
   -- Constructor injectivity: heads agree, vectors agree.
-  have hsigma : (⟨c, Vector.ofFn (fun i => l.apply (ax.get i))⟩ : Σ c : Constructor α,
+  have hsigma : (⟨c, Vector.ofFn (fun i => Signature.pSubst (ax.get i) σ)⟩ : Σ c : Constructor α,
                   Vector α (Signature.arity c)) =
-                ⟨c, Vector.ofFn (fun i => l.apply (ay.get i))⟩ := by
+                ⟨c, Vector.ofFn (fun i => Signature.pSubst (ay.get i) σ)⟩ := by
     have hde := congrArg Signature.deconstruct hxy
     simp only [Signature.construct_deconstruct] at hde
     exact Sum.inr.inj hde
-  have hvec : Vector.ofFn (fun i => l.apply (ax.get i)) =
-              Vector.ofFn (fun i => l.apply (ay.get i)) := by
+  have hvec : Vector.ofFn (fun i => Signature.pSubst (ax.get i) σ) =
+              Vector.ofFn (fun i => Signature.pSubst (ay.get i) σ) := by
     have := Sigma.mk.inj hsigma
     exact eq_of_heq this.2
   intro p hp
   rcases List.mem_map.mp hp with ⟨i, _, hpi⟩
   subst hpi
-  show l.apply (ax.get i) = l.apply (ay.get i)
-  have h1 : (Vector.ofFn (fun j => l.apply (ax.get j))).get i = l.apply (ax.get i) := by
+  show Signature.pSubst (ax.get i) σ = Signature.pSubst (ay.get i) σ
+  have h1 : (Vector.ofFn (fun j => Signature.pSubst (ax.get j) σ)).get i = Signature.pSubst (ax.get i) σ := by
     show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
-  have h2 : (Vector.ofFn (fun j => l.apply (ay.get j))).get i = l.apply (ay.get i) := by
+  have h2 : (Vector.ofFn (fun j => Signature.pSubst (ay.get j) σ)).get i = Signature.pSubst (ay.get i) σ := by
     show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
   rw [← h1, ← h2, hvec]
 
@@ -533,11 +539,11 @@ private theorem isVar_none_construct {α : Type} [Signature α] {t : α}
 non-variables with mismatched outermost constructors, no unifier can
 equate them. The negative half of the decomposition trichotomy. -/
 theorem Signature.decomp_none_no_unifier {α : Type} [Signature α]
-    (x y : α) (l : Unifier α)
+    (x y : α) (σ : Subst α)
     (hxv : Signature.isVar x = none)
     (hyv : Signature.isVar y = none)
     (hd : Signature.decomp x y = none) :
-    l.apply x ≠ l.apply y := by
+    Signature.pSubst x σ ≠ Signature.pSubst y σ := by
   obtain ⟨cx, ax, hxc⟩ := isVar_none_construct hxv
   obtain ⟨cy, ay, hyc⟩ := isVar_none_construct hyv
   have hcxcy : cx ≠ cy := by
@@ -549,21 +555,21 @@ theorem Signature.decomp_none_no_unifier {α : Type} [Signature α]
     cases hd
   intro heq
   rw [hxc, hyc] at heq
-  rw [Unifier.apply_construct, Unifier.apply_construct] at heq
+  rw [Signature.pSubst_construct, Signature.pSubst_construct] at heq
   have hde := congrArg Signature.deconstruct heq
   simp only [Signature.construct_deconstruct] at hde
   have hsig := Sum.inr.inj hde
   exact hcxcy (Sigma.mk.inj hsig).1
 
-/-- **Unifier absorption.** If a unifier `l` already equates `var n` with
+/-- **Unifier absorption.** If a substitution `σ` already equates `var n` with
 `s`, then prepending the single binding `[n ↦ s]` to any term `t` doesn't
 change `l`'s result. The fundamental lemma behind the variable-elimination
 rules of `unify`. -/
 theorem Signature.unifier_absorb {α : Type} [Signature α]
-    (l : Unifier α) (t : α) (n : Nat) (s : α)
-    (hns : l.apply (Signature.var n) = l.apply s) :
-    l.apply (HasSubst.single t n s) = l.apply t := by
-  show l.apply (Signature.pSubst t ((∅ : Subst α).insert n s)) = l.apply t
+    (σ : Subst α) (t : α) (n : Nat) (s : α)
+    (hns : Signature.pSubst (Signature.var n) σ = Signature.pSubst s σ) :
+    Signature.pSubst (HasSubst.single t n s) σ = Signature.pSubst t σ := by
+  show Signature.pSubst (Signature.pSubst t ((∅ : Subst α).insert n s)) σ = Signature.pSubst t σ
   induction t using Signature.term_ind with
   | var_case m =>
       rw [Signature.pSubst_var, Std.HashMap.getD_insert]
@@ -576,7 +582,7 @@ theorem Signature.unifier_absorb {α : Type} [Signature α]
         simp [Std.HashMap.getD_empty]
   | construct_case c args ih =>
       rw [Signature.pSubst_construct]
-      rw [Unifier.apply_construct, Unifier.apply_construct]
+      rw [Signature.pSubst_construct, Signature.pSubst_construct]
       congr 3
       apply Signature.Vector.ofFn_get_eq_self
       intro i
@@ -585,8 +591,8 @@ theorem Signature.unifier_absorb {α : Type} [Signature α]
                    Signature.pSubst (args.get i) ((∅ : Subst α).insert n s) := by
         show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
       have hget2 : (Vector.ofFn (fun j : Fin (Signature.arity c) =>
-                      l.apply (args.get j))).get i =
-                   l.apply (args.get i) := by
+                      Signature.pSubst (args.get j) σ)).get i =
+                   Signature.pSubst (args.get i) σ := by
         show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
       rw [hget1, hget2]
       exact ih i
@@ -614,16 +620,16 @@ private theorem foldr_sum_ge {β : Type} (f : β → Nat) :
       · have := ih a hxs
         simp only [List.foldr]; omega
 
-/-- The size of `l.apply (construct ⟨c, args⟩)` written in terms of the
+/-- The size of `Signature.pSubst (construct ⟨c, args⟩) σ` written in terms of the
 per-argument applied sizes — the form needed for size-monotonicity
 arguments. -/
-private theorem size_apply_construct {α : Type} [Signature α]
-    (l : Unifier α) (c : Signature.Constructor α)
+private theorem size_pSubst_construct {α : Type} [Signature α]
+    (σ : Subst α) (c : Signature.Constructor α)
     (args : Vector α (Signature.arity c)) :
-    Signature.size (l.apply (Signature.construct (Sum.inr ⟨c, args⟩))) =
+    Signature.size (Signature.pSubst (Signature.construct (Sum.inr ⟨c, args⟩)) σ) =
       1 + (List.finRange (Signature.arity c)).foldr
-        (fun i acc => acc + Signature.size (l.apply (args.get i))) 0 := by
-  rw [Unifier.apply_construct, Signature.size_construct]
+        (fun i acc => acc + Signature.size (Signature.pSubst (args.get i) σ)) 0 := by
+  rw [Signature.pSubst_construct, Signature.size_construct]
   congr 1
   generalize List.finRange (Signature.arity c) = L
   induction L with
@@ -635,11 +641,11 @@ private theorem size_apply_construct {α : Type} [Signature α]
       show Signature.size ((Vector.ofFn _)[j.val]'j.isLt) = _
       simp
 
-/-- If `var n` is free in `t`, then under any unifier `l` the size of
-`l.apply (var n)` is bounded by the size of `l.apply t`. -/
-private theorem size_apply_le_of_isFree {α : Type} [Signature α]
-    (l : Unifier α) (t : α) (n : Nat) (h : HasVars.isFree t n) :
-    Signature.size (l.apply (Signature.var n)) ≤ Signature.size (l.apply t) := by
+/-- If `var n` is free in `t`, then under any substitution `σ` the size of
+`Signature.pSubst (var n) σ` is bounded by the size of `Signature.pSubst t σ`. -/
+private theorem size_pSubst_le_of_isFree {α : Type} [Signature α]
+    (σ : Subst α) (t : α) (n : Nat) (h : HasVars.isFree t n) :
+    Signature.size (Signature.pSubst (Signature.var n) σ) ≤ Signature.size (Signature.pSubst t σ) := by
   induction t using Signature.term_ind with
   | var_case m =>
       have hmn : n = m := (Signature.var_isFree m n).mp h
@@ -649,13 +655,13 @@ private theorem size_apply_le_of_isFree {α : Type} [Signature α]
       rw [Signature.isFree_construct] at h
       obtain ⟨i, hi⟩ := h
       have ihi := ih i hi
-      rw [size_apply_construct]
+      rw [size_pSubst_construct]
       have hbound :
-          Signature.size (l.apply (args.get i)) ≤
+          Signature.size (Signature.pSubst (args.get i) σ) ≤
             (List.finRange (Signature.arity c)).foldr
-              (fun j acc => acc + Signature.size (l.apply (args.get j))) 0 :=
+              (fun j acc => acc + Signature.size (Signature.pSubst (args.get j) σ)) 0 :=
         foldr_sum_ge (fun j : Fin (Signature.arity c) =>
-            Signature.size (l.apply (args.get j)))
+            Signature.size (Signature.pSubst (args.get j) σ))
           _ i (List.mem_finRange i)
       omega
 
@@ -663,10 +669,10 @@ private theorem size_apply_le_of_isFree {α : Type} [Signature α]
 just `var n` itself, no unifier can equate `var n` with `t`. The
 structural fact that justifies the `occurs` rule of `unify`. -/
 theorem Signature.occurs_no_unifier {α : Type} [Signature α]
-    (t : α) (n : Nat) (l : Unifier α)
+    (t : α) (n : Nat) (σ : Subst α)
     (hf : HasVars.isFree t n)
     (hnv : Signature.isVar t ≠ some n) :
-    l.apply (Signature.var n) ≠ l.apply t := by
+    Signature.pSubst (Signature.var n) σ ≠ Signature.pSubst t σ := by
   match hd : Signature.deconstruct t with
   | Sum.inl m =>
       have htm : t = Signature.var m := by
@@ -688,23 +694,32 @@ theorem Signature.occurs_no_unifier {α : Type} [Signature α]
       rw [htc] at hf
       rw [Signature.isFree_construct] at hf
       obtain ⟨i, hi⟩ := hf
-      have ihi : Signature.size (l.apply (Signature.var n)) ≤
-                 Signature.size (l.apply (args.get i)) :=
-        size_apply_le_of_isFree l (args.get i) n hi
+      have ihi : Signature.size (Signature.pSubst (Signature.var n) σ) ≤
+                 Signature.size (Signature.pSubst (args.get i) σ) :=
+        size_pSubst_le_of_isFree σ (args.get i) n hi
       have hbound :
-          Signature.size (l.apply (args.get i)) ≤
+          Signature.size (Signature.pSubst (args.get i) σ) ≤
             (List.finRange (Signature.arity c)).foldr
-              (fun j acc => acc + Signature.size (l.apply (args.get j))) 0 :=
+              (fun j acc => acc + Signature.size (Signature.pSubst (args.get j) σ)) 0 :=
         foldr_sum_ge (fun j : Fin (Signature.arity c) =>
-            Signature.size (l.apply (args.get j)))
+            Signature.size (Signature.pSubst (args.get j) σ))
           _ i (List.mem_finRange i)
-      have hstrict : Signature.size (l.apply (Signature.var n)) <
-                     Signature.size (l.apply t) := by
-        rw [htc, size_apply_construct]
+      have hstrict : Signature.size (Signature.pSubst (Signature.var n) σ) <
+                     Signature.size (Signature.pSubst t σ) := by
+        rw [htc, size_pSubst_construct]
         omega
       intro heq
       rw [heq] at hstrict
       exact Nat.lt_irrefl _ hstrict
+
+
+/-- Consing a binding onto a unifier, in parallel form: `toSubst ((n,s) :: rest)` acts as "apply
+the single binding, then the rest". The `toSubst` transcription of `Unifier.apply_cons`. -/
+theorem Unifier.toSubst_cons_pSubst {α : Type} [Signature α] (n : Nat) (s : α)
+    (rest : Unifier α) (t : α) :
+    HasSubst.pSubst t (Unifier.toSubst ((n, s) :: rest)) =
+      HasSubst.pSubst (HasSubst.single t n s) (Unifier.toSubst rest) := by
+  rw [← Unifier.apply_eq_pSubst_toSubst, ← Unifier.apply_eq_pSubst_toSubst, Unifier.apply_cons]
 
 /-! ## Composition law for `Subst.comp` (generic for `Signature α`)
 
