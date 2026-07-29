@@ -82,7 +82,7 @@ theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
 /-- Every well-typed named term is strongly normalizing.
 
 Bridge preconditions: Γ and e's annotations must be ground. -/
-theorem HasType.sn : ∀ {Γ : Ctx} {e : (Term String)} {τ : Ty},
+theorem HasType.sn : ∀ {Γ : Ctx String} {e : (Term String)} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ → SN e := by
   intro Γ e τ hΓ hag ht
   let binders := e.freeVars

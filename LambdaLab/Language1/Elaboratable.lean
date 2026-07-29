@@ -38,6 +38,11 @@ parser's truncation does):
 
 So: determinism, completeness, and a canonical inverse. Nothing else is forced, and nothing else
 is here.
+
+The fibers are indexed by the *image* of elaboration, not by `Tm × Ty` — `default` is total over
+the abstract type, and an ill-typed pair has no fiber to pick from. That is why
+`quote_elaborates` is hypothesized on elaborability; unhypothesized it is false for every
+language that rejects anything.
 -/
 
 namespace LambdaLab.Language1
@@ -70,11 +75,18 @@ structure ElaboratableLanguage extends Language where
     Elaborates Γ t t' τ τ' → (elaborate Γ t τ).isSome
 
   /-- **Writing an elaborated term back down**: the canonical surface form of `t' : τ'`. This is
-  the `default` annotation of the pipeline stage — the form a printer would emit. -/
+  the `default` annotation of the pipeline stage — the form a printer would emit. Total, and free
+  to return junk off the image; the law below only constrains it on the image. -/
   quote : Tm → Ty → Tm × Ty
 
-  /-- …and what it writes really does mean what it came from. `abstract_realize` at `default`. -/
-  quote_elaborates : ∀ (Γ : Context (Var toLanguage) Ty) (t' : Tm) (τ' : Ty),
+  /-- …and what it writes really does mean what it came from. `abstract_realize` at `default`.
+
+  **The hypothesis is essential**, and is why the stage's abstract type is the *image* of
+  elaboration rather than all of `Tm × Ty`. Unhypothesized, this law says every pair of a term and
+  a type is something elaboration can produce — which is false for any language whose output type
+  admits ill-typed inhabitants, i.e. for any language with a nontrivial `Elaborates`. -/
+  quote_elaborates : ∀ {Γ : Context (Var toLanguage) Ty} {t' : Tm} {τ' : Ty},
+    (∃ t τ, Elaborates Γ t t' τ τ') →
     Elaborates Γ (quote t' τ').1 t' (quote t' τ').2 τ'
 
 end LambdaLab.Language1

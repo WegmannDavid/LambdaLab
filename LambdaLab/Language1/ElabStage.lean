@@ -27,23 +27,29 @@ namespace LambdaLab.Language1
 
 open LambdaLab.Abstraction2
 
+/-- The **elaborable** pairs at `Γ`: those some surface form means. This, not all of `Tm × Ty`,
+is what elaboration abstracts *onto* — `Abstraction.default` is total over the abstract type, so
+taking `Tm × Ty` there would demand a surface form for ill-typed pairs too. -/
+def Elaborable (L : ElaboratableLanguage) (Γ : Context (Var L.toLanguage) L.Ty) : Type :=
+  { p : L.Tm × L.Ty // ∃ t τ, L.Elaborates Γ t p.1 τ p.2 }
+
 /-- **Elaboration as an `Abs` morphism**, at a fixed context. Concrete is what the author wrote —
 a term and the type they declared for it; abstract is what it means; the annotation records the
 surface forms that mean it. -/
 def elabStage (L : ElaboratableLanguage) (Γ : Context (Var L.toLanguage) L.Ty) :
-    Abstraction (L.Tm × L.Ty) (L.Tm × L.Ty)
-      (fun p => { s : L.Tm × L.Ty // L.Elaborates Γ s.1 p.1 s.2 p.2 }) where
-  abstract s := (L.elaborate Γ s.1 s.2).map (·.val)
+    Abstraction (L.Tm × L.Ty) (Elaborable L Γ)
+      (fun p => { s : L.Tm × L.Ty // L.Elaborates Γ s.1 p.val.1 s.2 p.val.2 }) where
+  abstract s := (L.elaborate Γ s.1 s.2).map fun q => ⟨q.val, s.1, s.2, q.property⟩
   realize ann := ann.val
-  default {p} := ⟨L.quote p.1 p.2, L.quote_elaborates Γ p.1 p.2⟩
+  default {p} := ⟨L.quote p.val.1 p.val.2, L.quote_elaborates p.property⟩
   abstract_realize p ann := by
-    show (L.elaborate Γ ann.val.1 ann.val.2).map (·.val) = some p
+    show ((L.elaborate Γ ann.val.1 ann.val.2).map _) = some p
     have hsome := L.elaborate_complete ann.property
     cases hq : L.elaborate Γ ann.val.1 ann.val.2 with
     | none => rw [hq] at hsome; simp at hsome
     | some q =>
         obtain ⟨heq1, heq2⟩ := L.elaborates_unique q.property ann.property
         simp only [Option.map_some, Option.some.injEq]
-        exact Prod.ext heq1 heq2
+        exact Subtype.ext (Prod.ext heq1 heq2)
 
 end LambdaLab.Language1

@@ -58,7 +58,7 @@ termination_by (⟨e, h⟩ : SNTerm)
 
 /-- Any well-typed term has a normal form (given the bridge
 preconditions: ground context and ground annotations). -/
-def HasType.eval {Γ : Ctx} {e : (Term String)} {τ : Ty}
+def HasType.eval {Γ : Ctx String} {e : (Term String)} {τ : Ty}
     (hΓ : Γ.Ground) (hag : e.AnnotsGround) (ht : HasType Γ e τ) : (Term String) :=
   Term.eval e (HasType.sn hΓ hag ht)
 

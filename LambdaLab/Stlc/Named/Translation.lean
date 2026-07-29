@@ -536,18 +536,18 @@ theorem Stlc.DeBruijn.Lookup.functional :
 agree along the given binder list: for every binder `x`, the named lookup
 yields some `τ` whose translation matches the de Bruijn lookup at the
 corresponding index. -/
-def CtxCompat (Γ : Ctx) (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx) : Prop :=
+def CtxCompat (Γ : Ctx String) (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx) : Prop :=
   ∀ x ∈ binders, ∃ τ : Ty, Γ.get? x = some τ ∧ τ.Ground ∧
     Stlc.DeBruijn.Lookup db_ctx (lookupVar x binders) τ.toDB
 
-theorem CtxCompat.cons {Γ : Ctx} {binders : List String} {db_ctx : Stlc.DeBruijn.Ctx}
+theorem CtxCompat.cons {Γ : Ctx String} {binders : List String} {db_ctx : Stlc.DeBruijn.Ctx}
     (x : String) (τ₁ : Ty) (h₁ : τ₁.Ground) (hcompat : CtxCompat Γ binders db_ctx) :
     CtxCompat (Γ.cons x τ₁) (x :: binders) (τ₁.toDB :: db_ctx) := by
   intro y hy
   by_cases hyx : y = x
   · subst hyx
     refine ⟨τ₁, ?_, h₁, ?_⟩
-    · simp [Ctx.cons]
+    · simp [Ctx.cons, Language1.Context.cons]
     · have hlk : lookupVar y (y :: binders) = 0 := by simp [lookupVar]
       rw [hlk]; exact .here
   · rcases List.mem_cons.mp hy with hyEq | hy'
@@ -562,13 +562,13 @@ theorem CtxCompat.cons {Γ : Ctx} {binders : List String} {db_ctx : Stlc.DeBruij
 
 /-- Build a compatible DB context from a named context, given that all
 binder names are bound in `Γ`. -/
-def Ctx.toDB (Γ : Ctx) : List String → Stlc.DeBruijn.Ctx
+def Ctx.toDB (Γ : Ctx String) : List String → Stlc.DeBruijn.Ctx
   | [] => []
   | x :: xs =>
     (match Γ.get? x with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
     Ctx.toDB Γ xs
 
-theorem CtxCompat.fromCtx (Γ : Ctx) (binders : List String)
+theorem CtxCompat.fromCtx (Γ : Ctx String) (binders : List String)
     (hbound : ∀ x ∈ binders, ∃ τ, Γ.get? x = some τ ∧ τ.Ground) :
     CtxCompat Γ binders (Ctx.toDB Γ binders) := by
   intro x hx
@@ -598,7 +598,7 @@ theorem CtxCompat.fromCtx (Γ : Ctx) (binders : List String)
 
 /-! ## Forward typing translation -/
 
-theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx} {τ : Ty},
+theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx String} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ →
     ∀ (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx),
     (∀ x ∈ e.freeVars, x ∈ binders) →
@@ -653,7 +653,7 @@ theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx} {τ : Ty},
 Phrased in terms of an arbitrary de Bruijn type `t`; the named result
 type is `Ty.fromDB t`. -/
 
-theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx} (binders : List String)
+theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx String} (binders : List String)
     (db_ctx : Stlc.DeBruijn.Ctx) (t : Stlc.DeBruijn.Ty),
     e.AnnotsGround →
     (∀ x ∈ e.freeVars, x ∈ binders) →

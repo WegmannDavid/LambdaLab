@@ -1,37 +1,57 @@
 import LambdaLab.Stlc.Named.Basic
-import Std.Data.HashMap
+import LambdaLab.Language1.Context
 
 /-!
 # Typing (named variables, hashmap context)
 
-The context is a `Std.HashMap String Ty`. Shadowing is `insert`
+The context is `Language1.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
 (overrides). Lookup is `get?`.
+
+## Parametric in the name alphabet
+
+`Term` is parametric in its names (`Stlc/Named/Basic.lean`), so the judgement typing it has to be
+too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed context
+cannot receive one without a conversion at the boundary.
+
+`Ctx N` is therefore literally `Language1.Context N Ty`, not a copy of it. That is deliberate:
+`ElaboratableLanguage.Elaborates` takes a `Language1.Context`, so anything short of definitional
+equality would put a bridge on the interface boundary, which is exactly what the name parameter
+exists to remove.
+
+Everything downstream of this file (`Properties`, `W`, `Translation`, …) stays stated at
+`Ctx String`, the usual instance. Nothing in them is `String`-specific; they are pinned rather
+than generalized because pinning is free and generalizing costs a sweep through every proof.
 -/
 
 namespace LambdaLab.Stlc.Named
 
-abbrev Ctx := Std.HashMap String Ty
+open LambdaLab.Language1 (NameAlphabet Context)
 
-def Ctx.empty : Ctx := ∅
+variable {N : Type} [NameAlphabet N]
 
-def Ctx.cons (x : String) (τ : Ty) (Γ : Ctx) : Ctx :=
-  Γ.insert x τ
+/-- A typing context: variable names to types. -/
+abbrev Ctx (N : Type) [NameAlphabet N] : Type := Context N Ty
 
-@[simp] theorem Ctx.get?_empty (x : String) :
-    Ctx.empty.get? x = (none : Option Ty) := by
-  simp [Ctx.empty]
+abbrev Ctx.empty : Ctx N := Context.empty
 
-@[simp] theorem Ctx.get?_cons (Γ : Ctx) (x : String) (τ : Ty) (y : String) :
-    (Γ.cons x τ).get? y = if x = y then some τ else Γ.get? y := by
-  rw [Ctx.cons, Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_insert]
-  by_cases hxy : x = y
-  · subst hxy; simp
-  · have hbeq : (x == y) = false := by simp [hxy]
-    rw [hbeq]
-    simp only [Bool.false_eq_true, ↓reduceIte, hxy]
-    rw [← Std.HashMap.get?_eq_getElem?]
+abbrev Ctx.cons (x : N) (τ : Ty) (Γ : Ctx N) : Ctx N := Context.cons x τ Γ
 
-inductive HasType : Ctx → (Term String) → Ty → Prop where
+theorem Ctx.get?_empty (x : N) :
+    (Ctx.empty (N := N)).get? x = (none : Option Ty) :=
+  Context.get?_empty x
+
+theorem Ctx.get?_cons (Γ : Ctx N) (x : N) (τ : Ty) (y : N) :
+    (Γ.cons x τ).get? y = if x = y then some τ else Γ.get? y :=
+  Context.get?_cons Γ x τ y
+
+/-- **The typing judgement**: `Γ ⊢ e : τ` — under `Γ`, the term `e` has type `τ`.
+
+One rule per constructor of `Term`, and no rule mentioning `Ty.mvar`. Metavariables are not
+*forbidden* here — `Γ ⊢ λ x : ?0 . x : ?0 ⇒ ?0` is derivable, and a context may perfectly well
+assign one — they are simply never introduced or solved by typing, which is what makes inference
+a separate concern (`Typing/W.lean`) and groundness a separate condition (`Ctx.Ground`,
+`Term.AnnotsGround`, and `HasType.ground_result` relating the three). -/
+inductive HasType {N : Type} [NameAlphabet N] : Ctx N → Term N → Ty → Prop where
   | var : Γ.get? x = some τ → HasType Γ (.var x) τ
   | lam : HasType (Γ.cons x τ₁) body τ₂ →
           HasType Γ (.lam x τ₁ body) (τ₁ ⇒ τ₂)
@@ -41,13 +61,13 @@ inductive HasType : Ctx → (Term String) → Ty → Prop where
 notation:40 Γ " ⊢ " e " : " τ => HasType Γ e τ
 
 /-- A typing context is *ground* if every type it assigns is ground. -/
-def Ctx.Ground (Γ : Ctx) : Prop := ∀ x τ, Γ.get? x = some τ → τ.Ground
+def Ctx.Ground (Γ : Ctx N) : Prop := ∀ x τ, Γ.get? x = some τ → τ.Ground
 
-theorem Ctx.Ground.empty : Ctx.empty.Ground := by
+theorem Ctx.Ground.empty : (Ctx.empty (N := N)).Ground := by
   intro x τ h
-  simp [Ctx.empty] at h
+  simp [Ctx.empty, Context.empty] at h
 
-theorem Ctx.Ground.cons {Γ : Ctx} {x : String} {τ : Ty}
+theorem Ctx.Ground.cons {Γ : Ctx N} {x : N} {τ : Ty}
     (hΓ : Γ.Ground) (hτ : τ.Ground) : (Γ.cons x τ).Ground := by
   intro y σ h
   rw [Ctx.get?_cons] at h
@@ -58,7 +78,7 @@ theorem Ctx.Ground.cons {Γ : Ctx} {x : String} {τ : Ty}
 /-- Under a ground context and ground annotations, the inferred type
 is ground. Used to discharge the existential `τ₁` in app-cases when
 bridging to the de Bruijn variant. -/
-theorem HasType.ground_result : ∀ {e : (Term String)} {Γ : Ctx} {τ : Ty},
+theorem HasType.ground_result : ∀ {e : Term N} {Γ : Ctx N} {τ : Ty},
     Γ.Ground → e.AnnotsGround → HasType Γ e τ → τ.Ground := by
   intro e
   induction e with
