@@ -1,5 +1,6 @@
 import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Stlc.Named.Mvars
 import LambdaLab.Language.Pipeline
 
 /-!
@@ -12,10 +13,12 @@ the language matching its extension, and prints the program back out as normalis
   (truncated: redundant parens are forgotten and re-inserted canonically);
 * `.stlc`  — types `⋆` with `→`, lambda-calculus terms `λ x . e` (multi-entry grammar;
   binder parens and redundant parens truncate away), **and type checked**: `.stlc` files are run
-  through `stlcElaboratable.elaborateFile`, the parse-and-elaborate pipeline, which is one `Abs`
-  morphism covering both stages. Elaboration rejects a declaration whose type is not ground, so
-  `def poly : ?0 → ?0 := …` parses and then fails to elaborate — the two stages fail
-  independently, which is the point of their being separate morphisms.
+  through `elaborateFile`, the parse-and-elaborate pipeline, which is one `Abs` morphism covering
+  both stages. Two policies are run: `stlcElaboratable` refuses to let an unsolved `?n` survive a
+  declaration, `stlcPermissive` allows it. `demo.stlc` writes metavariables and so parses under
+  both, elaborates under only the second — the stages fail independently, which is the point of
+  their being separate morphisms. See `Stlc/Named/Mvars.lean` for what `?n` actually means with
+  no inference stage wired in (an opaque atom, not a hole).
 
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
 * `lake exe playground path/to/file`   — parse the given file (language by extension)
@@ -32,18 +35,18 @@ def roundtripWith (L : Language) (src : String) : Option String := do
   let prog ← L.parseFile src
   some (L.renderProgram prog)
 
-/-- Parse *and* elaborate `src`, then re-render the elaborated program. This is the composite
-`List Char ⇝ … ⇝ elaborated Program`, not two passes glued by hand. -/
-def typecheckStlc (src : String) : Option String := do
-  let prog ← stlcElaboratable.elaborateFile src
-  some (stlcElaboratable.renderElaborated prog)
+/-- Pick the language from the file extension (default: arith), together with the elaborators to
+run after parsing. `arith` has no semantics attached, so it stops after parsing; `.stlc` gets
+both metavariable policies, which differ only in whether an unsolved `?n` may survive a
+declaration. Each is `elaborateFile`, the composite `List Char ⇝ … ⇝ elaborated Program` — not
+two passes glued together here. -/
+def languageFor (path : String) : Language × List (String × (String → Option String)) :=
+  if path.endsWith ".stlc" then
+    (stlcLanguage, [("elaborated (no mvars may survive)", strict),
+                    ("elaborated (mvars permitted)", permissive)])
+  else (arithLanguage, [])
 
-/-- Pick the language from the file extension (default: arith). `.stlc` also gets a type checker;
-`arith` has no semantics attached, so it stops after parsing. -/
-def languageFor (path : String) : Language × Option (String → Option String) :=
-  if path.endsWith ".stlc" then (stlcLanguage, some typecheckStlc) else (arithLanguage, none)
-
-def run (label : String) (L : Language) (check : Option (String → Option String))
+def run (label : String) (L : Language) (checks : List (String × (String → Option String)))
     (src : String) : IO Unit := do
   IO.println s!"── {label} ──"
   IO.println "input:"
@@ -54,20 +57,18 @@ def run (label : String) (L : Language) (check : Option (String → Option Strin
       IO.println "parsed & re-rendered:"
       IO.println s!"  {out}"
   | none => IO.println "  ⟹  rejected (not a well-formed program)"
-  match check with
-  | none => pure ()
-  | some f =>
-      match f src with
-      | some out =>
-          IO.println "type-checked & re-rendered:"
-          IO.println s!"  {out}"
-      | none => IO.println "  ⟹  parses, but does not elaborate"
+  for (name, f) in checks do
+    match f src with
+    | some out =>
+        IO.println s!"{name}:"
+        IO.println s!"  {out}"
+    | none => IO.println s!"{name}:  ⟹  rejected"
   IO.println ""
 
 def runPath (path : String) : IO Unit := do
   let src ← IO.FS.readFile path
-  let (L, check) := languageFor path
-  run path L check src
+  let (L, checks) := languageFor path
+  run path L checks src
 
 def main (args : List String) : IO Unit := do
   match args with

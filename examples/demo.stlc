@@ -2,4 +2,5 @@ def id : ⋆ → ⋆ := λ x : ⋆ . x
 def const : ⋆ → ⋆ → ⋆ := λ x : ⋆ . ( λ y : ⋆ . x )
 def apply : ( ⋆ → ⋆ ) → ⋆ → ⋆ := λ f : ⋆ → ⋆ . ( λ x : ⋆ . f x )
 def poly : ?0 → ?0 := λ x : ?0 . x
-def mixed : ?7 → ⋆ := λ z : ?7 . ( λ w : ⋆ . w )
+def again : ?0 → ?0 := poly
+def mixed : ?7 → ⋆ → ⋆ := λ z : ?7 . ( λ w : ⋆ . w )
