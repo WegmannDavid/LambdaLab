@@ -224,3 +224,118 @@ theorem unify_keys {α : Type} [Signature α] (eqs : Equations α) (σ : Subst �
   obtain ⟨u, hu, rfl⟩ := h
   obtain ⟨p, hp, rfl⟩ := Unifier.toSubst_mem_keys u k hk
   exact unifyList_keys eqs u hu p hp
+
+/-- **Range of `unifyList`.** Every variable appearing in a bound *value* was free in the
+equations. Companion to `unifyList_keys`, same induction. -/
+theorem unifyList_range {α : Type} [Signature α] :
+    ∀ (eqs : Equations α) (u : Unifier α), unifyList eqs = some u →
+      ∀ p ∈ u, ∀ m, HasVars.isFree p.2 m → HasVars.isFree eqs m := by
+  intro eqs
+  induction eqs using unifyList.induct with
+  | case1 => intro u hu p hp; rw [unifyList] at hu; cases hu; cases hp
+  | case2 x y eqs' m hxv hyv ih =>
+      intro u hu p hp k hk
+      have hu' : unifyList eqs' = some u := by grind [unifyList]
+      obtain ⟨q, hq, hqf⟩ := ih u hu' p hp k hk
+      exact ⟨q, List.mem_cons_of_mem _ hq, hqf⟩
+  | case3 _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case4 x y eqs' m hxv hyv hocc rest hrest ih =>
+      intro u hu p hp k hk
+      have hueq : (m, y) :: rest = u := by grind [unifyList]
+      subst hueq
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · exact ⟨(x, y), List.mem_cons_self, Or.inr hk⟩
+      · obtain ⟨q, hq, hqf⟩ := ih rest hrest p hp' k hk
+        rw [Equations.single_eq] at hq
+        rcases List.mem_map.mp hq with ⟨r, hr, hreq⟩
+        subst hreq
+        have : HasVars.isFree r.1 k ∨ HasVars.isFree r.2 k ∨ HasVars.isFree y k := by
+          rcases hqf with h1 | h2
+          · rcases (Signature.single_isFree r.1 m y k).mp h1 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inl h
+            · exact Or.inr (Or.inr h)
+          · rcases (Signature.single_isFree r.2 m y k).mp h2 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inr (Or.inl h)
+            · exact Or.inr (Or.inr h)
+        rcases this with h | h | h
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inl h⟩
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inr h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inr h⟩
+  | case5 _ _ _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case6 _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case7 x y eqs' hxv m hyv hocc rest hrest ih =>
+      intro u hu p hp k hk
+      have hueq : (m, x) :: rest = u := by grind [unifyList]
+      subst hueq
+      rcases List.mem_cons.mp hp with rfl | hp'
+      · exact ⟨(x, y), List.mem_cons_self, Or.inl hk⟩
+      · obtain ⟨q, hq, hqf⟩ := ih rest hrest p hp' k hk
+        rw [Equations.single_eq] at hq
+        rcases List.mem_map.mp hq with ⟨r, hr, hreq⟩
+        subst hreq
+        have : HasVars.isFree r.1 k ∨ HasVars.isFree r.2 k ∨ HasVars.isFree x k := by
+          rcases hqf with h1 | h2
+          · rcases (Signature.single_isFree r.1 m x k).mp h1 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inl h
+            · exact Or.inr (Or.inr h)
+          · rcases (Signature.single_isFree r.2 m x k).mp h2 with ⟨_, h⟩ | ⟨_, h⟩
+            · exact Or.inr (Or.inl h)
+            · exact Or.inr (Or.inr h)
+        rcases this with h | h | h
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inl h⟩
+        · exact ⟨r, List.mem_cons_of_mem _ hr, Or.inr h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inl h⟩
+  | case8 _ _ _ _ _ _ _ _ _ => intro u hu; grind [unifyList]
+  | case9 x y eqs' hxv hyv xs hdec ih =>
+      intro u hu p hp k hk
+      have hu' : unifyList (xs ++ eqs') = some u := by grind [unifyList]
+      obtain ⟨q, hq, hqf⟩ := ih u hu' p hp k hk
+      rcases List.mem_append.mp hq with hq_xs | hq_eqs'
+      · have hxs : HasVars.isFree xs k := ⟨q, hq_xs, hqf⟩
+        rcases Signature.decomp_isFree x y xs k hdec hxs with h | h
+        · exact ⟨(x, y), List.mem_cons_self, Or.inl h⟩
+        · exact ⟨(x, y), List.mem_cons_self, Or.inr h⟩
+      · exact ⟨q, List.mem_cons_of_mem _ hq_eqs', hqf⟩
+  | case10 _ _ _ _ _ _ => intro u hu; grind [unifyList]
+
+/-- Values of `toSubst u` only mention variables appearing in `u`'s values. -/
+theorem Unifier.toSubst_range {α : Type} [Signature α] :
+    ∀ (u : Unifier α) (k : Nat) (v : α), (Unifier.toSubst u).get? k = some v →
+      ∀ m, HasVars.isFree v m → ∃ p ∈ u, HasVars.isFree p.2 m
+  | [], k, v, h, m, hm => by
+      rw [Unifier.toSubst_nil] at h
+      simp [Std.HashMap.get?_eq_getElem?] at h
+  | (n, s) :: rest, k, v, h, m, hm => by
+      rw [Unifier.toSubst_cons, Std.HashMap.get?_eq_getElem?,
+          Std.HashMap.getElem?_insert] at h
+      by_cases hnk : n = k
+      · rw [if_pos (by simp [hnk])] at h
+        obtain rfl := Option.some.inj h
+        obtain ⟨k', hk', hk'm⟩ := Signature.isFree_pSubst s (Unifier.toSubst rest) m hm
+        cases hg : (Unifier.toSubst rest).get? k' with
+        | none =>
+            have he : (Unifier.toSubst rest).getD k' (Signature.var k') = Signature.var k' := by
+              rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, hg]; rfl
+            rw [he] at hk'm
+            obtain rfl := (Signature.var_isFree k' m).mp hk'm
+            exact ⟨(n, s), List.mem_cons_self, hk'⟩
+        | some v' =>
+            have he : (Unifier.toSubst rest).getD k' (Signature.var k') = v' := by
+              rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, hg]; rfl
+            rw [he] at hk'm
+            obtain ⟨p, hp, hpm⟩ := Unifier.toSubst_range rest k' v' hg m hk'm
+            exact ⟨p, List.mem_cons_of_mem _ hp, hpm⟩
+      · rw [if_neg (by simp [hnk])] at h
+        obtain ⟨p, hp, hpm⟩ :=
+          Unifier.toSubst_range rest k v (by rwa [Std.HashMap.get?_eq_getElem?]) m hm
+        exact ⟨p, List.mem_cons_of_mem _ hp, hpm⟩
+
+/-- **Range of `unify`.** Everything mentioned in a computed value was free in the equations.
+With `unify_keys` (domain) this pins the whole substitution inside the equations' variables. -/
+theorem unify_range {α : Type} [Signature α] (eqs : Equations α) (σ : Subst α)
+    (h : unify eqs = some σ) (k : Nat) (v : α) (hkv : σ.get? k = some v)
+    (m : Nat) (hm : HasVars.isFree v m) : HasVars.isFree eqs m := by
+  rw [unify, Option.map_eq_some_iff] at h
+  obtain ⟨u, hu, rfl⟩ := h
+  obtain ⟨p, hp, hpm⟩ := Unifier.toSubst_range u k v hkv m hm
+  exact unifyList_range eqs u hu p hp m hpm

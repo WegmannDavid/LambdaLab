@@ -721,6 +721,28 @@ theorem Unifier.toSubst_cons_pSubst {α : Type} [Signature α] (n : Nat) (s : α
       HasSubst.pSubst (HasSubst.single t n s) (Unifier.toSubst rest) := by
   rw [← Unifier.apply_eq_pSubst_toSubst, ← Unifier.apply_eq_pSubst_toSubst, Unifier.apply_cons]
 
+/-- Free variables of a substituted term: every one comes from *some* variable of the original,
+routed through what σ puts there. When σ leaves `k` alone the witness is `k = m` itself. -/
+theorem Signature.isFree_pSubst {α : Type} [Signature α] (t : α) (σ : Subst α) (m : Nat) :
+    HasVars.isFree (Signature.pSubst t σ) m →
+      ∃ k, HasVars.isFree t k ∧ HasVars.isFree (σ.getD k (Signature.var k)) m := by
+  induction t using Signature.term_ind with
+  | var_case n =>
+      intro h
+      rw [Signature.pSubst_var] at h
+      exact ⟨n, (Signature.var_isFree n n).mpr rfl, h⟩
+  | construct_case c args ih =>
+      intro h
+      rw [Signature.pSubst_construct, Signature.isFree_construct] at h
+      obtain ⟨i, hi⟩ := h
+      have hi' : HasVars.isFree (Signature.pSubst (args.get i) σ) m := by
+        have : (Vector.ofFn (fun j => Signature.pSubst (args.get j) σ)).get i
+             = Signature.pSubst (args.get i) σ := by
+          show ((Vector.ofFn _)[i.val]'i.isLt) = _; simp
+        rwa [this] at hi
+      obtain ⟨k, hk, hkm⟩ := ih i hi'
+      exact ⟨k, (Signature.isFree_construct _ _ _).mpr ⟨i, hk⟩, hkm⟩
+
 /-! ## Composition law for `Subst.comp` (generic for `Signature α`)
 
 The named-STLC instance proves `Ty.pSubst_comp` in

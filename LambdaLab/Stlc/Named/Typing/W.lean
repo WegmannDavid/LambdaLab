@@ -231,6 +231,21 @@ boundary. -/
 def srcFresh (Γ : Ctx N) (e : (Term N)) (τ : Ty) : Nat :=
   max (HasVars.fresh Γ) (max (HasVars.fresh e) (HasVars.fresh τ))
 
+/-- W's internal fresh index for a lambda *is* the source threshold of the whole lambda: both are
+the max over `Γ`, `α`, `body`, `τ`. So the recursive call's threshold is exactly one higher. -/
+theorem freshIdxLam_eq_srcFresh (Γ : Ctx N) (x : N) (α τ : Ty) (body : Term N) :
+    freshIdxLam Γ body α τ = srcFresh Γ (Term.lam x α body) τ := by
+  simp only [freshIdxLam, srcFresh]
+  have h : HasVars.fresh (Term.lam x α body) = max (HasVars.fresh α) (HasVars.fresh body) := rfl
+  rw [h]; omega
+
+/-- Same for application. -/
+theorem freshIdxApp_eq_srcFresh (Γ : Ctx N) (e₁ e₂ : Term N) (τ : Ty) :
+    freshIdxApp Γ e₁ e₂ τ = srcFresh Γ (Term.app e₁ e₂) τ := by
+  simp only [freshIdxApp, srcFresh]
+  have h : HasVars.fresh (Term.app e₁ e₂) = max (HasVars.fresh e₁) (HasVars.fresh e₂) := rfl
+  rw [h]; omega
+
 /-- **Principal types theorem for W (option D form).** For any σ' that
 types the σ'-substituted triple, W succeeds with some σ, and **σ
 restricted to source mvars** is at least as general as σ'.
@@ -242,8 +257,27 @@ freshness-blind. Quantifying `MoreGeneral` over *all* `t` then fails at
 σ' is undefined. Pruning σ before quoting MoreGeneral removes the
 internal bindings, recovering the universal-`t` form.
 
-**Status:** statement updated; proofs are all `sorry`. Lifting the
-old var/lam/app sketches to the pruned form is the next task. -/
+**Status: open.** The obstacle is the *shape of the statement*, not missing lemmas — inducting on
+this form directly fails, because the lam step needs the unify equations built from the
+*unrestricted* `σ_body`, while the induction hypothesis only speaks about the pruned one, and W's
+output domain legitimately contains internal fresh mvars above `srcFresh`.
+
+The workable reformulation prunes the *quantifier* instead of `σ`:
+
+```
+∃ σ, W Γ e τ = some σ ∧ ∃ ρ, ∀ t, HasVars.fresh t ≤ srcFresh Γ e τ → t[σ'] = (t[σ])[ρ]
+```
+
+With that, `var` closes from `unify_complete` + `unify_mgu` + `unify_keys`; `lam` closes by
+extending σ' at the fresh index (`pSubst_insert_fresh`) and feeding the induction hypothesis's ρ to
+`unify_complete` — legitimate because `freshIdxLam_eq_srcFresh` above pins the recursive
+threshold at exactly one more than the outer one, so `τ` and `α` are both inside it.
+
+What is still missing is *support* bookkeeping, and only for `app` and for the final descent to
+the pruned form: both need a substitution's ρ patched above a threshold, which needs to know that
+the other substitution cannot see up there. `unify_keys`/`unify_range` supply exactly that for a
+single `unify` call; what has to be added is closure of the bound under `Subst.comp`, and then a
+strengthened induction that carries it. -/
 theorem W_principal : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ' : Subst Ty),
     HasType (HasSubst.pSubst Γ σ')
             (HasSubst.pSubst e σ')
