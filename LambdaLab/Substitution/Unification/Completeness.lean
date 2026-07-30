@@ -339,3 +339,72 @@ theorem unify_range {α : Type} [Signature α] (eqs : Equations α) (σ : Subst 
   obtain ⟨u, hu, rfl⟩ := h
   obtain ⟨p, hp, hpm⟩ := Unifier.toSubst_range u k v hkv m hm
   exact unifyList_range eqs u hu p hp m hpm
+
+/-! ## Support: a substitution confined to a range of variables
+
+`unify_keys` + `unify_range` say the computed substitution lives inside the equations' variables.
+`SupportedBelow` packages that as one predicate and closes it under the operations the
+principal-types proof composes with.
+-/
+
+/-- `σ` only mentions variables below `n`, in its domain *and* its values. -/
+def SupportedBelow {α : Type} [Signature α] (n : Nat) (σ : Subst α) : Prop :=
+  ∀ k v, σ.get? k = some v → k < n ∧ ∀ m, HasVars.isFree v m → m < n
+
+/-- `unify`'s answer is supported inside the equations' own variables — domain by `unify_keys`,
+values by `unify_range`. -/
+theorem unify_supported {α : Type} [Signature α] (eqs : Equations α) (σ : Subst α)
+    (h : unify eqs = some σ) : SupportedBelow (HasVars.fresh eqs) σ := by
+  intro k v hkv
+  refine ⟨HasVars.fresh_gt_free _ _ (unify_keys eqs σ h k (by rw [hkv]; exact Option.some_ne_none v)),
+    fun m hm => HasVars.fresh_gt_free _ _ (unify_range eqs σ h k v hkv m hm)⟩
+
+/-- Support is closed under composition. -/
+theorem SupportedBelow.comp {α : Type} [Signature α] {n : Nat} {σ₂ σ₁ : Subst α}
+    (h₂ : SupportedBelow n σ₂) (h₁ : SupportedBelow n σ₁) :
+    SupportedBelow n (Subst.comp σ₂ σ₁) := by
+  intro k v hkv
+  rw [Subst.comp_get?] at hkv
+  cases h1k : σ₁.get? k with
+  | none =>
+      rw [h1k] at hkv
+      exact h₂ k v hkv
+  | some t =>
+      rw [h1k] at hkv
+      obtain rfl := Option.some.inj hkv
+      refine ⟨(h₁ k t h1k).1, fun m hm => ?_⟩
+      obtain ⟨k', hk', hk'm⟩ := Signature.isFree_pSubst t σ₂ m hm
+      have hk'n : k' < n := (h₁ k t h1k).2 k' hk'
+      cases h2 : σ₂.get? k' with
+      | none =>
+          have he : σ₂.getD k' (Signature.var k') = Signature.var k' := by
+            rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, h2]; rfl
+          rw [he] at hk'm
+          obtain rfl := (Signature.var_isFree k' m).mp hk'm
+          exact hk'n
+      | some v' =>
+          have he : σ₂.getD k' (Signature.var k') = v' := by
+            rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, h2]; rfl
+          rw [he] at hk'm
+          exact (h₂ k' v' h2).2 m hk'm
+
+/-- Substituting by a supported σ keeps a term inside the same bound. -/
+theorem SupportedBelow.pSubst_fresh {α : Type} [Signature α] {n : Nat} {σ : Subst α}
+    (hσ : SupportedBelow n σ) (t : α) (ht : HasVars.fresh t ≤ n) :
+    HasVars.fresh (HasSubst.pSubst t σ) ≤ n := by
+  refine Signature.fresh_le_of_free_lt _ n (fun m hm => ?_)
+  simp only [Signature.hasSubst_pSubst_eq] at hm
+  obtain ⟨k, hk, hkm⟩ := Signature.isFree_pSubst t σ m hm
+  have hkn : k < n := Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ hk) ht
+  cases h : σ.get? k with
+  | none =>
+      have he : σ.getD k (Signature.var k) = Signature.var k := by
+        rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, h]; rfl
+      rw [he] at hkm
+      obtain rfl := (Signature.var_isFree k m).mp hkm
+      exact hkn
+  | some v =>
+      have he : σ.getD k (Signature.var k) = v := by
+        rw [Std.HashMap.getD_eq_getD_getElem?, ← Std.HashMap.get?_eq_getElem?, h]; rfl
+      rw [he] at hkm
+      exact (hσ k v h).2 m hkm

@@ -246,6 +246,120 @@ theorem freshIdxApp_eq_srcFresh (Γ : Ctx N) (e₁ e₂ : Term N) (τ : Ty) :
   have h : HasVars.fresh (Term.app e₁ e₂) = max (HasVars.fresh e₁) (HasVars.fresh e₂) := rfl
   rw [h]; omega
 
+/-! ## Towards `W_principal`: the cases, in source-restricted form
+
+`W_principal` as stated below cannot be inducted on directly (see its docstring). The workable form
+prunes the *quantifier* rather than `σ`:
+
+```
+∃ σ, W Γ e τ = some σ ∧ ∃ ρ, ∀ t, fresh t ≤ srcFresh Γ e τ → t[σ'] = (t[σ])[ρ]
+```
+
+Two of the three cases are discharged below, as standalone steps taking the recursive results as
+hypotheses, so they are checked without any `sorry`. What is missing is the `app` step; the note
+after them records why it is not merely more of the same.
+-/
+
+/-- **Principality at a variable.** No threshold is needed here: `W` on a variable is a single
+`unify`, so the answer is most general against *every* substitution, not just on the source
+fragment. This is the base case of `W_principal`. -/
+theorem W_principal_var (Γ : Ctx N) (x : N) (τ : Ty) (σ' : Subst Ty)
+    (h : HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst (Term.var x) σ')
+                 (HasSubst.pSubst τ σ')) :
+    ∃ σ, W Γ (Term.var x) τ = some σ ∧ MoreGeneral σ σ' := by
+  -- the term is unchanged by substitution, so the derivation is a context lookup
+  have hlook : (HasSubst.pSubst Γ σ').get? x = some (HasSubst.pSubst τ σ') :=
+    HasType.var_inv h
+  rw [HashMap.pSubst_get?] at hlook
+  obtain ⟨τ₀, h₀, hτ₀⟩ := Option.map_eq_some_iff.mp hlook
+  -- σ' already unifies the one equation W poses
+  have huni : Subst.Unifies σ' [(τ, τ₀)] := by
+    intro p hp
+    rcases List.mem_singleton.mp hp with rfl
+    exact hτ₀.symm
+  have hne : unify [(τ, τ₀)] ≠ none := unify_complete _ σ' huni
+  obtain ⟨σ, hσ⟩ := Option.ne_none_iff_exists'.mp hne
+  refine ⟨σ, ?_, unify_mgu _ σ hσ σ' huni⟩
+  rw [W, h₀]
+  exact hσ
+
+/-- `fresh t ≤ k` says `k` itself is not free in `t`. -/
+theorem not_isFree_of_fresh_le' {t : Ty} {k : Nat} (h : HasVars.fresh t ≤ k) :
+    ¬ HasVars.isFree t k := fun hf => absurd (HasVars.fresh_gt_free t k hf) (by omega)
+
+/-- **Principality at a lambda**, given the recursive result for the body. `k` is W's internal
+fresh index, which `freshIdxLam_eq_srcFresh` identifies with the *outer* threshold. -/
+theorem W_principal_lam_step (Γ : Ctx N) (x : N) (α τ : Ty) (body : Term N) (σ' : Subst Ty)
+    (β : Ty) (k : Nat) (hk : freshIdxLam Γ body α τ = k)
+    (hτβ : HasSubst.pSubst τ σ' = Ty.arrow (HasSubst.pSubst α σ') β)
+    (σ_body ρ₁ : Subst Ty)
+    (hW : W (Γ.cons x α) body (Ty.mvar k) = some σ_body)
+    (hρ₁ : ∀ t : Ty, HasVars.fresh t ≤ srcFresh (Γ.cons x α) body (Ty.mvar k) →
+        HasSubst.pSubst t (σ'.insert k β) = HasSubst.pSubst (HasSubst.pSubst t σ_body) ρ₁) :
+    ∃ σ, W Γ (Term.lam x α body) τ = some σ ∧
+      ∃ ρ, ∀ t : Ty, HasVars.fresh t ≤ srcFresh Γ (Term.lam x α body) τ →
+        HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) ρ := by
+  have hfv : HasVars.fresh (Ty.mvar k) = k + 1 := Signature.fresh_var k
+  -- the outer threshold *is* k; the inner one is at least k+1
+  have hkout : srcFresh Γ (Term.lam x α body) τ = k := by
+    rw [← freshIdxLam_eq_srcFresh Γ x α τ body]; exact hk
+  have hk1 : k + 1 ≤ srcFresh (Γ.cons x α) body (Ty.mvar k) := by
+    simp only [srcFresh, hfv]; omega
+  have hτk : HasVars.fresh τ ≤ k := by simp only [freshIdxLam] at hk; omega
+  have hαk : HasVars.fresh α ≤ k := by simp only [freshIdxLam] at hk; omega
+  have hmvk : HasSubst.pSubst (Ty.mvar k) (σ'.insert k β) = β := by
+    rw [Ty.pSubst_mvar, Std.HashMap.getD_insert]; simp
+  -- ρ₁ unifies exactly the equation W poses at this step
+  have hcheck : HasSubst.pSubst (HasSubst.pSubst τ σ_body) ρ₁
+              = HasSubst.pSubst (HasSubst.pSubst (α ⇒ Ty.mvar k) σ_body) ρ₁ := by
+    rw [← hρ₁ τ (by omega),
+        Signature.pSubst_insert_fresh σ' k β τ (not_isFree_of_fresh_le' hτk), hτβ,
+        Ty.pSubst_arrow, Ty.pSubst_arrow,
+        ← hρ₁ α (by omega), ← hρ₁ (Ty.mvar k) (by omega),
+        Signature.pSubst_insert_fresh σ' k β α (not_isFree_of_fresh_le' hαk), hmvk]
+  have huni : Subst.Unifies ρ₁ [(HasSubst.pSubst τ σ_body,
+                                 HasSubst.pSubst (α ⇒ Ty.mvar k) σ_body)] := by
+    intro p hp; rcases List.mem_singleton.mp hp with rfl; exact hcheck
+  obtain ⟨σ_unify, hu⟩ := Option.ne_none_iff_exists'.mp (unify_complete _ ρ₁ huni)
+  obtain ⟨ρ₂, hρ₂⟩ := unify_mgu _ σ_unify hu ρ₁ huni
+  refine ⟨Subst.comp σ_unify σ_body, ?_, ρ₂, fun t ht => ?_⟩
+  · simp only [W, hk, hW, hu]
+  · rw [hkout] at ht
+    calc HasSubst.pSubst t σ'
+        = HasSubst.pSubst t (σ'.insert k β) :=
+          (Signature.pSubst_insert_fresh σ' k β t (not_isFree_of_fresh_le' ht)).symm
+      _ = HasSubst.pSubst (HasSubst.pSubst t σ_body) ρ₁ := hρ₁ t (by omega)
+      _ = HasSubst.pSubst (HasSubst.pSubst (HasSubst.pSubst t σ_body) σ_unify) ρ₂ :=
+          hρ₂ (HasSubst.pSubst t σ_body)
+      _ = HasSubst.pSubst (HasSubst.pSubst t (Subst.comp σ_unify σ_body)) ρ₂ := by
+          rw [Ty.pSubst_comp]
+
+
+/-! ### Why `app` does not follow the same way
+
+The chain wanted at an application is
+
+```
+t[σ'] = t[σ'.insert j τ₁] = (t[σ₁])[ρ_a] = ((t[σ₁])[σ₂])[ρ_b] = (t[comp σ₂ σ₁])[ρ_b]
+```
+
+and the third step applies the *second* recursive result at `t[σ₁]`, so it needs
+`fresh (t[σ₁]) ≤ srcFresh (Γ[σ₁]) (e₂[σ₁]) ((mvar j)[σ₁])`. That inner threshold is computed from
+the σ₁-substituted arguments, and there is no reason for it to dominate `t[σ₁]`: take `t = mvar i`
+with `i < j` a variable occurring in neither `Γ`, `e₂` nor `σ₁ j`. Then `fresh (t[σ₁]) = i + 1`
+while the threshold can be far smaller, and the hypothesis says nothing there.
+
+This is not a gap in the bookkeeping — support bounds (`SupportedBelow`, `unify_keys`,
+`unify_range`) do not help, because the offending variable is small, not large. It is a property of
+*this* `W`: `freshIdxLam`/`freshIdxApp` derive freshness from the arguments at hand, so an index
+consumed in one subcall can be re-consumed in a sibling whose arguments happen not to mention it.
+The standard treatments avoid this by threading a monotone fresh-variable supply through the
+recursion and stating principality relative to a variable *set* that the supply is disjoint from.
+
+So finishing this most likely means changing `W` to thread a counter — a change to the algorithm,
+not only to the proof — after which the `app` case becomes the same shape as `lam` above.
+-/
+
 /-- **Principal types theorem for W (option D form).** For any σ' that
 types the σ'-substituted triple, W succeeds with some σ, and **σ
 restricted to source mvars** is at least as general as σ'.

@@ -743,6 +743,32 @@ theorem Signature.isFree_pSubst {α : Type} [Signature α] (t : α) (σ : Subst 
       obtain ⟨k, hk, hkm⟩ := ih i hi'
       exact ⟨k, (Signature.isFree_construct _ _ _).mpr ⟨i, hk⟩, hkm⟩
 
+/-- A `max`-fold is bounded by any common bound on its summands. -/
+private theorem foldr_max_le {β : Type} (f : β → Nat) (n : Nat) :
+    ∀ (l : List β), (∀ i ∈ l, f i ≤ n) →
+      l.foldr (fun i acc => max acc (f i)) 0 ≤ n
+  | [], _ => Nat.zero_le n
+  | j :: js, h => by
+      simp only [List.foldr]
+      exact Nat.max_le.mpr ⟨foldr_max_le f n js (fun i hi => h i (List.mem_cons_of_mem _ hi)),
+        h j List.mem_cons_self⟩
+
+/-- **Converse of `fresh_gt_free`.** If every free variable of `t` is below `n`, then `fresh t ≤ n`.
+The class only provides the forward direction; the bounds derived from `unify_keys`/`unify_range`
+are phrased with `isFree`, and inductions want them as `fresh ≤ n`. -/
+theorem Signature.fresh_le_of_free_lt {α : Type} [Signature α] (t : α) (n : Nat)
+    (h : ∀ m, HasVars.isFree t m → m < n) : HasVars.fresh t ≤ n := by
+  induction t using Signature.term_ind with
+  | var_case k =>
+      show Signature.fresh (Signature.var k : α) ≤ n
+      rw [Signature.fresh_var]
+      exact h k ((Signature.var_isFree k k).mpr rfl)
+  | construct_case c args ih =>
+      show Signature.fresh (Signature.construct (Sum.inr ⟨c, args⟩)) ≤ n
+      rw [Signature.fresh_construct]
+      refine foldr_max_le _ n _ (fun i _ => ?_)
+      exact ih i (fun m hm => h m ((Signature.isFree_construct _ _ _).mpr ⟨i, hm⟩))
+
 /-! ## Composition law for `Subst.comp` (generic for `Signature α`)
 
 The named-STLC instance proves `Ty.pSubst_comp` in
