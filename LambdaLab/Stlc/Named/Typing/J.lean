@@ -39,7 +39,7 @@ that draws on the supply is `App`, for the result type of the application.
 
 ## Shape of the presentation
 
-Laid out like `W`: an inductive **judgement** `Gen` carrying the rules, and a **function** `gen`
+Laid out like `W`: an inductive **judgement** `TypingJ` carrying the rules, and a **function** `gen`
 computing it, bridged by `gen_correct` exactly as `W_correct` bridges `W` to `HasTypeW`. The
 judgement is what the proofs induct over — the interesting properties are properties of
 derivations, and inducting on a derivation avoids picking apart the function's `Option` plumbing.
@@ -61,8 +61,8 @@ left to a side effect, so a rule may *name* the variable it draws:
    n; Γ ⊢ e₁ e₂ : βₙ₂ ⊣ {τ₁ = τ₂→βₙ₂} ∪ C₁ ∪ C₂ ; n₂+1
 ```
 
-`W` is left exactly as it is. The two are not rivals: `Gen` says "what must hold", `W` says "here
-is a witness, built incrementally".
+`W` is left exactly as it is. The two are not rivals: `TypingJ` says "what must hold", `W` says
+"here is a witness, built incrementally".
 -/
 
 namespace LambdaLab.Stlc.Named
@@ -79,23 +79,23 @@ by there being no rule, which is how an unbound variable is rejected.
 -/
 
 /-- **Constraint generation as a judgement.** The `Nat`s thread the fresh-variable supply. -/
-inductive Gen : Nat → Ctx N → Term N → Ty → Equations Ty → Nat → Prop where
+inductive TypingJ : Nat → Ctx N → Term N → Ty → Equations Ty → Nat → Prop where
   | var {n Γ x τ} :
       Γ.get? x = some τ →
-      Gen n Γ (.var x) τ [] n
+      TypingJ n Γ (.var x) τ [] n
   | lam {n Γ x α body τb C n'} :
-      Gen n (Γ.cons x α) body τb C n' →
-      Gen n Γ (.lam x α body) (α ⇒ τb) C n'
+      TypingJ n (Γ.cons x α) body τb C n' →
+      TypingJ n Γ (.lam x α body) (α ⇒ τb) C n'
   | app {n Γ e₁ e₂ τ₁ τ₂ C₁ C₂ n₁ n₂} :
-      Gen n Γ e₁ τ₁ C₁ n₁ →
-      Gen n₁ Γ e₂ τ₂ C₂ n₂ →
-      Gen n Γ (.app e₁ e₂) (Ty.mvar n₂)
+      TypingJ n Γ e₁ τ₁ C₁ n₁ →
+      TypingJ n₁ Γ e₂ τ₂ C₂ n₂ →
+      TypingJ n Γ (.app e₁ e₂) (Ty.mvar n₂)
         ((τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂)) (n₂ + 1)
 
 /-- The supply only ever moves forward. This is the invariant that makes the drawn names actually
 fresh — and the one W's argument-derived indices fail to provide. -/
-theorem Gen.supply_le {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
-    (h : Gen n Γ e τ C n') : n ≤ n' := by
+theorem TypingJ.supply_le {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
+    (h : TypingJ n Γ e τ C n') : n ≤ n' := by
   induction h with
   | var _ => exact Nat.le_refl _
   | lam _ ih => exact ih
@@ -110,8 +110,8 @@ substitution.
 -/
 
 /-- **Soundness of generation.** Every solution of the constraints is a typing. -/
-theorem Gen.sound {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
-    (h : Gen n Γ e τ C n') {σ : Subst Ty} (hσ : Subst.Unifies σ C) :
+theorem TypingJ.sound {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
+    (h : TypingJ n Γ e τ C n') {σ : Subst Ty} (hσ : Subst.Unifies σ C) :
     HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst e σ) (HasSubst.pSubst τ σ) := by
   induction h with
   | @var n Γ x τ hget =>
@@ -158,10 +158,10 @@ def gen : Ctx N → Term N → Nat → Option (Ty × Equations Ty × Nat)
           | some (τ₂, C₂, n₂) =>
               some (Ty.mvar n₂, (τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂), n₂ + 1)
 
-/-- **`gen` computes `Gen`.** The counterpart of `W_correct`; with it, every property proved about
-the judgement transfers to the function. -/
+/-- **`gen` computes `TypingJ`.** The counterpart of `W_correct`; with it, every property proved
+about the judgement transfers to the function. -/
 theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equations Ty) (n' : Nat),
-    gen Γ e n = some (τ, C, n') → Gen n Γ e τ C n' := by
+    gen Γ e n = some (τ, C, n') → TypingJ n Γ e τ C n' := by
   intro e
   induction e with
   | var x =>
@@ -170,7 +170,7 @@ theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equ
       obtain ⟨τ₀, hget, he⟩ := h
       simp only [Prod.mk.injEq] at he
       obtain ⟨rfl, rfl, rfl⟩ := he
-      exact Gen.var hget
+      exact TypingJ.var hget
   | lam x α body ih =>
       intro Γ n τ C n' h
       rw [gen] at h
@@ -180,7 +180,7 @@ theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equ
         have he := Option.some.inj h
         simp only [Prod.mk.injEq] at he
         obtain ⟨rfl, rfl, rfl⟩ := he
-        exact Gen.lam (ih (Γ.cons x α) n τb C₀ n₀ hp)
+        exact TypingJ.lam (ih (Γ.cons x α) n τb C₀ n₀ hp)
   | app e₁ e₂ ih₁ ih₂ =>
       intro Γ n τ C n' h
       rw [gen] at h
@@ -193,12 +193,12 @@ theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equ
           have he := Option.some.inj h
           simp only [Prod.mk.injEq] at he
           obtain ⟨rfl, rfl, rfl⟩ := he
-          exact Gen.app (ih₁ Γ n τ₁ C₁ n₁ hp₁) (ih₂ Γ n₁ τ₂ C₂ n₂ hp₂)
+          exact TypingJ.app (ih₁ Γ n τ₁ C₁ n₁ hp₁) (ih₂ Γ n₁ τ₂ C₂ n₂ hp₂)
 
 /-! ## The two halves, composed
 
-Generate, then solve once. `Gen.sound` already covers the result — no separate argument is needed
-for the composite, which is the dividend of having split the phases.
+Generate, then solve once. `TypingJ.sound` already covers the result — no separate argument is
+needed for the composite, which is the dividend of having split the phases.
 -/
 
 /-- **Inference**: generate the constraints, solve them with `unify`, apply the answer. -/
@@ -210,7 +210,7 @@ def inferPrincipal (Γ : Ctx N) (e : Term N) (n : Nat) : Option Ty :=
       | none => none
       | some σ => some (HasSubst.pSubst r.1 σ)
 
-/-- Soundness of the composite, straight from `Gen.sound` and `unify_unifies`. -/
+/-- Soundness of the composite, straight from `TypingJ.sound` and `unify_unifies`. -/
 theorem inferPrincipal_sound {Γ : Ctx N} {e : Term N} {n : Nat} {τ : Ty}
     (h : inferPrincipal Γ e n = some τ) :
     ∃ σ, HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst e σ) τ := by
@@ -249,12 +249,12 @@ def demoCtx : Ctx String :=
 
 /-! ## What remains
 
-Two theorems complete the story, and both are now statements about `Gen`, so both are inductions
+Two theorems complete the story, and both are now statements about `TypingJ`, so both are inductions
 over a derivation rather than over the term.
 
-**Completeness.** If `pSubst Γ σ' ⊢ pSubst e σ' : τ'` and `Gen n Γ e τ C n'`, then some `σ`
+**Completeness.** If `pSubst Γ σ' ⊢ pSubst e σ' : τ'` and `TypingJ n Γ e τ C n'`, then some `σ`
 satisfies `C` with `pSubst τ σ = τ'`, agreeing with `σ'` on every variable in scope. The induction
-extends `σ'` at the drawn names — legitimate precisely because `Gen.supply_le` makes them
+extends `σ'` at the drawn names — legitimate precisely because `TypingJ.supply_le` makes them
 monotone, and because the hypothesis "everything in `Γ` and `e` is in scope" is preserved down the
 tree. `Signature.pSubst_insert_fresh` is the workhorse, as in `W_principal_lam_step`.
 
