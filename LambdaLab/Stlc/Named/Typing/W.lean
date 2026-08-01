@@ -371,7 +371,28 @@ freshness-blind. Quantifying `MoreGeneral` over *all* `t` then fails at
 σ' is undefined. Pruning σ before quoting MoreGeneral removes the
 internal bindings, recovering the universal-`t` form.
 
-**Status: open.** The obstacle is the *shape of the statement*, not missing lemmas — inducting on
+## Why the context must be ground
+
+`Ctx.Ground Γ` is `free(Γ) = ∅`, and it is a genuine side condition, not tidiness. The standard
+account records that the correspondence between W and the deductive system "can only be made for
+contexts with `free(Γ) = ∅`", because the algorithm *refines* variables the context already
+mentions, and the deduction rules permit no such refinement. Concretely, with `a : ⋆` and
+`f : ?0`:
+
+```
+infer Γ (f a)   = none                     -- no derivation: ?0 is an atom, not an arrow
+W     Γ (f a) ?9 = some {0 ↦ ⋆ → ?9, …}    -- W refines the context's own ?0
+```
+
+So W accepts terms the judgement rejects — it "fails to detect all type errors" — and any
+completeness statement without the hypothesis is simply false. The earlier version of this theorem
+omitted it.
+
+Worth noting that `stlcElaboratable`'s groundness demand is exactly this condition, arrived at
+independently from "no metavariable may leak between declarations".
+
+**Status: open.** Beyond the missing side condition, the obstacle is the *shape of the statement*,
+not missing lemmas — inducting on
 this form directly fails, because the lam step needs the unify equations built from the
 *unrestricted* `σ_body`, while the induction hypothesis only speaks about the pruned one, and W's
 output domain legitimately contains internal fresh mvars above `srcFresh`.
@@ -393,35 +414,36 @@ the other substitution cannot see up there. `unify_keys`/`unify_range` supply ex
 single `unify` call; what has to be added is closure of the bound under `Subst.comp`, and then a
 strengthened induction that carries it. -/
 theorem W_principal : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ' : Subst Ty),
+    Γ.Ground →
     HasType (HasSubst.pSubst Γ σ')
             (HasSubst.pSubst e σ')
             (HasSubst.pSubst τ σ') →
     ∃ σ, W Γ e τ = some σ ∧
          MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
-  -- Recursion structure: induct on `Term.size` to match W's recursion.
-  -- All three cases sorried until the option-D proof is filled in.
-  intro Γ e τ σ' _h
+  intro Γ e τ σ' _hΓ _h
   sorry
 
 /-- W succeeds whenever any substitution makes the triple well-typed. -/
 theorem W_complete {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ' : Subst Ty}
+    (hΓ : Γ.Ground)
     (h : HasType (HasSubst.pSubst Γ σ')
                  (HasSubst.pSubst e σ')
                  (HasSubst.pSubst τ σ')) :
     W Γ e τ ≠ none := by
-  obtain ⟨σ, h_W, _⟩ := W_principal Γ e τ σ' h
+  obtain ⟨σ, h_W, _⟩ := W_principal Γ e τ σ' hΓ h
   rw [h_W]
   exact Option.some_ne_none σ
 
 /-- Corollary of `W_principal` once W's returned σ is fixed. Returns
 the pruned-σ form (option D). -/
 theorem W_principal_of_eq {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ σ' : Subst Ty}
+    (hΓ : Γ.Ground)
     (h_W : W Γ e τ = some σ)
     (h : HasType (HasSubst.pSubst Γ σ')
                  (HasSubst.pSubst e σ')
                  (HasSubst.pSubst τ σ')) :
     MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
-  obtain ⟨σ₀, h_W₀, h_mgu⟩ := W_principal Γ e τ σ' h
+  obtain ⟨σ₀, h_W₀, h_mgu⟩ := W_principal Γ e τ σ' hΓ h
   rw [h_W] at h_W₀
   have : σ = σ₀ := by injection h_W₀
   rw [this]
@@ -468,13 +490,16 @@ internal scaffolding mvars; the pruned form drops those so the
 private def elabσ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ_full : Subst Ty) : Subst Ty :=
   Subst.restrictBelow σ_full (srcFresh Γ e τ)
 
+/-- Elaboration at a **ground** context. The hypothesis is not decoration: the correspondence
+between W and the deductive system only holds for `free(Γ) = ∅`, which `Ctx.Ground` is (see
+`W_principal`). -/
 def Term.elaborate :
-    (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → ElaborationResult Γ e τ
-  | Γ, e, τ =>
+    (Γ : Ctx N) → Γ.Ground → (e : (Term N)) → (τ : Ty) → ElaborationResult Γ e τ
+  | Γ, hΓg, e, τ =>
       match Heq : W Γ e τ with
       | none   =>
           ElaborationResult.error
-            (fun ⟨_σ', hSat, _⟩ => W_complete hSat Heq)
+            (fun ⟨_σ', hSat, _⟩ => W_complete hΓg hSat Heq)
       | some σ_full =>
           ElaborationResult.ok
           { σ := elabσ Γ e τ σ_full
@@ -496,6 +521,6 @@ def Term.elaborate :
               -- the context only agrees key-by-key, which is what `cong` wants
               exact HasType.cong
                 (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ_full _ hΓ y).symm) hbase
-            mgu := fun σ' h_σ' => W_principal_of_eq Heq h_σ' }
+            mgu := fun σ' h_σ' => W_principal_of_eq hΓg Heq h_σ' }
 
 end LambdaLab.Stlc.Named

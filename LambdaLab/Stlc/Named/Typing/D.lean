@@ -1,5 +1,6 @@
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Stlc.Named.Typing.Infer
 
 /-!
 # `D` — the declarative Hindley–Milner system
@@ -183,19 +184,69 @@ theorem HasType.toD {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
   | lam _ ih => exact HasTypeD.abs (HasTypeD.cong (SCtx.ofMono_cons_get? _ _ _) ih)
   | app _ _ ih₁ ih₂ => exact HasTypeD.app ih₁ ih₂
 
-/-! ## What the converse would take, and why `D` collapses here
+/-! ## The converse fails, and precisely as the standard account says
 
-The other direction — a `D` derivation at a monotype, over a monotype context, gives a `HasType`
-derivation — is the substance of the `D`-to-`S` bridge: push every `[Inst]`/`[Gen]` down to the
-leaves and show the shape can always be normalised. In Mini-ML that is a real theorem.
+One might hope for the converse: a `D` derivation whose scheme instantiates to `τ` gives
+`HasType Γ e τ`. It does not, and the reason is the one the standard development gives for `S`
+being incomplete — there one cannot derive `λx.x : ∀α.α→α`, only `λx.x : α→α`.
 
-Here it is nearly vacuous, and the reason is worth seeing. `[Gen]` can fire, but nothing can
-*consume* a `∀`: the only rule that reads a scheme out of the context is `[Var]`, and the only
-rule that puts one there is `[Let]` — which this language does not have. So a scheme can be built
-at the root and instantiated straight back down by `[Inst]`, and never does any work. That is
-precisely the sense in which STLC has no polymorphism, and precisely why `Typing/J.lean` needs no
-`inst`/`gen` machinery: with no `let`, `D` and the syntax-directed system have the same monotype
-derivations.
+Here the same gap appears one step earlier, because `[Gen]` is available but the *annotation*
+pins the binder. `λ x : ?0 . x` has exactly one `HasType` type, `?0 ⇒ ?0`. But `[Gen]` may quantify
+`?0` — it is not free in the empty context — giving `∀0. ?0 ⇒ ?0`, and *that* instantiates to
+`⋆ ⇒ ⋆`, which the term does not have.
+-/
+
+/-- `λ x : ?0 . x`, whose only `HasType` type is `?0 ⇒ ?0`. -/
+def polyId : Term String := .lam "x" (Ty.mvar 0) (.var "x")
+
+/-- …and the scheme `D` can nevertheless derive for it. -/
+def polyIdScheme : Scheme := .all 0 (.mono (Ty.mvar 0 ⇒ Ty.mvar 0))
+
+theorem polyId_hasType : HasType Ctx.empty polyId (Ty.mvar 0 ⇒ Ty.mvar 0) :=
+  HasType.lam (HasType.var (by rw [Ctx.get?_cons]; simp))
+
+theorem polyId_not_base : ¬ HasType (Ctx.empty : Ctx String) polyId (Ty.base ⇒ Ty.base) := by
+  intro h
+  exact absurd (HasType.det h polyId_hasType) (by decide)
+
+theorem polyIdScheme_inst : Scheme.Instantiates polyIdScheme (Ty.base ⇒ Ty.base) := by
+  refine Scheme.Instantiates.all (τ₀ := Ty.base) ?_
+  have hsub : Scheme.instAt (.mono (Ty.mvar 0 ⇒ Ty.mvar 0)) 0 Ty.base
+            = .mono (Ty.base ⇒ Ty.base) := by
+    show Scheme.mono (HasSubst.pSubst (Ty.mvar 0 ⇒ Ty.mvar 0)
+          ((∅ : Subst Ty).insert 0 Ty.base)) = _
+    rw [Ty.pSubst_arrow, Ty.pSubst_mvar, Std.HashMap.getD_insert]
+    simp
+  rw [hsub]
+  exact Scheme.Instantiates.mono
+
+theorem polyId_hasTypeD :
+    HasTypeD (SCtx.ofMono (Ctx.empty : Ctx String)) polyId polyIdScheme :=
+  HasTypeD.gen (HasType.toD polyId_hasType) (by
+    rintro ⟨x, σ, hx, -⟩
+    rw [SCtx.ofMono_get?, Ctx.get?_empty] at hx
+    exact absurd hx (by simp))
+
+/-- **The naive converse of `HasType.toD` is false.** Instantiating a `D`-derivable scheme does not
+give a `HasType` derivation, so `D` is strictly stronger than the kernel judgement even here.
+
+The usable statement is the *weakened* one the literature uses — `Γ ⊢_D e:σ ⟹ Γ ⊢_S e:τ ∧
+Γ̄(τ) ⊑ σ`, recovering the scheme by one final generalisation. Proving that here needs `Γ̄`, which
+in turn needs to enumerate `free(τ) − free(Γ)`; it is not yet defined. -/
+theorem HasTypeD.instance_not_sound :
+    ¬ ∀ (Γ : Ctx String) (e : Term String) (σ : Scheme) (τ : Ty),
+        HasTypeD (SCtx.ofMono Γ) e σ → Scheme.Instantiates σ τ → HasType Γ e τ := fun h =>
+  polyId_not_base
+    (h Ctx.empty polyId polyIdScheme (Ty.base ⇒ Ty.base) polyId_hasTypeD polyIdScheme_inst)
+
+/-! ## Why `D` still collapses in practice
+
+`[Gen]` can fire, but nothing can *consume* a `∀`: the only rule that reads a scheme out of the
+context is `[Var]`, and the only rule that puts one there is `[Let]` — which this language does not
+have. So the extra schemes `D` derives are unreachable; they can be built at the root and
+instantiated straight back down, and never type anything new *at a variable occurrence*. That is
+the sense in which STLC has no polymorphism, and why `Typing/J.lean` needs no `inst`/`gen`
+machinery.
 
 Adding `let` to `Term` is what would make this file earn its keep — `[Let]` and `Γ̄(τ)` are where
 generalisation actually happens, and `J`'s `[Let]` would then need the same `Γ̄`.
