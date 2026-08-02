@@ -15,18 +15,22 @@ judgement treats `?0` exactly the way it treats `⋆`: an atom that equals itsel
 That makes `def poly : ?0 → ?0 := λ x : ?0 . x` well-typed but **not polymorphic**. It cannot be
 used at `⋆ → ⋆`. `?n` is an infinite supply of extra base types, not a hole.
 
-Turning them into real holes is exactly what `Typing/W.lean` is for: unification is what lets one
-stand for something else. That stage is not wired into the surface (see `Lang.lean` — binder
-annotations are mandatory, so nothing needs solving), which is why `stlcElaboratable` refuses to
-let a metavariable survive a declaration at all: a `?0` that no one will ever solve is a mistake
-in the source, not an inference request.
+Turning them into real holes takes unification, and that is what the *elaborator* does — the
+judgement itself never will. `stlcElaboratable` (in `Lang.lean`) solves by constraint generation
+before checking, so `def id : ?0 → ?0 := λ x : ⋆ . x` elaborates to `⋆ → ⋆`. What it then refuses
+is a metavariable that solving *could not* determine: `def poly : ?0 → ?0 := λ x : ?0 . x` fails,
+because nothing constrains `?0`, and an unsolvable hole is a mistake in the source rather than an
+inference request.
 
 ## Two policies, one `Language`
 
-`stlcElaboratable` (in `Lang.lean`) demands `τ.Ground`; `stlcPermissive` below drops that and is
-otherwise identical. They share a `toLanguage`, so they parse and print the *same* files — the
-disagreement is entirely in `Elaborates`, which is the interface's claim: leakage is the
-language's decision, not a field of `ElaboratableLanguage`.
+`stlcPermissive` below is the foil: it only *checks*, with no solving at all, and lets whatever
+survives leak into the context. So it shows the bare judgement's view of `?n` — the opaque atom —
+which is what makes the difference between the two visible.
+
+They share a `toLanguage`, so they parse and print the *same* files. The disagreement is entirely
+in `Elaborates`, which is the interface's claim: leakage is the language's decision, not a field
+of `ElaboratableLanguage`.
 -/
 
 namespace LambdaLab.Stlc.Named
@@ -69,7 +73,8 @@ the still-assumed `stlcUnambiguous` (`Lang.lean`), so the term carries a `sorry`
 that is conditional, not the execution. Elaboration itself — `infer`, `HasType` — is sorry-free.
 -/
 
--- The identity at an unsolved type. Strict rejects it; permissive keeps it.
+-- `?0` here is genuinely undetermined — it appears only in the annotation and the declared type,
+-- so no constraint pins it. Strict rejects it even after solving; permissive keeps it.
 #eval! strict     "def poly : ?0 → ?0 := λ x : ?0 . x"      -- none
 #eval! permissive "def poly : ?0 → ?0 := λ x : ?0 . x"      -- some "def poly : ?0 → ?0 := …"
 

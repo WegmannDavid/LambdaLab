@@ -1,6 +1,7 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Infer
+import LambdaLab.Stlc.Named.Typing.Target
 import LambdaLab.Language.ElabStage
 import LambdaLab.Language.Biparser
 import LambdaLab.Language.FreeName
@@ -329,37 +330,113 @@ def stlcLanguage : Language where
 
 /-! ## …and a semantics
 
-The grammar annotates every binder, so elaboration has nothing to solve: `Elaborates` is the
-identity on the term and the type, carrying a `HasType` derivation. `W.lean` — the HM inferencer —
-is not used and cannot be, see below.
+Elaboration is `Typing/Target.lean`'s `elabSubst`: generate every constraint the term imposes,
+then solve them in one `unify`. So `?0` is a genuine hole — `def id : ?0 → ?0 := λ x : ⋆ . x`
+elaborates to `def id : ⋆ → ⋆ := λ x : ⋆ . x` — rather than the opaque atom the bare `HasType`
+judgement treats it as (`Mvars.lean` is about that distinction).
 
-**No metavariable survives a declaration.** `Ty.mvar` is *writable* here (`?0`), and `HasType`
-happily admits it: `⊢ λ x : ?0 . x : ?0 ⇒ ?0` is derivable. So refusing leakage is a real
-condition and this language imposes it, exactly as the interface intends — by restricting
-`Elaborates`, not by a field of `ElaboratableLanguage`. `def f : ?0 → ?0 := λ x : ?0 . x` is
-therefore rejected, and since `Typing.lean` puts the *elaborated* type into the context, nothing
-downstream can ever see an unsolved metavariable.
+**No metavariable survives a declaration.** Solving is given its chance first, and what remains
+unsolved is a mistake in the source rather than an inference request: `def poly : ?0 → ?0 :=
+λ x : ?0 . x` still fails, because nothing determines `?0`. Since `Language/Typing.lean` puts the
+*elaborated* type into the context, nothing downstream ever sees an unsolved metavariable. That is
+imposed by restricting `Elaborates`, not by a field of `ElaboratableLanguage`, exactly as the
+interface intends.
+
+**What is and is not claimed.** `elabSubst_sound` is sorry-free, so a successful elaboration
+carries a real `HasType` derivation. Most-generality is *not* claimed — that is
+`Target.GenerationComplete`, still open. `stlcElaboratable` reports `sorryAx` only through
+`toLanguage`, i.e. the assumed `stlcUnambiguous` above.
+
+**Why `Elaborates` demands a stable answer.** `quote_elaborates` needs re-elaborating an output to
+reproduce it, which is unproved; rather than assume it, the relation *requires* it. An answer that
+were not a fixed point simply does not elaborate — conservative, never unsound, and no `sorry`.
 -/
 
-/-- STLC as an elaboratable language. The checker is `Typing/Infer.lean`, which is sorry-free;
-this bundle nonetheless reports `sorryAx`, inherited from `stlcLanguage`'s parser via
-`toLanguage` (the assumed `stlcUnambiguous` below). The elaboration side assumes nothing. -/
+-- Terms compare, given comparable names — needed to *check* that an elaboration is stable.
+deriving instance DecidableEq for Term
+
+/-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
+instance : HasVars VName where
+  isFree _ _ := False
+  fresh _ := 0
+  fresh_gt_free := by intro _ _ h; cases h
+
+/-- Infer, then apply — refusing to let a metavariable survive the declaration. -/
+def solve (Γ : Ctx VName) (t : Term VName) (τ : Ty) : Option (Term VName × Ty) :=
+  match elabSubst Γ t τ with
+  | none => none
+  | some σ =>
+      if (HasSubst.pSubst τ σ : Ty).Ground ∧ (HasSubst.pSubst t σ : Term VName).AnnotsGround then
+        some (HasSubst.pSubst t σ, HasSubst.pSubst τ σ)
+      else none
+
+/-- **Soundness**, straight from `elabSubst_sound`. -/
+theorem solve_hasType {Γ : Ctx VName} {t : Term VName} {τ : Ty} {p : Term VName × Ty}
+    (h : solve Γ t τ = some p) :
+    ∃ σ, elabSubst Γ t τ = some σ ∧ HasType (HasSubst.pSubst Γ σ) p.1 p.2 := by
+  rw [solve] at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i σ hσ
+    refine ⟨σ, hσ, ?_⟩
+    split at h
+    · cases h; exact elabSubst_sound hσ
+    · exact absurd h (by simp)
+
+/-- The answers that reproduce themselves. -/
+def solveStable (Γ : Ctx VName) (t : Term VName) (τ : Ty) : Option (Term VName × Ty) :=
+  match solve Γ t τ with
+  | none => none
+  | some p => if solve Γ p.1 p.2 = some p then some p else none
+
+theorem solveStable_idem {Γ : Ctx VName} {t : Term VName} {τ : Ty} {p : Term VName × Ty}
+    (h : solveStable Γ t τ = some p) : solveStable Γ p.1 p.2 = some p := by
+  rw [solveStable] at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i q hq
+    split at h
+    · rename_i hst
+      cases h
+      simp [solveStable, hst]
+    · exact absurd h (by simp)
+
+/-! Matching on `solveStable` directly would abstract it out of the subtype's property, so the
+result is generalized with an equation first: `certAux` matches on a *copy* and carries the proof
+that the copy is the real thing. -/
+
+private def certAux (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
+    (o : Option (Term VName × Ty)) → solveStable Γ t τ = o →
+    Option { p : Term VName × Ty // solveStable Γ t τ = some (p.1, p.2) }
+  | none,   _ => none
+  | some q, h => some ⟨q, by rw [h]⟩
+
+def solveCert (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
+    Option { p : Term VName × Ty // solveStable Γ t τ = some (p.1, p.2) } :=
+  certAux Γ t τ (solveStable Γ t τ) rfl
+
+private theorem certAux_isSome (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
+    ∀ (o : Option (Term VName × Ty)) (h : solveStable Γ t τ = o),
+      (certAux Γ t τ o h).isSome = o.isSome
+  | none,   _ => rfl
+  | some _, _ => rfl
+
+theorem solveCert_isSome {Γ : Ctx VName} {t : Term VName} {τ : Ty}
+    (h : (solveStable Γ t τ).isSome) : (solveCert Γ t τ).isSome := by
+  rw [solveCert, certAux_isSome]; exact h
+
+/-- **STLC as an elaboratable language**, elaborated by constraint generation. -/
 def stlcElaboratable : Language.ElaboratableLanguage where
   toLanguage := stlcLanguage
-  Elaborates Γ t t' τ τ' := t' = t ∧ τ' = τ ∧ HasType Γ t τ ∧ τ.Ground ∧ t.AnnotsGround
+  Elaborates Γ t t' τ τ' := solveStable Γ t τ = some (t', τ')
   elaborates_unique h₁ h₂ := by
-    obtain ⟨rfl, rfl, -⟩ := h₁
-    obtain ⟨rfl, rfl, -⟩ := h₂
-    exact ⟨rfl, rfl⟩
-  elaborate Γ t τ :=
-    if h : HasType Γ t τ ∧ τ.Ground ∧ t.AnnotsGround then some ⟨(t, τ), rfl, rfl, h⟩ else none
-  elaborate_complete h := by
-    obtain ⟨rfl, rfl, h⟩ := h
-    simp only [dif_pos h]
-    rfl
+    have h := Option.some.inj (h₁.symm.trans h₂)
+    exact ⟨congrArg Prod.fst h, congrArg Prod.snd h⟩
+  elaborate := solveCert
+  elaborate_complete h := solveCert_isSome (by rw [h]; rfl)
   quote t' τ' := (t', τ')
   quote_elaborates h := by
-    obtain ⟨t, τ, rfl, rfl, h⟩ := h
-    exact ⟨rfl, rfl, h⟩
+    obtain ⟨t, τ, hst⟩ := h
+    exact solveStable_idem hst
 
 end LambdaLab.Stlc.Named

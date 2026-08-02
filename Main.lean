@@ -1,8 +1,6 @@
 import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Mvars
-import LambdaLab.Stlc.Named.Solving
-import LambdaLab.Stlc.Named.Inference
 import LambdaLab.Language.Pipeline
 
 /-!
@@ -44,10 +42,8 @@ declaration. Each is `elaborateFile`, the composite `List Char ⇝ … ⇝ elabo
 two passes glued together here. -/
 def languageFor (path : String) : Language × List (String × (String → Option String)) :=
   if path.endsWith ".stlc" then
-    (stlcLanguage, [("elaborated (no mvars may survive)", strict),
-                    ("elaborated (mvars permitted)", permissive),
-                    ("elaborated (mvars solved by W)", solving),
-                    ("elaborated (mvars solved by constraints)", inferring)])
+    (stlcLanguage, [("elaborated (mvars solved, none may survive)", strict),
+                    ("elaborated (mvars not solved, may survive)", permissive)])
   else (arithLanguage, [])
 
 def run (label : String) (L : Language) (checks : List (String × (String → Option String)))
