@@ -136,6 +136,76 @@ inductive HasTypeD : SCtx N → Term N → Scheme → Prop where
       ¬ SCtx.IsFree Γ α →
       HasTypeD Γ e (.all α σ)
 
+/-! ## Generalisation: `Γ̄(τ)`
+
+`Γ̄(τ) = ∀ α̂ . τ` with `α̂ = free(τ) − free(Γ)` — quantify everything free in the type that the
+context does not already pin down. It is what `[Let]` uses in the syntactical system, and what the
+weakened `D`-to-`S` bridge applies at the end to recover a scheme.
+
+Computing it needs both `IsFree` predicates decidably, and needs `free(τ)` *enumerated* rather than
+merely decided. The bound is `HasVars.fresh τ`, which the unifier already provides.
+-/
+
+def Scheme.freeB : Scheme → Nat → Bool
+  | .mono τ,  n => Signature.occurs n τ
+  | .all α σ, n => (! (n == α)) && Scheme.freeB σ n
+
+@[simp] theorem Scheme.freeB_iff : ∀ (σ : Scheme) (n : Nat),
+    Scheme.freeB σ n = true ↔ Scheme.IsFree σ n
+  | .mono τ,  n => Iff.rfl
+  | .all α σ, n => by
+      simp only [Scheme.freeB, Scheme.IsFree, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+        Bool.not_true, beq_eq_false_iff_ne, ne_eq]
+      rw [Scheme.freeB_iff σ n]
+
+def SCtx.freeB (Γ : SCtx N) (n : Nat) : Bool :=
+  Γ.toList.any fun p => Scheme.freeB p.2 n
+
+omit [HasVars N] in
+theorem SCtx.freeB_iff (Γ : SCtx N) (n : Nat) :
+    SCtx.freeB Γ n = true ↔ SCtx.IsFree Γ n := by
+  constructor
+  · intro h
+    rw [SCtx.freeB, List.any_eq_true] at h
+    obtain ⟨p, hp, hf⟩ := h
+    refine ⟨p.1, p.2, ?_, (Scheme.freeB_iff _ _).mp hf⟩
+    rw [Std.HashMap.get?_eq_getElem?, ← Std.HashMap.mem_toList_iff_getElem?_eq_some]
+    exact hp
+  · rintro ⟨x, σ, hx, hf⟩
+    rw [SCtx.freeB, List.any_eq_true]
+    refine ⟨(x, σ), ?_, (Scheme.freeB_iff _ _).mpr hf⟩
+    rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+    exact hx
+
+/-- The variables to quantify: `free(τ) − free(Γ)`, enumerated below `fresh τ`. -/
+def SCtx.quantified (Γ : SCtx N) (τ : Ty) : List Nat :=
+  (List.range (HasVars.fresh τ)).filter fun n => Signature.occurs n τ && !SCtx.freeB Γ n
+
+/-- **`Γ̄(τ) = ∀ α̂ . τ`, `α̂ = free(τ) − free(Γ)`** — the closure operator. -/
+def SCtx.close (Γ : SCtx N) (τ : Ty) : Scheme :=
+  (SCtx.quantified Γ τ).foldr Scheme.all (.mono τ)
+
+omit [HasVars N] in
+/-- One `[Gen]` per quantified variable. -/
+theorem HasTypeD.gen_foldr (Γ : SCtx N) (e : Term N) (τ : Ty) :
+    ∀ (l : List Nat), (∀ α ∈ l, ¬ SCtx.IsFree Γ α) →
+      HasTypeD Γ e (.mono τ) → HasTypeD Γ e (l.foldr Scheme.all (.mono τ))
+  | [],      _,  h => h
+  | a :: as, hl, h =>
+      HasTypeD.gen
+        (HasTypeD.gen_foldr Γ e τ as (fun α hα => hl α (List.mem_cons_of_mem _ hα)) h)
+        (hl a List.mem_cons_self)
+
+/-- **The closure is derivable.** `Γ̄(τ)` is reachable from `τ` by iterated `[Gen]`, which is what
+lets the weakened `D`-to-`S` bridge recover a scheme by one final generalisation. -/
+theorem HasTypeD.close (Γ : SCtx N) (e : Term N) (τ : Ty) (h : HasTypeD Γ e (.mono τ)) :
+    HasTypeD Γ e (SCtx.close Γ τ) := by
+  refine HasTypeD.gen_foldr Γ e τ _ (fun α hα => ?_) h
+  rw [SCtx.quantified, List.mem_filter] at hα
+  intro hc
+  have : SCtx.freeB Γ α = true := (SCtx.freeB_iff Γ α).mpr hc
+  simp [this] at hα
+
 /-! ## Against the kernel judgement
 
 `HasType` is `D` with the scheme layer removed: monotype contexts, monotype conclusions, no
@@ -145,12 +215,14 @@ inductive HasTypeD : SCtx N → Term N → Scheme → Prop where
 /-- Every monotype context is a scheme context. -/
 def SCtx.ofMono (Γ : Ctx N) : SCtx N := Γ.map fun _ τ => Scheme.mono τ
 
+omit [HasVars N] in
 @[simp] theorem SCtx.ofMono_get? (Γ : Ctx N) (x : N) :
     (SCtx.ofMono Γ).get? x = (Γ.get? x).map Scheme.mono := by
   show (Γ.map _).get? x = _
   rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
       ← Std.HashMap.get?_eq_getElem?]
 
+omit [HasVars N] in
 theorem SCtx.ofMono_cons_get? (Γ : Ctx N) (x : N) (τ : Ty) (y : N) :
     (SCtx.ofMono (Γ.cons x τ)).get? y = ((SCtx.ofMono Γ).cons x (Scheme.mono τ)).get? y := by
   rw [SCtx.ofMono_get?, Ctx.get?_cons, LambdaLab.Language.Context.get?_cons, SCtx.ofMono_get?]
@@ -183,6 +255,18 @@ theorem HasType.toD {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
   | var hget => exact HasTypeD.var (by rw [SCtx.ofMono_get?, hget]; rfl)
   | lam _ ih => exact HasTypeD.abs (HasTypeD.cong (SCtx.ofMono_cons_get? _ _ _) ih)
   | app _ _ ih₁ ih₂ => exact HasTypeD.app ih₁ ih₂
+
+/-! ### It computes
+
+Over the empty context everything free in the type is quantified; a context that already mentions
+a variable pins it, and only the rest generalise.
+-/
+
+#eval SCtx.close (SCtx.ofMono (Ctx.empty : Ctx String)) (Ty.mvar 0 ⇒ Ty.mvar 0)
+-- ∀0. ?0 ⇒ ?0
+#eval SCtx.close (SCtx.ofMono ((Ctx.empty : Ctx String).cons "y" (Ty.mvar 0)))
+        (Ty.mvar 0 ⇒ Ty.mvar 1)
+-- ∀1. ?0 ⇒ ?1   — `?0` is pinned by `y : ?0`
 
 /-! ## The converse fails, and precisely as the standard account says
 
@@ -227,12 +311,18 @@ theorem polyId_hasTypeD :
     rw [SCtx.ofMono_get?, Ctx.get?_empty] at hx
     exact absurd hx (by simp))
 
+-- The scheme above is not ad hoc: it is exactly `Γ̄` of the identity's type over the empty
+-- context, i.e. the *canonical* generalisation. So the counterexample is not an artefact of
+-- picking a strange scheme — it is what `[Let]` would have produced.
+#eval decide (SCtx.close (SCtx.ofMono (Ctx.empty : Ctx String)) (Ty.mvar 0 ⇒ Ty.mvar 0)
+              = polyIdScheme)   -- true
+
 /-- **The naive converse of `HasType.toD` is false.** Instantiating a `D`-derivable scheme does not
 give a `HasType` derivation, so `D` is strictly stronger than the kernel judgement even here.
 
 The usable statement is the *weakened* one the literature uses — `Γ ⊢_D e:σ ⟹ Γ ⊢_S e:τ ∧
-Γ̄(τ) ⊑ σ`, recovering the scheme by one final generalisation. Proving that here needs `Γ̄`, which
-in turn needs to enumerate `free(τ) − free(Γ)`; it is not yet defined. -/
+Γ̄(τ) ⊑ σ`, recovering the scheme by one final generalisation. `Γ̄` is `SCtx.close` above, and
+`HasTypeD.close` supplies the generalisation half; what is still missing is the `S` side. -/
 theorem HasTypeD.instance_not_sound :
     ¬ ∀ (Γ : Ctx String) (e : Term String) (σ : Scheme) (τ : Ty),
         HasTypeD (SCtx.ofMono Γ) e σ → Scheme.Instantiates σ τ → HasType Γ e τ := fun h =>
