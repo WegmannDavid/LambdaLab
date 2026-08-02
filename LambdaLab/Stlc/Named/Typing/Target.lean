@@ -60,18 +60,25 @@ def elaborate (Γ : Ctx N) (hΓ : Γ.Ground) (t : Term N) (τ : Ty) :
       match hu : unify ((r.1, τ) :: r.2.1) with
       | none => none
       | some σ =>
-          some ⟨σ,
-            -- the typing conjunct: `gen_correct` to the judgement, `sound` for the work, and the
-            -- head equation rewrites the synthesised type into the declared one
+          -- returned *pruned*: the raw answer binds the variables `gen` drew, which mean nothing
+          -- to a competing σ' and would defeat the second conjunct outright
+          some ⟨Subst.restrictBelow σ (sourceFresh Γ t τ),
             by
               have hall : Subst.Unifies σ ((r.1, τ) :: r.2.1) := unify_unifies _ σ hu
               have hsound := (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg).sound
                 (fun q hq => hall q (List.mem_cons_of_mem _ hq))
               have hhead : HasSubst.pSubst r.1 σ = HasSubst.pSubst τ σ :=
                 hall _ List.mem_cons_self
-              rwa [hhead] at hsound,
-            -- the most-generality conjunct: `unify_mgu` reduces this to `GenerationComplete`
-            -- below, which is the only thing still missing
+              rw [hhead] at hsound
+              -- pruning above the source threshold changes nothing on Γ, t or τ
+              have hΓf : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
+              have htf : HasVars.fresh t ≤ sourceFresh Γ t τ :=
+                Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
+              have hτf : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
+                Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+              rw [Term.tyPSubst_restrictBelow t σ _ htf, Signature.pSubst_restrictBelow σ _ τ hτf]
+              exact HasType.cong (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ _ hΓf y).symm)
+                hsound,
             by sorry⟩
 
 /-- **The one missing lemma**, and the whole of what stands between `elaborate` and being done.
@@ -84,7 +91,14 @@ It cannot be σ' itself — the constraints mention the variables `gen` drew, ab
 nothing — so the statement produces an extension agreeing with σ' on everything below the starting
 supply. Proving it is an induction on the `HasTypeJ` derivation, needing a bound on which variables
 the constraints mention (the analogue of `HasTypeJ.supply_le`) and a lemma that substitutions
-agreeing below `n` act alike on types whose variables are below `n`. -/
+agreeing below `n` act alike on types whose variables are below `n`.
+
+**And that is not the end of it.** `unify_mgu` then gives `MoreGeneral σ σ''`, and transferring
+that to σ' needs the generality witness patched above the threshold — sound only if the *pruned*
+substitution's **range** also stays below it. It need not: unifying `(?0, ⋆ → ?d)` for a drawn `?d`
+binds the source variable `?0` to a type mentioning `?d`. Establishing that bound is the same
+obstacle `W_principal` has, reached by a different road, and it is the reason this conjunct is not
+a short proof. -/
 def GenerationComplete : Prop :=
   ∀ (Γ : Ctx N) (t : Term N) (τ τg : Ty) (n n' : Nat) (C : Equations Ty) (σ' : Subst Ty),
     HasVars.fresh Γ ≤ n → HasVars.fresh t ≤ n → HasVars.fresh τ ≤ n →
