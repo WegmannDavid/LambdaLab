@@ -1,6 +1,6 @@
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Infer
+import LambdaLab.Stlc.Named.Typing.Properties
 
 /-!
 # `D` — the declarative Hindley–Milner system

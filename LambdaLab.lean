@@ -15,7 +15,6 @@ import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step.Basic
 import LambdaLab.Stlc.Named.Step.MStep
 import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Infer
 import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Stlc.Named.Translation
 import LambdaLab.Stlc.Named.Step.Confluence

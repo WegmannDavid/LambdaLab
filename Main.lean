@@ -71,5 +71,4 @@ def main (args : List String) : IO Unit := do
   | [] =>
       runPath "examples/demo.arith"
       runPath "examples/demo.stlc"
-      runPath "examples/demo-typed.stlc"
   | path :: _ => runPath path

@@ -168,4 +168,13 @@ theorem HasType.app_inv {Γ : Ctx N} {e₁ e₂ : (Term N)} {τ : Ty}
     ∃ α : Ty, HasType Γ e₁ (α ⇒ τ) ∧ HasType Γ e₂ α := by
   cases h with | app h₁ h₂ => exact ⟨_, h₁, h₂⟩
 
+/-- **Types are unique.** One term has at most one type in a given context — the three rules are
+syntax-directed and the binder carries its own annotation, so nothing is ever chosen. -/
+theorem HasType.det {Γ : Ctx N} {e : Term N} {τ₁ τ₂ : Ty}
+    (h₁ : HasType Γ e τ₁) (h₂ : HasType Γ e τ₂) : τ₁ = τ₂ := by
+  induction h₁ generalizing τ₂ with
+  | var hget => cases h₂ with | var hget₂ => rw [hget] at hget₂; exact Option.some.inj hget₂
+  | lam _ ih => cases h₂ with | lam hb₂ => rw [ih hb₂]
+  | app _ _ ih₁ _ => cases h₂ with | app hf₂ _ => injection ih₁ hf₂
+
 end LambdaLab.Stlc.Named

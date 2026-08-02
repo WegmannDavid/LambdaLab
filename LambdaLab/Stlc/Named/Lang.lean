@@ -1,6 +1,5 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Infer
 import LambdaLab.Stlc.Named.Typing.Target
 import LambdaLab.Language.ElabStage
 import LambdaLab.Language.Biparser

@@ -18,6 +18,30 @@ open LambdaLab.Language (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
+/-! ## Deciding groundness
+
+`Term.AnnotsGround` is a `Prop` recursion; this is the same recursion in `Bool`, which is what lets
+the elaborator *demand* that no metavariable survives.
+-/
+
+/-- Every type annotation inside `e` is ground, decidably. -/
+def Term.annotsGround : Term N → Bool
+  | .var _        => true
+  | .lam _ τ body => τ.isGround && body.annotsGround
+  | .app e₁ e₂    => e₁.annotsGround && e₂.annotsGround
+
+@[simp] theorem Term.annotsGround_iff : ∀ {e : Term N}, e.annotsGround = true ↔ e.AnnotsGround := by
+  intro e
+  induction e with
+  | var x => simp [Term.annotsGround, Term.AnnotsGround]
+  | lam x τ body ih => simp [Term.annotsGround, Term.AnnotsGround, ih, Ty.Ground]
+  | app e₁ e₂ ih₁ ih₂ => simp [Term.annotsGround, Term.AnnotsGround, ih₁, ih₂]
+
+instance (e : Term N) : Decidable e.AnnotsGround :=
+  decidable_of_iff (e.annotsGround = true) Term.annotsGround_iff
+
+/-! ## The formalization target -/
+
 /-- The threshold above which every index belongs to the algorithm rather than the source.
 Same definition as `W.srcFresh`, repeated so this file depends on no particular algorithm. -/
 def sourceFresh (Γ : Ctx N) (t : Term N) (τ : Ty) : Nat :=
