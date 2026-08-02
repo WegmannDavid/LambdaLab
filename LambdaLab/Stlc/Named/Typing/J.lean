@@ -29,10 +29,11 @@ The payoff is that the three properties separate, and principality stops being a
 
 Two features of this STLC make generation almost trivial compared with the textbook presentation.
 
-There are **no type schemes** — `Ty` is `base | arrow | mvar`, with no `∀`. So the `D`/`S` split of
-the standard development (whose entire purpose is to fold `[Inst]`/`[Gen]` into `[Var]`/`[Let]`)
-has nothing to fold: `HasType` is already monotype-only and syntax-directed. Our `mvar`s are
-unification variables, not bound type variables.
+There are **no type schemes** in `Ty` — it is `base | arrow | mvar`, with no `∀` — so `HasType` is
+already monotype-only and syntax-directed, and generation has no `[Inst]`/`[Gen]` to fold away.
+Our `mvar`s are unification variables here, not bound type variables. (`Typing/D.lean` does add
+schemes, and turns out to be *strictly* stronger for it — see `HasTypeD.stronger_than_hasType`.
+That system is a specification to compare against, not one this file implements.)
 
 And **binders carry their annotation** (`lam x α body`), so `Abs` invents nothing. The *only* rule
 that draws on the supply is `App`, for the result type of the application.

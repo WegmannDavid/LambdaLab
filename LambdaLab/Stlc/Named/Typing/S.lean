@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.Named.Typing.D
+import LambdaLab.Stlc.Named.Typing.Properties
 
 /-!
 # `S` — the syntactical Hindley–Milner system
@@ -139,24 +140,106 @@ theorem HasTypeS.iff_hasType {Γ : Ctx N} {e : Term N} {τ : Ty} :
     HasTypeS (SCtx.ofMono Γ) e τ ↔ HasType Γ e τ :=
   ⟨HasTypeS.toHasType, HasType.toS⟩
 
-/-! ## What completeness would need
+/-! ## Completeness fails — `D` is strictly stronger
 
-The remaining half is the article's weakened statement
+The remaining direction is the article's weakened statement
 
 ```
 Γ ⊢_D e:σ  ⟹  Γ ⊢_S e:τ  ∧  Γ̄(τ) ⊑ σ
 ```
 
-and it cannot be proved by picking *any* instance of `σ` for `τ`. Take `σ = ∀α.α→α` over the empty
-context: instantiating at `⋆` gives `τ = ⋆→⋆`, whose closure `Γ̄(⋆→⋆) = ⋆→⋆` is *not* more general
-than `∀α.α→α` — it has only the one instance. The witness has to be the **principal** instance,
-i.e. `σ` instantiated at *fresh* variables, which is `inst(σ)` in the standard presentation of
-algorithm J. That operation is not defined here; it needs a fresh supply, exactly as `HasTypeJ`
-threads one.
+**It is false here**, and not for the article's reason. There, `[Abs]` *chooses* the parameter
+type, so `S` can pick whatever the use site needs. Ours is written in the term, so `S` is stuck
+with it — while `D` can still `[Gen]` the annotation's metavariable and `[Inst]` it back down to
+something else entirely.
 
-Note also that the strong form is false regardless — one cannot derive `λx.x : ∀α.α→α` in `S`,
-only `λx.x : α→α`, since `S`'s judgements are monotypes by construction. `D.lean`'s
-`HasTypeD.instance_not_sound` is the same phenomenon reaching the kernel judgement.
+Take `Γ = a : ⋆` and `e = (λ x : ?0 . x) a`. `HasType` — hence `S`, by `iff_hasType` — cannot type
+it at all: the annotation forces the argument to be `?0`, and `a` is `⋆`. But `D` derives
+`.mono ⋆` for it, by generalising `?0` (not free in `Γ`) and instantiating at `⋆`.
+
+So `D` types *terms* the other systems reject, not merely more schemes for the same terms. Earlier
+notes in `D.lean` and `J.lean` claimed the opposite — that with no `let` nothing can consume a `∀`.
+That was wrong: `[Inst]` consumes one on the *conclusion*, with no context involvement at all.
+-/
+
+def Γa : Ctx String := Ctx.empty.cons "a" Ty.base
+def eApp : Term String := .app polyId (.var "a")
+
+/-- `⋆` has no free metavariables. `decide` cannot see this — `Signature.occurs` is
+well-founded recursion and does not reduce in the kernel — so it goes through
+`occurs_construct` at the nullary constructor. -/
+theorem Ty.not_isFree_base (n : Nat) : ¬ HasVars.isFree Ty.base n := by
+  show ¬ (Signature.occurs n Ty.base = true)
+  rw [show (Ty.base : Ty)
+        = Signature.construct (Sum.inr ⟨TyConstructor.base, Vector.ofFn Fin.elim0⟩) from rfl,
+      Signature.occurs_construct]
+  simp
+  exact fun x => x.elim0
+
+/-- `λ x : ?0 . x` types in *any* context — the body just reads the binder back. -/
+theorem polyId_hasType_any (Γ : Ctx String) : HasType Γ polyId (Ty.mvar 0 ⇒ Ty.mvar 0) :=
+  HasType.lam (HasType.var (by rw [Ctx.get?_cons]; simp))
+
+theorem Γa_get : Γa.get? "a" = some Ty.base := by rw [Γa, Ctx.get?_cons]; simp
+
+/-- `HasType` cannot type it: the annotation forces the argument to be `?0`, but `a : ⋆`. -/
+theorem eApp_no_hasType : ∀ τ, ¬ HasType Γa eApp τ := by
+  intro τ h
+  obtain ⟨α, hfun, harg⟩ := HasType.app_inv h
+  obtain ⟨β, hβ, -⟩ := HasType.lam_inv hfun
+  -- hβ : α ⇒ τ = ?0 ⇒ β, so α = ?0
+  have hα : α = Ty.mvar 0 := by injection hβ
+  rw [hα] at harg
+  have := HasType.var_inv harg
+  rw [Γa_get] at this
+  exact absurd this (by decide)
+
+/-- 0 is not free in `Γa`: its only entry, `a : ⋆`, has no metavariables. -/
+theorem Γa_zero_not_free : ¬ SCtx.IsFree (SCtx.ofMono Γa) 0 := by
+  rintro ⟨x, σ, hx, hf⟩
+  rw [SCtx.ofMono_get?] at hx
+  obtain ⟨τ₀, h₀, rfl⟩ := Option.map_eq_some_iff.mp hx
+  rw [Γa, Ctx.get?_cons] at h₀
+  by_cases hxa : "a" = x
+  · rw [if_pos hxa] at h₀
+    cases h₀
+    exact Ty.not_isFree_base 0 hf
+  · rw [if_neg hxa, Ctx.get?_empty] at h₀
+    exact absurd h₀ (by simp)
+
+/-- …but `D` can, by generalising the identity and instantiating it at `⋆`. -/
+theorem eApp_hasTypeD : HasTypeD (SCtx.ofMono Γa) eApp (.mono Ty.base) := by
+  -- [Gen]: quantify the annotation's metavariable, which the context does not mention
+  have hgen : HasTypeD (SCtx.ofMono Γa) polyId polyIdScheme :=
+    HasTypeD.gen (HasType.toD (polyId_hasType_any Γa)) Γa_zero_not_free
+  -- [Inst]: bring it back down at ⋆, which the annotation never permitted
+  have hinst : HasTypeD (SCtx.ofMono Γa) polyId (.mono (Ty.base ⇒ Ty.base)) := by
+    refine HasTypeD.inst hgen ?_
+    intro ρ hρ
+    rw [Scheme.instantiates_mono_iff] at hρ
+    exact hρ ▸ polyIdScheme_inst
+  have hvar : HasTypeD (SCtx.ofMono Γa) (.var "a") (.mono Ty.base) :=
+    HasTypeD.var (by rw [SCtx.ofMono_get?, Γa_get]; rfl)
+  exact HasTypeD.app hinst hvar
+
+/-- **`D` is strictly stronger than the kernel judgement**, even with no `let`. -/
+theorem HasTypeD.stronger_than_hasType :
+    ∃ (Γ : Ctx String) (e : Term String) (σ : Scheme),
+      HasTypeD (SCtx.ofMono Γ) e σ ∧ ∀ τ, ¬ HasType Γ e τ :=
+  ⟨Γa, eApp, .mono Ty.base, eApp_hasTypeD, eApp_no_hasType⟩
+
+/-! ### What this means for the lattice
+
+`HasType ↔ S ⟹ D` is proved and the last arrow is strict. Recovering an equivalence needs one of:
+
+* dropping binder annotations, so `[Abs]` may choose — the article's setting, where the missing
+  half is only the *strong* form and the weakened one holds; or
+* restricting `D` so `[Gen]` cannot quantify a variable that occurs in an annotation of the term,
+  which is the honest reading of "these `∀`s are unreachable" that the earlier notes wanted; or
+* accepting `D` as a strictly larger system and stating the bridge one-way, as it now is.
+
+Either way `SCtx.close` (Γ̄) stays unused until `Term` has `let`, which is the construct all of
+this machinery exists for.
 -/
 
 end LambdaLab.Stlc.Named

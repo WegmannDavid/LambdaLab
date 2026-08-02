@@ -329,17 +329,24 @@ theorem HasTypeD.instance_not_sound :
   polyId_not_base
     (h Ctx.empty polyId polyIdScheme (Ty.base ⇒ Ty.base) polyId_hasTypeD polyIdScheme_inst)
 
-/-! ## Why `D` still collapses in practice
+/-! ## `D` is strictly stronger — it types terms the kernel judgement rejects
 
-`[Gen]` can fire, but nothing can *consume* a `∀`: the only rule that reads a scheme out of the
-context is `[Var]`, and the only rule that puts one there is `[Let]` — which this language does not
-have. So the extra schemes `D` derives are unreachable; they can be built at the root and
-instantiated straight back down, and never type anything new *at a variable occurrence*. That is
-the sense in which STLC has no polymorphism, and why `Typing/J.lean` needs no `inst`/`gen`
-machinery.
+An earlier version of this note claimed the extra schemes were unreachable: `[Gen]` can fire, but
+nothing can *consume* a `∀`, since the only rule reading a scheme from the context is `[Var]` and
+the only rule putting one there is `[Let]`, which this language lacks.
 
-Adding `let` to `Term` is what would make this file earn its keep — `[Let]` and `Γ̄(τ)` are where
-generalisation actually happens, and `J`'s `[Let]` would then need the same `Γ̄`.
+That is wrong. `[Inst]` consumes a `∀` on the **conclusion**, with no context involved at all. So
+`[Gen]` followed by `[Inst]` lets `D` re-choose the type of a written annotation, which the kernel
+judgement can never do. `Typing/S.lean` carries the counterexample
+(`HasTypeD.stronger_than_hasType`): with `a : ⋆`, the term `(λ x : ?0 . x) a` has no `HasType`
+derivation, yet `D` gives it `⋆`.
+
+So `HasType.toD` is a strict embedding, and the reverse bridge fails even in the weakened form the
+literature uses. What remains true is the narrower statement actually proved here: `S` — hence
+`HasType` — coincides with `D` only after `[Inst]`/`[Gen]` are removed, which is what `S` does.
+
+`[Let]` and `Γ̄(τ)` are still where generalisation is *meant* to happen; adding `let` to `Term` is
+what would make this file earn its keep.
 -/
 
 end LambdaLab.Stlc.Named
