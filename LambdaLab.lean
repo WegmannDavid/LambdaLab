@@ -27,6 +27,7 @@ import LambdaLab.Stlc.Named.Typing.W
 import LambdaLab.Stlc.Named.Typing.J
 import LambdaLab.Stlc.Named.Typing.D
 import LambdaLab.Stlc.Named.Typing.S
+import LambdaLab.Stlc.Named.Typing.Target
 import LambdaLab.Substitution.Basic
 import LambdaLab.Substitution.Unification.Signature
 import LambdaLab.Substitution.Unification.Bridge
