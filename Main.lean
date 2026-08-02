@@ -2,6 +2,7 @@ import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
 import LambdaLab.Stlc.Named.Mvars
 import LambdaLab.Stlc.Named.Solving
+import LambdaLab.Stlc.Named.Inference
 import LambdaLab.Language.Pipeline
 
 /-!
@@ -17,8 +18,9 @@ the language matching its extension, and prints the program back out as normalis
   through `elaborateFile`, the parse-and-elaborate pipeline, which is one `Abs` morphism covering
   both stages. Three policies are run: `stlcElaboratable` refuses to let an unsolved `?n` survive
   a declaration, `stlcPermissive` allows it, and `stlcSolving` runs algorithm W to *solve* it.
-  The first two treat `?n` as an opaque atom (see `Stlc/Named/Mvars.lean`); only the third makes
-  it a hole (`Stlc/Named/Solving.lean`).
+  The first two treat `?n` as an opaque atom (see `Stlc/Named/Mvars.lean`); the last two make it a
+  hole, by algorithm W (`Stlc/Named/Solving.lean`) and by constraint generation
+  (`Stlc/Named/Inference.lean`) respectively — the same job done two ways, and they agree.
 
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
 * `lake exe playground path/to/file`   — parse the given file (language by extension)
@@ -44,7 +46,8 @@ def languageFor (path : String) : Language × List (String × (String → Option
   if path.endsWith ".stlc" then
     (stlcLanguage, [("elaborated (no mvars may survive)", strict),
                     ("elaborated (mvars permitted)", permissive),
-                    ("elaborated (mvars solved by W)", solving)])
+                    ("elaborated (mvars solved by W)", solving),
+                    ("elaborated (mvars solved by constraints)", inferring)])
   else (arithLanguage, [])
 
 def run (label : String) (L : Language) (checks : List (String × (String → Option String)))

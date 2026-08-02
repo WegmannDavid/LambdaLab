@@ -41,45 +41,58 @@ abbrev elaborationResult (Γ : Ctx N) (t : Term N) (τ : Ty) :=
        ∧ ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
            MoreGeneral σ σ' }
 
-/-- **The algorithm.** Generate every constraint, then solve once — with the *declared* type
+/-! ## The algorithm, in three pieces
+
+The *computation* is separated from the two proofs, so that consumers which only need a working,
+certified-sound elaborator do not inherit the open obligation. `elabSubst` and `elabSubst_sound`
+are sorry-free; only `elaborate`, which bundles the unproved conjunct, is not.
+-/
+
+/-- **The computation.** Generate every constraint, then solve once — with the *declared* type
 thrown in as one more equation, which is how a synthesising generator handles a checking problem.
 
-`Option`, because not every triple is elaborable and no substitution can repair that: in
-`(λ x : ⋆ . x) (λ y : ⋆ . y)` the annotations are ground, so σ cannot touch them, and the
-argument's `⋆ → ⋆` never matches the parameter's `⋆`. A total version is uninhabited.
+The answer is returned **pruned**: the raw solution binds the variables `gen` drew, which mean
+nothing to a competing σ' and would defeat most-generality outright.
 
 Built from `J`, not `W`. W's answer is a composition of substitutions accumulated during the
 traversal, so its most-generality is entangled with the freshness discipline. J's answer is
-*literally* `unify`'s output, so the second conjunct reduces through `unify_mgu` to a statement
-about generation alone. -/
+*literally* `unify`'s output. -/
+def elabSubst (Γ : Ctx N) (t : Term N) (τ : Ty) : Option (Subst Ty) :=
+  match gen Γ t (sourceFresh Γ t τ) with
+  | none => none
+  | some r => (unify ((r.1, τ) :: r.2.1)).map (Subst.restrictBelow · (sourceFresh Γ t τ))
+
+/-- **Soundness of the computation**, and it is short: `gen_correct` moves to the judgement,
+`HasTypeJ.sound` does the work, the head equation rewrites the synthesised type into the declared
+one, and pruning above the source threshold disturbs none of `Γ`, `t`, `τ`. -/
+theorem elabSubst_sound {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
+    (h : elabSubst Γ t τ = some σ) :
+    HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
+  rw [elabSubst] at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i r hg
+    rw [Option.map_eq_some_iff] at h
+    obtain ⟨σ₀, hu, rfl⟩ := h
+    have hall : Subst.Unifies σ₀ ((r.1, τ) :: r.2.1) := unify_unifies _ σ₀ hu
+    have hsound := (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg).sound
+      (fun q hq => hall q (List.mem_cons_of_mem _ hq))
+    have hhead : HasSubst.pSubst r.1 σ₀ = HasSubst.pSubst τ σ₀ := hall _ List.mem_cons_self
+    rw [hhead] at hsound
+    have hΓf : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
+    have htf : HasVars.fresh t ≤ sourceFresh Γ t τ :=
+      Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
+    have hτf : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
+      Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+    rw [Term.tyPSubst_restrictBelow t σ₀ _ htf, Signature.pSubst_restrictBelow σ₀ _ τ hτf]
+    exact HasType.cong (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ₀ _ hΓf y).symm) hsound
+
+/-- **The target**: the same computation, carrying both conjuncts. Only the second is open. -/
 def elaborate (Γ : Ctx N) (hΓ : Γ.Ground) (t : Term N) (τ : Ty) :
     Option (elaborationResult Γ t τ) :=
-  match hg : gen Γ t (sourceFresh Γ t τ) with
+  match h : elabSubst Γ t τ with
   | none => none
-  | some r =>
-      match hu : unify ((r.1, τ) :: r.2.1) with
-      | none => none
-      | some σ =>
-          -- returned *pruned*: the raw answer binds the variables `gen` drew, which mean nothing
-          -- to a competing σ' and would defeat the second conjunct outright
-          some ⟨Subst.restrictBelow σ (sourceFresh Γ t τ),
-            by
-              have hall : Subst.Unifies σ ((r.1, τ) :: r.2.1) := unify_unifies _ σ hu
-              have hsound := (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg).sound
-                (fun q hq => hall q (List.mem_cons_of_mem _ hq))
-              have hhead : HasSubst.pSubst r.1 σ = HasSubst.pSubst τ σ :=
-                hall _ List.mem_cons_self
-              rw [hhead] at hsound
-              -- pruning above the source threshold changes nothing on Γ, t or τ
-              have hΓf : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
-              have htf : HasVars.fresh t ≤ sourceFresh Γ t τ :=
-                Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-              have hτf : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
-                Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
-              rw [Term.tyPSubst_restrictBelow t σ _ htf, Signature.pSubst_restrictBelow σ _ τ hτf]
-              exact HasType.cong (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ _ hΓf y).symm)
-                hsound,
-            by sorry⟩
+  | some σ => some ⟨σ, elabSubst_sound h, by sorry⟩
 
 /-- **The one missing lemma**, and the whole of what stands between `elaborate` and being done.
 
