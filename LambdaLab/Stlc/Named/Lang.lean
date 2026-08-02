@@ -333,7 +333,9 @@ def stlcLanguage : Language where
 Elaboration is `Typing/Target.lean`'s `elabSubst`: generate every constraint the term imposes,
 then solve them in one `unify`. So `?0` is a genuine hole — `def id : ?0 → ?0 := λ x : ⋆ . x`
 elaborates to `def id : ⋆ → ⋆ := λ x : ⋆ . x` — rather than the opaque atom the bare `HasType`
-judgement treats it as (`Mvars.lean` is about that distinction).
+judgement treats it as. The distinction matters: `HasType` has no rule mentioning `Ty.mvar`, so to
+the judgement `?0` is an atom equal to itself and nothing else — an extra base type, not a hole.
+Solving is what the elaborator adds on top.
 
 **No metavariable survives a declaration.** Solving is given its chance first, and what remains
 unsolved is a mistake in the source rather than an inference request: `def poly : ?0 → ?0 :=
@@ -438,5 +440,9 @@ def stlcElaboratable : Language.ElaboratableLanguage where
   quote_elaborates h := by
     obtain ⟨t, τ, hst⟩ := h
     exact solveStable_idem hst
+
+/-- Parse a source file and elaborate it, rendering the result. -/
+def elaborateSource (src : String) : Option String :=
+  (stlcElaboratable.elaborateFile src).map stlcElaboratable.renderElaborated
 
 end LambdaLab.Stlc.Named

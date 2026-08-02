@@ -37,7 +37,7 @@ Two deliberate departures, both because this is STLC and not Mini-ML:
 
 Metavariables (`Ty.mvar`) serve as the type variables `α`. In `D` they are genuinely *bound* by
 `∀`; in `W`/`J` they are *unification* variables. Same syntax, different role — and the reason
-`Mvars.lean` insists `?n` is an opaque atom for the plain `HasType`.
+`?n` is an opaque atom for the plain `HasType`, which has no rule mentioning `Ty.mvar` at all.
 -/
 
 namespace LambdaLab.Stlc.Named

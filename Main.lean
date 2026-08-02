@@ -1,6 +1,5 @@
 import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
-import LambdaLab.Stlc.Named.Mvars
 import LambdaLab.Language.Pipeline
 
 /-!
@@ -12,13 +11,11 @@ the language matching its extension, and prints the program back out as normalis
 * `.arith` — `def NAME : TYPE := EXPR`, types `N`/`Z`/`R` with `→`, mixfix arithmetic terms
   (truncated: redundant parens are forgotten and re-inserted canonically);
 * `.stlc`  — types `⋆` with `→`, lambda-calculus terms `λ x . e` (multi-entry grammar;
-  binder parens and redundant parens truncate away), **and type checked**: `.stlc` files are run
+  binder parens and redundant parens truncate away), **and elaborated**: `.stlc` files are run
   through `elaborateFile`, the parse-and-elaborate pipeline, which is one `Abs` morphism covering
-  both stages. Three policies are run: `stlcElaboratable` refuses to let an unsolved `?n` survive
-  a declaration, `stlcPermissive` allows it, and `stlcSolving` runs algorithm W to *solve* it.
-  The first two treat `?n` as an opaque atom (see `Stlc/Named/Mvars.lean`); the last two make it a
-  hole, by algorithm W (`Stlc/Named/Solving.lean`) and by constraint generation
-  (`Stlc/Named/Inference.lean`) respectively — the same job done two ways, and they agree.
+  both stages. Elaboration solves metavariables by constraint generation, so `def id : ?0 → ?0 :=
+  λ x : ⋆ . x` comes back as `⋆ → ⋆`, and then refuses to let any *unsolved* one survive a
+  declaration.
 
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
 * `lake exe playground path/to/file`   — parse the given file (language by extension)
@@ -42,8 +39,7 @@ declaration. Each is `elaborateFile`, the composite `List Char ⇝ … ⇝ elabo
 two passes glued together here. -/
 def languageFor (path : String) : Language × List (String × (String → Option String)) :=
   if path.endsWith ".stlc" then
-    (stlcLanguage, [("elaborated (mvars solved, none may survive)", strict),
-                    ("elaborated (mvars not solved, may survive)", permissive)])
+    (stlcLanguage, [("elaborated", elaborateSource)])
   else (arithLanguage, [])
 
 def run (label : String) (L : Language) (checks : List (String × (String → Option String)))
