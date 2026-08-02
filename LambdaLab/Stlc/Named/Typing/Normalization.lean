@@ -79,22 +79,22 @@ theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
 
 /-! ## Strong normalization for the named system -/
 
-/-- Every well-typed named term is strongly normalizing.
-
-Bridge preconditions: Γ and e's annotations must be ground. -/
+/-- **Every well-typed named term is strongly normalizing.** Unconditionally — the groundness
+preconditions this used to carry were paying for the de Bruijn detour, not for normalization, and
+went away when `Ty.toDB` became a bijection. -/
 theorem HasType.sn : ∀ {Γ : Ctx String} {e : (Term String)} {τ : Ty},
-    Γ.Ground → e.AnnotsGround → HasType Γ e τ → SN e := by
-  intro Γ e τ hΓ hag ht
+    HasType Γ e τ → SN e := by
+  intro Γ e τ ht
   let binders := e.freeVars
-  have hbound : ∀ x ∈ binders, ∃ σ, Γ.get? x = some σ ∧ σ.Ground := by
+  have hbound : ∀ x ∈ binders, ∃ σ, Γ.get? x = some σ := by
     intro x hx
     obtain ⟨σ, heq⟩ := HasType.freeVars_in_ctx e ht x hx
-    exact ⟨σ, heq, hΓ x σ heq⟩
+    exact ⟨σ, heq⟩
   let db_ctx := Ctx.toDB Γ binders
   have hcompat : CtxCompat Γ binders db_ctx := CtxCompat.fromCtx Γ binders hbound
   have hfv : ∀ x ∈ e.freeVars, x ∈ binders := fun x hx => hx
   have hdb : Stlc.DeBruijn.HasType db_ctx (e.toDB binders) τ.toDB :=
-    HasType.toDB e hΓ hag ht binders db_ctx hfv hcompat
+    HasType.toDB e ht binders db_ctx hfv hcompat
   have hsn_db : Stlc.DeBruijn.SN (e.toDB binders) :=
     Stlc.DeBruijn.HasType.sn hdb
   exact SN.fromDB e binders hfv hsn_db

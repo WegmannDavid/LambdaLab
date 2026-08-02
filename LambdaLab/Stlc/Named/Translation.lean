@@ -45,7 +45,7 @@ open LambdaLab.Language (freshFor freshFor_not_in)
 def Ty.toDB : Ty → Stlc.DeBruijn.Ty
   | .base => Stlc.DeBruijn.Ty.base
   | .arrow τ₁ τ₂ => Stlc.DeBruijn.Ty.arrow τ₁.toDB τ₂.toDB
-  | .mvar _ => Stlc.DeBruijn.Ty.base
+  | .mvar n => Stlc.DeBruijn.Ty.mvar n
 
 /-! ## Variable lookup in a context -/
 
@@ -500,25 +500,28 @@ theorem MStep.toDB_step : ∀ {e e' : (Term String)} (Γ : List String),
 def Ty.fromDB : Stlc.DeBruijn.Ty → Ty
   | .base => .base
   | .arrow t₁ t₂ => .arrow (Ty.fromDB t₁) (Ty.fromDB t₂)
+  | .mvar n => .mvar n
 
-theorem Ty.fromDB_toDB : ∀ {τ : Ty}, τ.Ground → Ty.fromDB τ.toDB = τ := by
-  intro τ h
+/-- The type translation is now a *bijection* — `Ty.mvar n` goes to `Ty.mvar n` rather than
+collapsing to `base`. That is what removes the groundness side conditions downstream: the round
+trip no longer needs to know it lost nothing. -/
+@[simp] theorem Ty.fromDB_toDB : ∀ {τ : Ty}, Ty.fromDB τ.toDB = τ := by
+  intro τ
   induction τ with
   | base => rfl
-  | arrow τ₁ τ₂ ih₁ ih₂ =>
-      obtain ⟨h₁, h₂⟩ := Ty.Ground.arrow.mp h
-      simp [Ty.toDB, Ty.fromDB, ih₁ h₁, ih₂ h₂]
-  | mvar n   => exact absurd h (Ty.Ground.mvar n)
+  | arrow τ₁ τ₂ ih₁ ih₂ => simp [Ty.toDB, Ty.fromDB, ih₁, ih₂]
+  | mvar n => rfl
 
 @[simp] theorem Ty.toDB_fromDB (t : Stlc.DeBruijn.Ty) : (Ty.fromDB t).toDB = t := by
   induction t with
   | base => rfl
   | arrow t₁ t₂ ih₁ ih₂ => simp [Ty.toDB, Ty.fromDB, ih₁, ih₂]
+  | mvar n => rfl
 
-theorem Ty.toDB_inj : ∀ {τ τ' : Ty}, τ.Ground → τ'.Ground →
-    τ.toDB = τ'.toDB → τ = τ' := by
-  intro τ τ' hg hg' h
-  rw [← Ty.fromDB_toDB hg, ← Ty.fromDB_toDB hg', h]
+/-- …and injective, with no side condition, now that `mvar` survives the trip. -/
+theorem Ty.toDB_inj : ∀ {τ τ' : Ty}, τ.toDB = τ'.toDB → τ = τ' := by
+  intro τ τ' h
+  rw [← Ty.fromDB_toDB (τ := τ), ← Ty.fromDB_toDB (τ := τ'), h]
 
 /-! ## Lookup is functional -/
 
@@ -537,24 +540,24 @@ agree along the given binder list: for every binder `x`, the named lookup
 yields some `τ` whose translation matches the de Bruijn lookup at the
 corresponding index. -/
 def CtxCompat (Γ : Ctx String) (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx) : Prop :=
-  ∀ x ∈ binders, ∃ τ : Ty, Γ.get? x = some τ ∧ τ.Ground ∧
+  ∀ x ∈ binders, ∃ τ : Ty, Γ.get? x = some τ ∧
     Stlc.DeBruijn.Lookup db_ctx (lookupVar x binders) τ.toDB
 
 theorem CtxCompat.cons {Γ : Ctx String} {binders : List String} {db_ctx : Stlc.DeBruijn.Ctx}
-    (x : String) (τ₁ : Ty) (h₁ : τ₁.Ground) (hcompat : CtxCompat Γ binders db_ctx) :
+    (x : String) (τ₁ : Ty) (hcompat : CtxCompat Γ binders db_ctx) :
     CtxCompat (Γ.cons x τ₁) (x :: binders) (τ₁.toDB :: db_ctx) := by
   intro y hy
   by_cases hyx : y = x
   · subst hyx
-    refine ⟨τ₁, ?_, h₁, ?_⟩
+    refine ⟨τ₁, ?_, ?_⟩
     · simp [Ctx.cons, Language.Context.cons]
     · have hlk : lookupVar y (y :: binders) = 0 := by simp [lookupVar]
       rw [hlk]; exact .here
   · rcases List.mem_cons.mp hy with hyEq | hy'
     · exact absurd hyEq hyx
-    · obtain ⟨τ_y, heq, hg, hl⟩ := hcompat y hy'
+    · obtain ⟨τ_y, heq, hl⟩ := hcompat y hy'
       have hxy : ¬ x = y := fun h => hyx h.symm
-      refine ⟨τ_y, ?_, hg, ?_⟩
+      refine ⟨τ_y, ?_, ?_⟩
       · rw [Ctx.get?_cons, if_neg hxy]; exact heq
       · have hlk : lookupVar y (x :: binders) = lookupVar y binders + 1 := by
           simp [lookupVar, hxy]
@@ -569,7 +572,7 @@ def Ctx.toDB (Γ : Ctx String) : List String → Stlc.DeBruijn.Ctx
     Ctx.toDB Γ xs
 
 theorem CtxCompat.fromCtx (Γ : Ctx String) (binders : List String)
-    (hbound : ∀ x ∈ binders, ∃ τ, Γ.get? x = some τ ∧ τ.Ground) :
+    (hbound : ∀ x ∈ binders, ∃ τ, Γ.get? x = some τ) :
     CtxCompat Γ binders (Ctx.toDB Γ binders) := by
   intro x hx
   induction binders with
@@ -577,16 +580,16 @@ theorem CtxCompat.fromCtx (Γ : Ctx String) (binders : List String)
   | cons y ys ih =>
       by_cases hyx : y = x
       · subst hyx
-        obtain ⟨τ_y, heq, hg⟩ := hbound y List.mem_cons_self
-        refine ⟨τ_y, heq, hg, ?_⟩
+        obtain ⟨τ_y, heq⟩ := hbound y List.mem_cons_self
+        refine ⟨τ_y, heq, ?_⟩
         simp only [Ctx.toDB, heq, lookupVar]
         exact .here
       · rcases List.mem_cons.mp hx with hxEq | hx'
         · exact absurd hxEq.symm hyx
-        · have hbound' : ∀ z ∈ ys, ∃ τ, Γ.get? z = some τ ∧ τ.Ground :=
+        · have hbound' : ∀ z ∈ ys, ∃ τ, Γ.get? z = some τ :=
             fun z hz => hbound z (List.mem_cons.mpr (Or.inr hz))
-          obtain ⟨τ_x, heq, hg, hl⟩ := ih hbound' hx'
-          refine ⟨τ_x, heq, hg, ?_⟩
+          obtain ⟨τ_x, heq, hl⟩ := ih hbound' hx'
+          refine ⟨τ_x, heq, ?_⟩
           have hcons : Ctx.toDB Γ (y :: ys) =
             (match Γ.get? y with | some τ => τ.toDB | none => Stlc.DeBruijn.Ty.base) ::
             Ctx.toDB Γ ys := rfl
@@ -599,7 +602,7 @@ theorem CtxCompat.fromCtx (Γ : Ctx String) (binders : List String)
 /-! ## Forward typing translation -/
 
 theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx String} {τ : Ty},
-    Γ.Ground → e.AnnotsGround → HasType Γ e τ →
+    HasType Γ e τ →
     ∀ (binders : List String) (db_ctx : Stlc.DeBruijn.Ctx),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     CtxCompat Γ binders db_ctx →
@@ -607,24 +610,22 @@ theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx String} {τ : Ty},
   intro e
   induction e with
   | var x =>
-      intro Γ τ _ _ ht binders db_ctx hfv hcompat
+      intro Γ τ ht binders db_ctx hfv hcompat
       cases ht with
       | var heq =>
           apply Stlc.DeBruijn.HasType.var
           have hxb : x ∈ binders := hfv x (by simp [Term.freeVars])
-          obtain ⟨τ', heq', _, hl⟩ := hcompat x hxb
+          obtain ⟨τ', heq', hl⟩ := hcompat x hxb
           have : τ = τ' := by rw [heq] at heq'; injection heq'
           subst this
           exact hl
   | lam x τ₁ body ih =>
-      intro Γ τ hΓ hag ht binders db_ctx hfv hcompat
+      intro Γ τ ht binders db_ctx hfv hcompat
       cases ht with
       | lam hb =>
-          obtain ⟨h₁g, hbg⟩ := hag
           simp only [Term.toDB, Ty.toDB]
           apply Stlc.DeBruijn.HasType.lam
-          apply ih (Ctx.Ground.cons hΓ h₁g) hbg hb
-            (x :: binders) (τ₁.toDB :: db_ctx)
+          apply ih hb (x :: binders) (τ₁.toDB :: db_ctx)
           · intro y hy
             by_cases hyx : y = x
             · subst hyx; exact List.mem_cons_self
@@ -632,20 +633,17 @@ theorem HasType.toDB : ∀ (e : (Term String)) {Γ : Ctx String} {τ : Ty},
               apply hfv
               simp [Term.freeVars, List.mem_filter]
               exact ⟨hy, hyx⟩
-          · exact CtxCompat.cons x τ₁ h₁g hcompat
+          · exact CtxCompat.cons x τ₁ hcompat
   | app e₁ e₂ ih₁ ih₂ =>
-      intro Γ τ hΓ hag ht binders db_ctx hfv hcompat
+      intro Γ τ ht binders db_ctx hfv hcompat
       cases ht with
       | app hf ha =>
-          obtain ⟨h₁ag, h₂ag⟩ := hag
-          have h_arrow_g : (_ ⇒ τ).Ground :=
-            HasType.ground_result hΓ h₁ag hf
-          obtain ⟨hτ₁g, _⟩ := Ty.Ground.arrow.mp h_arrow_g
+
           simp only [Term.toDB]
           apply Stlc.DeBruijn.HasType.app
-          · apply ih₁ hΓ h₁ag hf binders db_ctx ?_ hcompat
+          · apply ih₁ hf binders db_ctx ?_ hcompat
             intro y hy; apply hfv; simp [Term.freeVars]; exact Or.inl hy
-          · apply ih₂ hΓ h₂ag ha binders db_ctx ?_ hcompat
+          · apply ih₂ ha binders db_ctx ?_ hcompat
             intro y hy; apply hfv; simp [Term.freeVars]; exact Or.inr hy
 
 /-! ## Backward typing translation
@@ -655,7 +653,6 @@ type is `Ty.fromDB t`. -/
 
 theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx String} (binders : List String)
     (db_ctx : Stlc.DeBruijn.Ctx) (t : Stlc.DeBruijn.Ty),
-    e.AnnotsGround →
     (∀ x ∈ e.freeVars, x ∈ binders) →
     CtxCompat Γ binders db_ctx →
     Stlc.DeBruijn.HasType db_ctx (e.toDB binders) t →
@@ -663,27 +660,26 @@ theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx String} (binders : Li
   intro e
   induction e with
   | var x =>
-      intro Γ binders db_ctx t _ hfv hcompat hdb
+      intro Γ binders db_ctx t hfv hcompat hdb
       simp only [Term.toDB] at hdb
       cases hdb with
       | var hl =>
           apply HasType.var
           have hxb : x ∈ binders := hfv x (by simp [Term.freeVars])
-          obtain ⟨τ', heq, hg, hl'⟩ := hcompat x hxb
+          obtain ⟨τ', heq, hl'⟩ := hcompat x hxb
           have h_eq : t = τ'.toDB := Stlc.DeBruijn.Lookup.functional hl hl'
           subst h_eq
-          rw [Ty.fromDB_toDB hg]
+          rw [Ty.fromDB_toDB]
           exact heq
   | lam x τ₁ body ih =>
-      intro Γ binders db_ctx t hag hfv hcompat hdb
-      obtain ⟨h₁g, hbg⟩ := hag
+      intro Γ binders db_ctx t hfv hcompat hdb
       simp only [Term.toDB] at hdb
       cases hdb with
       | lam hb =>
           rename_i τ_out
-          simp only [Ty.fromDB, Ty.fromDB_toDB h₁g]
+          simp only [Ty.fromDB, Ty.fromDB_toDB]
           apply HasType.lam
-          apply ih (x :: binders) (τ₁.toDB :: db_ctx) τ_out hbg _ _ hb
+          apply ih (x :: binders) (τ₁.toDB :: db_ctx) τ_out _ _ hb
           · intro y hy
             by_cases hyx : y = x
             · subst hyx; exact List.mem_cons_self
@@ -691,18 +687,17 @@ theorem HasType.fromDB : ∀ (e : (Term String)) {Γ : Ctx String} (binders : Li
               apply hfv
               simp [Term.freeVars, List.mem_filter]
               exact ⟨hy, hyx⟩
-          · exact CtxCompat.cons x τ₁ h₁g hcompat
+          · exact CtxCompat.cons x τ₁ hcompat
   | app e₁ e₂ ih₁ ih₂ =>
-      intro Γ binders db_ctx t hag hfv hcompat hdb
-      obtain ⟨h₁ag, h₂ag⟩ := hag
+      intro Γ binders db_ctx t hfv hcompat hdb
       simp only [Term.toDB] at hdb
       cases hdb with
       | app hf ha =>
           rename_i τ_in
-          have h₁ := ih₁ binders db_ctx (.arrow τ_in t) h₁ag
+          have h₁ := ih₁ binders db_ctx (.arrow τ_in t)
             (fun y hy => hfv y (by simp [Term.freeVars]; exact Or.inl hy))
             hcompat hf
-          have h₂ := ih₂ binders db_ctx τ_in h₂ag
+          have h₂ := ih₂ binders db_ctx τ_in
             (fun y hy => hfv y (by simp [Term.freeVars]; exact Or.inr hy))
             hcompat ha
           simp only [Ty.fromDB] at h₁

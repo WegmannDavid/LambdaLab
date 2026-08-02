@@ -56,10 +56,10 @@ def Term.eval (e : (Term String)) (h : SN e) : (Term String) :=
   | some ⟨e', s⟩ => Term.eval e' (h.unfold s)
 termination_by (⟨e, h⟩ : SNTerm)
 
-/-- Any well-typed term has a normal form (given the bridge
-preconditions: ground context and ground annotations). -/
+/-- Any well-typed term has a normal form. The bridge preconditions this used to require are
+gone: `HasType.sn` is now unconditional. -/
 def HasType.eval {Γ : Ctx String} {e : (Term String)} {τ : Ty}
-    (hΓ : Γ.Ground) (hag : e.AnnotsGround) (ht : HasType Γ e τ) : (Term String) :=
-  Term.eval e (HasType.sn hΓ hag ht)
+    (ht : HasType Γ e τ) : (Term String) :=
+  Term.eval e (HasType.sn ht)
 
 end LambdaLab.Stlc.Named

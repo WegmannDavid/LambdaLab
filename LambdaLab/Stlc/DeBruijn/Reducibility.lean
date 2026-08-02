@@ -34,12 +34,15 @@ theorem SN.unfold : ∀ {e e'}, SN e → e ⟶ e' → SN e'
 def Reducible : Ty → Term → Prop
   | .base,         e => SN e
   | .arrow τ₁ τ₂,  e => SN e ∧ ∀ v, Reducible τ₁ v → Reducible τ₂ (.app e v)
+  -- an atom is inert, so reducibility at it is bare strong normalization, as at `base`
+  | .mvar _,       e => SN e
 
 /-! ## CR1: reducibility implies strong normalization -/
 
 theorem Reducible.sn : ∀ {τ : Ty} {e : Term}, Reducible τ e → SN e
   | .base,         _, h => h
   | .arrow _ _,    _, ⟨h, _⟩ => h
+  | .mvar _,       _, h => h
 
 /-! ## CR2: reducibility is closed under reduction -/
 
@@ -53,6 +56,9 @@ theorem Reducible.preserves : ∀ {τ : Ty} {e e' : Term},
   | arrow τ₁ τ₂ _ ih₂ =>
       intro e e' hr hs
       exact ⟨SN.unfold hr.1 hs, fun v hv => ih₂ (hr.2 v hv) (Step.appL hs)⟩
+  | mvar _ =>
+      intro e e' hr hs
+      exact SN.unfold hr hs
 
 /-! ## Neutral terms: anything that isn't a lambda -/
 
@@ -96,6 +102,9 @@ theorem Reducible.cr3 : ∀ {τ : Ty} {e : Term},
       refine ⟨?_, fun v hv => ?_⟩
       · exact SN.intro fun e' hs => (h e' hs).1
       · exact Reducible.cr3_arrow (@Reducible.preserves τ₁) ih₂ hne h hv.sn hv
+  | mvar _ =>
+      intro e _ h
+      exact SN.intro h
 
 /-! ## Variables are reducible at every type -/
 

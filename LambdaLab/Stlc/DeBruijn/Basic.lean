@@ -11,6 +11,11 @@ namespace LambdaLab.Stlc.DeBruijn
 inductive Ty where
   | base : Ty
   | arrow : Ty → Ty → Ty
+  /-- An opaque atom, carried across from the named variant's `Ty.mvar`. It has no typing rule of
+  its own — like `base`, it equals itself and nothing else — and exists so that the translation
+  from the named syntax is *injective*, which is what lets the named metatheory drop its
+  groundness side conditions. -/
+  | mvar : Nat → Ty
   deriving DecidableEq, Repr
 
 infixr:25 " ⇒ " => Ty.arrow
