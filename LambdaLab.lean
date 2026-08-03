@@ -49,7 +49,7 @@ import LambdaLab.Abstraction.Basic
 import LambdaLab.Abstraction.Bicat
 import LambdaLab.Abstraction.Parens
 import LambdaLab.Abstraction.Tokenizer
-import LambdaLab.Arith
+import LambdaLab.Arith.Pipeline
 import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example
 import LambdaLab.TypedLanguage.NameAlphabet
@@ -85,4 +85,4 @@ import LambdaLab.Parser.IsoParser.Tokenize
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
-import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Stlc.Named.Pipeline

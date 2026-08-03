@@ -18,7 +18,7 @@ chain from one to the other:
 
 `toLossyParserUnit` (in `LossyParser/Basic.lean`) is the degenerate case `f = g = id`.
 
-The worked instance is `Arith.lean`: `ATm` (parens-free terms), `truncTm` (the per-operator
+The worked instance is `Arith/Pipeline.lean`: `ATm` (parens-free terms), `truncTm` (the per-operator
 recursive map over the mixfix `Expr`), `injTm`/`atomize` (parenthesize compound operands),
 `truncTm_injTm` (the section law) — plugged into `arithLanguage` so `((((a))))` parses to `a`
 and re-renders as `a`. Practical notes for writing such instances (termination via `Expr.size`,

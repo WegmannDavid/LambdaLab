@@ -29,7 +29,7 @@ any aligned echoing `IsoParser` producing these trees into the `LossyParser` wit
 annotation.
 
 Instantiation checklist for a language: one `DecidableEq (E.Op)` projection instance (TC will not
-unfold `myEntry.Op` to the underlying enum by itself), then the bundle — see `Arith.lean`.
+unfold `myEntry.Op` to the underlying enum by itself), then the bundle — see `Arith/Pipeline.lean`.
 -/
 
 set_option linter.dupNamespace false

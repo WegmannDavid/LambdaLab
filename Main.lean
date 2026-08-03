@@ -1,5 +1,5 @@
-import LambdaLab.Arith
-import LambdaLab.Stlc.Named.Lang
+import LambdaLab.Arith.Pipeline
+import LambdaLab.Stlc.Named.Pipeline
 import LambdaLab.Pipeline.Pipeline
 
 /-!
