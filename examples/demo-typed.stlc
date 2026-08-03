@@ -1,4 +1,0 @@
-def id : ⋆ → ⋆ := λ x : ⋆ . x
-def const : ⋆ → ⋆ → ⋆ := λ x : ⋆ . ( λ y : ⋆ . x )
-def apply : ( ⋆ → ⋆ ) → ⋆ → ⋆ := λ f : ⋆ → ⋆ . ( λ x : ⋆ . f x )
-def idAgain : ⋆ → ⋆ := apply id

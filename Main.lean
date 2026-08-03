@@ -1,6 +1,6 @@
 import LambdaLab.Arith
 import LambdaLab.Stlc.Named.Lang
-import LambdaLab.Language.Pipeline
+import LambdaLab.Pipeline.Pipeline
 
 /-!
 # Vernacular demo — two plugged-in languages, one derived pipeline

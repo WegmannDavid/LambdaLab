@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Basic
-import LambdaLab.Language.Context
+import LambdaLab.TypedLanguage.Context
 
 /-!
 # Typing (named variables, hashmap context)

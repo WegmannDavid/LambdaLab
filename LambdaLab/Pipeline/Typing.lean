@@ -1,6 +1,6 @@
-import LambdaLab.Language.Vernacular
-import LambdaLab.Language.Context
-import LambdaLab.Language.Elaboratable
+import LambdaLab.Pipeline.Vernacular
+import LambdaLab.TypedLanguage.Context
+import LambdaLab.Pipeline.Elaboratable
 
 /-!
 # Elaborating a whole program

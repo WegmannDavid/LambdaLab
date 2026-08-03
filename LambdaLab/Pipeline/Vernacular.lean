@@ -1,4 +1,4 @@
-import LambdaLab.Language.Basic
+import LambdaLab.Pipeline.Basic
 import LambdaLab.NEList
 
 namespace LambdaLab.Language

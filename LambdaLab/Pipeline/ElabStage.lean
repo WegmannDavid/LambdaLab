@@ -1,7 +1,7 @@
-import LambdaLab.Language.Elaboratable
+import LambdaLab.Pipeline.Elaboratable
 import LambdaLab.Abstraction.Basic
-import LambdaLab.Language.Typing
-import LambdaLab.Language.Pipeline
+import LambdaLab.Pipeline.Typing
+import LambdaLab.Pipeline.Pipeline
 
 /-!
 # Elaboration as a pipeline stage — why `ElaboratableLanguage`'s laws are the ones they are

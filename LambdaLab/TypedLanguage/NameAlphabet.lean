@@ -21,10 +21,11 @@ already known to be well-formed surface tokens (`Stlc.Named.VName`), instead of 
 put proofs inside the data and force `Subtype.ext` into every lemma; a parameter costs nothing at
 use sites.
 
-It lives in `Language/` because that is the language interface, which now carries the elaboration
-side too (`Elaboratable.lean`). Nothing about the class is STLC-specific.
+It lives in `TypedLanguage/` because it is what a *typed* object language needs of a name, below
+and independent of any concrete syntax: it imports nothing but `Std.HashMap`, and `Pipeline/`
+depends on it rather than the other way round.
 
-The module is `NameAlphabet`, not `Name`: `Language.Name` is already the vernacular's
+The module is `NameAlphabet`, not `Name`: `Pipeline.Name` is already the vernacular's
 declaration-name type.
 
 ## Status: in use

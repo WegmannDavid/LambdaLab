@@ -1,9 +1,9 @@
-import LambdaLab.Language.NameAlphabet
+import LambdaLab.TypedLanguage.NameAlphabet
 
 /-!
 # Typing contexts, parametric in the name alphabet
 
-A context maps variable names to types. Copied here from `Language/Basic.lean` — the reference
+A context maps variable names to types. Copied here from `Pipeline/Basic.lean` — the reference
 interface, whose `Context Ty` is hard-wired to `Std.HashMap String Ty` — and generalized: the key
 type is now any `NameAlphabet N`.
 

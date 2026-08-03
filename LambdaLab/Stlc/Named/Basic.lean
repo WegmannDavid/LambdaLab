@@ -1,4 +1,4 @@
-import LambdaLab.Language.NameAlphabet
+import LambdaLab.TypedLanguage.NameAlphabet
 
 /-!
 # Simply Typed Lambda Calculus (STLC), named-variable presentation

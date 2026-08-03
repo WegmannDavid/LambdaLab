@@ -1,4 +1,4 @@
-import LambdaLab.Language.Biparser
+import LambdaLab.Pipeline.Biparser
 import LambdaLab.Abstraction.Tokenizer
 
 /-!

@@ -1,6 +1,6 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
-import LambdaLab.Language.NameAlphabet
+import LambdaLab.TypedLanguage.NameAlphabet
 
 namespace LambdaLab.Language
 

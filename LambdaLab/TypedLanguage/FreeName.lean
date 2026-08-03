@@ -1,5 +1,5 @@
-import LambdaLab.Language.Basic
-import LambdaLab.Language.NameAlphabet
+import LambdaLab.Pipeline.Basic
+import LambdaLab.TypedLanguage.NameAlphabet
 
 /-!
 # `FreeName` — the name alphabet a language gets from its reserved list
@@ -17,13 +17,21 @@ The fresh-name generator is the classic trick: a run of `'a'`s longer than every
 `used ++ reserved`. Length alone then settles both obligations — the result is absent from `used`
 (what `freshFor_not_in` asks) *and* absent from `reserved` (what makes it a `FreeName` at all).
 Working with lengths avoids having to reason about the reserved tokens' spellings.
+
+## A note on where this file sits
+
+It is filed under `TypedLanguage/` with `NameAlphabet` and `Context`, because a `NameAlphabet`
+instance is what it produces. But unlike those two it depends *upwards*, on `Pipeline/Basic.lean`:
+the alphabet it builds is carved out of the grammar's reserved `Token`s, and `Token` is concrete
+syntax. So this is the one module whose folder does not match its layer. Moving it to `Pipeline/`
+would restore the layering at the cost of separating it from the class it instantiates.
 -/
 
 namespace LambdaLab.Language
 
 open LambdaLab.Parser.IsoParser
 
--- `isFree` and `FreeName` are declared in `Basic.lean`, so that `Name` and
+-- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Name` and
 -- `Language.isVarName` can be phrased with them; this file adds the instance.
 
 /-! ## A supply of arbitrarily long tokens -/

@@ -1,5 +1,5 @@
-import LambdaLab.Language.Basic
-import LambdaLab.Language.Context
+import LambdaLab.Pipeline.Basic
+import LambdaLab.TypedLanguage.Context
 
 /-!
 # `ElaboratableLanguage` — a language whose programs can be given meaning

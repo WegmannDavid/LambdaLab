@@ -1,6 +1,6 @@
-import LambdaLab.Language.Pipeline
-import LambdaLab.Language.ElabStage
-import LambdaLab.Language.FreeName
+import LambdaLab.Pipeline.Pipeline
+import LambdaLab.Pipeline.ElabStage
+import LambdaLab.TypedLanguage.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!

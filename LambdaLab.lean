@@ -52,17 +52,20 @@ import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Arith
 import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example
-import LambdaLab.Language.NameAlphabet
-import LambdaLab.Language.Basic
-import LambdaLab.Language.Context
-import LambdaLab.Language.FreeName
-import LambdaLab.Language.Elaboratable
-import LambdaLab.Language.Typing
-import LambdaLab.Language.ElabStage
-import LambdaLab.Language.Biparser
-import LambdaLab.Language.Example
-import LambdaLab.Language.Pipeline
-import LambdaLab.Language.Vernacular
+import LambdaLab.TypedLanguage.NameAlphabet
+import LambdaLab.TypedLanguage.Context
+import LambdaLab.Pipeline.Basic
+-- NB: `FreeName` lives in `TypedLanguage/` but sits *above* `Pipeline.Basic`, since the alphabet
+-- it constructs is carved out of the grammar's reserved `Token`s. It is the one place the two
+-- folders' layering is inverted.
+import LambdaLab.TypedLanguage.FreeName
+import LambdaLab.Pipeline.Elaboratable
+import LambdaLab.Pipeline.Typing
+import LambdaLab.Pipeline.ElabStage
+import LambdaLab.Pipeline.Biparser
+import LambdaLab.Pipeline.Example
+import LambdaLab.Pipeline.Pipeline
+import LambdaLab.Pipeline.Vernacular
 import LambdaLab.NEList
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.IsoParser.Basic
