@@ -10,7 +10,7 @@ deciding equality, keying a context, and generating a name not already in use. T
 whole interface:
 
 * `DecidableEq` — substitution and typing compare names;
-* `Hashable` — contexts are `Std.HashMap`s keyed by names (`Language.Context`, which
+* `Hashable` — contexts are `Std.HashMap`s keyed by names (`TypedLanguage.Context`, which
   `Stlc.Named.Ctx` now *is*);
 * `freshFor` + `freshFor_not_in` — capture-avoiding substitution must rename a binder out of the
   way, so it needs a name outside any given finite set.
@@ -31,14 +31,14 @@ declaration-name type.
 ## Status: in use
 
 `Stlc.Named.Term`, `Ctx`, `HasType` and `infer` are all parametric in `N`, and `Stlc.Named.Ctx N`
-is *definitionally* `Language.Context N Ty` — which is what lets a parsed term, named by the
+is *definitionally* `TypedLanguage.Context N Ty` — which is what lets a parsed term, named by the
 tokens the grammar admits, be typed with no conversion at the interface boundary. The design fact
 this file set out to establish held up: **the interface is this small.** Across `Stlc/Named`,
 `String`-specific code was confined to one 30-line block (the fresh-name generator and its proof,
 below), used at three call sites; everything downstream is simply pinned at `String`.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.TypedLanguage
 
 /-- A type usable as variable names: decidable equality, hashable, and an inexhaustible supply. -/
 class NameAlphabet (N : Type) extends Hashable N where
@@ -89,4 +89,4 @@ instance : NameAlphabet String where
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in
 
-end LambdaLab.Language
+end LambdaLab.TypedLanguage

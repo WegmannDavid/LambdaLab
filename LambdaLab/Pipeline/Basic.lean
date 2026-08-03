@@ -2,9 +2,10 @@ import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
 import LambdaLab.TypedLanguage.NameAlphabet
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
 
 open LambdaLab.Parser.IsoParser
+open LambdaLab.TypedLanguage (NameAlphabet)
 open LambdaLab.Parser.LossyParser (LossyParser)
 
 /-! ## Lexemes
@@ -146,4 +147,4 @@ abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
 
 instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

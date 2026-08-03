@@ -45,7 +45,9 @@ the abstract type, and an ill-typed pair has no fiber to pick from. That is why
 language that rejects anything.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
+
+open LambdaLab.TypedLanguage (Context)
 
 /-- A `Language` together with its semantics: an elaboration relation, an algorithm establishing
 it, and enough structure to run it backwards. -/
@@ -89,4 +91,4 @@ structure ElaboratableLanguage extends Language where
     (∃ t τ, Elaborates Γ t t' τ τ') →
     Elaborates Γ (quote t' τ').1 t' (quote t' τ').2 τ'
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

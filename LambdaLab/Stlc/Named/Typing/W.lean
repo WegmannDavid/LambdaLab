@@ -6,7 +6,7 @@ import LambdaLab.Substitution.Unification.MGU
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language (NameAlphabet)
+open LambdaLab.TypedLanguage (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -453,7 +453,7 @@ theorem W_principal_of_eq {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ σ' : Subst 
 
 `Elaboration`/`ElaborationResult` used to live in a general `Language` interface. They are stated
 here instead, at STLC, because nothing else ever used them: the general interface's only instance
-was STLC's, and its parser-free `Language` struct has been superseded by `Language.Language`,
+was STLC's, and its parser-free `Language` struct has been superseded by `Pipeline.Language`,
 whose elaboration side (`ElaboratableLanguage`) is deliberately substitution-free.
 
 What is kept is the part that interface got right and the synthetic one cannot say: `mgu` demands

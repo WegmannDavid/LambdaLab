@@ -22,7 +22,7 @@ alphabet agreement between the two stages is by construction, not coincidence. N
 tokenizer is Agda-style: tokens must be whitespace-separated — write `( x )`, not `(x)`.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
 
 open LambdaLab.Abstraction
 
@@ -43,4 +43,4 @@ def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.pipeline.realize (L.pipeline.default (a := prog)))
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

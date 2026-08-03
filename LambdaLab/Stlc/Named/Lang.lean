@@ -10,7 +10,7 @@ import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Parser.Numeral
 
 /-!
-# STLC as a `Language.Language` — types land in `Stlc.Ty`
+# STLC as a `Pipeline.Language` — types land in `Stlc.Ty`
 
 The lambda-calculus instance. Two things make the surface *complete* for the semantic types,
 which is what lets the type parser produce `Stlc.Ty` itself rather than a syntax tree:
@@ -45,35 +45,35 @@ same engine at different entries, and the binder's `: T` is an ordinary cross-en
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Language
+open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Pipeline
 open LambdaLab.Parser.Truncation.Mixfix
 open LambdaLab.Parser.Numeral (isDigitChar isNatTok natTok natOfTok)
 
 /-! ## The token alphabet -/
 
-def tkS (s : String) (h : isToken isSep s = true := by decide) : Language.Token := ⟨s, h⟩
+def tkS (s : String) (h : isToken isSep s = true := by decide) : Pipeline.Token := ⟨s, h⟩
 
 /-- Grammar name-parts and vernacular keywords: never variables. -/
-def sReserved : List Language.Token :=
+def sReserved : List Pipeline.Token :=
   [tkS "(", tkS ")", tkS "λ", tkS ".", tkS ":", tkS "→", tkS "⋆", tkS "def", tkS ":="]
 
-abbrev isVarTok (t : Language.Token) : Bool := isFree sReserved t
+abbrev isVarTok (t : Pipeline.Token) : Bool := isFree sReserved t
 
 /-- Digits are separator-free for this vernacular (`isSep` is whitespace). -/
 theorem digit_not_sep : ∀ c, isDigitChar c = true → isSep c = false :=
   fun _ h => LambdaLab.Parser.Numeral.isDigitChar_not_whitespace h
 
 /-- `?` followed by at least one decimal digit. -/
-def isMvarTok (t : Language.Token) : Bool := isNatTok '?' t
+def isMvarTok (t : Pipeline.Token) : Bool := isNatTok '?' t
 
 /-- Type atoms: the base type `⋆`, and metavariables `?n`. -/
-def isTyAtom (t : Language.Token) : Bool := (t.val == "⋆") || isMvarTok t
+def isTyAtom (t : Pipeline.Token) : Bool := (t.val == "⋆") || isMvarTok t
 
 /-- The token spelling `?n`. -/
-def mvarTok (n : Nat) : Language.Token := natTok '?' (by decide) digit_not_sep n
+def mvarTok (n : Nat) : Pipeline.Token := natTok '?' (by decide) digit_not_sep n
 
 /-- Read the index back out of a `?n` token. -/
-def tokMvar (t : Language.Token) : Nat := natOfTok t
+def tokMvar (t : Pipeline.Token) : Nat := natOfTok t
 
 theorem tokMvar_mvarTok (n : Nat) : tokMvar (mvarTok n) = n :=
   LambdaLab.Parser.Numeral.natOfTok_natTok _ _ _ n
@@ -96,7 +96,7 @@ inductive BSym | paren
 inductive TSym | paren | arrow
   deriving DecidableEq, Repr
 
-def tmEntry : Entry Language.Token SEnt where
+def tmEntry : Entry Pipeline.Token SEnt where
   Op := SSym
   operator
     | .paren => .closed (.cons (tkS "(") .tm (.last (tkS ")")))
@@ -127,7 +127,7 @@ def tmEntry : Entry Language.Token SEnt where
         | (subst ht; decide)
         | exact ht.elim
 
-def varEntry : Entry Language.Token SEnt where
+def varEntry : Entry Pipeline.Token SEnt where
   Op := BSym
   operator | .paren => .closed (.cons (tkS "(") .var (.last (tkS ")")))
   ops := [.paren]
@@ -149,7 +149,7 @@ def varEntry : Entry Language.Token SEnt where
         List.mem_cons, List.not_mem_nil, or_false] at ht
     rcases ht with rfl | rfl <;> decide
 
-def tyEntry : Entry Language.Token SEnt where
+def tyEntry : Entry Pipeline.Token SEnt where
   Op := TSym
   operator
     | .paren => .closed (.cons (tkS "(") .ty (.last (tkS ")")))
@@ -178,7 +178,7 @@ def tyEntry : Entry Language.Token SEnt where
         | (subst ht; decide)
         | exact ht.elim
 
-def stlcGrammar : Grammar Language.Token where
+def stlcGrammar : Grammar Pipeline.Token where
   Ent := SEnt
   entry | .tm => tmEntry | .var => varEntry | .ty => tyEntry
   interiorTerminates := by
@@ -427,7 +427,7 @@ theorem solveCert_isSome {Γ : Ctx VName} {t : Term VName} {τ : Ty}
   rw [solveCert, certAux_isSome]; exact h
 
 /-- **STLC as an elaboratable language**, elaborated by constraint generation. -/
-def stlcElaboratable : Language.ElaboratableLanguage where
+def stlcElaboratable : Pipeline.ElaboratableLanguage where
   toLanguage := stlcLanguage
   Elaborates Γ t t' τ τ' := solveStable Γ t τ = some (t', τ')
   elaborates_unique h₁ h₂ := by

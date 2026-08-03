@@ -4,7 +4,7 @@ import LambdaLab.TypedLanguage.Context
 /-!
 # Typing (named variables, hashmap context)
 
-The context is `Language.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
+The context is `TypedLanguage.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
 (overrides). Lookup is `get?`.
 
 ## Parametric in the name alphabet
@@ -13,8 +13,8 @@ The context is `Language.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `i
 too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed context
 cannot receive one without a conversion at the boundary.
 
-`Ctx N` is therefore literally `Language.Context N Ty`, not a copy of it. That is deliberate:
-`ElaboratableLanguage.Elaborates` takes a `Language.Context`, so anything short of definitional
+`Ctx N` is therefore literally `TypedLanguage.Context N Ty`, not a copy of it. That is deliberate:
+`ElaboratableLanguage.Elaborates` takes a `TypedLanguage.Context`, so anything short of definitional
 equality would put a bridge on the interface boundary, which is exactly what the name parameter
 exists to remove.
 
@@ -25,7 +25,7 @@ than generalized because pinning is free and generalizing costs a sweep through 
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language (NameAlphabet Context)
+open LambdaLab.TypedLanguage (NameAlphabet Context)
 
 variable {N : Type} [NameAlphabet N]
 

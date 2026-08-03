@@ -1,7 +1,7 @@
 import LambdaLab.Pipeline.Basic
 import LambdaLab.NEList
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
 
 /-- A single declaration: `def NAME : TYPE := BODY`.
 
@@ -31,4 +31,4 @@ also exactly the source shape `iMany1` consumes, so the vernacular parser lines 
 with no adapter. -/
 abbrev Program (L : Language) := NEList (Command L)
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

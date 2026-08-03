@@ -9,7 +9,7 @@ discharged by `unify` from the unification module. -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language (NameAlphabet)
+open LambdaLab.TypedLanguage (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

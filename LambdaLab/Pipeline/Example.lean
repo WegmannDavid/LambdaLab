@@ -11,7 +11,9 @@ what a language author actually has to supply — and that the file parser, prin
 round-trip proof all come back **for free**.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
+
+open LambdaLab.TypedLanguage (Context)
 
 open LambdaLab.Parser.IsoParser
 
@@ -147,4 +149,4 @@ example (p : ElaborableProgram trivialElaboratable)
     trivialElaboratable.pipeline.abstract (trivialElaboratable.pipeline.realize ann) = some p :=
   trivialElaboratable.pipeline.abstract_realize p ann
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

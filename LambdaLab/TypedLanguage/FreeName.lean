@@ -27,12 +27,12 @@ syntax. So this is the one module whose folder does not match its layer. Moving 
 would restore the layering at the cost of separating it from the class it instantiates.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.TypedLanguage
 
-open LambdaLab.Parser.IsoParser
+open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
 
 -- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Name` and
--- `Language.isVarName` can be phrased with them; this file adds the instance.
+-- `Pipeline.Language.isVarName` can be phrased with them; this file adds the instance.
 
 /-! ## A supply of arbitrarily long tokens -/
 
@@ -79,4 +79,4 @@ instance instNameAlphabetFreeName (reserved : List Token) : NameAlphabet (FreeNa
       List.mem_map.mpr ⟨_, hmem, rfl⟩
     exact aRun_maxLen_not_mem (List.mem_append_left _ hval)
 
-end LambdaLab.Language
+end LambdaLab.TypedLanguage

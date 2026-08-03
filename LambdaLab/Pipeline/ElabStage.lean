@@ -37,7 +37,9 @@ List Char ⇝ List Token ⇝ Program ⇝ elaborated Program
 `ElaboratableLanguage` and nothing else.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
+
+open LambdaLab.TypedLanguage (Context)
 
 open LambdaLab.Abstraction
 
@@ -110,4 +112,4 @@ def ElaboratableLanguage.renderElaborated (L : ElaboratableLanguage) (p' : Elabo
     String :=
   String.ofList (L.pipeline.realize (L.pipeline.default (a := p')))
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

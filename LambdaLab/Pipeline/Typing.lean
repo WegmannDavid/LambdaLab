@@ -35,7 +35,9 @@ nothing determines a `τ'` for it. A language that wants leaking simply permits 
 takes no position.
 -/
 
-namespace LambdaLab.Language
+namespace LambdaLab.Pipeline
+
+open LambdaLab.TypedLanguage (Context)
 
 variable {L : ElaboratableLanguage}
 
@@ -177,4 +179,4 @@ theorem Program.quote_elaborates {p p' : Program L.toLanguage}
   obtain ⟨⟨n, τ', e'⟩, cs'⟩ := p'
   exact Commands.quote_elaborates h
 
-end LambdaLab.Language
+end LambdaLab.Pipeline

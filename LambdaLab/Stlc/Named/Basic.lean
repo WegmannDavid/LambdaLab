@@ -19,7 +19,7 @@ the α-renaming branch, we recurse on `body.rename y z` whose size equals
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Language (NameAlphabet freshFor freshFor_not_in)
+open LambdaLab.TypedLanguage (NameAlphabet freshFor freshFor_not_in)
 
 variable {N : Type} [NameAlphabet N]
 
