@@ -1,4 +1,4 @@
-import LambdaLab.TypedLanguage.NameAlphabet
+import LambdaLab.TypeSystem.NameAlphabet
 
 /-!
 # Simply Typed Lambda Calculus (STLC), named-variable presentation
@@ -19,7 +19,7 @@ the α-renaming branch, we recurse on `body.rename y z` whose size equals
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypedLanguage (NameAlphabet freshFor freshFor_not_in)
+open LambdaLab.TypeSystem (NameAlphabet freshFor freshFor_not_in)
 
 variable {N : Type} [NameAlphabet N]
 

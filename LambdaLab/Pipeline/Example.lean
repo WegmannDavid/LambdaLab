@@ -1,6 +1,6 @@
 import LambdaLab.Pipeline.Pipeline
 import LambdaLab.Pipeline.ElabStage
-import LambdaLab.TypedLanguage.FreeName
+import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
@@ -13,7 +13,7 @@ round-trip proof all come back **for free**.
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.TypedLanguage (Context)
+open LambdaLab.TypeSystem (Context)
 
 open LambdaLab.Parser.IsoParser
 

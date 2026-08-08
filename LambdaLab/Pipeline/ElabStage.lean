@@ -39,7 +39,7 @@ List Char ⇝ List Token ⇝ Program ⇝ elaborated Program
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.TypedLanguage (Context)
+open LambdaLab.TypeSystem (Context)
 
 open LambdaLab.Abstraction
 

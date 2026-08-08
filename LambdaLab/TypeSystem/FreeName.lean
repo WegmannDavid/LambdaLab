@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.TypedLanguage.NameAlphabet
+import LambdaLab.TypeSystem.NameAlphabet
 
 /-!
 # `FreeName` — the name alphabet a language gets from its reserved list
@@ -20,14 +20,14 @@ Working with lengths avoids having to reason about the reserved tokens' spelling
 
 ## A note on where this file sits
 
-It is filed under `TypedLanguage/` with `NameAlphabet` and `Context`, because a `NameAlphabet`
+It is filed under `TypeSystem/` with `NameAlphabet` and `Context`, because a `NameAlphabet`
 instance is what it produces. But unlike those two it depends *upwards*, on `Pipeline/Basic.lean`:
 the alphabet it builds is carved out of the grammar's reserved `Token`s, and `Token` is concrete
 syntax. So this is the one module whose folder does not match its layer. Moving it to `Pipeline/`
 would restore the layering at the cost of separating it from the class it instantiates.
 -/
 
-namespace LambdaLab.TypedLanguage
+namespace LambdaLab.TypeSystem
 
 open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
 
@@ -79,4 +79,4 @@ instance instNameAlphabetFreeName (reserved : List Token) : NameAlphabet (FreeNa
       List.mem_map.mpr ⟨_, hmem, rfl⟩
     exact aRun_maxLen_not_mem (List.mem_append_left _ hval)
 
-end LambdaLab.TypedLanguage
+end LambdaLab.TypeSystem

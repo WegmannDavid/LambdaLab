@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.TypedLanguage.Context
+import LambdaLab.TypeSystem.Context
 
 /-!
 # `ElaboratableLanguage` — a language whose programs can be given meaning
@@ -47,7 +47,7 @@ language that rejects anything.
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.TypedLanguage (Context)
+open LambdaLab.TypeSystem (Context)
 
 /-- A `Language` together with its semantics: an elaboration relation, an algorithm establishing
 it, and enough structure to run it backwards. -/

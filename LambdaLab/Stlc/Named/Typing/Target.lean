@@ -14,7 +14,7 @@ a specification to compare them against.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypedLanguage (NameAlphabet)
+open LambdaLab.TypeSystem (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

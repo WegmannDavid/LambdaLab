@@ -6,7 +6,7 @@ import LambdaLab.Substitution.Unification.MGU
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypedLanguage (NameAlphabet)
+open LambdaLab.TypeSystem (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

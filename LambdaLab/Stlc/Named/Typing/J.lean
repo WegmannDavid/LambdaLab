@@ -68,7 +68,7 @@ left to a side effect, so a rule may *name* the variable it draws:
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypedLanguage (NameAlphabet)
+open LambdaLab.TypeSystem (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

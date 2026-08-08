@@ -42,7 +42,7 @@ Completeness (`D ⟹ S`, weakened) is *not* here; see the end of the file for wh
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypedLanguage (NameAlphabet)
+open LambdaLab.TypeSystem (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -70,7 +70,7 @@ theorem HasTypeS.cong {Γ Γ' : SCtx N} {e : Term N} {τ : Ty}
   | app _ _ ih₀ ih₁ => exact HasTypeS.app (ih₀ hΓ) (ih₁ hΓ)
   | abs _ ih =>
       exact HasTypeS.abs (ih (fun y => by
-        rw [TypedLanguage.Context.get?_cons, TypedLanguage.Context.get?_cons, hΓ]))
+        rw [TypeSystem.Context.get?_cons, TypeSystem.Context.get?_cons, hΓ]))
 
 /-! ## Consistency: `S ⟹ D` -/
 

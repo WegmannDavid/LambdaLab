@@ -3,7 +3,7 @@ import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Target
 import LambdaLab.Pipeline.ElabStage
 import LambdaLab.Pipeline.Biparser
-import LambdaLab.TypedLanguage.FreeName
+import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix

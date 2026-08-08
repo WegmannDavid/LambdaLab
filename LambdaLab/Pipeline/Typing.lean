@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Vernacular
-import LambdaLab.TypedLanguage.Context
+import LambdaLab.TypeSystem.Context
 import LambdaLab.Pipeline.Elaboratable
 
 /-!
@@ -37,7 +37,7 @@ takes no position.
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.TypedLanguage (Context)
+open LambdaLab.TypeSystem (Context)
 
 variable {L : ElaboratableLanguage}
 
