@@ -19,11 +19,14 @@ because of it:
   context lookup, so `Term N` is typeable for any name alphabet.
 * `Step` is **`String`-only**, and so is everything above it. `Stlc.Named.Step` is declared at
   `Term String`, because the reduction relation goes through capture-avoiding substitution, which
-  needs the fresh-name generator. That pins `TypeSystem`, `LawfulTypeSystem` and `MVars` at
-  `N := String` too — not a choice, just the narrowest field showing through.
+  needs the fresh-name generator. That pins `TypeSystem`, `LawfulTypeSystem`, `MVars` and
+  `LawfulMVars` at `N := String` too — not a choice, just the narrowest field showing through.
 * `MVars` needs no new work at all: `HasSubst (Term N) Ty` and `HasSubst Ty Ty` already exist, so
   both fields are `inferInstance` and the bundled copies are definitionally the canonical ones,
   which is what `MVars`' own docstring asks for.
+* `LawfulMVars` is discharged by `HasType.subst`, which was proved generic in `N` long before the
+  interface asked for it. Both laws the interface demands — subject reduction and stability under
+  substitution — were already theorems here; neither needed a line of new proof.
 
 ## `DecideableElaborate` is deliberately absent
 
@@ -68,6 +71,12 @@ the copies are then definitionally canonical and lemmas about either apply to bo
 instance instMVars : TypeSystem.MVars String (Term String) Ty where
   tmSubst := inferInstance
   tySubst := inferInstance
+
+/-- The second instance with content: stability of typing under substitution, discharged by
+`HasType.subst`. Like `Preservation` this is a field, so it cannot be skipped — and like it, the
+proof already existed, generic in `N`, before the interface asked for it. -/
+instance instLawfulMVars : TypeSystem.LawfulMVars String (Term String) Ty where
+  Stability σ h := HasType.subst h σ
 
 /-! ## The fields are definitionally what they came from
 

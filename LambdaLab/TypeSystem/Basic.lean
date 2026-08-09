@@ -84,7 +84,26 @@ for `HasSubst Ty Ty` — it wins by being declared later, and it resolves the un
 front and leaves the projections as the fallback they should be. -/
 attribute [reducible, instance low] MVars.tmSubst MVars.tySubst
 
-class DecideableElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars N Tm Ty where
+/-- `MVars` supplies two substitution operations and demands nothing of them. This adds the one
+law that makes them mean something: **typing is stable under substitution**.
+
+Without it an `MVars` instance may pair a perfectly good `HasType` with a `pSubst` that has no
+relation to it, and `DecideableElaborate` below would still typecheck — its `MGUProp` predicate is
+built entirely out of `pSubst`, so a nonsense `pSubst` yields a nonsense specification that an
+implementation could satisfy vacuously. Stability is what ties the algorithmic side back to the
+judgement.
+
+Same reasoning as `Preservation` being a field of `LawfulTypeSystem`: put the law where an
+instance cannot be built without discharging it, and keep the bare class instanceable so
+`pSubst` is usable before anyone proves anything about it. -/
+class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars N Tm Ty where
+  /-- Applying a substitution to context, term and type at once preserves the typing derivation.
+  For a system whose types carry metavariables this is the workhorse: it is what lets a solved
+  constraint set be *applied* and still describe a typing. -/
+  Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Ty),
+    HasType Γ t τ → HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)
+
+class DecideableElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
   /-- Decideable typing judgement. -/
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
       MGUProp (fun σ : Subst Ty =>
