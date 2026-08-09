@@ -124,7 +124,9 @@ def elaborate (Γ : Ctx N) (t : Term N) (τ : Ty) :
   | none => none
   | some σ => some ⟨σ, elabSubst_sound h, by sorry⟩
 
-/-- **The one missing lemma**, and the whole of what stands between `elaborate` and being done.
+/-- **Proved**, in `Typing/JComplete.lean` — see `generationComplete`. It was long described here
+as "the one missing lemma"; it was missing, but it was never the whole of what stands between
+`elaborate` and being done. See the second half of this docstring.
 
 `unify_mgu` already says the computed σ is most general among *unifiers of the constraints*. To
 turn that into most general among *typings*, one needs the converse of `HasTypeJ.sound`: every
@@ -132,13 +134,16 @@ substitution that types the triple satisfies the generated constraints.
 
 It cannot be σ' itself — the constraints mention the variables `gen` drew, about which σ' says
 nothing — so the statement produces an extension agreeing with σ' on everything below the starting
-supply. Proving it is an induction on the `HasTypeJ` derivation, needing a bound on which variables
-the constraints mention (the analogue of `HasTypeJ.supply_le`) and a lemma that substitutions
-agreeing below `n` act alike on types whose variables are below `n`.
+supply. The proof is an induction on the `HasTypeJ` derivation, needing a bound on which variables
+the constraints mention (`HasTypeJ.fresh_bound`, the analogue of `HasTypeJ.supply_le`) and a notion
+of substitutions agreeing below `n` (`AgreeBelow`). One wrinkle the sketch missed: this checking
+form does not induct, because the `lam` case would have to split a declared `τ` that may be a bare
+metavariable. `JComplete.complete_aux` is the synthesising form that does.
 
-**And that is not the end of it.** `unify_mgu` then gives `MoreGeneral σ σ''`, and transferring
-that to σ' needs the generality witness patched above the threshold — sound only if the *pruned*
-substitution's **range** also stays below it. It need not: unifying `(?0, ⋆ → ?d)` for a drawn `?d`
+**And that is not the end of it — this half remains open.** `unify_mgu` then gives
+`MoreGeneral σ σ''`, and transferring that to σ' needs the generality witness patched above the
+threshold — sound only if the *pruned* substitution's **range** also stays below it. It need not:
+unifying `(?0, ⋆ → ?d)` for a drawn `?d`
 binds the source variable `?0` to a type mentioning `?d`. Establishing that bound is the same
 obstacle `W_principal` has, reached by a different road, and it is the reason this conjunct is not
 a short proof. -/
