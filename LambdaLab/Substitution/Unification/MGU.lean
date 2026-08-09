@@ -129,3 +129,43 @@ theorem unify_mgu_unifier {α : Type} [Signature α] :
   refine unify_mgu eqs σ hu u.toSubst (fun p hp => ?_)
   have h := hunif p hp
   rwa [Unifier.apply_eq_pSubst_toSubst, Unifier.apply_eq_pSubst_toSubst] at h
+
+/-! ## The result of a most-general-unifier computation, as a type
+
+`unify_unifies`, `unify_mgu` and `unify_complete` are three separate statements about the same
+call. `MGUProp` is the type that holds whichever of them applies, so a caller pattern-matches once
+instead of chaining an `Option` with two side lemmas — and cannot forget the negative case, since
+it is a constructor rather than a `none`. -/
+
+/-- A decision about `P` over substitutions, carrying evidence either way: the **most general** σ
+satisfying it, or a proof that none does. `MoreGeneral σ σ'` says every competing solution factors
+through σ — there is a τ with `pSubst t σ' = pSubst (pSubst t σ) τ` for all `t`.
+
+Both constructors name *what is the case*, never how it was established. That is deliberate:
+`Subst 𝕊` is infinite, so `impossible` can never come from enumeration — it comes from unification
+failing structurally, on an occurs check or a rigid-rigid clash. Any name suggesting an exhaustive
+search would be wrong in exactly the case this type exists for. `impossible` is likewise a *proof
+of absence*, not a failure to find one; that distinction is the whole content of this type over
+`Option`.
+
+Strictly stronger than `Decidable (∃ σ, P σ)`, which is why it is worth writing down: the map
+`MGUProp P → Decidable (∃ σ, P σ)` is definable, the converse is not, because `∃` lives in `Prop`
+and `isTrue` therefore carries no extractable σ. `𝕊` is implicit, being determined by `P`. -/
+inductive MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) where
+  /-- A σ satisfying `P` that every other solution factors through. -/
+  | mgu (σ : Subst 𝕊) (hσ : P σ) (hmgu : ∀ σ', P σ' → MoreGeneral σ σ') : MGUProp P
+  /-- No σ satisfies `P`. -/
+  | impossible (h : ∀ σ, ¬ P σ) : MGUProp P
+
+/-- **`unify` packaged as an `MGUProp`.** Both constructors come out of theorems already proved
+here: success gives `unify_unifies` and `unify_mgu`, and failure gives the contrapositive of
+`unify_complete` — if any σ unified, `unify` could not have returned `none`.
+
+This is the intended inhabitant, and the reason the type is stated over an arbitrary predicate
+rather than over `Subst.Unifies` directly: `Stlc/Named/Typing/Target.lean` wants the same shape
+for the typing predicate, where the `impossible` branch is still open. -/
+def unifyMGU {α : Type} [Signature α] (eqs : Equations α) :
+    MGUProp (fun σ : Subst α => Subst.Unifies σ eqs) :=
+  match h : unify eqs with
+  | some σ => .mgu σ (unify_unifies eqs σ h) (fun σ' hσ' => unify_mgu eqs σ h σ' hσ')
+  | none => .impossible (fun σ hσ => unify_complete eqs σ hσ h)

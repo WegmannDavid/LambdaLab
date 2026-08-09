@@ -1,5 +1,5 @@
 import LambdaLab.TypeSystem.Context
-import LambdaLab.Substitution.Basic
+import LambdaLab.Substitution.Unification.MGU
 
 /-!
 # `TypeSystem` — a named object language bundled with its metatheory
@@ -83,30 +83,6 @@ for `HasSubst Ty Ty` — it wins by being declared later, and it resolves the un
 `Tm` by picking whatever single `MVars` instance is in scope. `low` puts the real instance back in
 front and leaves the projections as the fallback they should be. -/
 attribute [reducible, instance low] MVars.tmSubst MVars.tySubst
-
-/-- A decision about `P` over substitutions, carrying evidence either way: the **most general** σ
-satisfying it, or a proof that none does. `MoreGeneral σ σ'` says every competing solution factors
-through σ — there is a τ with `pSubst t σ' = pSubst (pSubst t σ) τ` for all `t`.
-
-Both constructors name *what is the case*, never how it was established. That is deliberate:
-`Subst 𝕊` is infinite, so `impossible` can never come from enumeration — it comes from unification
-failing structurally, on an occurs check or a rigid-rigid clash. Any name suggesting an exhaustive
-search would be wrong in exactly the case this type exists for. `impossible` is likewise a *proof
-of absence*, not a failure to find one; that distinction is the whole content of this type over
-`Option`.
-
-Strictly stronger than `Decidable (∃ σ, P σ)`, which is why it is worth writing down: the map
-`MGUProp P → Decidable (∃ σ, P σ)` is definable, the converse is not, because `∃` lives in `Prop`
-and `isTrue` therefore carries no extractable σ. `𝕊` is implicit, being determined by `P`.
-
-This is `Stlc/Named/Typing/Target.lean`'s `elaborationResult` with the type system abstracted out;
-that one is the same pair of conjuncts as a subtype, over the STLC `Ty`. Its most-generality
-conjunct is one of the open sorries, so expect `mgu` to be the expensive constructor. -/
-inductive MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) where
-  /-- A σ satisfying `P` that every other solution factors through. -/
-  | mgu (σ : Subst 𝕊) (hσ : P σ) (hmgu : ∀ σ', P σ' → MoreGeneral σ σ') : MGUProp P
-  /-- No σ satisfies `P`. -/
-  | impossible (h : ∀ σ, ¬ P σ) : MGUProp P
 
 class DecideableElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars N Tm Ty where
   /-- Decideable typing judgement. -/
