@@ -95,8 +95,21 @@ judgement.
 
 Same reasoning as `Preservation` being a field of `LawfulTypeSystem`: put the law where an
 instance cannot be built without discharging it, and keep the bare class instanceable so
-`pSubst` is usable before anyone proves anything about it. -/
-class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars N Tm Ty where
+`pSubst` is usable before anyone proves anything about it.
+
+**Extending both parents is what joins the hierarchy back together, and it is load-bearing.**
+`MVars` and `LawfulTypeSystem` each extend `TypeSystem`, so taken separately they carry *different*
+`toTypeSystem` fields — `[LawfulTypeSystem …] [MVars …]` as two binders gives two unrelated
+judgements, and feeding an elaboration result to `Preservation` is then a type error, which is the
+one thing this interface exists to make possible. Extending both here makes Lean flatten the
+diamond: `#print` shows the constructor taking `[toMVars]` plus the two proofs, with
+`toLawfulTypeSystem` derived rather than stored, so there is exactly one `HasType` and one `Step`.
+Checked: `L.toMVars.toTypeSystem = L.toLawfulTypeSystem.toTypeSystem` by `rfl`, and the
+elaborate-then-preserve example that failed before now compiles.
+
+The consequence for callers is that the joint class is the one to ask for. Requesting
+`LawfulTypeSystem` and `MVars` as separate parameters reintroduces the split. -/
+class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars N Tm Ty, LawfulTypeSystem N Tm Ty where
   /-- Applying a substitution to context, term and type at once preserves the typing derivation.
   For a system whose types carry metavariables this is the workhorse: it is what lets a solved
   constraint set be *applied* and still describe a typing. -/
