@@ -111,8 +111,14 @@ theorem elabSubst_sound {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
     rw [Term.tyPSubst_restrictBelow t σ₀ _ htf, Signature.pSubst_restrictBelow σ₀ _ τ hτf]
     exact HasType.cong (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ₀ _ hΓf y).symm) hsound
 
-/-- **The target**: the same computation, carrying both conjuncts. Only the second is open. -/
-def elaborate (Γ : Ctx N) (hΓ : Γ.Ground) (t : Term N) (τ : Ty) :
+/-- **The target**: the same computation, carrying both conjuncts. Only the second is open.
+
+No groundness side condition on `Γ`. There used to be one, and it never did anything: the body
+never mentioned it, and neither `elabSubst` nor `elabSubst_sound` needs it. It could not have been
+load-bearing, since the specification applies σ to `Γ` — a context still holding metavariables is
+exactly what elaboration is supposed to be able to constrain. Dropping it also lets this fill
+`TypeSystem.DecideableElaborate.elaborate`, whose field takes an arbitrary context. -/
+def elaborate (Γ : Ctx N) (t : Term N) (τ : Ty) :
     Option (elaborationResult Γ t τ) :=
   match h : elabSubst Γ t τ with
   | none => none
@@ -146,8 +152,8 @@ def GenerationComplete : Prop :=
 
 /-- **The one remaining obligation — completeness.** `none` only when nothing works. -/
 def Complete : Prop :=
-  ∀ (Γ : Ctx N) (hΓ : Γ.Ground) (t : Term N) (τ : Ty),
+  ∀ (Γ : Ctx N) (t : Term N) (τ : Ty),
     (∃ σ, HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) →
-    (elaborate Γ hΓ t τ).isSome
+    (elaborate Γ t τ).isSome
 
 end LambdaLab.Stlc.Named
