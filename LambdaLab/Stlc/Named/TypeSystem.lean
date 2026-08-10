@@ -2,6 +2,7 @@ import LambdaLab.TypeSystem.Basic
 import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
 import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Stlc.Named.Typing.JComplete
 
 /-!
 # STLC against the `TypeSystem` interface
@@ -28,18 +29,24 @@ because of it:
   interface asked for it. Both laws the interface demands — subject reduction and stability under
   substitution — were already theorems here; neither needed a line of new proof.
 
-## `DecideableElaborate` is deliberately absent
+* `DecideableElaborate` is discharged by `elabSolution`, whose two branches are `elabSubst_sound`
+  and `no_typing_of_elabSubst_none`. The second is the one that took work: `none` has to mean
+  *there is no typing*, not *this algorithm found none*.
 
-It cannot be filled today, and sorrying it would be worse than leaving it out. Its `elaborate`
-returns `MGUProp`, whose two constructors are exactly the two open problems in this development:
+## `PrincipalElaborate` is deliberately absent
 
-* `mgu` needs the most-generality conjunct — `Target.elaborate`'s single `sorry`;
-* `impossible` needs *completeness*, a proof that no substitution types the term. The existing
-  elaborator returns `Option` and answers `none` on failure, which is the weaker claim "I found
-  nothing", not "there is nothing".
+The one class still unfilled, and it cannot be filled today. Its single field asks that the
+returned substitution be at least as general as every other typing substitution — the open
+conjunct in `Target.elaborate`, and the same wall `W_principal` hits from the other side.
 
-So the honest report is that STLC satisfies the metatheory half of the interface unconditionally
-and the algorithmic half not yet. `Target.elaborate` is the thing to promote once those close.
+`DecideableElaborate` used to carry that demand too, in an `MGUProp`-valued field, which is why
+this file once reported the whole algorithmic half as missing. It was not: deciding typeability
+and finding a *principal* solution are separate claims, and only the second is open. Splitting the
+class along that line — the same split `LawfulTypeSystem` makes against `TypeSystem` — is what let
+the decision be recorded as soon as it was proved instead of waiting on principality.
+
+So the honest report is now: STLC satisfies the metatheory half of the interface unconditionally,
+decides elaboration unconditionally, and does not yet claim principality.
 -/
 
 namespace LambdaLab.Stlc.Named
@@ -78,6 +85,15 @@ proof already existed, generic in `N`, before the interface asked for it. -/
 instance instLawfulMVars : TypeSystem.LawfulMVars String (Term String) Ty where
   Stability σ h := HasType.subst h σ
 
+/-- The third instance with content, and the first that is algorithmic rather than metatheoretic:
+elaboration *decides* typeability. `elabSolution` bundles `elabSubst_sound` with
+`no_typing_of_elabSubst_none`, so both halves are discharged by existing theorems — the `none`
+branch is a proof that nothing types the triple, not a report that nothing was found.
+
+Generic in `N` like the judgement, but declared at `String` to sit under `LawfulMVars`. -/
+instance instDecideableElaborate : TypeSystem.DecideableElaborate String (Term String) Ty where
+  elaborate := elabSolution
+
 /-! ## The fields are definitionally what they came from
 
 Each is `rfl`. They are stated so that a later change to the interface — reordering fields,
@@ -88,6 +104,10 @@ rebinding one of STLC's notions to something else. -/
     TypeSystem.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
 @[simp] theorem step_eq : TypeSystem.Step.Step (Tm := Term String) = Step := rfl
+
+@[simp] theorem elaborate_eq :
+    TypeSystem.DecideableElaborate.elaborate (N := String) (Tm := Term String) (Ty := Ty)
+      = elabSolution := rfl
 
 /-! ## Beyond the interface
 

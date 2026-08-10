@@ -135,7 +135,60 @@ theorem unify_mgu_unifier {α : Type} [Signature α] :
 `unify_unifies`, `unify_mgu` and `unify_complete` are three separate statements about the same
 call. `MGUProp` is the type that holds whichever of them applies, so a caller pattern-matches once
 instead of chaining an `Option` with two side lemmas — and cannot forget the negative case, since
-it is a constructor rather than a `none`. -/
+it is a constructor rather than a `none`.
+
+There are two such types, not one, and the split is the same one `TypeSystem` makes between the
+bare class and `LawfulTypeSystem`. `SolutionProp` answers *whether* there is a solution, with a
+witness or a proof of absence; `MGUProp` additionally claims the witness is **most general**.
+Most-generality is a strictly harder obligation than the other two put together — for the STLC
+elaborator it is the one remaining open problem — so demanding it in the same type makes a
+decision procedure uninhabitable long after the decision itself is proved. Weaker type, no side
+conditions: a caller that only needs "is this typeable, and by what" asks for `SolutionProp`, and
+`MGUProp.toSolution` hands it one from anything stronger. -/
+
+/-- A decision about `P` over substitutions, carrying evidence either way: a σ satisfying it, or a
+proof that none does — but saying nothing about how that σ compares to other solutions.
+
+No `HasSubst` instance is required, which is the point of separating this from `MGUProp`: with no
+`MoreGeneral` in the statement there is nothing to substitute into, so `𝕊` may be any type at all.
+
+`impossible` carries the same reading here as there: a *proof of absence*, never a failed search.
+That is the entire content of this type over `Option (Subst 𝕊)`, and the reason a procedure
+returning it cannot quietly answer "I gave up". -/
+inductive SolutionProp {𝕊 : Type} (P : Subst 𝕊 → Prop) where
+  /-- A σ satisfying `P`. -/
+  | solution (σ : Subst 𝕊) (hσ : P σ) : SolutionProp P
+  /-- No σ satisfies `P`. -/
+  | impossible (h : ∀ σ, ¬ P σ) : SolutionProp P
+
+/-- The substitution a decision found, if it found one.
+
+Exists so that a *law* about a `SolutionProp`-valued field can be stated without naming the
+constructor's proof argument: `d.subst? = some σ → …` quantifies over the σ alone, whereas
+`d = .solution σ hσ` drags an existential over `hσ` along with it. This is what
+`TypeSystem.PrincipalElaborate` uses to add most-generality on top of a decision rather than
+inside it. -/
+def SolutionProp.subst? {𝕊 : Type} {P : Subst 𝕊 → Prop} : SolutionProp P → Option (Subst 𝕊)
+  | .solution σ _ => some σ
+  | .impossible _ => none
+
+/-- Whatever `subst?` returns satisfies `P` — the positive half, recovered after the proof
+argument has been projected away. -/
+theorem SolutionProp.holds_of_subst? {𝕊 : Type} {P : Subst 𝕊 → Prop} :
+    ∀ (d : SolutionProp P) {σ : Subst 𝕊}, d.subst? = some σ → P σ
+  | .solution _ hσ, _, h => by cases Option.some.inj h; exact hσ
+
+/-- `subst? = none` is a proof of absence — the negative half, likewise recovered. -/
+theorem SolutionProp.not_of_subst?_none {𝕊 : Type} {P : Subst 𝕊 → Prop} :
+    ∀ (d : SolutionProp P), d.subst? = none → ∀ σ, ¬ P σ
+  | .impossible h, _ => h
+
+/-- The decidability the type is named for. Strictly weaker than the type itself: `isTrue` carries
+no extractable σ, since `∃` lives in `Prop`. -/
+def SolutionProp.decidable {𝕊 : Type} {P : Subst 𝕊 → Prop} :
+    SolutionProp P → Decidable (∃ σ, P σ)
+  | .solution σ hσ => .isTrue ⟨σ, hσ⟩
+  | .impossible h => .isFalse (fun ⟨σ, hσ⟩ => h σ hσ)
 
 /-- A decision about `P` over substitutions, carrying evidence either way: the **most general** σ
 satisfying it, or a proof that none does. `MoreGeneral σ σ'` says every competing solution factors
@@ -156,6 +209,14 @@ inductive MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) w
   | mgu (σ : Subst 𝕊) (hσ : P σ) (hmgu : ∀ σ', P σ' → MoreGeneral σ σ') : MGUProp P
   /-- No σ satisfies `P`. -/
   | impossible (h : ∀ σ, ¬ P σ) : MGUProp P
+
+/-- Forget most-generality. The converse is not definable, which is what makes the split worth
+having: everything proved about `SolutionProp` applies to an `MGUProp` for free, and nothing that
+merely decides has to pretend to more. -/
+def MGUProp.toSolution {𝕊 : Type} [HasSubst 𝕊 𝕊] {P : Subst 𝕊 → Prop} :
+    MGUProp P → SolutionProp P
+  | .mgu σ hσ _ => .solution σ hσ
+  | .impossible h => .impossible h
 
 /-- **`unify` packaged as an `MGUProp`.** Both constructors come out of theorems already proved
 here: success gives `unify_unifies` and `unify_mgu`, and failure gives the contrapositive of

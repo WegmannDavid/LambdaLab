@@ -385,4 +385,30 @@ theorem elabSubst_complete {Γ : Ctx N} {t : Term N} {τ : Ty}
   | none => exact absurd hty (no_typing_of_elabSubst_none he σ)
   | some _ => rfl
 
+/-! ## The elaborator as a decision
+
+Soundness and completeness are the two halves of one statement, and `SolutionProp` is the type
+that holds whichever applies. Both halves are now theorems, so this is sorry-free — unlike
+`Target.elaborate`, whose subtype additionally demands most-generality.
+
+It lives here rather than beside `elabSubst` in `Target.lean` only because the `impossible` branch
+needs `no_typing_of_elabSubst_none`, proved above. -/
+
+/-- **The elaborator, decided.** Either a substitution under which the declared triple really is a
+typing, or a proof that no substitution makes it one. Fills
+`TypeSystem.DecideableElaborate.elaborate`. -/
+def elabSolution (Γ : Ctx N) (t : Term N) (τ : Ty) :
+    SolutionProp (fun σ : Subst Ty =>
+      HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
+  match h : elabSubst Γ t τ with
+  | some σ => .solution σ (elabSubst_sound h)
+  | none => .impossible (no_typing_of_elabSubst_none h)
+
+/-- The decision agrees with the computation: no separate elaborator was introduced, only the two
+proofs attached to the one already there. -/
+@[simp] theorem elabSolution_subst? (Γ : Ctx N) (t : Term N) (τ : Ty) :
+    (elabSolution Γ t τ).subst? = elabSubst Γ t τ := by
+  rw [elabSolution]
+  split <;> simp [SolutionProp.subst?, *]
+
 end LambdaLab.Stlc.Named
