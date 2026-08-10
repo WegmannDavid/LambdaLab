@@ -294,4 +294,95 @@ theorem generationComplete : GenerationComplete (N := N) := by
     rw [hτg, hag τ hτ]
   · exact hC p hrest
 
+/-! ## Completeness of the elaborator
+
+`elabSubst` answers `none` in exactly two situations, and neither can happen when a typing exists.
+Together they give the negative half of the specification: `none` means *there is nothing*, not
+merely that nothing was found. -/
+
+/-- **Generation fails only on an unbound variable**, and an unbound variable is untypeable under
+every substitution — substitution rewrites a context's values, never its keys. -/
+theorem no_typing_of_gen_none : ∀ (t : Term N) (Γ : Ctx N) (n : Nat) (σ : Subst Ty) (ρ : Ty),
+    gen Γ t n = none → ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) ρ := by
+  intro t
+  induction t with
+  | var x =>
+      intro Γ n σ ρ hg hty
+      rw [gen, Option.map_eq_none_iff] at hg
+      cases hty with
+      | var hlook => rw [HashMap.pSubst_get?, hg] at hlook; simp at hlook
+  | lam x α body ih =>
+      intro Γ n σ ρ hg hty
+      cases hty with
+      | lam hbody =>
+          rw [gen] at hg
+          cases hg1 : gen (Γ.cons x α) body n with
+          | none =>
+              exact ih (Γ.cons x α) n σ _ hg1
+                (HasType.cong (fun y => (Ctx.pSubst_cons_get? Γ σ x α y).symm) hbody)
+          | some r =>
+              obtain ⟨τb, C, n'⟩ := r
+              rw [hg1] at hg
+              simp at hg
+  | app e₁ e₂ ih₁ ih₂ =>
+      intro Γ n σ ρ hg hty
+      cases hty with
+      | app hfun harg =>
+          rw [gen] at hg
+          cases hg1 : gen Γ e₁ n with
+          | none => exact ih₁ Γ n σ _ hg1 hfun
+          | some r1 =>
+              obtain ⟨τ₁, C₁, n₁⟩ := r1
+              rw [hg1] at hg
+              dsimp only at hg
+              cases hg2 : gen Γ e₂ n₁ with
+              | none => exact ih₂ Γ n₁ σ _ hg2 harg
+              | some r2 =>
+                  obtain ⟨τ₂, C₂, n₂⟩ := r2
+                  rw [hg2] at hg
+                  simp at hg
+
+/-- **Solving fails only when nothing types the triple.** This is the payoff of
+`generationComplete`: a typing yields a unifier of the generated constraints, and `unify_complete`
+then forbids `unify` from having failed. -/
+theorem no_typing_of_unify_none {Γ : Ctx N} {t : Term N} {τ : Ty}
+    {r : Ty × Equations Ty × Nat} (hg : gen Γ t (sourceFresh Γ t τ) = some r)
+    (hu : unify ((r.1, τ) :: r.2.1) = none) :
+    ∀ σ, ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
+  intro σ hty
+  have hΓ : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
+  have ht : HasVars.fresh t ≤ sourceFresh Γ t τ :=
+    Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
+  have hτ : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
+    Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+  obtain ⟨σ'', hunif, _⟩ :=
+    generationComplete Γ t τ r.1 (sourceFresh Γ t τ) r.2.2 r.2.1 σ hΓ ht hτ
+      (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg) hty
+  exact unify_complete _ σ'' hunif hu
+
+/-- **The negative half of the specification.** Exactly the proof obligation of
+`MGUProp.impossible` for the STLC elaborator. -/
+theorem no_typing_of_elabSubst_none {Γ : Ctx N} {t : Term N} {τ : Ty}
+    (h : elabSubst Γ t τ = none) :
+    ∀ σ, ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
+  rw [elabSubst] at h
+  cases hg : gen Γ t (sourceFresh Γ t τ) with
+  | none => exact fun σ => no_typing_of_gen_none t Γ _ σ _ hg
+  | some r =>
+      rw [hg] at h
+      dsimp only at h
+      rw [Option.map_eq_none_iff] at h
+      exact no_typing_of_unify_none hg h
+
+/-- **Completeness of the computation**, in positive form: whenever anything types the triple,
+`elabSubst` produces a substitution. Sorry-free — unlike `Target.Complete`, which is stated about
+`elaborate` and so inherits that definition's open most-generality conjunct. -/
+theorem elabSubst_complete {Γ : Ctx N} {t : Term N} {τ : Ty}
+    (h : ∃ σ, HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :
+    (elabSubst Γ t τ).isSome := by
+  obtain ⟨σ, hty⟩ := h
+  cases he : elabSubst Γ t τ with
+  | none => exact absurd hty (no_typing_of_elabSubst_none he σ)
+  | some _ => rfl
+
 end LambdaLab.Stlc.Named
