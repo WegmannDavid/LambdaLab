@@ -140,6 +140,9 @@ instance instGroundStable : GroundStable α α where
     show Signature.pSubst _ σ = _
     exact pSubst_ground σ h
 
+/-! `LawfulComp` for a signature's own type is `Signature.pSubst_comp`, proved below; the instance
+is declared there, once the theorem exists. -/
+
 /-- **Composition law for parallel substitution.** Substituting through a
 singleton `{n ↦ s}` and then through `σ` is the same as one parallel
 pass through `σ` extended with `n ↦ pSubst s σ`. This is the equation
@@ -835,6 +838,11 @@ theorem Signature.pSubst_comp {α : Type} [Signature α]
         show ((Vector.ofFn _)[i]'hi) = _; simp
       rw [hget']
       exact ih ⟨i, hi⟩
+
+/-- `LawfulComp` for a signature's own type: the theorem just proved, packaged so that clients
+accumulating substitutions can ask for the law by class rather than by name. -/
+instance instLawfulComp {α : Type} [Signature α] : LawfulComp α α where
+  pSubst_comp := fun t σ τ => Signature.pSubst_comp σ τ t
 
 /-! ## `MoreGeneral` algebra (generic for `Signature α`).
 

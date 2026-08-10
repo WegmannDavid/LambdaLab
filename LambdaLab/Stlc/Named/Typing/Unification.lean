@@ -234,6 +234,34 @@ theorem Term.annotsGround_iff_ground {e : Term N} :
       · intro h
         exact ⟨ih₁.mpr (fun n hn => h n (Or.inl hn)), ih₂.mpr (fun n hn => h n (Or.inr hn))⟩
 
+/-! ## The two substitution laws, for terms
+
+`Ty` gets both from `Signature` (`Bridge.instGroundStable`, `Bridge.instLawfulComp`). `Term`'s
+`pSubst` is the hand-written `tyPSubst`, so its instances are proved here — each by the induction
+that pushes the corresponding `Ty` law through the annotations. Together they are what lets a
+client accumulate substitutions across a program and know what each one left alone.
+
+`GroundStable` is immediate; `LawfulComp` waits until `Term.pSubst_comp` further down. -/
+
+theorem Term.pSubst_ground {e : Term N} (σ : Subst Ty) (h : HasVars.Ground e) :
+    HasSubst.pSubst e σ = e := by
+  show Term.tyPSubst e σ = e
+  induction e with
+  | var x => rfl
+  | lam x τ body ih =>
+      have hτ : HasVars.Ground τ := fun n hn => h n (Or.inl hn)
+      have hb : HasVars.Ground body := fun n hn => h n (Or.inr hn)
+      show Term.lam x (HasSubst.pSubst τ σ) (Term.tyPSubst body σ) = _
+      rw [GroundStable.pSubst_ground σ hτ, ih hb]
+  | app e₁ e₂ ih₁ ih₂ =>
+      have h₁ : HasVars.Ground e₁ := fun n hn => h n (Or.inl hn)
+      have h₂ : HasVars.Ground e₂ := fun n hn => h n (Or.inr hn)
+      show Term.app (Term.tyPSubst e₁ σ) (Term.tyPSubst e₂ σ) = _
+      rw [ih₁ h₁, ih₂ h₂]
+
+instance : GroundStable (Term N) Ty where
+  pSubst_ground σ h := Term.pSubst_ground σ h
+
 /-! ## `pSubst ∅` is the identity on `Term` and on `Ctx` (up to lookup).
 
 For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
@@ -364,6 +392,9 @@ theorem Term.pSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
     HasSubst.pSubst e (Subst.comp σ τ) =
       HasSubst.pSubst (HasSubst.pSubst e τ) σ :=
   Term.tyPSubst_comp σ τ e
+
+instance : LawfulComp (Term N) Ty where
+  pSubst_comp e σ τ := Term.pSubst_comp σ τ e
 
 /-- **Soundness of `Subst.comp` for `Ctx`.** Substituting the context
 through `comp σ τ` is `get?`-extensional to substituting through τ then

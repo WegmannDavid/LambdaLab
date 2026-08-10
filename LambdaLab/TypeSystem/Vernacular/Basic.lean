@@ -8,4 +8,41 @@ inductive Command (N Tm Ty : Type) where
 
 abbrev Program (N Tm Ty : Type) := NEList (Command N Tm Ty)
 
+/-! ## Substituting through a program
+
+One instance, for `Command`. `Program` is `NEList (Command …)`, which is `Command × List Command`,
+and `Substitution/Basic.lean` already has the pair and list instances — so applying a substitution
+to a whole program, and the laws about doing so, come for free the moment a single declaration
+knows how.
+
+A declaration's *name* is untouched: substitution replaces metavariables, and a binder name is not
+one. Support and `fresh` therefore range over the declared type and the body only. -/
+
+variable {N Tm Ty : Type}
+
+instance instHasSubstCommand [HasSubst Tm Ty] [HasSubst Ty Ty] :
+    HasSubst (Command N Tm Ty) Ty where
+  pSubst c σ := match c with
+    | .decl x τ t => .decl x (HasSubst.pSubst τ σ) (HasSubst.pSubst t σ)
+  isFree c n := match c with
+    | .decl _ τ t => HasVars.isFree τ n ∨ HasVars.isFree t n
+  fresh c := match c with
+    | .decl _ τ t => max (HasVars.fresh τ) (HasVars.fresh t)
+  fresh_gt_free := by
+    rintro ⟨x, τ, t⟩ n (h | h)
+    · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h) (Nat.le_max_left _ _)
+    · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h) (Nat.le_max_right _ _)
+
+@[simp] theorem Command.pSubst_decl [HasSubst Tm Ty] [HasSubst Ty Ty]
+    (x : N) (τ : Ty) (t : Tm) (σ : Subst Ty) :
+    HasSubst.pSubst (Command.decl x τ t) σ
+      = Command.decl x (HasSubst.pSubst τ σ) (HasSubst.pSubst t σ) := rfl
+
+instance instLawfulCompCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
+    [LawfulComp Tm Ty] [LawfulComp Ty Ty] : LawfulComp (Command N Tm Ty) Ty where
+  pSubst_comp c σ τ := by
+    obtain ⟨x, ρ, t⟩ := c
+    show Command.decl x _ _ = Command.decl x _ _
+    rw [LawfulComp.pSubst_comp ρ σ τ, LawfulComp.pSubst_comp t σ τ]
+
 end LambdaLab.TypeSystem.Vernacular

@@ -176,6 +176,18 @@ theorem List.foldr_max_of_mem (f : α → Nat) :
       · exact Nat.le_max_right _ _
       · exact Nat.le_trans (ih a h') (Nat.le_max_left _ _)
 
+/-- **Substituting twice is substituting once, through the composite.** The other law `HasSubst`
+does not state and that anything accumulating substitutions needs — without it a fold that solves
+one constraint after another can never describe its answers by a single `Subst`.
+
+A mixin for the same reason as `GroundStable`: extending `HasSubst` would mint a second `pSubst`.
+The orientation matches `Signature.pSubst_comp`, which is where the instance for a signature's own
+type comes from. -/
+class LawfulComp (𝕋 : Type) (𝕊 : outParam Type) [HasSubst 𝕋 𝕊] [HasSubst 𝕊 𝕊] : Prop where
+  /-- `comp σ τ` acts as τ first, then σ. -/
+  pSubst_comp : ∀ (x : 𝕋) (σ τ : Subst 𝕊),
+    HasSubst.pSubst x (Subst.comp σ τ) = HasSubst.pSubst (HasSubst.pSubst x τ) σ
+
 /-! ## Generic instances -/
 
 /-- Componentwise substitution on pairs. Free vars and `fresh` use the
@@ -191,6 +203,13 @@ instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] :
     · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h₁) (Nat.le_max_left _ _)
     · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ h₂) (Nat.le_max_right _ _)
 
+instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] [HasSubst β β]
+    [LawfulComp α β] [LawfulComp α' β] : LawfulComp (α × α') β where
+  pSubst_comp p σ τ := by
+    show (HasSubst.pSubst p.1 (Subst.comp σ τ), HasSubst.pSubst p.2 (Subst.comp σ τ))
+        = (HasSubst.pSubst (HasSubst.pSubst p.1 τ) σ, HasSubst.pSubst (HasSubst.pSubst p.2 τ) σ)
+    rw [LawfulComp.pSubst_comp p.1 σ τ, LawfulComp.pSubst_comp p.2 σ τ]
+
 /-- Pointwise substitution on lists. `isFree` is "free in some element";
 `fresh` is the foldr of `max` over the per-element fresh values. -/
 instance {α β : Type} [HasSubst α β] : HasSubst (List α) β where
@@ -202,6 +221,19 @@ instance {α β : Type} [HasSubst α β] : HasSubst (List α) β where
     obtain ⟨x, hx, hf⟩ := h
     have key := List.foldr_max_of_mem (fun y : α => HasVars.fresh y) xs x hx
     exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ hf) key
+
+instance {α β : Type} [HasSubst α β] [HasSubst β β] [LawfulComp α β] :
+    LawfulComp (List α) β where
+  pSubst_comp xs σ τ := by
+    show xs.map _ = (xs.map _).map _
+    rw [List.map_map]
+    exact List.map_congr_left (fun x _ => LawfulComp.pSubst_comp x σ τ)
+
+/-- Substitution does not change a list's length — what lets a fold over a program recurse on the
+substituted tail and still terminate. -/
+@[simp] theorem List.length_pSubst {α β : Type} [HasSubst α β] (xs : List α) (σ : Subst β) :
+    (HasSubst.pSubst xs σ).length = xs.length :=
+  List.length_map _
 
 /-! ## A `Nat` is its own variable
 
