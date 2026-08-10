@@ -19,6 +19,28 @@ That also explains the split into two declarations rather than one. `Program` is
 a head paired with a possibly-empty tail, and the tail is an ordinary `List`; the accumulation
 is a statement about lists, and non-emptiness has nothing to do with it.
 
+## Everything is ground
+
+A declaration may not leave a metavariable behind — neither in its declared type nor anywhere in
+its body. That is a real restriction, and it is what the judgement's name records.
+
+**Why.** A declaration is a *commitment*: its type is entered into the context and every later
+declaration is checked against it. An unsolved metavariable there is not something the vernacular
+can hold onto — it is a hole that later declarations would each be free to fill differently, and
+the context would no longer describe one program. Inference happens during elaboration; by the
+time a command is accepted, the answer has to have been found.
+
+**How.** Groundness is `HasVars.Ground` — no free metavariable — stated over `HasVars`, the
+smallest class that can say it. Deliberately *not* over `MVars` or the rest of the `TypeSystem`
+tower: nothing here substitutes, so nothing here should demand a substitution operation, let alone
+a reduction relation.
+
+For STLC this is exactly the condition the pipeline already enforces. `HasVars (Term N)`'s
+`isFree` is `Term.tyIsFree`, so `Ground t` says no annotation inside `t` mentions a metavariable —
+the `AnnotsGround` conjunct of `Stlc/Named/Pipeline.lean`'s `solve` — and `Ground τ` is its
+`Ground` conjunct. The vernacular's rule and the elaborator's refusal to let a metavariable
+survive a declaration are the same rule, now stated once and generically.
+
 ## What a declaration contributes
 
 `decl x τ t` extends the context with `x : τ` — the *declared* type, not something inferred from
@@ -33,56 +55,107 @@ by making well-typedness fail.
 
 namespace LambdaLab.TypeSystem.Vernacular
 
+open HasVars (Ground)
+
 /-! `HasType` below is the *program*-level judgement, and it shares its name with the object
 language's class in the parent namespace. Both are wanted under those names, so every reference to
 the class is qualified: an unqualified one in a statement written after the `abbrev` resolves to
 the program-level judgement and fails with an arity mismatch. -/
 
 variable {N Tm Ty : Type} [NameAlphabet N] [_root_.LambdaLab.TypeSystem.HasType N Tm Ty]
+  [HasVars Tm] [HasVars Ty]
 
-/-- **Declarations typed in sequence**, starting from `Γ`.
+/-- **Ground declarations typed in sequence**, starting from `Γ`.
 
-`HasTypeFrom Γ cs` says: check the head against `Γ`, then check the rest against `Γ` extended
-with the head's name and declared type, and so on to the end of the list. -/
-inductive HasTypeFrom : Context N Ty → List (Command N Tm Ty) → Prop where
+`HasTypeGround Γ cs` says: check the head against `Γ` and confirm it left no metavariable behind,
+then check the rest against `Γ` extended with the head's name and declared type, and so on to the
+end of the list. -/
+inductive HasTypeGround : Context N Ty → List (Command N Tm Ty) → Prop where
   /-- Nothing left to declare. Every context types the empty list. -/
-  | nil {Γ : Context N Ty} : HasTypeFrom Γ []
-  /-- `def x : τ := t` is well-typed here when `t` has type `τ` here — and the declarations after
-  it are well-typed in the context that `x : τ` has been added to. -/
+  | nil {Γ : Context N Ty} : HasTypeGround Γ []
+  /-- `def x : τ := t` is well-typed here when `t` has type `τ` here and neither is left holding a
+  metavariable — and the declarations after it are well-typed in the context that `x : τ` has been
+  added to. -/
   | decl {Γ : Context N Ty} {x : N} {τ : Ty} {t : Tm} {cs : List (Command N Tm Ty)} :
-      _root_.LambdaLab.TypeSystem.HasType.HasType Γ t τ → HasTypeFrom (Γ.cons x τ) cs →
-      HasTypeFrom Γ (Command.decl x τ t :: cs)
+      _root_.LambdaLab.TypeSystem.HasType.HasType Γ t τ → Ground τ → Ground t →
+      HasTypeGround (Γ.cons x τ) cs →
+      HasTypeGround Γ (Command.decl x τ t :: cs)
 
-/-- **A well-typed program**: its declarations type in sequence from the empty context.
+/-- **A well-typed program**: its declarations type in sequence from the empty context, and none
+of them leaves a metavariable behind.
 
 `p.toList` is `p.head :: p.tail`, so the head is the declaration checked against `Context.empty`
 — a program's first declaration may refer to nothing but itself. -/
 abbrev HasType (p : Program N Tm Ty) : Prop :=
-  HasTypeFrom (Context.empty : Context N Ty) p.toList
+  HasTypeGround (Context.empty : Context N Ty) p.toList
 
-/-- The one-declaration case, unfolded: a singleton program is well-typed exactly when its body
-checks against its declared type in the empty context. -/
+/-! ## Groundness is an invariant, not only a per-declaration check
+
+The judgement demands a ground type at each declaration; these say what that buys — every context
+the derivation passes through is ground too, so a later declaration is never checked against a
+type with a hole in it. `empty` starts that induction and `cons` is its step. -/
+
+/-- Every type bound in `Γ` is ground. -/
+def CtxGround (Γ : Context N Ty) : Prop := ∀ (x : N) (τ : Ty), Γ.get? x = some τ → Ground τ
+
+theorem CtxGround.empty : CtxGround (Context.empty : Context N Ty) := by
+  intro x τ hx
+  rw [Context.get?_empty] at hx
+  exact absurd hx (by simp)
+
+theorem CtxGround.cons {Γ : Context N Ty} {x : N} {τ : Ty}
+    (h : CtxGround Γ) (hτ : Ground τ) : CtxGround (Γ.cons x τ) := by
+  intro y σ hy
+  rw [Context.get?_cons] at hy
+  split at hy
+  · exact Option.some.inj hy ▸ hτ
+  · exact h y σ hy
+
+/-- **The payoff**: in a well-typed sequence *every* declaration is ground, not merely the one the
+derivation happens to be looking at. -/
+theorem HasTypeGround.ground_of_mem {Γ : Context N Ty} {cs : List (Command N Tm Ty)}
+    (h : HasTypeGround Γ cs) :
+    ∀ {x : N} {τ : Ty} {t : Tm}, Command.decl x τ t ∈ cs → Ground τ ∧ Ground t := by
+  induction h with
+  | nil => intro x τ t hmem; cases hmem
+  | decl _ hτ ht _ ih =>
+      intro y σ s hmem
+      rcases List.mem_cons.mp hmem with heq | hmem'
+      · cases heq; exact ⟨hτ, ht⟩
+      · exact ih hmem'
+
+/-- The same, over a program rather than its list of commands. -/
+theorem HasType.ground_of_mem {p : Program N Tm Ty} (h : HasType p)
+    {x : N} {τ : Ty} {t : Tm} (hmem : Command.decl x τ t ∈ p.toList) : Ground τ ∧ Ground t :=
+  HasTypeGround.ground_of_mem h hmem
+
+/-! ## The two cases, unfolded -/
+
+/-- A singleton program is well-typed exactly when its body checks against its declared type in
+the empty context, with neither carrying a metavariable. -/
 theorem hasType_singleton {x : N} {τ : Ty} {t : Tm} :
     HasType (NEList.singleton (Command.decl x τ t)) ↔
-      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ := by
+      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ
+        ∧ Ground τ ∧ Ground t := by
   constructor
   · intro h
     cases h with
-    | decl ht _ => exact ht
-  · intro ht
-    exact .decl ht .nil
+    | decl hty hτ ht _ => exact ⟨hty, hτ, ht⟩
+  · intro ⟨hty, hτ, ht⟩
+    exact .decl hty hτ ht .nil
 
-/-- Peeling the head: a program is well-typed exactly when its first declaration checks in the
-empty context and the rest check in the context that declaration extends. -/
+/-- Peeling the head: a program is well-typed exactly when its first declaration checks — and is
+ground — in the empty context, and the rest check in the context that declaration extends. -/
 theorem hasType_cons {x : N} {τ : Ty} {t : Tm} {cs : List (Command N Tm Ty)} :
     HasType (Command.decl x τ t, cs) ↔
-      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ ∧
-        HasTypeFrom ((Context.empty : Context N Ty).cons x τ) cs := by
+      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ
+        ∧ Ground τ ∧ Ground t
+        ∧ HasTypeGround ((Context.empty : Context N Ty).cons x τ) cs := by
   constructor
   · intro h
     cases h with
-    | decl ht hrest => exact ⟨ht, hrest⟩
-  · intro ⟨ht, hrest⟩
-    exact .decl ht hrest
+    | decl hty hτ ht hrest => exact ⟨hty, hτ, ht, hrest⟩
+  · intro ⟨hty, hτ, ht, hrest⟩
+    exact .decl hty hτ ht hrest
 
 end LambdaLab.TypeSystem.Vernacular

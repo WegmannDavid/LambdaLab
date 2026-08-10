@@ -13,6 +13,19 @@ class HasVars (𝕋 : Type) where
 
   fresh_gt_free : ∀ x n, isFree x n → n < fresh x
 
+/-- **Ground**: no metavariable occurs anywhere in `x`.
+
+Stated as the absence of free variables rather than as `fresh x = 0`, because `fresh` is only
+required to be an *upper bound* (`fresh_gt_free`) — an instance may over-approximate, so
+`fresh x = 0` is sufficient for groundness but not necessary. `Ground.of_fresh_eq_zero` below is
+that one sound direction. -/
+def HasVars.Ground {𝕋 : Type} [HasVars 𝕋] (x : 𝕋) : Prop := ∀ n, ¬ HasVars.isFree x n
+
+/-- A zero fresh-counter forces groundness: every free variable would have to be below it. -/
+theorem HasVars.Ground.of_fresh_eq_zero {𝕋 : Type} [HasVars 𝕋] {x : 𝕋}
+    (h : HasVars.fresh x = 0) : HasVars.Ground x :=
+  fun n hn => Nat.not_lt_zero n (h ▸ HasVars.fresh_gt_free x n hn)
+
 abbrev Subst (𝕊 : Type) := Std.HashMap Nat 𝕊
 
 class HasSubst (𝕋 : Type) (𝕊 : outParam Type) extends HasVars 𝕋 where

@@ -147,6 +147,93 @@ instance : HasVars (Term N) where
 instance : HasSubst (Term N) Ty where
   pSubst := Term.tyPSubst
 
+/-! ## Groundness, structurally and generically
+
+STLC says "no metavariables" twice: `Ty.Ground` and `Term.AnnotsGround` recurse on the syntax and
+are *decidable*, while `HasVars.Ground` says it for any `HasVars` at all — no free index anywhere.
+The generic one is what a name-agnostic client can state (`TypeSystem/Vernacular/Typing.lean`
+demands it of every declaration); the structural one is what anybody actually discharges, by
+`decide` or by `simp`. These bridge them, so a client asking for the generic condition can be
+answered with the concrete check.
+
+Without this bridge the generic condition is unusable here: `Signature.occurs` is defined by
+well-founded recursion through `deconstruct`, so it does not reduce on `Ty`'s constructors, and
+`∀ n, ¬ isFree τ n` cannot be discharged by computation for even the simplest closed type. The two
+`occurs` lemmas below are the same closed-form move `Ty.fresh_arrow` makes for `fresh`. -/
+
+theorem Ty.occurs_base (n : Nat) : Signature.occurs n Ty.base = false := by
+  have h : (Ty.base : Ty) = Signature.construct
+      (Sum.inr ⟨TyConstructor.base, Vector.ofFn (fun _ : Fin 0 => Ty.base)⟩) := rfl
+  rw [h, Signature.occurs_construct]
+  rfl
+
+theorem Ty.occurs_arrow (n : Nat) (a b : Ty) :
+    Signature.occurs n (a ⇒ b) = (Signature.occurs n a || Signature.occurs n b) := by
+  have h : Ty.arrow a b = Signature.construct (Sum.inr ⟨TyConstructor.arrow,
+      Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)⟩) := rfl
+  rw [h, Signature.occurs_construct]
+  have e0 : (Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)).get 0 = a := rfl
+  have e1 : (Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)).get 1 = b := rfl
+  simp [List.finRange, e0, e1]
+
+/-- **The type-level bridge**: the decidable groundness check is the generic one. -/
+theorem Ty.ground_iff {τ : Ty} : τ.Ground ↔ HasVars.Ground τ := by
+  induction τ with
+  | base =>
+      simp only [Ty.Ground, Ty.isGround, HasVars.Ground]
+      exact ⟨fun _ n h => by
+               have hb : Signature.occurs n Ty.base = true := h
+               rw [Ty.occurs_base] at hb; exact absurd hb (by simp),
+             fun _ => trivial⟩
+  | mvar k =>
+      simp only [Ty.Ground, Ty.isGround, HasVars.Ground]
+      constructor
+      · intro h; exact absurd h (by simp)
+      · intro h; exact absurd ((Signature.var_isFree k k).mpr rfl) (h k)
+  | arrow a b iha ihb =>
+      constructor
+      · intro h n hn
+        have hg : a.isGround = true ∧ b.isGround = true := by
+          simpa [Ty.Ground, Ty.isGround] using h
+        have ho : Signature.occurs n (a ⇒ b) = true := hn
+        rw [Ty.occurs_arrow] at ho
+        rcases Bool.or_eq_true_iff.mp ho with h' | h'
+        · exact iha.mp hg.1 n h'
+        · exact ihb.mp hg.2 n h'
+      · intro h
+        have ha : HasVars.Ground a := fun n hn => h n (by
+          show Signature.occurs n (a ⇒ b) = true
+          rw [Ty.occurs_arrow]; exact Bool.or_eq_true_iff.mpr (Or.inl hn))
+        have hb : HasVars.Ground b := fun n hn => h n (by
+          show Signature.occurs n (a ⇒ b) = true
+          rw [Ty.occurs_arrow]; exact Bool.or_eq_true_iff.mpr (Or.inr hn))
+        show (a ⇒ b).isGround = true
+        simp [Ty.isGround, iha.mpr ha, ihb.mpr hb]
+
+/-- **The term-level bridge**: `AnnotsGround` — no metavariable in any annotation — is exactly
+the generic condition, since `HasVars (Term N)`'s `isFree` is `Term.tyIsFree`. -/
+theorem Term.annotsGround_iff_ground {e : Term N} :
+    e.AnnotsGround ↔ HasVars.Ground e := by
+  induction e with
+  | var x =>
+      exact ⟨fun _ n h => h, fun _ => trivial⟩
+  | lam x τ body ih =>
+      constructor
+      · rintro ⟨hτ, hb⟩ n hn
+        rcases (hn : HasVars.isFree τ n ∨ Term.tyIsFree body n) with h' | h'
+        · exact Ty.ground_iff.mp hτ n h'
+        · exact ih.mp hb n h'
+      · intro h
+        refine ⟨Ty.ground_iff.mpr (fun n hn => h n (Or.inl hn)), ih.mpr (fun n hn => h n (Or.inr hn))⟩
+  | app e₁ e₂ ih₁ ih₂ =>
+      constructor
+      · rintro ⟨h₁, h₂⟩ n hn
+        rcases (hn : Term.tyIsFree e₁ n ∨ Term.tyIsFree e₂ n) with h' | h'
+        · exact ih₁.mp h₁ n h'
+        · exact ih₂.mp h₂ n h'
+      · intro h
+        exact ⟨ih₁.mpr (fun n hn => h n (Or.inl hn)), ih₂.mpr (fun n hn => h n (Or.inr hn))⟩
+
 /-! ## `pSubst ∅` is the identity on `Term` and on `Ctx` (up to lookup).
 
 For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
