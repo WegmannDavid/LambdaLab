@@ -22,7 +22,8 @@ is a statement about lists, and non-emptiness has nothing to do with it.
 ## Everything is ground
 
 A declaration may not leave a metavariable behind — neither in its declared type nor anywhere in
-its body. That is a real restriction, and it is what the judgement's name records.
+its body — and neither may the context it is checked against. That is a real restriction, and it
+is what the judgement's name records.
 
 **Why.** A declaration is a *commitment*: its type is entered into the context and every later
 declaration is checked against it. An unsolved metavariable there is not something the vernacular
@@ -65,14 +66,34 @@ the program-level judgement and fails with an arity mismatch. -/
 variable {N Tm Ty : Type} [NameAlphabet N] [_root_.LambdaLab.TypeSystem.HasType N Tm Ty]
   [HasVars Tm] [HasVars Ty]
 
-/-- **Ground declarations typed in sequence**, starting from `Γ`.
+/-- Every type bound in `Γ` is ground.
+
+Declared before the judgement because `nil` demands it: the context is as much a part of "ground"
+as the declarations are. -/
+def CtxGround (Γ : Context N Ty) : Prop := ∀ (x : N) (τ : Ty), Γ.get? x = some τ → Ground τ
+
+/-- **Ground declarations typed in a ground context**, starting from `Γ`.
 
 `HasTypeGround Γ cs` says: check the head against `Γ` and confirm it left no metavariable behind,
 then check the rest against `Γ` extended with the head's name and declared type, and so on to the
-end of the list. -/
+end of the list — where the context, too, holds nothing but ground types.
+
+## Why the context condition sits on `nil`
+
+Stating it once suffices, and `nil` is the one place it must be stated. The `decl` rule only ever
+extends the context with a `τ` it has just required to be ground, so it cannot *introduce* a hole;
+`nil` is where the accumulated context is finally exposed with nothing left to check it against.
+Putting the condition there means every rule is either preserving groundness or asserting it, and
+none of them repeats it.
+
+Note what this does **not** give: `HasTypeGround Γ cs → CtxGround Γ` is false, and not by
+oversight. `decl` may *shadow* — a `Γ` binding `y : ?0` extended with `y : ⋆` is ground although
+`Γ` was not — so groundness of a later context says nothing about an earlier one. What holds is
+the direction that matters: start ground and you stay ground (`CtxGround.empty`, `CtxGround.cons`
+below), which is exactly the situation `HasType` sets up. -/
 inductive HasTypeGround : Context N Ty → List (Command N Tm Ty) → Prop where
-  /-- Nothing left to declare. Every context types the empty list. -/
-  | nil {Γ : Context N Ty} : HasTypeGround Γ []
+  /-- Nothing left to declare — and the context reached holds no metavariable. -/
+  | nil {Γ : Context N Ty} : CtxGround Γ → HasTypeGround Γ []
   /-- `def x : τ := t` is well-typed here when `t` has type `τ` here and neither is left holding a
   metavariable — and the declarations after it are well-typed in the context that `x : τ` has been
   added to. -/
@@ -91,12 +112,10 @@ abbrev HasType (p : Program N Tm Ty) : Prop :=
 
 /-! ## Groundness is an invariant, not only a per-declaration check
 
-The judgement demands a ground type at each declaration; these say what that buys — every context
-the derivation passes through is ground too, so a later declaration is never checked against a
-type with a hole in it. `empty` starts that induction and `cons` is its step. -/
-
-/-- Every type bound in `Γ` is ground. -/
-def CtxGround (Γ : Context N Ty) : Prop := ∀ (x : N) (τ : Ty), Γ.get? x = some τ → Ground τ
+The judgement demands a ground type at each declaration and a ground context at the end; these two
+are what carry that from one to the other. `empty` starts the induction and `cons` is its step, so
+a derivation begun at `Context.empty` discharges `nil`'s condition by construction rather than by
+a separate argument. -/
 
 theorem CtxGround.empty : CtxGround (Context.empty : Context N Ty) := by
   intro x τ hx
@@ -117,7 +136,7 @@ theorem HasTypeGround.ground_of_mem {Γ : Context N Ty} {cs : List (Command N Tm
     (h : HasTypeGround Γ cs) :
     ∀ {x : N} {τ : Ty} {t : Tm}, Command.decl x τ t ∈ cs → Ground τ ∧ Ground t := by
   induction h with
-  | nil => intro x τ t hmem; cases hmem
+  | nil _ => intro x τ t hmem; cases hmem
   | decl _ hτ ht _ ih =>
       intro y σ s hmem
       rcases List.mem_cons.mp hmem with heq | hmem'
@@ -142,7 +161,7 @@ theorem hasType_singleton {x : N} {τ : Ty} {t : Tm} :
     cases h with
     | decl hty hτ ht _ => exact ⟨hty, hτ, ht⟩
   · intro ⟨hty, hτ, ht⟩
-    exact .decl hty hτ ht .nil
+    exact .decl hty hτ ht (.nil (CtxGround.empty.cons hτ))
 
 /-- Peeling the head: a program is well-typed exactly when its first declaration checks — and is
 ground — in the empty context, and the rest check in the context that declaration extends. -/
