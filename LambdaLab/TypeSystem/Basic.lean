@@ -49,6 +49,27 @@ class HasType (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] where
   /-- The typing judgement, over contexts keyed by `N`. -/
   HasType : Context N Ty → Tm → Ty → Prop
 
+/-- **Typing sees a context only through lookup.** Two contexts agreeing at every name type the
+same terms.
+
+True of any judgement worth the name — a context is a finite map, and a rule can only consult it
+by looking a variable up — but `HasType` is an arbitrary relation, so nothing may assume it. STLC
+proves it as `HasType.cong`, which is exactly this field.
+
+A **mixin** over `[HasType N Tm Ty]`, not an `extends`. Extending would create a second
+`HasType`, and a caller wanting this alongside `DecideableElaborate` would then hold two unrelated
+judgements — the diamond `LawfulMVars` was restructured to flatten. A `Prop`-valued class over the
+instance already in scope cannot open one.
+
+It is what makes a substituted context usable: `Std.HashMap` has no `getElem?` extensionality, so
+`pSubst Γ σ = Γ` is not provable even when Γ is ground, and the keywise fact
+(`Context.pSubst_get?_of_ground`) is all there is. This law is what turns that into a statement
+about typing. -/
+class LawfulContext (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] [HasType N Tm Ty] : Prop where
+  /-- Typing transports along keywise agreement of contexts. -/
+  cong : ∀ {Γ Γ' : Context N Ty} {t : Tm} {τ : Ty},
+    (∀ x, Γ.get? x = Γ'.get? x) → HasType.HasType Γ t τ → HasType.HasType Γ' t τ
+
 class TypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasType N Tm Ty, Step Tm where
 
 class LawfulTypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends TypeSystem N Tm Ty where

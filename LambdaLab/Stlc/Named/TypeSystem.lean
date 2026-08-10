@@ -109,6 +109,27 @@ branch is a proof that nothing types the triple, not a report that nothing was f
 instance instDecideableElaborate : TypeSystem.DecideableElaborate N (Term N) Ty where
   elaborate := elabSolution
 
+/-! ## What the vernacular asks for on top
+
+`TypeSystem/Vernacular/Elaborate.lean` derives a whole-program elaborator from
+`DecideableElaborate`, and needs three more things to do it. All three were already here; none is
+a new proof. -/
+
+/-- Typing depends on the context only through lookup — `HasType.cong`, which predates the class
+that asks for it by a long way. This is what lets a declaration solved under a substituted context
+be re-read under the vernacular's own. -/
+instance instLawfulContext : TypeSystem.LawfulContext N (Term N) Ty where
+  cong h ht := HasType.cong h ht
+
+/-- Groundness of a type, decided by the structural check. `HasVars.Ground` quantifies over every
+index and so cannot be decided by unfolding; `Ty.ground_iff` routes it to `Ty.isGround`. -/
+instance : DecidablePred (HasVars.Ground : Ty → Prop) :=
+  fun _ => decidable_of_iff _ Ty.ground_iff
+
+/-- The same for terms, via `Term.AnnotsGround`. -/
+instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
+  fun _ => decidable_of_iff _ Term.annotsGround_iff_ground
+
 /-! ## The fields are definitionally what they came from
 
 Each is `rfl`. They are stated so that a later change to the interface — reordering fields,

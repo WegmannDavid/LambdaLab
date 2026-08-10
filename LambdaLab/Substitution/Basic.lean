@@ -31,6 +31,23 @@ abbrev Subst (𝕊 : Type) := Std.HashMap Nat 𝕊
 class HasSubst (𝕋 : Type) (𝕊 : outParam Type) extends HasVars 𝕋 where
   pSubst : 𝕋 → Subst 𝕊 → 𝕋
 
+/-- **Substitution does nothing to a ground object.** True of every instance here and of any
+sane one — substitution replaces metavariables, and a ground object has none — but `HasSubst`
+states no laws at all, so nothing downstream may assume it.
+
+A **mixin**, taking `[HasSubst 𝕋 𝕊]` as a parameter rather than `extends`-ing it. That is not
+stylistic: a class extending `HasSubst` would carry its own copy, and a caller asking for both it
+and something else built on `HasSubst` would get two unrelated `pSubst`s. Same diamond
+`TypeSystem.LawfulMVars` exists to flatten; a `Prop`-valued mixin over the existing instance
+cannot open it in the first place.
+
+Wanted by anything that computes a substitution and then needs to know what it did *not* touch —
+`TypeSystem/Vernacular/Elaborate.lean` is the first such caller, where a solved declaration must
+be re-read under the context it was checked in rather than under the substituted one. -/
+class GroundStable (𝕋 : Type) (𝕊 : outParam Type) [HasSubst 𝕋 𝕊] : Prop where
+  /-- Substituting into a ground object leaves it alone. -/
+  pSubst_ground : ∀ {x : 𝕋} (σ : Subst 𝕊), HasVars.Ground x → HasSubst.pSubst x σ = x
+
 /-- Apply the singleton substitution `[n ↦ s]` to `t`. -/
 def HasSubst.single [HasSubst 𝕋 𝕊] (t : 𝕋) (n : Nat) (s : 𝕊) : 𝕋 :=
   HasSubst.pSubst t (((∅ : Subst 𝕊).insert n s))

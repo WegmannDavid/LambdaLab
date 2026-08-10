@@ -119,6 +119,27 @@ theorem pSubst_empty (t : α) : pSubst t (∅ : Subst α) = t := by
       congr 3
       exact Vector.ofFn_get_eq_self ih
 
+/-- **Substituting into a ground term is the identity.** A term with no free variable has nothing
+for `σ` to replace: the `var` case cannot arise, and the constructor case is congruence.
+
+This is `GroundStable` for every `Signature`, and it is why that class is stateable at all — the
+law is a theorem here, so no instance has to be trusted with it. -/
+theorem pSubst_ground {t : α} (σ : Subst α) (h : HasVars.Ground t) : pSubst t σ = t := by
+  induction t using term_ind with
+  | var_case n => exact absurd ((var_isFree n n).mpr rfl) (h n)
+  | construct_case c args ih =>
+      rw [pSubst_construct]
+      congr 3
+      refine Vector.ofFn_get_eq_self (fun i => ih i (fun n hn => h n ?_))
+      show occurs n (construct (Sum.inr ⟨c, args⟩)) = true
+      rw [occurs_construct, List.any_eq_true]
+      exact ⟨i, List.mem_finRange i, hn⟩
+
+instance instGroundStable : GroundStable α α where
+  pSubst_ground σ h := by
+    show Signature.pSubst _ σ = _
+    exact pSubst_ground σ h
+
 /-- **Composition law for parallel substitution.** Substituting through a
 singleton `{n ↦ s}` and then through `σ` is the same as one parallel
 pass through `σ` extended with `n ↦ pSubst s σ`. This is the equation

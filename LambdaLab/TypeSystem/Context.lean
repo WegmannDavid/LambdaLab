@@ -115,4 +115,29 @@ example {S : Type} [HasSubst S S] :
 example {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty] :
     (inferInstance : HasSubst (Context N Ty) Ty) = instHasSubstContext := rfl
 
+/-! ## Reading a substituted context
+
+Substitution maps over the values, so lookup commutes with it. This is the *only* handle anything
+gets on a substituted context: `Std.HashMap` has no `getElem?` extensionality here, so two contexts
+that agree at every key cannot be proved equal — a client must reason through `get?` and a typing
+judgement that respects it (`TypeSystem.LawfulContext`). -/
+
+theorem Context.pSubst_get? {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty]
+    (Γ : Context N Ty) (σ : Subst Ty) (x : N) :
+    (HasSubst.pSubst Γ σ).get? x = (Γ.get? x).map (fun τ => HasSubst.pSubst τ σ) := by
+  show (Γ.map (fun _ v => HasSubst.pSubst v σ)).get? x = _
+  rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
+      ← Std.HashMap.get?_eq_getElem?]
+
+/-- **A ground context is unchanged by substitution**, keywise. The equation on contexts is not
+available (no extensionality), which is why this is stated at `get?`. -/
+theorem Context.pSubst_get?_of_ground {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty]
+    [GroundStable Ty Ty] (Γ : Context N Ty) (σ : Subst Ty)
+    (hΓ : ∀ (x : N) (τ : Ty), Γ.get? x = some τ → HasVars.Ground τ) (x : N) :
+    (HasSubst.pSubst Γ σ).get? x = Γ.get? x := by
+  rw [Context.pSubst_get?]
+  cases hx : Γ.get? x with
+  | none => rfl
+  | some τ => exact congrArg some (GroundStable.pSubst_ground σ (hΓ x τ hx))
+
 end LambdaLab.TypeSystem
