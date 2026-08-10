@@ -11,17 +11,19 @@ The named STLC plugged into the classes of `TypeSystem/Basic.lean`, as `Pipeline
 into `Pipeline.Language`. Every field is an existing declaration under its own name; nothing is
 proved here, which is the point — the interface asks for what the development already has.
 
-## Where each instance can live
-
-The classes split by how much of `N` they need, and the instances land at different generality
-because of it:
+## Every instance is generic in `N`
 
 * `HasType` is **generic in `N`**. The typing judgement never inspects a name beyond equality and
   context lookup, so `Term N` is typeable for any name alphabet.
-* `Step` is **`String`-only**, and so is everything above it. `Stlc.Named.Step` is declared at
-  `Term String`, because the reduction relation goes through capture-avoiding substitution, which
-  needs the fresh-name generator. That pins `TypeSystem`, `LawfulTypeSystem`, `MVars` and
-  `LawfulMVars` at `N := String` too — not a choice, just the narrowest field showing through.
+* `Step` is generic too — and this was not always so. It was declared at `Term String`, and that
+  pinned `TypeSystem`, `LawfulTypeSystem`, `MVars` and `LawfulMVars` at `String` with it. The pin
+  was never necessary: the β-rule's capture-avoiding substitution draws fresh names from
+  `NameAlphabet.freshFor`, which every name alphabet has, and the de Bruijn translation carrying
+  subject reduction only ever compares names. Generalising `Step`, `MStep`, `Translation` and
+  `HasType.preservation` changed signatures and **not one proof**.
+  That matters practically, not just aesthetically: `Pipeline.lean` names terms by `VName`, so
+  with the instances pinned at `String` it could not use this interface at all and had to call
+  `Target.elabSubst` directly. Now it goes through `DecideableElaborate`.
 * `MVars` needs no new work at all: `HasSubst (Term N) Ty` and `HasSubst Ty Ty` already exist, so
   both fields are `inferInstance` and the bundled copies are definitionally the canonical ones,
   which is what `MVars`' own docstring asks for.
@@ -60,39 +62,51 @@ open LambdaLab.TypeSystem (NameAlphabet)
 instance instHasType {N : Type} [NameAlphabet N] : TypeSystem.HasType N (Term N) Ty where
   HasType := HasType
 
-/-! ## Reduction and above — pinned at `String` -/
+/-! ## Reduction and above — every name alphabet too
 
-/-- `Stlc.Named.Step` is declared at `Term String`, so this and everything extending it is too. -/
-instance instStep : TypeSystem.Step (Term String) where
+`Step` was declared at `Term String` and everything above it inherited the pin. It did not have
+to be: `Term.subst` is capture-avoiding via `NameAlphabet.freshFor`, which every name alphabet
+supplies, and the de Bruijn translation that carries subject reduction only ever compares names.
+Generalising `Step`, `MStep`, `Translation` and `HasType.preservation` to an arbitrary `N` cost no
+proof changes at all — only signatures — and it is what lets `Pipeline.lean` reach these instances
+at its own name type `VName` instead of calling the elaborator directly.
+
+`[HasVars N]` appears from `LawfulTypeSystem` on: preservation needs it (through
+`HasType.freeVars_in_ctx`), and the substitution the classes above it talk about is defined by it.
+-/
+
+variable {N : Type} [NameAlphabet N] [HasVars N]
+
+/-- Reduction is parametric too: the β-rule's capture-avoiding substitution draws its fresh names
+from `NameAlphabet.freshFor`. -/
+instance instStep : TypeSystem.Step (Term N) where
   Step := Step
 
-instance instTypeSystem : TypeSystem.TypeSystem String (Term String) Ty := {}
+instance instTypeSystem : TypeSystem.TypeSystem N (Term N) Ty := {}
 
 /-- The metatheory field, discharged by the unconditional subject-reduction theorem. This is the
 one instance with content: building it *is* the claim that STLC is well-behaved in the framework's
 sense, since `Preservation` cannot be filled without a proof. -/
-instance instLawfulTypeSystem : TypeSystem.LawfulTypeSystem String (Term String) Ty where
+instance instLawfulTypeSystem : TypeSystem.LawfulTypeSystem N (Term N) Ty where
   Preservation := HasType.preservation
 
 /-- Both substitution instances already exist, so fill from them rather than defining new ones —
 the copies are then definitionally canonical and lemmas about either apply to both. -/
-instance instMVars : TypeSystem.MVars String (Term String) Ty where
+instance instMVars : TypeSystem.MVars N (Term N) Ty where
   tmSubst := inferInstance
   tySubst := inferInstance
 
 /-- The second instance with content: stability of typing under substitution, discharged by
 `HasType.subst`. Like `Preservation` this is a field, so it cannot be skipped — and like it, the
 proof already existed, generic in `N`, before the interface asked for it. -/
-instance instLawfulMVars : TypeSystem.LawfulMVars String (Term String) Ty where
+instance instLawfulMVars : TypeSystem.LawfulMVars N (Term N) Ty where
   Stability σ h := HasType.subst h σ
 
 /-- The third instance with content, and the first that is algorithmic rather than metatheoretic:
 elaboration *decides* typeability. `elabSolution` bundles `elabSubst_sound` with
 `no_typing_of_elabSubst_none`, so both halves are discharged by existing theorems — the `none`
-branch is a proof that nothing types the triple, not a report that nothing was found.
-
-Generic in `N` like the judgement, but declared at `String` to sit under `LawfulMVars`. -/
-instance instDecideableElaborate : TypeSystem.DecideableElaborate String (Term String) Ty where
+branch is a proof that nothing types the triple, not a report that nothing was found. -/
+instance instDecideableElaborate : TypeSystem.DecideableElaborate N (Term N) Ty where
   elaborate := elabSolution
 
 /-! ## The fields are definitionally what they came from
@@ -101,13 +115,13 @@ Each is `rfl`. They are stated so that a later change to the interface — reord
 wrapping a component, adding a parameter — fails here, at the plug-in, rather than silently
 rebinding one of STLC's notions to something else. -/
 
-@[simp] theorem hasType_eq {N : Type} [NameAlphabet N] :
+@[simp] theorem hasType_eq :
     TypeSystem.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
-@[simp] theorem step_eq : TypeSystem.Step.Step (Tm := Term String) = Step := rfl
+@[simp] theorem step_eq : TypeSystem.Step.Step (Tm := Term N) = Step := rfl
 
 @[simp] theorem elaborate_eq :
-    TypeSystem.DecideableElaborate.elaborate (N := String) (Tm := Term String) (Ty := Ty)
+    TypeSystem.DecideableElaborate.elaborate (N := N) (Tm := Term N) (Ty := Ty)
       = elabSolution := rfl
 
 /-! ## Beyond the interface

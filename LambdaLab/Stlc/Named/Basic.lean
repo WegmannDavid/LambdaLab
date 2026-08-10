@@ -4,9 +4,12 @@ import LambdaLab.TypeSystem.NameAlphabet
 # Simply Typed Lambda Calculus (STLC), named-variable presentation
 
 Variables are drawn from any `NameAlphabet N`: the development only decides equality of names and
-generates fresh ones (`Term.subst`'s α-renaming branch). `String` is the usual instance and
-everything downstream is stated at `Term String`; a *parser* can instead pick a name type whose
-values are already valid surface tokens, so a parsed term needs no separate surface AST.
+generates fresh ones (`Term.subst`'s α-renaming branch). `String` is the usual instance, but
+reduction, typing, subject reduction and elaboration are all stated at `Term N`; only the
+de Bruijn-mediated results that traffic in binder *lists* — confluence, normalization, `eval` —
+remain pinned at `String`. A *parser* can therefore pick a name type whose values are already
+valid surface tokens, so a parsed term needs no separate surface AST, and it still reaches the
+whole metatheory.
 
 Originally variables were `String`s. Substitution is *capture-avoiding*: when entering a
 binder whose bound variable would capture a free variable of the substituted

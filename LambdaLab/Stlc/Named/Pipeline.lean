@@ -1,6 +1,6 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Target
+import LambdaLab.Stlc.Named.TypeSystem
 import LambdaLab.Pipeline.ElabStage
 import LambdaLab.Pipeline.Biparser
 import LambdaLab.TypeSystem.FreeName
@@ -363,26 +363,42 @@ instance : HasVars VName where
   fresh _ := 0
   fresh_gt_free := by intro _ _ h; cases h
 
+/-! ## Elaboration, through the `TypeSystem` interface
+
+`solve` calls `DecideableElaborate.elaborate`, not `Target.elabSubst`. The two compute the same
+thing — the instance's field *is* `elabSolution`, which wraps `elabSubst` — but going through the
+class means the pipeline depends on the interface rather than on one language's implementation of
+it, and it gets soundness for free: `SolutionProp.solution` carries the typing derivation in its
+payload, so `solve_hasType` reads the proof off the constructor instead of invoking a lemma.
+
+This works at `VName` only because the instances are parametric in the name alphabet. They were
+pinned at `String` until `Step`/`Translation`/`preservation` were generalized — see
+`Stlc/Named/TypeSystem.lean`. Had they stayed pinned, this file could not have used the class at
+all: the vernacular names terms by `VName`, not by `String`.
+-/
+
+open LambdaLab.TypeSystem (DecideableElaborate) in
 /-- Infer, then apply — refusing to let a metavariable survive the declaration. -/
 def solve (Γ : Ctx VName) (t : Term VName) (τ : Ty) : Option (Term VName × Ty) :=
-  match elabSubst Γ t τ with
-  | none => none
-  | some σ =>
+  match DecideableElaborate.elaborate Γ t τ with
+  | .impossible _ => none
+  | .solution σ _ =>
       if (HasSubst.pSubst τ σ : Ty).Ground ∧ (HasSubst.pSubst t σ : Term VName).AnnotsGround then
         some (HasSubst.pSubst t σ, HasSubst.pSubst τ σ)
       else none
 
-/-- **Soundness**, straight from `elabSubst_sound`. -/
+/-- **Soundness**, read straight off the constructor: a `SolutionProp.solution` cannot be built
+without the typing derivation, so there is no lemma to apply. -/
 theorem solve_hasType {Γ : Ctx VName} {t : Term VName} {τ : Ty} {p : Term VName × Ty}
     (h : solve Γ t τ = some p) :
-    ∃ σ, elabSubst Γ t τ = some σ ∧ HasType (HasSubst.pSubst Γ σ) p.1 p.2 := by
+    ∃ σ, HasType (HasSubst.pSubst Γ σ) p.1 p.2 := by
   rw [solve] at h
   split at h
   · exact absurd h (by simp)
-  · rename_i σ hσ
-    refine ⟨σ, hσ, ?_⟩
+  · rename_i σ hσ _
+    refine ⟨σ, ?_⟩
     split at h
-    · cases h; exact elabSubst_sound hσ
+    · cases h; exact hσ
     · exact absurd h (by simp)
 
 /-- The answers that reproduce themselves. -/

@@ -19,6 +19,10 @@ translation lemmas in `LambdaLab.Stlc.Named.Translation`:
 
 namespace LambdaLab.Stlc.Named
 
+open LambdaLab.TypeSystem (NameAlphabet)
+
+variable {N : Type} [NameAlphabet N] [HasVars N]
+
 /-- **Subject reduction**: typing is preserved under a single β-step.
 
 No side conditions. They used to be here — `Γ.Ground`, `e.AnnotsGround`, `e'.AnnotsGround` — and
@@ -26,7 +30,7 @@ none of them was about preservation: they paid for the de Bruijn detour, whose `
 metavariable constructor, so `Ty.toDB` collapsed every `?n` to `⋆` and the round trip only
 recovered ground types. Giving de Bruijn its own `Ty.mvar` made the translation a bijection and
 the conditions evaporated. -/
-theorem HasType.preservation : ∀ {Γ : Ctx String} {e e' : (Term String)} {τ : Ty},
+theorem HasType.preservation : ∀ {Γ : Ctx N} {e e' : (Term N)} {τ : Ty},
     HasType Γ e τ → e ⟶ e' → HasType Γ e' τ := by
   intro Γ e e' τ ht hs
   let binders := e.freeVars
