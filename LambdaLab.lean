@@ -55,6 +55,8 @@ import LambdaLab.Inductive.Example
 import LambdaLab.TypeSystem.NameAlphabet
 import LambdaLab.TypeSystem.Context
 import LambdaLab.TypeSystem.Basic
+import LambdaLab.TypeSystem.Vernacular.Basic
+import LambdaLab.TypeSystem.Vernacular.Typing
 import LambdaLab.Pipeline.Basic
 -- NB: `FreeName` lives in `TypeSystem/` but sits *above* `Pipeline.Basic`, since the alphabet
 -- it constructs is carved out of the grammar's reserved `Token`s. It is the one place the two
