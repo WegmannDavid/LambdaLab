@@ -344,9 +344,10 @@ imposed by restricting `Elaborates`, not by a field of `ElaboratableLanguage`, e
 interface intends.
 
 **What is and is not claimed.** `elabSubst_sound` is sorry-free, so a successful elaboration
-carries a real `HasType` derivation. Most-generality is *not* claimed — that is
-`Target.GenerationComplete`, still open. `stlcElaboratable` reports `sorryAx` only through
-`toLanguage`, i.e. the assumed `stlcUnambiguous` above.
+carries a real `HasType` derivation, and `JComplete.elabSubst_complete` is too, so failure means
+no typing exists. Most-generality is *not* claimed — that is `TypeSystem.PrincipalElaborate`,
+still open. `stlcElaboratable` reports `sorryAx` only through `toLanguage`, i.e. the assumed
+`stlcUnambiguous` above.
 
 **Why `Elaborates` demands a stable answer.** `quote_elaborates` needs re-elaborating an output to
 reproduce it, which is unproved; rather than assume it, the relation *requires* it. An answer that

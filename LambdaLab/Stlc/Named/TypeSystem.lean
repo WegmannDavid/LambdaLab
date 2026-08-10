@@ -36,8 +36,9 @@ because of it:
 ## `PrincipalElaborate` is deliberately absent
 
 The one class still unfilled, and it cannot be filled today. Its single field asks that the
-returned substitution be at least as general as every other typing substitution — the open
-conjunct in `Target.elaborate`, and the same wall `W_principal` hits from the other side.
+returned substitution be at least as general as every other typing substitution — the same wall
+`W_principal` hits from the other side. `Typing/Target.lean` used to state it as a conjunct in
+`elaborate`'s return type; the class is now where it lives.
 
 `DecideableElaborate` used to carry that demand too, in an `MGUProp`-valued field, which is why
 this file once reported the whole algorithmic half as missing. It was not: deciding typeability

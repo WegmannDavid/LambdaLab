@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.Named.Typing.Target
+import LambdaLab.Substitution.Unification.MGU
 
 /-!
 # Completeness of constraint generation
@@ -375,8 +376,8 @@ theorem no_typing_of_elabSubst_none {Γ : Ctx N} {t : Term N} {τ : Ty}
       exact no_typing_of_unify_none hg h
 
 /-- **Completeness of the computation**, in positive form: whenever anything types the triple,
-`elabSubst` produces a substitution. Sorry-free — unlike `Target.Complete`, which is stated about
-`elaborate` and so inherits that definition's open most-generality conjunct. -/
+`elabSubst` produces a substitution. This is the whole of what `Target.lean` used to state as the
+`Complete` obligation, now a theorem rather than a `Prop` waiting for one. -/
 theorem elabSubst_complete {Γ : Ctx N} {t : Term N} {τ : Ty}
     (h : ∃ σ, HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :
     (elabSubst Γ t τ).isSome := by
@@ -388,8 +389,9 @@ theorem elabSubst_complete {Γ : Ctx N} {t : Term N} {τ : Ty}
 /-! ## The elaborator as a decision
 
 Soundness and completeness are the two halves of one statement, and `SolutionProp` is the type
-that holds whichever applies. Both halves are now theorems, so this is sorry-free — unlike
-`Target.elaborate`, whose subtype additionally demands most-generality.
+that holds whichever applies. Both halves are theorems, so this is sorry-free — which is the
+difference between it and the subtype `Target.lean` used to return, whose payload additionally
+demanded most-generality and so could never be built.
 
 It lives here rather than beside `elabSubst` in `Target.lean` only because the `impossible` branch
 needs `no_typing_of_elabSubst_none`, proved above. -/
