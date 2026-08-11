@@ -57,7 +57,7 @@ by looking a variable up — but `HasType` is an arbitrary relation, so nothing 
 proves it as `HasType.cong`, which is exactly this field.
 
 A **mixin** over `[HasType N Tm Ty]`, not an `extends`. Extending would create a second
-`HasType`, and a caller wanting this alongside `DecideableElaborate` would then hold two unrelated
+`HasType`, and a caller wanting this alongside `PrincipalElaborate` would then hold two unrelated
 judgements — the diamond `LawfulMVars` was restructured to flatten. A `Prop`-valued class over the
 instance already in scope cannot open one.
 
@@ -109,7 +109,7 @@ attribute [reducible, instance low] MVars.tmSubst MVars.tySubst
 law that makes them mean something: **typing is stable under substitution**.
 
 Without it an `MVars` instance may pair a perfectly good `HasType` with a `pSubst` that has no
-relation to it, and `DecideableElaborate` below would still typecheck — its `SolutionProp`
+relation to it, and `PrincipalElaborate` below would still typecheck — its `MGUProp`
 predicate is built entirely out of `pSubst`, so a nonsense `pSubst` yields a nonsense
 specification that an implementation could satisfy vacuously. Stability is what ties the algorithmic side back to the
 judgement.
@@ -137,50 +137,37 @@ class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars
   Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Ty),
     HasType Γ t τ → HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)
 
-/-- **The elaboration problem, decided.** Given a context, a term and a declared type — any of
-which may still hold metavariables — produce a substitution making the triple a real typing, or a
-proof that no substitution does.
+/-- **The elaboration problem, solved principally.** Given a context, a term and a declared type —
+any of which may still hold metavariables — produce a substitution making the triple a real typing
+*that every other solution factors through*, or a proof that no substitution does.
 
-`SolutionProp`, not `Option`: the negative case is a *proof of absence*, so an instance cannot be
-built by an algorithm that merely fails to find something. That is completeness, and it is a field
-here for the same reason `Preservation` is a field of `LawfulTypeSystem`.
+`MGUProp`, not `Option`, on both counts. The negative case is a *proof of absence*, so an instance
+cannot be built by an algorithm that merely fails to find something; and the positive case carries
+most-generality, so a caller may commit to the answer without fear that a later constraint would
+have preferred a different one. Both are fields for the reason `Preservation` is a field of
+`LawfulTypeSystem`: put the law where an instance cannot be built without discharging it.
 
-Most-generality is deliberately **not** here — see `PrincipalElaborate` below. -/
-class DecideableElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
-  /-- Decideable typing judgement. -/
+## One class, not two, and no `elaborateMGU`
+
+This used to be a `SolutionProp`-valued `DecideableElaborate` with most-generality bolted on
+afterwards as a separate `PrincipalElaborate.Principal` field, plus an `elaborateMGU` that glued
+the two back into the `MGUProp` they should have been. The split bought instances that exist
+before their hard law is proved, and cost a three-way spread of one idea — with the reassembly
+written out by hand, and its converse only asserted in prose.
+
+`MGUProp` was already the right type; `Substitution/Unification/MGU.lean` defines it, so nothing
+new is introduced here. A caller that does not want most-generality does not need a weaker class
+either — `MGUProp.toSolution` forgets it, and everything proved about `SolutionProp` applies.
+
+**What it costs, stated plainly.** Deciding typeability is settled for STLC; most-generality is
+not, and an instance therefore cannot be built today without a `sorry` somewhere. That is a real
+price, and the reason the split existed. It is paid in one named theorem at the plug-in
+(`Stlc/Named/Typing/JComplete.lean`), where the obligation is visible, rather than hidden behind a
+class nobody instantiates. -/
+class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
+  /-- Decidable typing judgement, with a principal witness. -/
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
-      SolutionProp (fun σ : Subst Ty =>
+      MGUProp (fun σ : Subst Ty =>
         HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ))
-
-/-- The elaborator returns a **principal** solution: every other substitution that types the
-triple factors through the one it found.
-
-Split off `DecideableElaborate` for the reason `LawfulTypeSystem` is split off `TypeSystem`: the
-law is far harder than the operation, and a class no one can instantiate keeps the usable part out
-of reach too. Deciding typeability is settled for STLC; principality is not, so the two cannot
-share a field.
-
-Stated *about* `elaborate` rather than replacing it with an `MGUProp`-valued field. A second field
-would be a second elaborator, with nothing tying the principal one to the one everybody calls —
-the same mistake `MVars`' docstring warns about for `pSubst`. Going through `subst?` keeps one
-operation and adds one proof about it, so `Principal` is a property of the algorithm already in
-the class. -/
-class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends DecideableElaborate N Tm Ty where
-  /-- The solution `elaborate` returns is at least as general as any other. -/
-  Principal : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} {σ : Subst Ty},
-    (elaborate Γ t τ).subst? = some σ →
-    ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
-      MoreGeneral σ σ'
-
-/-- A `PrincipalElaborate` instance is exactly an `MGUProp`-valued elaborator, recovered. This is
-the round trip justifying the split: nothing was lost by moving most-generality out of the return
-type, since the two together rebuild it. -/
-def PrincipalElaborate.elaborateMGU {N Tm Ty : Type} [NameAlphabet N] [P : PrincipalElaborate N Tm Ty]
-    (Γ : Context N Ty) (t : Tm) (τ : Ty) :
-    MGUProp (fun σ : Subst Ty =>
-      HasType.HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
-  match h : DecideableElaborate.elaborate (Tm := Tm) Γ t τ with
-  | .solution σ hσ => .mgu σ hσ (P.Principal (by rw [h]; rfl))
-  | .impossible hno => .impossible hno
 
 end LambdaLab.TypeSystem

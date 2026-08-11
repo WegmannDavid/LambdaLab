@@ -458,7 +458,7 @@ the surface and the `TypeSystem` classes for the semantics.
 
 What is kept is the part that interface got right and the classes deliberately do not demand:
 `mgu` requires the returned substitution be *most general*, not merely one that works.
-`Vernacular.Elaboratable` inherits `DecideableElaborate`, which decides typeability and stops
+`Vernacular.Elaboratable` inherits `PrincipalElaborate`, whose decision half is proved and stops
 there — most-generality is `TypeSystem.PrincipalElaborate`, still open — so a language wanting
 principality has to state it, as here, in its own terms.
 -/

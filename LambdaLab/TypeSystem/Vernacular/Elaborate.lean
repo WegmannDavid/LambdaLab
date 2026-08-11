@@ -3,8 +3,10 @@ import LambdaLab.TypeSystem.Vernacular.Typing
 /-!
 # The program elaborator, derived from the object language's
 
-A calculus that implements `DecideableElaborate` decides *one* checking problem: under `Γ`, does
-`t` elaborate against `τ`, and by which substitution. This file lifts that to a whole program, by
+A calculus that implements `PrincipalElaborate` decides *one* checking problem: under `Γ`, does
+`t` elaborate against `τ`, and by which substitution. The fold ignores the most-generality half —
+it needs *a* solution per declaration, not the best one — but a language must supply it, so
+`.mgu`'s third argument is discarded below. This file lifts that to a whole program, by
 the obvious fold — elaborate the first declaration, insist nothing is left unsolved, push its name
 at its now-ground type, elaborate the next against that context, and so on.
 
@@ -34,7 +36,7 @@ is what makes the fold's answers combine at all.
 
 ## Four laws the interface did not state
 
-The fold needs more than `DecideableElaborate` provides, and the gaps are not accidents of this
+The fold needs more than `PrincipalElaborate` provides, and the gaps are not accidents of this
 file.
 
 `elaborate Γ t τ` promises `HasType (pSubst Γ σ) (pSubst t σ) (pSubst τ σ)` — a typing under the
@@ -67,7 +69,7 @@ namespace LambdaLab.TypeSystem.Vernacular
 
 open HasVars (Ground)
 
-/-- **A type system whose whole *files* elaborate.** `DecideableElaborate` decides one checking
+/-- **A type system whose whole *files* elaborate.** `PrincipalElaborate` decides one checking
 problem; a fold over a program needs the four laws and two decision procedures described above,
 and this is them, packaged so that a front end can ask for *one* thing.
 
@@ -78,10 +80,10 @@ that `MVars` carries, so collecting them here forces them to be the *same* insta
 elaborator substitutes with, instead of leaving that to whatever happens to be in scope at the use
 site.
 
-The parent is `DecideableElaborate` rather than a second set of binders for the same reason
+The parent is `PrincipalElaborate` rather than a second set of binders for the same reason
 `LawfulMVars` extends both its parents: separate binders would give separate `HasType`s. -/
 class Elaboratable (N Tm Ty : Type) [nameAlphabet : NameAlphabet N]
-    extends DecideableElaborate N Tm Ty where
+    extends PrincipalElaborate N Tm Ty where
   /-- Typing sees a context only through lookup — what lets a declaration solved under a
   substituted context be re-read under the vernacular's own. -/
   lawfulContext : LawfulContext N Tm Ty
@@ -139,9 +141,9 @@ def elabCommands : (Γ : Context N Ty) → CtxGround Γ → (cs : List (Command 
     Option { σ : Subst Ty // HasTypeGround Γ (HasSubst.pSubst cs σ) }
   | Γ, hΓ, [] => some ⟨∅, .nil hΓ⟩
   | Γ, hΓ, Command.decl x τ t :: cs =>
-      match DecideableElaborate.elaborate Γ t τ with
+      match PrincipalElaborate.elaborate Γ t τ with
       | .impossible _ => none
-      | .solution σ hσ =>
+      | .mgu σ hσ _ =>
           if hgτ : Ground (HasSubst.pSubst τ σ) then
             if hgt : Ground (HasSubst.pSubst t σ) then
               match hrec : elabCommands (Γ.cons x (HasSubst.pSubst τ σ)) (hΓ.cons hgτ)
@@ -255,7 +257,7 @@ theorem elabCommands_isSome_of_hasTypeGround :
         rw [GroundStable.pSubst_ground (∅ : Subst Ty) ht,
             GroundStable.pSubst_ground (∅ : Subst Ty) hτ]
         exact LawfulContext.cong (fun y => (Context.pSubst_get?_of_ground Γ ∅ hΓ y).symm) hty
-      · rename_i σ _ _
+      · rename_i σ _ _ _
         have hgτ : Ground (HasSubst.pSubst τ σ) := by
           rw [GroundStable.pSubst_ground σ hτ]; exact hτ
         have hgt : Ground (HasSubst.pSubst t σ) := by

@@ -175,15 +175,21 @@ instance : TypeSystem.LawfulMVars Name Name Name where
     rw [declaredAt_pSubst]
     exact ht
 
-/-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so both
-branches are immediate — including the negative one, which is a genuine proof that *no*
-substitution helps rather than a report of a failed search. -/
-instance : TypeSystem.DecideableElaborate Name Name Name where
+/-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so all
+three obligations are immediate — the negative one is a genuine proof that *no* substitution helps
+rather than a report of a failed search, and most-generality is free: substitution on `Name` is the
+identity, so the empty answer is at least as general as anything with the empty witness.
+
+Worth noting against STLC, where the same field costs a `sorry`. Most-generality is only hard when
+there is inference to be most general *about*. -/
+instance : TypeSystem.PrincipalElaborate Name Name Name where
   elaborate Γ t τ :=
     if h : declaredAt Γ t τ = true then
-      .solution ∅ (by
-        show declaredAt (HasSubst.pSubst Γ (∅ : Subst Name)) t τ = true
-        rw [declaredAt_pSubst]; exact h)
+      .mgu ∅
+        (by
+          show declaredAt (HasSubst.pSubst Γ (∅ : Subst Name)) t τ = true
+          rw [declaredAt_pSubst]; exact h)
+        (fun _ _ => ⟨∅, fun _ => rfl⟩)
     else
       .impossible (fun σ hσ => h (by
         have h' : declaredAt (HasSubst.pSubst Γ σ) t τ = true := hσ

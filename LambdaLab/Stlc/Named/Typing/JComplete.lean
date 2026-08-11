@@ -398,7 +398,7 @@ needs `no_typing_of_elabSubst_none`, proved above. -/
 
 /-- **The elaborator, decided.** Either a substitution under which the declared triple really is a
 typing, or a proof that no substitution makes it one. Fills
-`TypeSystem.DecideableElaborate.elaborate`. -/
+the sorry-free half of `TypeSystem.PrincipalElaborate.elaborate`; see `elabMGU` below. -/
 def elabSolution (Γ : Ctx N) (t : Term N) (τ : Ty) :
     SolutionProp (fun σ : Subst Ty =>
       HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
@@ -412,5 +412,53 @@ proofs attached to the one already there. -/
     (elabSolution Γ t τ).subst? = elabSubst Γ t τ := by
   rw [elabSolution]
   split <;> simp [SolutionProp.subst?, *]
+
+/-! ## Most-generality — the one open obligation
+
+`TypeSystem.PrincipalElaborate.elaborate` returns an `MGUProp`, so filling it needs one thing more
+than the decision above: that the substitution `elabSubst` computes is at least as general as any
+other typing it. Everything else the class asks of STLC is a theorem; this is not, and the two
+declarations below are the whole of the gap.
+
+Keeping the gap to a single named theorem is deliberate. The sorry census then names the actual
+open mathematics rather than a structural placeholder, and closing the wall is a matter of deleting
+one `sorry` — nothing above or below has to move. `elabSolution` stays proved and is what to reach
+for when most-generality is not wanted. -/
+
+/-- **OPEN.** The pruned substitution `elabSubst` returns is most general.
+
+`elabSubst` already answers with `Subst.restrictBelow · (sourceFresh Γ t τ)` (`Target.lean`), so
+this is exactly option D of the principal-types analysis, and the same wall `W_principal` hits from
+the other side: `MoreGeneral` quantifies over *every* type, so the factoring witness must agree
+with `σ'` on indices the pruned σ has dropped while acting like `unify`'s witness below the
+threshold. That is satisfiable only if the pruned σ's **range** also stays below the threshold, and
+it need not — unifying `(?0, ⋆ → ?d)` for a drawn `?d` binds `?0` to a type mentioning `?d`.
+
+So this may well be false *as stated*, and the recorded escape is to weaken `MoreGeneral` to a
+source-restricted quantifier rather than to hunt for the range bound. Until that is settled the
+obligation is discharged by `sorry`, and every consumer of `PrincipalElaborate` for STLC inherits
+`sorryAx` through it — the vernacular fold and the pipeline included. -/
+theorem elabSubst_principal {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
+    (h : elabSubst Γ t τ = some σ) :
+    ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
+      MoreGeneral σ σ' := by
+  sorry
+
+/-- **The elaborator, decided and principal.** `elabSolution` with most-generality attached; fills
+`TypeSystem.PrincipalElaborate.elaborate`. The `impossible` branch is unchanged and remains proved
+— only the positive branch is conditional on the open theorem above. -/
+def elabMGU (Γ : Ctx N) (t : Term N) (τ : Ty) :
+    MGUProp (fun σ : Subst Ty =>
+      HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
+  match h : elabSubst Γ t τ with
+  | some σ => .mgu σ (elabSubst_sound h) (elabSubst_principal h)
+  | none => .impossible (no_typing_of_elabSubst_none h)
+
+/-- Forgetting most-generality recovers exactly the sorry-free decision. Stated so the two wrappers
+cannot drift apart: there is one computation, `elabSubst`, and both report it. -/
+@[simp] theorem elabMGU_subst? (Γ : Ctx N) (t : Term N) (τ : Ty) :
+    (elabMGU Γ t τ).toSolution.subst? = elabSubst Γ t τ := by
+  rw [elabMGU]
+  split <;> simp [MGUProp.toSolution, SolutionProp.subst?, *]
 
 end LambdaLab.Stlc.Named
