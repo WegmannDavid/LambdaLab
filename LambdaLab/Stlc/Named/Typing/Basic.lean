@@ -14,9 +14,9 @@ too: a *parsed* term is named by the tokens the grammar admits, and a `String`-k
 cannot receive one without a conversion at the boundary.
 
 `Ctx N` is therefore literally `TypeSystem.Context N Ty`, not a copy of it. That is deliberate:
-`ElaboratableLanguage.Elaborates` takes a `TypeSystem.Context`, so anything short of definitional
-equality would put a bridge on the interface boundary, which is exactly what the name parameter
-exists to remove.
+the `TypeSystem` classes are all stated over a `TypeSystem.Context`, so anything short of
+definitional equality would put a bridge on the interface boundary, which is exactly what the name
+parameter exists to remove.
 
 Everything downstream of this file (`Properties`, `W`, `Translation`, …) stays stated at
 `Ctx String`, the usual instance. Nothing in them is `String`-specific; they are pinned rather

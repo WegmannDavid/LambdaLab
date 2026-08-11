@@ -1,6 +1,7 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
 import LambdaLab.TypeSystem.NameAlphabet
+import LambdaLab.TypeSystem.Vernacular.Basic
 
 namespace LambdaLab.Pipeline
 
@@ -146,5 +147,29 @@ structure Language where
 abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
 
 instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
+
+/-! ## Commands and programs
+
+Not defined here. `def NAME : TYPE := BODY` and a non-empty run of them are the *vernacular*, and
+the vernacular is a notion of the type-system layer (`TypeSystem/Vernacular/Basic.lean`) which
+knows nothing about parsers: it is where a program's typing judgement and its elaborator live, and
+those must be stateable without a `Language` in sight.
+
+What this layer contributes is the **instantiation**: the name type is `Var L`, so a declaration's
+name is the language's own variable name — `def f : T := e` puts `f` in scope as an ordinary term
+variable, with no injection between two kinds of name, and a command holding the lexeme `def` is
+unrepresentable, hence cannot print something the parser reads back as a keyword. -/
+
+/-- A single declaration of `L`: `def NAME : TYPE := BODY`, named by `L`'s own variables. -/
+abbrev Command (L : Language) : Type := TypeSystem.Vernacular.Command (Var L) L.Tm L.Ty
+
+/-- A **non-empty** run of `L`'s declarations — the shape `iMany1` consumes, so the vernacular
+parser lines up with it with no adapter. -/
+abbrev Program (L : Language) : Type := TypeSystem.Vernacular.Program (Var L) L.Tm L.Ty
+
+/-- The constructor at the instantiated arity. `match_pattern` so it reads as a constructor on
+both sides of an equation, not only in construction. -/
+@[match_pattern] abbrev Command.decl {L : Language} (n : Var L) (τ : L.Ty) (t : L.Tm) :
+    Command L := TypeSystem.Vernacular.Command.decl n τ t
 
 end LambdaLab.Pipeline

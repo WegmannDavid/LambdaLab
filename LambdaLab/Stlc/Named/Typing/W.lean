@@ -388,8 +388,8 @@ So W accepts terms the judgement rejects — it "fails to detect all type errors
 completeness statement without the hypothesis is simply false. The earlier version of this theorem
 omitted it.
 
-Worth noting that `stlcElaboratable`'s groundness demand is exactly this condition, arrived at
-independently from "no metavariable may leak between declarations".
+Worth noting that `Vernacular.HasTypeGround`'s groundness demand is exactly this condition,
+arrived at independently from "no metavariable may leak between declarations".
 
 **Status: open.** Beyond the missing side condition, the obstacle is the *shape of the statement*,
 not missing lemmas — inducting on
@@ -453,13 +453,14 @@ theorem W_principal_of_eq {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ σ' : Subst 
 
 `Elaboration`/`ElaborationResult` used to live in a general `Language` interface. They are stated
 here instead, at STLC, because nothing else ever used them: the general interface's only instance
-was STLC's, and its parser-free `Language` struct has been superseded by `Pipeline.Language`,
-whose elaboration side (`ElaboratableLanguage`) is deliberately substitution-free.
+was STLC's, and its parser-free `Language` struct has been superseded by `Pipeline.Language` for
+the surface and the `TypeSystem` classes for the semantics.
 
-What is kept is the part that interface got right and the synthetic one cannot say: `mgu` demands
-the returned substitution be *most general*, not merely one that works. `ElaboratableLanguage`
-can only demand determinism, so a language wanting principality has to state it — as here — in
-its own terms.
+What is kept is the part that interface got right and the classes deliberately do not demand:
+`mgu` requires the returned substitution be *most general*, not merely one that works.
+`Vernacular.Elaboratable` inherits `DecideableElaborate`, which decides typeability and stops
+there — most-generality is `TypeSystem.PrincipalElaborate`, still open — so a language wanting
+principality has to state it, as here, in its own terms.
 -/
 
 /-- A **principal** solution for `(Γ, e, τ)`: a substitution that types the triple, and is more

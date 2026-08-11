@@ -3,10 +3,32 @@ import LambdaLab.NEList
 
 namespace LambdaLab.TypeSystem.Vernacular
 
+/-- A single declaration: `def x : τ := t`.
+
+The name is drawn from whatever alphabet the surrounding layer uses for *term* variables, not
+from a vernacular notion of its own. So `def f : T := e` puts `f` in scope for what follows with
+no injection between two kinds of name — and a front end whose name type excludes its keywords
+(`Pipeline.Var`) gets, for free, that a command spelling a keyword is unrepresentable. -/
 inductive Command (N Tm Ty : Type) where
 | decl : N → Ty → Tm → Command N Tm Ty
 
+/-- A program is a **non-empty** run of commands.
+
+Why not `List (Command …)`: a one-or-more parser never *parses* an empty list, so an empty program
+has no printed form to parse back — it would falsify a front end's round-trip law. `NEList` is
+also `Command × List Command`, which is what lets substitution reach a whole program through the
+pair and list instances rather than through an instance of its own. -/
 abbrev Program (N Tm Ty : Type) := NEList (Command N Tm Ty)
+
+namespace Command
+
+variable {N Tm Ty : Type}
+
+def name : Command N Tm Ty → N  | .decl n _ _ => n
+def ty   : Command N Tm Ty → Ty | .decl _ τ _ => τ
+def tm   : Command N Tm Ty → Tm | .decl _ _ t => t
+
+end Command
 
 /-! ## Substituting through a program
 
@@ -37,6 +59,17 @@ instance instHasSubstCommand [HasSubst Tm Ty] [HasSubst Ty Ty] :
     (x : N) (τ : Ty) (t : Tm) (σ : Subst Ty) :
     HasSubst.pSubst (Command.decl x τ t) σ
       = Command.decl x (HasSubst.pSubst τ σ) (HasSubst.pSubst t σ) := rfl
+
+/-- A ground declaration is untouched by substitution. Together with the pair and list instances
+of `Substitution/Basic.lean` this reaches a whole `Program`, which is what makes an elaborated
+file a fixed point of its own elaborator. -/
+instance instGroundStableCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
+    [GroundStable Tm Ty] [GroundStable Ty Ty] : GroundStable (Command N Tm Ty) Ty where
+  pSubst_ground {c} σ h := by
+    obtain ⟨x, τ, t⟩ := c
+    show Command.decl x _ _ = Command.decl x _ _
+    rw [GroundStable.pSubst_ground σ (fun n hn => h n (Or.inl hn)),
+        GroundStable.pSubst_ground σ (fun n hn => h n (Or.inr hn))]
 
 instance instLawfulCompCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
     [LawfulComp Tm Ty] [LawfulComp Ty Ty] : LawfulComp (Command N Tm Ty) Ty where

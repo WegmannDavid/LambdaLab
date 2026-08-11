@@ -210,6 +210,15 @@ instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] [HasSubst β β]
         = (HasSubst.pSubst (HasSubst.pSubst p.1 τ) σ, HasSubst.pSubst (HasSubst.pSubst p.2 τ) σ)
     rw [LawfulComp.pSubst_comp p.1 σ τ, LawfulComp.pSubst_comp p.2 σ τ]
 
+/-- A pair is ground exactly when both components are, so `GroundStable` lifts componentwise —
+and eta makes the reassembled pair the original one. -/
+instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] [GroundStable α β] [GroundStable α' β] :
+    GroundStable (α × α') β where
+  pSubst_ground {p} σ h := by
+    show (HasSubst.pSubst p.1 σ, HasSubst.pSubst p.2 σ) = p
+    rw [GroundStable.pSubst_ground σ (fun n hn => h n (Or.inl hn)),
+        GroundStable.pSubst_ground σ (fun n hn => h n (Or.inr hn))]
+
 /-- Pointwise substitution on lists. `isFree` is "free in some element";
 `fresh` is the foldr of `max` over the per-element fresh values. -/
 instance {α β : Type} [HasSubst α β] : HasSubst (List α) β where
@@ -228,6 +237,18 @@ instance {α β : Type} [HasSubst α β] [HasSubst β β] [LawfulComp α β] :
     show xs.map _ = (xs.map _).map _
     rw [List.map_map]
     exact List.map_congr_left (fun x _ => LawfulComp.pSubst_comp x σ τ)
+
+/-- A ground list is one all of whose elements are ground, so the pointwise map is the identity.
+
+This is what makes an already-elaborated *program* a fixed point of elaboration: `Program` is a
+`Command` paired with a `List Command`, and the two instances above and here are what carry
+groundness of every declaration up to groundness of the file. -/
+instance {α β : Type} [HasSubst α β] [GroundStable α β] : GroundStable (List α) β where
+  pSubst_ground {xs} σ h := by
+    show xs.map _ = xs
+    rw [List.map_congr_left
+      (fun x hx => GroundStable.pSubst_ground σ (fun n hn => h n ⟨x, hx, hn⟩))]
+    exact List.map_id xs
 
 /-- Substitution does not change a list's length — what lets a fold over a program recurse on the
 substituted tail and still terminate. -/

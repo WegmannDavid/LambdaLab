@@ -3,6 +3,7 @@ import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.JComplete
+import LambdaLab.TypeSystem.Vernacular.Elaborate
 
 /-!
 # STLC against the `TypeSystem` interface
@@ -129,6 +130,23 @@ instance : DecidablePred (HasVars.Ground : Ty → Prop) :=
 /-- The same for terms, via `Term.AnnotsGround`. -/
 instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
   fun _ => decidable_of_iff _ Term.annotsGround_iff_ground
+
+/-- **STLC elaborates whole files.** Every field is one of the instances above or beside, so this
+is a packaging step and not a proof: `Vernacular.Elaboratable` exists precisely so that a front
+end can ask for one thing instead of seven, and so that the seven it collects are the *same*
+instances the elaborator substitutes with.
+
+Generic in `N`, like everything else here — the vernacular names declarations by the object
+language's own variables, so the instance a parser needs is this one at its token-derived name
+type, not a separate one. -/
+instance instElaboratable : TypeSystem.Vernacular.Elaboratable N (Term N) Ty where
+  lawfulContext := inferInstance
+  tyGroundStable := inferInstance
+  tmGroundStable := inferInstance
+  tyLawfulComp := inferInstance
+  tmLawfulComp := inferInstance
+  tyGroundDec := inferInstance
+  tmGroundDec := inferInstance
 
 /-! ## The fields are definitionally what they came from
 

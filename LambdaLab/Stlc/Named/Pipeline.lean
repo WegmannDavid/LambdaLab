@@ -301,7 +301,14 @@ deriving it from the lexical fields is the open conjecture. -/
 theorem stlcUnambiguous : Unambiguous stlcGrammar := by
   sorry
 
-def stlcLanguage : Language where
+/-- **`reducible` is load-bearing.** The front end asks for
+`Vernacular.Elaboratable (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
+runs at reduced transparency: without this it cannot unfold the definition to discover that those
+are `VName`, `Term VName` and `Ty`, and the generic instance in `TypeSystem.lean` never matches.
+The alternative — restating the instance at the projected types — needs its `NameAlphabet`
+argument to be the one `Var` supplies rather than the one `VName` does, and the two are equal only
+after the same unfolding. -/
+@[reducible] def stlcLanguage : Language where
   Tm := Term VName
   Ty := Ty
   AnnTy := fun x => { t : Expr stlcGrammar SEnt.ty .loosest // truncExpr sRules t = x }
@@ -336,26 +343,27 @@ judgement treats it as. The distinction matters: `HasType` has no rule mentionin
 the judgement `?0` is an atom equal to itself and nothing else — an extra base type, not a hole.
 Solving is what the elaborator adds on top.
 
-**No metavariable survives a declaration.** Solving is given its chance first, and what remains
-unsolved is a mistake in the source rather than an inference request: `def poly : ?0 → ?0 :=
-λ x : ?0 . x` still fails, because nothing determines `?0`. Since `Language/Typing.lean` puts the
-*elaborated* type into the context, nothing downstream ever sees an unsolved metavariable. That is
-imposed by restricting `Elaborates`, not by a field of `ElaboratableLanguage`, exactly as the
-interface intends.
+**Nothing to write here.** The whole front end comes from `Stlc/Named/TypeSystem.lean`'s
+`instElaboratable`, which is a packaging of instances that predate the parser by a long way. This
+file's only contribution to elaboration is the observation that `Var stlcLanguage` *is* `VName`,
+so the generic instance applies at the name type the vernacular happens to use.
+
+**No metavariable survives a declaration**, and that is now a rule of the judgement rather than a
+policy this file enforces: `Vernacular.HasTypeGround` demands a ground type and a ground body at
+every declaration, so `def poly : ?0 → ?0 := λ x : ?0 . x` fails because nothing determines `?0`,
+and no later declaration can ever observe an unsolved one.
 
 **What is and is not claimed.** `elabSubst_sound` is sorry-free, so a successful elaboration
-carries a real `HasType` derivation, and `JComplete.elabSubst_complete` is too, so failure means
-no typing exists. Most-generality is *not* claimed — that is `TypeSystem.PrincipalElaborate`,
-still open. `stlcElaboratable` reports `sorryAx` only through `toLanguage`, i.e. the assumed
-`stlcUnambiguous` above.
+carries a real `HasType` derivation, and `JComplete.elabSubst_complete` is too, so a *declaration*
+that fails to elaborate has no typing. Most-generality is **not** claimed — that is
+`TypeSystem.PrincipalElaborate`, still open — and without it whole-*program* completeness does not
+follow either: the elaborator commits to one solution per declaration, and a later declaration may
+need a different one. What is proved is the direction a printer needs, `elabProgram?_self`: an
+already-elaborated program re-elaborates to itself.
 
-**Why `Elaborates` demands a stable answer.** `quote_elaborates` needs re-elaborating an output to
-reproduce it, which is unproved; rather than assume it, the relation *requires* it. An answer that
-were not a fixed point simply does not elaborate — conservative, never unsound, and no `sorry`.
+The front end reports `sorryAx` only through `stlcLanguage`, i.e. the assumed `stlcUnambiguous`
+above; the elaboration half is sorry-free.
 -/
-
--- Terms compare, given comparable names — needed to *check* that an elaboration is stable.
-deriving instance DecidableEq for Term
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
 instance : HasVars VName where
@@ -363,102 +371,8 @@ instance : HasVars VName where
   fresh _ := 0
   fresh_gt_free := by intro _ _ h; cases h
 
-/-! ## Elaboration, through the `TypeSystem` interface
-
-`solve` calls `DecideableElaborate.elaborate`, not `Target.elabSubst`. The two compute the same
-thing — the instance's field *is* `elabSolution`, which wraps `elabSubst` — but going through the
-class means the pipeline depends on the interface rather than on one language's implementation of
-it, and it gets soundness for free: `SolutionProp.solution` carries the typing derivation in its
-payload, so `solve_hasType` reads the proof off the constructor instead of invoking a lemma.
-
-This works at `VName` only because the instances are parametric in the name alphabet. They were
-pinned at `String` until `Step`/`Translation`/`preservation` were generalized — see
-`Stlc/Named/TypeSystem.lean`. Had they stayed pinned, this file could not have used the class at
-all: the vernacular names terms by `VName`, not by `String`.
--/
-
-open LambdaLab.TypeSystem (DecideableElaborate) in
-/-- Infer, then apply — refusing to let a metavariable survive the declaration. -/
-def solve (Γ : Ctx VName) (t : Term VName) (τ : Ty) : Option (Term VName × Ty) :=
-  match DecideableElaborate.elaborate Γ t τ with
-  | .impossible _ => none
-  | .solution σ _ =>
-      if (HasSubst.pSubst τ σ : Ty).Ground ∧ (HasSubst.pSubst t σ : Term VName).AnnotsGround then
-        some (HasSubst.pSubst t σ, HasSubst.pSubst τ σ)
-      else none
-
-/-- **Soundness**, read straight off the constructor: a `SolutionProp.solution` cannot be built
-without the typing derivation, so there is no lemma to apply. -/
-theorem solve_hasType {Γ : Ctx VName} {t : Term VName} {τ : Ty} {p : Term VName × Ty}
-    (h : solve Γ t τ = some p) :
-    ∃ σ, HasType (HasSubst.pSubst Γ σ) p.1 p.2 := by
-  rw [solve] at h
-  split at h
-  · exact absurd h (by simp)
-  · rename_i σ hσ _
-    refine ⟨σ, ?_⟩
-    split at h
-    · cases h; exact hσ
-    · exact absurd h (by simp)
-
-/-- The answers that reproduce themselves. -/
-def solveStable (Γ : Ctx VName) (t : Term VName) (τ : Ty) : Option (Term VName × Ty) :=
-  match solve Γ t τ with
-  | none => none
-  | some p => if solve Γ p.1 p.2 = some p then some p else none
-
-theorem solveStable_idem {Γ : Ctx VName} {t : Term VName} {τ : Ty} {p : Term VName × Ty}
-    (h : solveStable Γ t τ = some p) : solveStable Γ p.1 p.2 = some p := by
-  rw [solveStable] at h
-  split at h
-  · exact absurd h (by simp)
-  · rename_i q hq
-    split at h
-    · rename_i hst
-      cases h
-      simp [solveStable, hst]
-    · exact absurd h (by simp)
-
-/-! Matching on `solveStable` directly would abstract it out of the subtype's property, so the
-result is generalized with an equation first: `certAux` matches on a *copy* and carries the proof
-that the copy is the real thing. -/
-
-private def certAux (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
-    (o : Option (Term VName × Ty)) → solveStable Γ t τ = o →
-    Option { p : Term VName × Ty // solveStable Γ t τ = some (p.1, p.2) }
-  | none,   _ => none
-  | some q, h => some ⟨q, by rw [h]⟩
-
-def solveCert (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
-    Option { p : Term VName × Ty // solveStable Γ t τ = some (p.1, p.2) } :=
-  certAux Γ t τ (solveStable Γ t τ) rfl
-
-private theorem certAux_isSome (Γ : Ctx VName) (t : Term VName) (τ : Ty) :
-    ∀ (o : Option (Term VName × Ty)) (h : solveStable Γ t τ = o),
-      (certAux Γ t τ o h).isSome = o.isSome
-  | none,   _ => rfl
-  | some _, _ => rfl
-
-theorem solveCert_isSome {Γ : Ctx VName} {t : Term VName} {τ : Ty}
-    (h : (solveStable Γ t τ).isSome) : (solveCert Γ t τ).isSome := by
-  rw [solveCert, certAux_isSome]; exact h
-
-/-- **STLC as an elaboratable language**, elaborated by constraint generation. -/
-def stlcElaboratable : Pipeline.ElaboratableLanguage where
-  toLanguage := stlcLanguage
-  Elaborates Γ t t' τ τ' := solveStable Γ t τ = some (t', τ')
-  elaborates_unique h₁ h₂ := by
-    have h := Option.some.inj (h₁.symm.trans h₂)
-    exact ⟨congrArg Prod.fst h, congrArg Prod.snd h⟩
-  elaborate := solveCert
-  elaborate_complete h := solveCert_isSome (by rw [h]; rfl)
-  quote t' τ' := (t', τ')
-  quote_elaborates h := by
-    obtain ⟨t, τ, hst⟩ := h
-    exact solveStable_idem hst
-
 /-- Parse a source file and elaborate it, rendering the result. -/
 def elaborateSource (src : String) : Option String :=
-  (stlcElaboratable.elaborateFile src).map stlcElaboratable.renderElaborated
+  (stlcLanguage.elaborateFile src).map stlcLanguage.renderElaborated
 
 end LambdaLab.Stlc.Named

@@ -1,4 +1,4 @@
-import LambdaLab.Pipeline.Vernacular
+import LambdaLab.Pipeline.Basic
 import LambdaLab.Parser.IsoParser.Notation
 
 /-!

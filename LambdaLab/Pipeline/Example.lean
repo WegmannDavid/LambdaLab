@@ -1,4 +1,3 @@
-import LambdaLab.Pipeline.Pipeline
 import LambdaLab.Pipeline.ElabStage
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
@@ -22,8 +21,11 @@ open LambdaLab.Parser.IsoParser
 `sat isName`'s real indices are FIRST = `isName`, FOLLOW = ⊤ (a single token is self-delimiting,
 so anything may follow). Adapt both to what the interface asks for: `enlargeFirst` widens FIRST
 up to `anyTok` (sound: `firstOk` is a negative claim); `weakenFollow` narrows FOLLOW down to the
-key token (sound: the round-trip is antitone in FOLLOW). -/
-def trivialLanguage : Language where
+key token (sound: the round-trip is antitone in FOLLOW).
+
+`reducible` for the reason `stlcLanguage` is: instance search has to see through the definition to
+find the `Elaboratable` instance at `Var trivialLanguage`. -/
+@[reducible] def trivialLanguage : Language where
   Tm := Name
   Ty := Name
   AnnTy := fun _ => Unit
@@ -91,8 +93,10 @@ def reprint (s : String) : Option String :=
 
 /-! ## Giving it a semantics
 
-`trivialLanguage` is a `Language`, so it parses. Making it an `ElaboratableLanguage` gets the
-whole front end *including* type checking, again for free.
+`trivialLanguage` is a `Language`, so it parses. Making its *types and terms* satisfy
+`Vernacular.Elaboratable` gets the whole front end including type checking — and note where the
+work happens: everything below is an instance of a `TypeSystem` class, with no mention of a
+parser, a token or a `Language`. The pipeline picks it up on its own.
 
 Terms here are just names, and `Var` is the same `Name`, so a term is literally a variable
 reference — which makes the only interesting judgement scope-and-agreement: a name already
@@ -100,9 +104,35 @@ declared must be used at the type it was declared with. A name not yet declared 
 so a file can open with anything.
 
 Small as it is, this exercises the part that only exists at the vernacular level: the context is
-threaded through the declarations, so what the *second* command means depends on what the first
-one elaborated to.
+threaded through the declarations, so whether the *second* command checks depends on what the
+first one declared.
 -/
+
+/-! ### The object language
+
+Names carry no metavariables, so substitution is the identity and every law about it is `rfl`.
+That is not a cheat — it is what a language with no inference looks like, and it is exactly the
+degenerate case the interface has to admit if the general one is to mean anything. -/
+
+/-! Terms and types are the same type here, so `Name` must have `HasVars` — and that makes the
+*key-aware* `HashMap` substitution instance apply to `Context Name Name` and outrank the
+context-specific one, which is deliberately `low`. The generic vernacular code was elaborated
+where no `HasVars N` was in scope, so its goals carry the context instance; raising its priority
+here makes the concrete lemmas below talk about the same `pSubst` those goals do. -/
+
+attribute [local instance 2000] LambdaLab.TypeSystem.instHasSubstContext
+
+instance : HasSubst Name Name where
+  pSubst t _ := t
+  isFree _ _ := False
+  fresh _ := 0
+  fresh_gt_free := by intro _ _ h; cases h
+
+instance : GroundStable Name Name where pSubst_ground _ _ := rfl
+instance : LawfulComp Name Name where pSubst_comp _ _ _ := rfl
+
+/-- Nothing is ever free, so everything is ground — decidably. -/
+instance : DecidablePred (HasVars.Ground : Name → Prop) := fun _ => isTrue (fun _ h => h)
 
 /-- `t` may be used at `τ`: either it is unbound, or it was declared at `τ`. -/
 def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
@@ -110,43 +140,90 @@ def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
   | none => true
   | some σ => σ == τ
 
-/-- The trivial language with a semantics. Elaboration is the identity — nothing is inferred —
-so all the content is in `declaredAt`. -/
-def trivialElaboratable : ElaboratableLanguage where
-  toLanguage := trivialLanguage
-  Elaborates Γ t t' τ τ' := t' = t ∧ τ' = τ ∧ declaredAt Γ t τ = true
-  elaborates_unique h₁ h₂ := by
-    obtain ⟨rfl, rfl, -⟩ := h₁; obtain ⟨rfl, rfl, -⟩ := h₂; exact ⟨rfl, rfl⟩
-  elaborate Γ t τ :=
-    if h : declaredAt Γ t τ = true then some ⟨(t, τ), rfl, rfl, h⟩ else none
-  elaborate_complete h := by
-    obtain ⟨rfl, rfl, hok⟩ := h; simp [hok]
-  quote t' τ' := (t', τ')
-  quote_elaborates h := by
-    obtain ⟨t, τ, rfl, rfl, hok⟩ := h; exact ⟨rfl, rfl, hok⟩
+/-- Substituting a context cannot change what it says, since substitution fixes every value.
+Stated at `declaredAt` rather than as `pSubst Γ σ = Γ`, which `Std.HashMap` does not let anyone
+prove — the same reason `LawfulContext` exists. -/
+theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Name) (t τ : Name) :
+    declaredAt (HasSubst.pSubst Γ σ) t τ = declaredAt Γ t τ := by
+  rw [declaredAt, declaredAt, Context.pSubst_get?]
+  cases Γ.get? t <;> rfl
 
-/-- Parse and elaborate, reporting the declared names of the *elaborated* program. -/
+instance : TypeSystem.HasType Name Name Name where
+  HasType Γ t τ := declaredAt Γ t τ = true
+
+/-- Nothing reduces, so preservation is vacuous. -/
+instance : TypeSystem.Step Name where Step _ _ := False
+
+instance : TypeSystem.TypeSystem Name Name Name where
+instance : TypeSystem.LawfulTypeSystem Name Name Name where
+  Preservation _ hs := hs.elim
+
+instance : TypeSystem.LawfulContext Name Name Name where
+  cong h ht := by
+    show declaredAt _ _ _ = true
+    rw [declaredAt, ← h]
+    exact ht
+
+instance : TypeSystem.MVars Name Name Name where
+  tmSubst := inferInstance
+  tySubst := inferInstance
+
+instance : TypeSystem.LawfulMVars Name Name Name where
+  Stability := by
+    intro Γ t τ σ ht
+    show declaredAt (HasSubst.pSubst Γ σ) t τ = true
+    rw [declaredAt_pSubst]
+    exact ht
+
+/-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so both
+branches are immediate — including the negative one, which is a genuine proof that *no*
+substitution helps rather than a report of a failed search. -/
+instance : TypeSystem.DecideableElaborate Name Name Name where
+  elaborate Γ t τ :=
+    if h : declaredAt Γ t τ = true then
+      .solution ∅ (by
+        show declaredAt (HasSubst.pSubst Γ (∅ : Subst Name)) t τ = true
+        rw [declaredAt_pSubst]; exact h)
+    else
+      .impossible (fun σ hσ => h (by
+        have h' : declaredAt (HasSubst.pSubst Γ σ) t τ = true := hσ
+        rwa [declaredAt_pSubst] at h'))
+
+/-- **…and therefore whole files elaborate.** Seven `inferInstance`s and the front end exists. -/
+instance : TypeSystem.Vernacular.Elaboratable Name Name Name where
+  lawfulContext := inferInstance
+  tyGroundStable := inferInstance
+  tmGroundStable := inferInstance
+  tyLawfulComp := inferInstance
+  tmLawfulComp := inferInstance
+  tyGroundDec := inferInstance
+  tmGroundDec := inferInstance
+
+/-! ### The pipeline, for free
+
+`elaborateFile` is `Language.pipeline` composed with the elaboration stage — one `Abs` morphism
+from characters to a *well-typed* program. -/
+
+/-- Parse and elaborate, reporting the declared names of the elaborated program. -/
 def checkNames (s : String) : Option (List String) :=
-  (trivialElaboratable.elaborateFile s).map fun p =>
+  (trivialLanguage.elaborateFile s).map fun p =>
     p.val.toList.map (fun c => c.name.val.val)
 
 -- accepted: `y` is unbound at its use, then `x` is used at the `A` it was declared with
 #eval checkNames "def x : A := y   def z : A := x"     -- some ["x", "z"]
--- rejected: `x` was declared at `A`, so using it at `B` does not elaborate
+-- rejected: `x` was declared at `A`, so using it at `B` does not check
 #eval checkNames "def x : A := y   def z : B := x"     -- none
 -- the parse still succeeds on the rejected file — it is elaboration that refuses
 #eval parseNames "def x : A := y   def z : B := x"     -- some ["x", "z"]
 -- and the whole front end still round-trips: elaborate, then render
-#eval (trivialElaboratable.elaborateFile "  def x : A := y   def z : A := x ").map
-        trivialElaboratable.renderElaborated
+#eval (trivialLanguage.elaborateFile "  def x : A := y   def z : A := x ").map
+        trivialLanguage.renderElaborated
 
-/-- The round trip, now over the *elaborating* pipeline: any source that means `p` re-parses and
-re-elaborates to exactly `p`. Free, as before. -/
-example (p : ElaborableProgram trivialElaboratable)
-    (ann : Σ a : { q // Program.Elaborates trivialElaboratable q p.val },
-      Σ b : Program.Ann trivialElaboratable.toLanguage a.val,
-        Abstraction.Gaps isSep (trivialElaboratable.parser.print b)) :
-    trivialElaboratable.pipeline.abstract (trivialElaboratable.pipeline.realize ann) = some p :=
-  trivialElaboratable.pipeline.abstract_realize p ann
+/-- The round trip over the *elaborating* pipeline: render an elaborated program and read it back,
+and you land on exactly the program you started from — parsing and type checking together. Free,
+as before. -/
+example (p : trivialLanguage.Elaborated) :
+    trivialLanguage.elaborateFile (trivialLanguage.renderElaborated p) = some p :=
+  trivialLanguage.elaborateFile_renderElaborated p
 
 end LambdaLab.Pipeline

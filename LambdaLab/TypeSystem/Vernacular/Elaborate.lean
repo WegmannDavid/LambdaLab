@@ -67,10 +67,48 @@ namespace LambdaLab.TypeSystem.Vernacular
 
 open HasVars (Ground)
 
-variable {N Tm Ty : Type} [NameAlphabet N]
-  [DecideableElaborate N Tm Ty] [LawfulContext N Tm Ty]
-  [GroundStable Ty Ty] [GroundStable Tm Ty] [LawfulComp Ty Ty] [LawfulComp Tm Ty]
-  [DecidablePred (Ground : Ty → Prop)] [DecidablePred (Ground : Tm → Prop)]
+/-- **A type system whose whole *files* elaborate.** `DecideableElaborate` decides one checking
+problem; a fold over a program needs the four laws and two decision procedures described above,
+and this is them, packaged so that a front end can ask for *one* thing.
+
+Every field is a mixin over an instance the language already has, so every field is filled with
+`inferInstance` — see `Stlc/Named/TypeSystem.lean`. Bundling them rather than taking seven
+separate binders is not only convenience: `GroundStable Tm Ty` is stated over the `HasSubst Tm Ty`
+that `MVars` carries, so collecting them here forces them to be the *same* instances the
+elaborator substitutes with, instead of leaving that to whatever happens to be in scope at the use
+site.
+
+The parent is `DecideableElaborate` rather than a second set of binders for the same reason
+`LawfulMVars` extends both its parents: separate binders would give separate `HasType`s. -/
+class Elaboratable (N Tm Ty : Type) [nameAlphabet : NameAlphabet N]
+    extends DecideableElaborate N Tm Ty where
+  /-- Typing sees a context only through lookup — what lets a declaration solved under a
+  substituted context be re-read under the vernacular's own. -/
+  lawfulContext : LawfulContext N Tm Ty
+  /-- Substitution fixes a ground type. -/
+  tyGroundStable : GroundStable Ty Ty
+  /-- …and a term whose annotations are all solved. -/
+  tmGroundStable : GroundStable Tm Ty
+  /-- Substituting twice is substituting once, through the composite — at the type level… -/
+  tyLawfulComp : LawfulComp Ty Ty
+  /-- …and at the term level. -/
+  tmLawfulComp : LawfulComp Tm Ty
+  /-- `Ground` is `∀ n, ¬ isFree x n`, which no instance decides by unfolding; a language routes
+  it to its own structural check. -/
+  tyGroundDec : DecidablePred (Ground : Ty → Prop)
+  /-- The same for terms. -/
+  tmGroundDec : DecidablePred (Ground : Tm → Prop)
+
+/-! `low` for the reason `MVars.tySubst` needs it: at default priority a projection displaces the
+canonical instance it was filled from, resolving the class's other parameters by whatever single
+`Elaboratable` happens to be in scope. The two data-valued ones are `reducible` besides, so that
+a `Ground` check written against them is definitionally the language's own. -/
+
+attribute [instance low] Elaboratable.lawfulContext Elaboratable.tyGroundStable
+  Elaboratable.tmGroundStable Elaboratable.tyLawfulComp Elaboratable.tmLawfulComp
+attribute [reducible, instance low] Elaboratable.tyGroundDec Elaboratable.tmGroundDec
+
+variable {N Tm Ty : Type} [NameAlphabet N] [Elaboratable N Tm Ty]
 
 /-- The typing `elaborate` returns, re-read under the context the vernacular maintains rather than
 under the substituted one. This is the single step the two extra laws exist for. -/
@@ -150,5 +188,101 @@ theorem elabProgram?_hasType {p p' : Program N Tm Ty} (h : elabProgram? p = some
   rw [elabProgram?, Option.map_eq_some_iff] at h
   obtain ⟨σ, _, rfl⟩ := h
   exact σ.property
+
+/-! ## An elaborated program is a fixed point of the elaborator
+
+Soundness says what comes out is well-typed. This is the converse *on the image*: run the
+elaborator on a program that is already well-typed and fully resolved, and it succeeds and returns
+that program unchanged.
+
+It is not completeness — nothing here says a program with unsolved metavariables elaborates, and
+in general it need not (`elaborate` returns *a* solution, not a most general one, so an earlier
+declaration may commit to a type a later one cannot live with). What is claimed is exactly the
+part a front end needs: **the elaborated form is its own canonical source**, so a printer has
+something to print and re-reading what it printed lands back where it started.
+
+The proof rests on one observation, and it is the same one that makes the fold's substitutions
+compose: a well-typed program is *ground*, and substitution does not touch a ground object. So
+every substitution the fold applies to it is the identity, and the recursion runs down the
+original list with the original context. -/
+
+/-- Every declaration in a well-typed run is ground, hence so is the run — at the `List` instance,
+which is what the fold substitutes through. -/
+theorem HasTypeGround.ground {Γ : Context N Ty} {cs : List (Command N Tm Ty)}
+    (h : HasTypeGround Γ cs) : Ground cs := by
+  rintro n ⟨c, hc, hn⟩
+  obtain ⟨x, τ, t⟩ := c
+  obtain ⟨hτ, ht⟩ := h.ground_of_mem hc
+  have hn' : HasVars.isFree τ n ∨ HasVars.isFree t n := hn
+  exact hn'.elim (hτ n) (ht n)
+
+/-- The same for a program, through the pair instance: `Program` is head-and-tail, and both are
+ground. -/
+theorem HasType.ground {p : Program N Tm Ty} (h : HasType p) : Ground p := by
+  intro n hn
+  refine HasTypeGround.ground h n ?_
+  have hn' : HasVars.isFree p.1 n ∨ HasVars.isFree p.2 n := hn
+  exact hn'.elim (fun h₁ => ⟨p.1, by simp [NEList.toList], h₁⟩)
+    (fun ⟨c, hc, hcn⟩ => ⟨c, by simp [NEList.toList, hc], hcn⟩)
+
+/-- The `CtxGround` argument is a proof, and equal contexts and command lists give equal answers —
+so it never has to be threaded through a rewrite. This is what lets the ground case rewrite
+`Γ.cons x (pSubst τ σ)` to `Γ.cons x τ` underneath a `elabCommands` application. -/
+theorem elabCommands_isSome_congr {Γ Γ' : Context N Ty} (hΓ : CtxGround Γ) (hΓ' : CtxGround Γ')
+    {cs cs' : List (Command N Tm Ty)} (hΓeq : Γ = Γ') (hcs : cs = cs') :
+    (elabCommands Γ hΓ cs).isSome = (elabCommands Γ' hΓ' cs').isSome := by
+  subst hΓeq; subst hcs; rfl
+
+/-- **The elaborator does not refuse an already-elaborated run.**
+
+Both branches use groundness. A `.impossible` answer claims *no* substitution types the
+declaration; instantiating it at `∅` and using groundness to strip the substitutions off `t` and
+`τ` contradicts the derivation directly — the context is handled by `LawfulContext`, since
+`pSubst Γ ∅ = Γ` is only available keywise. A `.solution` answer passes both `Ground` checks for
+the same reason, and recurses on a list and a context that groundness shows are the originals. -/
+theorem elabCommands_isSome_of_hasTypeGround :
+    ∀ {Γ : Context N Ty} {cs : List (Command N Tm Ty)}, HasTypeGround Γ cs →
+      ∀ hΓ : CtxGround Γ, (elabCommands Γ hΓ cs).isSome := by
+  intro Γ cs h
+  induction h with
+  | nil _ => intro hΓ; rw [elabCommands]; rfl
+  | @decl Γ x τ t cs hty hτ ht hrest ih =>
+      intro hΓ
+      rw [elabCommands]
+      split
+      · rename_i hno _
+        refine absurd ?_ (hno ∅)
+        rw [GroundStable.pSubst_ground (∅ : Subst Ty) ht,
+            GroundStable.pSubst_ground (∅ : Subst Ty) hτ]
+        exact LawfulContext.cong (fun y => (Context.pSubst_get?_of_ground Γ ∅ hΓ y).symm) hty
+      · rename_i σ _ _
+        have hgτ : Ground (HasSubst.pSubst τ σ) := by
+          rw [GroundStable.pSubst_ground σ hτ]; exact hτ
+        have hgt : Ground (HasSubst.pSubst t σ) := by
+          rw [GroundStable.pSubst_ground σ ht]; exact ht
+        rw [dif_pos hgτ, dif_pos hgt]
+        have key : (elabCommands (Γ.cons x (HasSubst.pSubst τ σ)) (hΓ.cons hgτ)
+                      (HasSubst.pSubst cs σ)).isSome := by
+          rw [elabCommands_isSome_congr (hΓ.cons hgτ) (hΓ.cons hτ)
+                (by rw [GroundStable.pSubst_ground σ hτ])
+                (GroundStable.pSubst_ground σ hrest.ground)]
+          exact ih (hΓ.cons hτ)
+        cases hrec : elabCommands (Γ.cons x (HasSubst.pSubst τ σ)) (hΓ.cons hgτ)
+                       (HasSubst.pSubst cs σ) with
+        | none => rw [hrec] at key; exact absurd key (by simp)
+        | some r => obtain ⟨σ', hσ'⟩ := r; rfl
+
+/-- **An elaborated program re-elaborates to itself.** The canonical surface form of a well-typed
+program is the program, which is what gives a front end a printer whose output re-reads. -/
+theorem elabProgram?_self {p : Program N Tm Ty} (h : HasType p) : elabProgram? p = some p := by
+  have hs : (elabCommands (Context.empty : Context N Ty) CtxGround.empty p.toList).isSome :=
+    elabCommands_isSome_of_hasTypeGround h CtxGround.empty
+  rw [elabProgram?, elabProgram]
+  cases hc : elabCommands (Context.empty : Context N Ty) CtxGround.empty p.toList with
+  | none => rw [hc] at hs; exact absurd hs (by simp)
+  | some s =>
+      obtain ⟨σ, hσ⟩ := s
+      rw [Option.map_some, Option.some.injEq]
+      exact GroundStable.pSubst_ground σ h.ground
 
 end LambdaLab.TypeSystem.Vernacular
