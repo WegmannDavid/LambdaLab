@@ -45,40 +45,80 @@ def Language.compileElab (L : Language)
   | some p => .ok (L.renderElaborated p)
 
 /-- Usage text, on the same shape every language's executable shares. -/
-def usage (name : String) : String :=
-  s!"usage: {name} FILE...\n\
+def usage (name ext : String) : String :=
+  s!"usage: {name} PATH...\n\
      \n\
-     Reads each FILE, processes it, and writes the canonical rendering to stdout.\n\
-     Exits non-zero if any file is missing, unreadable, or rejected."
+     Each PATH is a source file, or a directory to search recursively for `.{ext}` files.\n\
+     Writes the canonical rendering of each to stdout, diagnostics to stderr.\n\
+     Exits non-zero if any path is missing, unreadable, or rejected."
+
+/-- Every `.ext` file at or under `p`, in a deterministic order.
+
+Sorted by name at each level, so a directory argument gives the same output every run — a tool
+whose output depends on `readDir`'s order is not much use in a pipe or a test. An explicitly named
+file is *not* filtered by extension: naming it is the instruction. -/
+partial def filesUnder (ext : String) (p : System.FilePath) : IO (Array System.FilePath) := do
+  if ← p.isDir then
+    let entries := (← p.readDir).qsort (fun a b => decide (a.fileName < b.fileName))
+    let mut acc := #[]
+    for e in entries do
+      acc := acc ++ (← filesUnder ext e.path)
+    return acc
+  else
+    return if p.extension == some ext then #[p] else #[]
+
+/-- Turn one command-line argument into the files it names, or say why it names none. -/
+def expand (ext : String) (path : String) : IO (Except String (Array System.FilePath)) := do
+  let p : System.FilePath := path
+  if !(← p.pathExists) then
+    return .error "error: no such file or directory"
+  if ← p.isDir then
+    let files ← filesUnder ext p
+    if files.isEmpty then
+      return .error s!"error: no .{ext} files under this directory"
+    return .ok files
+  return .ok #[p]
 
 /-- Process one file. Diagnostics go to stderr and output to stdout, so the result of a successful
-run can be piped without stripping anything. Returns whether it succeeded. -/
-def processFile (compile : String → Except String String) (path : String) : IO Bool := do
-  if !(← System.FilePath.pathExists path) then
-    IO.eprintln s!"{path}: error: no such file"
-    return false
-  match compile (← IO.FS.readFile path) with
-  | .error msg =>
-      IO.eprintln s!"{path}: {msg}"
+run can be piped without stripping anything. Returns whether it succeeded.
+
+The read is guarded: a path can exist and still not be readable — a directory, a broken symlink, a
+permissions problem — and an unhandled `IO.Error` reaches the user as `uncaught exception`, which
+is not a diagnostic. -/
+def processFile (compile : String → Except String String) (path : System.FilePath) : IO Bool := do
+  match ← (IO.FS.readFile path).toBaseIO with
+  | .error e =>
+      IO.eprintln s!"{path}: error: {e}"
       return false
-  | .ok out =>
-      IO.println out
-      return true
+  | .ok src =>
+      match compile src with
+      | .error msg =>
+          IO.eprintln s!"{path}: {msg}"
+          return false
+      | .ok out =>
+          IO.println out
+          return true
 
 /-- **The driver.** Every file named on the command line is processed, rather than stopping at the
 first failure — a compiler that reports one error per run is annoying to use. The exit code is 0
 only if all of them succeeded. -/
-def cli (name : String) (compile : String → Except String String) (args : List String) :
+def cli (name ext : String) (compile : String → Except String String) (args : List String) :
     IO UInt32 := do
   if args.contains "--help" || args.contains "-h" then
-    IO.println (usage name)
+    IO.println (usage name ext)
     return 0
   if args.isEmpty then
-    IO.eprintln (usage name)
+    IO.eprintln (usage name ext)
     return 1
   let mut failed := false
-  for path in args do
-    unless ← processFile compile path do failed := true
+  for arg in args do
+    match ← expand ext arg with
+    | .error msg =>
+        IO.eprintln s!"{arg}: {msg}"
+        failed := true
+    | .ok files =>
+        for path in files do
+          unless ← processFile compile path do failed := true
   return if failed then 1 else 0
 
 end LambdaLab.Pipeline

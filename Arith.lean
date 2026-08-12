@@ -4,9 +4,9 @@ import LambdaLab.Pipeline.Cli
 /-!
 # `arith` — the mixfix arithmetic vernacular, as a command-line compiler
 
-    lake exe arith FILE...
+    lake exe arith PATH...
 
-Reads each file, parses it, and writes it back out in canonical form: redundant parentheses
+Reads each file (or every `.arith` file under a directory), parses it, and writes it back out in canonical form: redundant parentheses
 forgotten and re-inserted where the grammar needs them, spacing normalised.
 
 It stops there, and that is not an omission — `Arith` has no type system, so it has no
@@ -17,4 +17,4 @@ It stops there, and that is not an omission — `Arith` has no type system, so i
 open LambdaLab.Pipeline LambdaLab.Arith
 
 def main (args : List String) : IO UInt32 :=
-  cli "arith" arithLanguage.compileParse args
+  cli "arith" "arith" arithLanguage.compileParse args
