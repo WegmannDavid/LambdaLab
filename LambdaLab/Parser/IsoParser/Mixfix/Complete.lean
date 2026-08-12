@@ -326,6 +326,255 @@ theorem seamed_body_tail {e : G.Ent} {o : (G.entry e).Op}
       exact not_continuesAt_of_interior (o := o) (by rw [hop]; exact hm)
   | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
 
+/-! ## Decomposing the two left-recursive chains
+
+`motive4` and `motive6` are about `parseJuxtExtend`/`parseInfixLExtend`, which fold arguments onto
+an accumulator. To state them over a *tree* the tree must first be taken apart the same way: a
+chain at level `tighterEq j` is a base operand at `tighter j` plus a **list** of further pieces,
+left-nested. That is what `juxt_decomp` and `infxl_decomp` supply, and until they existed the two
+fold motives could not even be written down.
+
+Both go by strong induction on `Expr.size`, and both split on whether the node's operator *is* the
+chaining one: if it is, the node is one application and its left component is a shorter chain; if
+it is not, `TighterEq` minus reflexivity is `Tighter`, so the whole tree is a lone operand
+(`tighter_of_tighterEq_ne`).
+
+The fiddly part is the shape index. `Operator.body e j` is only *propositionally* equal to the
+two-hole list, so the operand extraction goes through a cast, and `rw` cannot reach under it —
+the transport is done explicitly with `congrArg` plus `Parts.cast_symm_cast`.
+-/
+
+/-- Invert a two-hole body: the parts of a `juxt` node are exactly its two operands. -/
+def Parts.twoHoles {e : G.Ent} {l₁ l₂ : Level (G.entry e)}
+    (p : Parts G [Part.hole e l₁, Part.hole e l₂]) : Expr G e l₁ × Expr G e l₂ :=
+  match p with
+  | .hole f (.hole x .nil) => (f, x)
+
+omit [DecidableEq Tok] in
+theorem Parts.twoHoles_flatten {e : G.Ent} {l₁ l₂ : Level (G.entry e)}
+    (p : Parts G [Part.hole e l₁, Part.hole e l₂]) :
+    p.flatten = (p.twoHoles).1.flatten ++ (p.twoHoles).2.flatten := by
+  match p with
+  | .hole f (.hole x .nil) => simp [Parts.twoHoles, Parts.flatten]
+
+omit [DecidableEq Tok] in
+theorem Parts.twoHoles_eta {e : G.Ent} {l₁ l₂ : Level (G.entry e)}
+    (p : Parts G [Part.hole e l₁, Part.hole e l₂]) :
+    p = Parts.hole p.twoHoles.1 (Parts.hole p.twoHoles.2 Parts.nil) := by
+  match p with
+  | .hole f (.hole x .nil) => rfl
+
+/-- Left-fold a chain of juxtaposed arguments onto an accumulator. -/
+def juxtFold {e : G.Ent} {j : (G.entry e).Op} (hj : (G.entry e).operator j = Operator.juxt)
+    (base : Expr G e (Level.tighterEq j)) :
+    List (Expr G e (Level.tighter j)) → Expr G e (Level.tighterEq j)
+  | []      => base
+  | x :: xs => juxtFold hj (Expr.juxtApp hj base x) xs
+
+omit [DecidableEq Tok] in
+@[simp] theorem juxtFold_nil {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (base : Expr G e (Level.tighterEq j)) :
+    juxtFold hj base [] = base := rfl
+
+omit [DecidableEq Tok] in
+/-- Appending one more argument at the end is one more application on the outside. -/
+theorem juxtFold_snoc {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (base : Expr G e (Level.tighterEq j))
+    (xs : List (Expr G e (Level.tighter j))) (x : Expr G e (Level.tighter j)) :
+    juxtFold hj base (xs ++ [x]) = Expr.juxtApp hj (juxtFold hj base xs) x := by
+  induction xs generalizing base with
+  | nil => rfl
+  | cons y ys ih => simpa [juxtFold] using ih (Expr.juxtApp hj base y)
+
+omit [DecidableEq Tok] in
+/-- The flattening of a fold is the concatenation of its pieces. -/
+theorem juxtFold_flatten {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (base : Expr G e (Level.tighterEq j))
+    (xs : List (Expr G e (Level.tighter j))) :
+    (juxtFold hj base xs).flatten = base.flatten ++ (xs.map Expr.flatten).flatten := by
+  induction xs generalizing base with
+  | nil => simp [juxtFold]
+  | cons y ys ih => simp [juxtFold, ih (Expr.juxtApp hj base y), List.append_assoc]
+
+/-- Weakening a strictly-tighter operand to the chaining level. -/
+def Expr.toEq {e : G.Ent} {j : (G.entry e).Op} (x : Expr G e (Level.tighter j)) :
+    Expr G e (Level.tighterEq j) :=
+  x.reindex (l := Level.tighter j) (l' := Level.tighterEq j)
+    (fun _o hh => Tighter.toTighterEq (show Tighter (G.entry e).tighter j _o from hh))
+
+omit [DecidableEq Tok] in
+@[simp] theorem Expr.toEq_flatten {e : G.Ent} {j : (G.entry e).Op}
+    (x : Expr G e (Level.tighter j)) : x.toEq.flatten = x.flatten := by
+  simp [Expr.toEq]
+
+omit [DecidableEq Tok] in
+theorem Parts.size_cast {s s' : List (Part G)} (h : s = s') (ps : Parts G s) :
+    (h ▸ ps).size = ps.size := by subst h; rfl
+
+omit [DecidableEq Tok] in
+theorem Parts.cast_symm_cast {s s' : List (Part G)} (h : s = s') (ps : Parts G s) :
+    h.symm ▸ (h ▸ ps) = ps := by subst h; rfl
+
+omit [DecidableEq Tok] in
+/-- `TighterEq j o` with `o ≠ j` is `Tighter j o`. -/
+theorem tighter_of_tighterEq_ne {e : G.Ent} {j o : (G.entry e).Op}
+    (h : TighterEq (G.entry e).tighter j o) (hne : ¬ o = j) : Tighter (G.entry e).tighter j o := by
+  cases h with
+  | refl => exact absurd rfl hne
+  | step hmem hrest => exact Tighter.ofMemTighterEq hmem hrest
+
+omit [DecidableEq Tok] in
+/-- **A juxtaposition chain is a base operand plus a list of arguments.**
+
+The decomposition the two accumulator folds are stated over. Every tree at the chaining level
+`tighterEq j` is either an operand one level tighter, or an application whose left component is
+itself such a chain — so unrolling gives a base and a left-nested list. -/
+theorem juxt_decomp {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) :
+    ∀ (n : Nat) (t : Expr G e (Level.tighterEq j)), t.size ≤ n →
+      ∃ (x₀ : Expr G e (Level.tighter j)) (xs : List (Expr G e (Level.tighter j))),
+        t = juxtFold hj x₀.toEq xs := by
+  intro n
+  induction n with
+  | zero =>
+      intro t ht
+      cases t <;> simp [Expr.size] at ht
+  | succ m ih =>
+      intro t ht
+      match t with
+      | .var tok hv => exact ⟨Expr.var tok hv, [], rfl⟩
+      | .op o hc parts =>
+          by_cases hoj : o = j
+          · subst hoj
+            have hparts :
+                ((Operator.body_juxt hj).symm ▸
+                  (Parts.hole ((Operator.body_juxt hj ▸ parts).twoHoles).1
+                    (Parts.hole ((Operator.body_juxt hj ▸ parts).twoHoles).2 Parts.nil))
+                  : Parts G (Operator.body e o)) = parts :=
+              (congrArg (fun q => (Operator.body_juxt hj).symm ▸ q)
+                  (Parts.twoHoles_eta (Operator.body_juxt hj ▸ parts))).symm.trans
+                (Parts.cast_symm_cast (Operator.body_juxt hj) parts)
+            have hnode : Expr.op (l := Level.tighterEq o) o hc parts
+                = Expr.juxtApp hj ((Operator.body_juxt hj ▸ parts).twoHoles).1
+                    ((Operator.body_juxt hj ▸ parts).twoHoles).2 := by
+              unfold Expr.juxtApp
+              rw [hparts]
+            have hsz : ((Operator.body_juxt hj ▸ parts).twoHoles).1.size ≤ m := by
+              have hpe := Parts.twoHoles_eta (Operator.body_juxt hj ▸ parts)
+              have hc2 : (Operator.body_juxt hj ▸ parts).size = parts.size :=
+                Parts.size_cast (Operator.body_juxt hj) parts
+              rw [hpe] at hc2
+              simp only [Parts.size, Expr.size] at hc2 ht ⊢
+              omega
+            obtain ⟨x₀, xs, hx₀⟩ := ih _ hsz
+            exact ⟨x₀, xs ++ [((Operator.body_juxt hj ▸ parts).twoHoles).2],
+              by rw [hnode, juxtFold_snoc, ← hx₀]⟩
+          · exact ⟨Expr.op (l := Level.tighter j) o (tighter_of_tighterEq_ne hc hoj) parts, [], rfl⟩
+
+omit [DecidableEq Tok] in
+/-- `juxt_decomp` with the size bound discharged. -/
+theorem juxt_decomp' {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) (t : Expr G e (Level.tighterEq j)) :
+    ∃ (x₀ : Expr G e (Level.tighter j)) (xs : List (Expr G e (Level.tighter j))),
+      t = juxtFold hj x₀.toEq xs :=
+  juxt_decomp hj t.size t (Nat.le_refl _)
+
+/-! ### The same for a left-associative chain
+
+`infxl` folds whole body *tails* rather than single operands, so the list is of `Parts`. -/
+
+/-- Invert a body whose first part is a hole. -/
+def Parts.headHole {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
+    (p : Parts G (Part.hole e l :: ps)) : Expr G e l × Parts G ps :=
+  match p with
+  | .hole x rest => (x, rest)
+
+omit [DecidableEq Tok] in
+theorem Parts.headHole_eta {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
+    (p : Parts G (Part.hole e l :: ps)) :
+    p = Parts.hole p.headHole.1 p.headHole.2 := by
+  match p with
+  | .hole x rest => rfl
+
+def infxlFold {e : G.Ent} {o : (G.entry e).Op} (hl : ((G.entry e).operator o).isInfxl = true)
+    (base : Expr G e (Level.tighterEq o)) :
+    List (Parts G (Operator.body e o).tail) → Expr G e (Level.tighterEq o)
+  | []      => base
+  | p :: ps => infxlFold hl (Expr.infxlApp hl base p) ps
+
+omit [DecidableEq Tok] in
+@[simp] theorem infxlFold_nil {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (base : Expr G e (Level.tighterEq o)) :
+    infxlFold hl base [] = base := rfl
+
+omit [DecidableEq Tok] in
+theorem infxlFold_snoc {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (base : Expr G e (Level.tighterEq o))
+    (ps : List (Parts G (Operator.body e o).tail)) (p : Parts G (Operator.body e o).tail) :
+    infxlFold hl base (ps ++ [p]) = Expr.infxlApp hl (infxlFold hl base ps) p := by
+  induction ps generalizing base with
+  | nil => rfl
+  | cons q qs ih => simpa [infxlFold] using ih (Expr.infxlApp hl base q)
+
+omit [DecidableEq Tok] in
+theorem infxlFold_flatten {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (base : Expr G e (Level.tighterEq o))
+    (ps : List (Parts G (Operator.body e o).tail)) :
+    (infxlFold hl base ps).flatten = base.flatten ++ (ps.map Parts.flatten).flatten := by
+  induction ps generalizing base with
+  | nil => simp [infxlFold]
+  | cons q qs ih => simp [infxlFold, ih (Expr.infxlApp hl base q), List.append_assoc]
+
+omit [DecidableEq Tok] in
+/-- **A left-associative chain is a base operand plus a list of body tails.** -/
+theorem infxl_decomp {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) :
+    ∀ (n : Nat) (t : Expr G e (Level.tighterEq o)), t.size ≤ n →
+      ∃ (x₀ : Expr G e (Level.tighter o)) (ps : List (Parts G (Operator.body e o).tail)),
+        t = infxlFold hl x₀.toEq ps := by
+  intro n
+  induction n with
+  | zero => intro t ht; cases t <;> simp [Expr.size] at ht
+  | succ m ih =>
+      intro t ht
+      match t with
+      | .var tok hv => exact ⟨Expr.var tok hv, [], rfl⟩
+      | .op b hc parts =>
+          by_cases hbo : b = o
+          · subst hbo
+            have hparts :
+                ((Operator.body_infxl_cons hl).symm ▸
+                  (Parts.hole ((Operator.body_infxl_cons hl ▸ parts).headHole).1
+                    ((Operator.body_infxl_cons hl ▸ parts).headHole).2)
+                  : Parts G (Operator.body e b)) = parts :=
+              (congrArg (fun q => (Operator.body_infxl_cons hl).symm ▸ q)
+                  (Parts.headHole_eta (Operator.body_infxl_cons hl ▸ parts))).symm.trans
+                (Parts.cast_symm_cast (Operator.body_infxl_cons hl) parts)
+            have hnode : Expr.op (l := Level.tighterEq b) b hc parts
+                = Expr.infxlApp hl ((Operator.body_infxl_cons hl ▸ parts).headHole).1
+                    ((Operator.body_infxl_cons hl ▸ parts).headHole).2 := by
+              unfold Expr.infxlApp
+              rw [hparts]
+            have hsz : ((Operator.body_infxl_cons hl ▸ parts).headHole).1.size ≤ m := by
+              have hpe := Parts.headHole_eta (Operator.body_infxl_cons hl ▸ parts)
+              have hc2 : (Operator.body_infxl_cons hl ▸ parts).size = parts.size :=
+                Parts.size_cast (Operator.body_infxl_cons hl) parts
+              rw [hpe] at hc2
+              simp only [Parts.size, Expr.size] at hc2 ht ⊢
+              omega
+            obtain ⟨x₀, ps, hx₀⟩ := ih _ hsz
+            exact ⟨x₀, ps ++ [((Operator.body_infxl_cons hl ▸ parts).headHole).2],
+              by rw [hnode, infxlFold_snoc, ← hx₀]⟩
+          · exact ⟨Expr.op (l := Level.tighter o) b (tighter_of_tighterEq_ne hc hbo) parts, [], rfl⟩
+
+omit [DecidableEq Tok] in
+/-- `infxl_decomp` with the size bound discharged. -/
+theorem infxl_decomp' {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) (t : Expr G e (Level.tighterEq o)) :
+    ∃ (x₀ : Expr G e (Level.tighter o)) (ps : List (Parts G (Operator.body e o).tail)),
+      t = infxlFold hl x₀.toEq ps :=
+  infxl_decomp hl t.size t (Nat.le_refl _)
+
 /-! ## Unambiguity -/
 
 /-- **Unambiguity**: `flatten` is injective on each level. Required by *any* deterministic
@@ -380,9 +629,14 @@ motive1 e l tkns := ∀ (t : Expr G e l) (rest : List Tok),
 and `motive2` carries `Seamed ps` and `PartsFollow ps rest` besides — both defined above, with
 `seamed_body` already discharging the first for every body the parser hands to `parseParts`.
 
-**The remaining hard part is the two folds.** For `motive4`/`motive6` the tree has to be decomposed
-into an accumulator and a *list* of further operands, and the statement quantified over that list —
-there is no such decomposition lemma yet, and writing it is where the next attempt should start.
+The decompositions the two fold motives are stated over — `juxt_decomp'` and `infxl_decomp'` —
+now exist above, together with the folds themselves (`juxtFold`, `infxlFold`) and their `snoc` and
+`flatten` laws. So all seven motives can now be written down.
+
+**What is left is the induction itself**: instantiating `parseExpr.induct` with the seven motives
+and discharging the cases. The three places carrying real content are as listed above; everything
+they need from the grammar (`seamed_body`, `not_continuesAt_tighter_head`, `follow_of_interior`)
+and from the tree shape (the two decompositions) is proved.
 
 Three places carry the real content, and each is where one hypothesis earns its keep:
 
