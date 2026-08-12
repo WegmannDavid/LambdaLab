@@ -85,7 +85,8 @@ run can be piped without stripping anything. Returns whether it succeeded.
 The read is guarded: a path can exist and still not be readable — a directory, a broken symlink, a
 permissions problem — and an unhandled `IO.Error` reaches the user as `uncaught exception`, which
 is not a diagnostic. -/
-def processFile (compile : String → Except String String) (path : System.FilePath) : IO Bool := do
+def processFile (ext : String) (compile : String → Except String String)
+    (path : System.FilePath) : IO Bool := do
   match ← (IO.FS.readFile path).toBaseIO with
   | .error e =>
       IO.eprintln s!"{path}: error: {e}"
@@ -94,6 +95,12 @@ def processFile (compile : String → Except String String) (path : System.FileP
       match compile src with
       | .error msg =>
           IO.eprintln s!"{path}: {msg}"
+          -- Only on failure, and only when the suffix disagrees: pointing a language's compiler
+          -- at another language's file fails for a reason the parse error never mentions, and
+          -- that is a confusing way to spend ten minutes. Saying it unconditionally would nag at
+          -- the deliberate case, which stays allowed.
+          if path.extension != some ext then
+            IO.eprintln s!"{path}: note: this is not a .{ext} file — wrong compiler?"
           return false
       | .ok out =>
           IO.println out
@@ -118,7 +125,7 @@ def cli (name ext : String) (compile : String → Except String String) (args : 
         failed := true
     | .ok files =>
         for path in files do
-          unless ← processFile compile path do failed := true
+          unless ← processFile ext compile path do failed := true
   return if failed then 1 else 0
 
 end LambdaLab.Pipeline
