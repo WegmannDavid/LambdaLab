@@ -575,6 +575,147 @@ theorem infxl_decomp' {e : G.Ent} {o : (G.entry e).Op}
       t = infxlFold hl x₀.toEq ps :=
   infxl_decomp hl t.size t (Nat.le_refl _)
 
+/-! ## Where the greedy folds stop
+
+The last of the three things `parseExpr_exact` needs from outside the induction. A greedy fold must
+not eat into `rest`, and for juxtaposition that cannot be argued from a token: juxt has no token of
+its own, it continues through an *operand*. So the argument has to be that **no tree can start
+there at all**, which `Expr.flatten_startsOperand` supplies — by induction on the *tree*, not by a
+second pass over the parser.
+
+`FollowAt.tighter_of_tighterEq` is the small companion: the level condition only widens going from
+`tighter` to `tighterEq`, so FOLLOW weakens the other way, which is what lets a chain's base
+operand inherit the chain's own FOLLOW.
+-/
+
+/-- Continuing at a strictly-tighter level is continuing at the chaining level: the level
+condition only widens. So FOLLOW *weakens* in the other direction. -/
+theorem continuesAt_tighterEq_of_tighter {e : G.Ent} {o : (G.entry e).Op} {t : Tok}
+    (h : ContinuesAt e (Level.tighter o) t) : ContinuesAt e (Level.tighterEq o) t := by
+  rcases h with ⟨o', hc, hs, hh⟩ | ⟨j, hc, hjx, hs⟩
+  · exact Or.inl ⟨o', Tighter.toTighterEq (show Tighter (G.entry e).tighter o o' from hc), hs, hh⟩
+  · exact Or.inr ⟨j, Tighter.toTighterEq (show Tighter (G.entry e).tighter o j from hc), hjx, hs⟩
+
+theorem FollowAt.tighter_of_tighterEq {e : G.Ent} {o : (G.entry e).Op} {rest : List Tok}
+    (h : FollowAt e (Level.tighterEq o) rest) : FollowAt e (Level.tighter o) rest :=
+  fun t ht hc => h t ht (continuesAt_tighterEq_of_tighter hc)
+
+omit [DecidableEq Tok] in
+/-- **Every body begins the way its fixity says.** Either with the operator's own head token —
+and then the operator takes no left operand — or with a hole of the *host* entry. -/
+theorem body_head {e : G.Ent} (o : (G.entry e).Op) :
+    (∃ tk ps, Operator.body e o = Part.namePart tk :: ps ∧
+        ((G.entry e).operator o).headTok? = some tk ∧
+        ((G.entry e).operator o).startsWithHole = false)
+    ∨ (∃ (lv : Level (G.entry e)) (ps : List (Part G)), Operator.body e o = Part.hole e lv :: ps) := by
+  cases hop : (G.entry e).operator o with
+  | closed n =>
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      refine Or.inl ⟨n.firstTok, ps, ?_, ?_, rfl⟩
+      · unfold Operator.body; rw [hop]; exact hps
+      · simp only [Operator.headTok?, Operator.nameTokens]; exact headTok?_toTokens n
+  | prefx n =>
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      refine Or.inl ⟨n.firstTok, ps ++ [Part.hole e (Level.tighter o)], ?_, ?_, rfl⟩
+      · unfold Operator.body; rw [hop]; dsimp only; rw [hps]; rfl
+      · simp only [Operator.headTok?, Operator.nameTokens]; exact headTok?_toTokens n
+  | infx n   => exact Or.inr ⟨Level.tighter o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩
+  | infxl n  => exact Or.inr ⟨Level.tighterEq o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩
+  | infxr n  => exact Or.inr ⟨Level.tighter o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩
+  | postfx n => exact Or.inr ⟨Level.tighter o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩
+  | juxt     => exact Or.inr ⟨Level.tighterEq o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩
+
+/-- Invert a body whose first part is a name token. -/
+def Parts.headName {tk : Tok} {ps : List (Part G)} (p : Parts G (Part.namePart tk :: ps)) :
+    Parts G ps :=
+  match p with
+  | .namePart _ rest => rest
+
+omit [DecidableEq Tok] in
+theorem Parts.headName_flatten {tk : Tok} {ps : List (Part G)}
+    (p : Parts G (Part.namePart tk :: ps)) : p.flatten = tk :: p.headName.flatten := by
+  match p with
+  | .namePart _ rest => rfl
+
+omit [DecidableEq Tok] in
+theorem Parts.headHole_flatten {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
+    (p : Parts G (Part.hole e l :: ps)) :
+    p.flatten = p.headHole.1.flatten ++ p.headHole.2.flatten := by
+  match p with
+  | .hole x rest => rfl
+
+omit [DecidableEq Tok] in
+theorem Parts.headHole_size {e : G.Ent} {l : Level (G.entry e)} {ps : List (Part G)}
+    (p : Parts G (Part.hole e l :: ps)) : p.headHole.1.size < p.size := by
+  match p with
+  | .hole x rest => simp [Parts.headHole, Parts.size]; omega
+
+/-- **A tree's flattening is non-empty and begins with a token that starts an operand.**
+
+The "nothing runs long" half, and by *tree* induction rather than a second pass over the parser.
+It is what lets a juxtaposition's greedy fold know when to stop: if the next token cannot start an
+operand, no further argument can be parsed there. -/
+theorem Expr.flatten_startsOperand :
+    ∀ (n : Nat) {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l), t.size ≤ n →
+      ∃ c ts, t.flatten = c :: ts ∧ startsOperand e c = true := by
+  intro n
+  induction n with
+  | zero => intro e l t ht; cases t <;> simp [Expr.size] at ht
+  | succ m ih =>
+      intro e l t ht
+      match t with
+      | .var tok hv =>
+          exact ⟨tok, [], rfl, by simp [startsOperand, hv]⟩
+      | .op o hc parts =>
+          rcases body_head (G := G) (e := e) o with
+            ⟨tk, ps, hbody, hhead, hnohole⟩ | ⟨lv, ps, hbody⟩
+          · refine ⟨tk, (hbody ▸ parts : Parts G (Part.namePart tk :: ps)).headName.flatten, ?_, ?_⟩
+            · rw [Expr.flatten, ← Parts.flatten_cast hbody parts]
+              exact Parts.headName_flatten _
+            · simp only [startsOperand, Bool.or_eq_true, List.any_eq_true]
+              exact Or.inr ⟨o, (G.entry e).ops_complete o, by simp [hnohole, hhead]⟩
+          · have hsz : (hbody ▸ parts : Parts G (Part.hole e lv :: ps)).headHole.1.size ≤ m := by
+              have h1 := Parts.headHole_size (hbody ▸ parts : Parts G (Part.hole e lv :: ps))
+              have h2 : (hbody ▸ parts : Parts G (Part.hole e lv :: ps)).size = parts.size :=
+                Parts.size_cast hbody parts
+              simp only [Expr.size] at ht
+              omega
+            obtain ⟨c, ts, hct, hstart⟩ :=
+              ih (hbody ▸ parts : Parts G (Part.hole e lv :: ps)).headHole.1 hsz
+            refine ⟨c, ts ++ (hbody ▸ parts : Parts G (Part.hole e lv :: ps)).headHole.2.flatten,
+              ?_, hstart⟩
+            rw [Expr.flatten, ← Parts.flatten_cast hbody parts,
+              Parts.headHole_flatten (hbody ▸ parts : Parts G (Part.hole e lv :: ps)), hct,
+              List.cons_append]
+
+/-- `Expr.flatten_startsOperand` with the size bound discharged. -/
+theorem Expr.flatten_startsOperand' {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    ∃ c ts, t.flatten = c :: ts ∧ startsOperand e c = true :=
+  Expr.flatten_startsOperand t.size t (Nat.le_refl _)
+
+/-- **A juxtaposition fold stops at a FOLLOW token.** Juxtaposition continues through an operand
+and has no token of its own, so at the chaining level "cannot continue" is exactly "cannot start an
+operand" — and by `flatten_startsOperand` no tree can begin there. -/
+theorem not_startsOperand_of_followAt_juxt {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) {rest : List Tok}
+    (h : FollowAt e (Level.tighterEq j) rest) {c : Tok} (hc : rest.head? = some c) :
+    startsOperand e c = false := by
+  cases hs : startsOperand e c
+  · rfl
+  · exact absurd (Or.inr ⟨j, TighterEq.refl, hj, hs⟩) (h c hc)
+
+/-- Hence no tree can be parsed there: the head of any tree's flattening starts an operand. -/
+theorem no_tree_at_followAt_juxt {e : G.Ent} {j : (G.entry e).Op}
+    (hj : (G.entry e).operator j = Operator.juxt) {rest : List Tok}
+    (h : FollowAt e (Level.tighterEq j) rest)
+    {l : Level (G.entry e)} (t : Expr G e l) (tail : List Tok) :
+    rest ≠ t.flatten ++ tail := by
+  intro heq
+  obtain ⟨c, ts, hct, hstart⟩ := Expr.flatten_startsOperand' t
+  have : rest.head? = some c := by rw [heq, hct]; rfl
+  rw [not_startsOperand_of_followAt_juxt hj h this] at hstart
+  exact absurd hstart (by simp)
+
 /-! ## Unambiguity -/
 
 /-- **Unambiguity**: `flatten` is injective on each level. Required by *any* deterministic
@@ -634,9 +775,18 @@ now exist above, together with the folds themselves (`juxtFold`, `infxlFold`) an
 `flatten` laws. So all seven motives can now be written down.
 
 **What is left is the induction itself**: instantiating `parseExpr.induct` with the seven motives
-and discharging the cases. The three places carrying real content are as listed above; everything
-they need from the grammar (`seamed_body`, `not_continuesAt_tighter_head`, `follow_of_interior`)
-and from the tree shape (the two decompositions) is proved.
+and discharging the cases. Every fact the three content-carrying places need is now proved:
+
+| what the case needs | lemma |
+|---|---|
+| interior seam stops the hole | `follow_of_interior` |
+| an operator's own operand seam | `not_continuesAt_tighter_head` |
+| bodies satisfy the seam condition | `seamed_body`, `seamed_body_tail` |
+| a chain is a base plus a list | `juxt_decomp'`, `infxl_decomp'` |
+| the base inherits the chain's FOLLOW | `FollowAt.tighter_of_tighterEq` |
+| a greedy fold cannot eat into `rest` | `no_tree_at_followAt_juxt`, via `Expr.flatten_startsOperand'` |
+
+so the remaining work is assembly rather than discovery.
 
 Three places carry the real content, and each is where one hypothesis earns its keep:
 
