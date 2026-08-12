@@ -1,4 +1,4 @@
-import LambdaLab.Pipeline.ElabStage
+import LambdaLab.Pipeline.Compose
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
@@ -73,7 +73,7 @@ example (p : Program trivialLanguage) (ann : Program.Ann trivialLanguage p) :
 
 /-! ## The full pipeline: `List Char ⇝ Program`
 
-`Language.pipeline` (and its `String`-level API `parseFile`/`renderProgram`) come with the
+`Language.parsePipeline` (and its `String`-level API `parseFile`/`renderProgram`) come with the
 framework — one `Abs` morphism from raw characters to parsed commands. Since `trivialLanguage`
 is sorry-free, the whole pipeline is too. -/
 
@@ -201,7 +201,7 @@ instance : TypeSystem.PrincipalElaborate Name Name Name where
 
 /-! ### The pipeline, for free
 
-`elaborateFile` is `Language.pipeline` composed with the elaboration stage — one `Abs` morphism
+`elaborateFile` is `Language.parsePipeline` composed with the elaboration stage — one `Abs` morphism
 from characters to a *well-typed* program. -/
 
 /-- Parse and elaborate, reporting the declared names of the elaborated program. -/

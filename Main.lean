@@ -1,6 +1,6 @@
 import LambdaLab.Arith.Pipeline
 import LambdaLab.Stlc.Named.Pipeline
-import LambdaLab.Pipeline.Pipeline
+import LambdaLab.Pipeline.Compose
 
 /-!
 # Vernacular demo — two plugged-in languages, one derived pipeline
@@ -20,7 +20,7 @@ the language matching its extension, and prints the program back out as normalis
 * `lake exe playground`                — parse the bundled `examples/demo.{arith,stlc}`
 * `lake exe playground path/to/file`   — parse the given file (language by extension)
 
-`parseFile`/`renderProgram` are `Language.pipeline`'s API — the whole front end is one `Abs`
+`parseFile`/`renderProgram` are `Language.parsePipeline`'s API — the front end is one `Abs`
 morphism per language. The *parsers* run verified code; the round-trip *proofs* are still
 conditional on the open mixfix `ok` lemma. The executable exercises the parsers, not the proofs.
 -/

@@ -1,8 +1,7 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.TypeSystem
-import LambdaLab.Pipeline.ElabStage
-import LambdaLab.Pipeline.Biparser
+import LambdaLab.Pipeline.Compose
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Adapters

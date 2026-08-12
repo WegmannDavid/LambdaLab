@@ -1,11 +1,16 @@
-import LambdaLab.Pipeline.Pipeline
+import LambdaLab.Pipeline.Basic
 import LambdaLab.TypeSystem.Vernacular.Elaborate
 
 /-!
-# Elaboration as a pipeline stage — the front end, type checking included
+# The elaboration stage: `Program ⇝ well-typed Program`
 
-`Abstraction` stages compose into the front end: `List Char ⇝ List Token ⇝ Program`. This file
-builds the *next* stage, `Program ⇝ well-typed Program`, and composes it on.
+One stage, and nothing else — `Compose.lean` is where it is chained onto the ones before it.
+
+Note what this file does **not** import: neither the tokenizer nor `Stages/Parse.lean`. Nothing
+here knows how a program was read. A `Language` is only the source of `Program L`, `Var L`, `L.Tm`
+and `L.Ty` — `Pipeline/Basic.lean` does drag in the parser *types*, since a `Language` has `pTy`
+and `pTm` fields, but no parsing happens at or below this file. Keeping the composition out of it
+is what makes that visible in the import list rather than merely asserted below.
 
 ## Where the semantics comes from
 
@@ -77,33 +82,5 @@ def Language.elabStage :
         rw [hq] at hann
         rw [Option.map_some, Option.some.injEq]
         exact Subtype.ext (Option.some.inj hann)
-
-/-- **The whole front end**: characters to an elaborated program, in `Abs`. Parsing and
-elaboration are one morphism, so the round-trip law covers both — `realize` of any annotation
-re-parses *and* re-elaborates to exactly the value it indexes. -/
-def Language.elabPipeline :
-    Abstraction (List Char) L.Elaborated
-      (fun p => Σ ann : { q : Program L // elabProgram? q = some p.val },
-        Σ a : Program.Ann L ann.val, Gaps isSep (L.parser.print a)) :=
-  L.pipeline.comp L.elabStage
-
-/-- Parse *and* elaborate a source file. -/
-def Language.elaborateFile (s : String) : Option L.Elaborated :=
-  L.elabPipeline.abstract s.toList
-
-/-- Render an elaborated program canonically: every declaration in its canonical spelling, with
-the types elaboration solved written out. -/
-def Language.renderElaborated (p : L.Elaborated) : String :=
-  String.ofList (L.elabPipeline.realize (L.elabPipeline.default (a := p)))
-
-/-- **The front end round-trips.** Render an elaborated program and read it back, and elaboration
-returns it — the canonical-print guarantee, covering tokenizing, parsing and type checking at
-once. -/
-theorem Language.elaborateFile_renderElaborated (p : L.Elaborated) :
-    L.elaborateFile (L.renderElaborated p) = some p := by
-  show L.elabPipeline.abstract (String.ofList
-    (L.elabPipeline.realize (L.elabPipeline.default (a := p)))).toList = some p
-  rw [String.toList_ofList]
-  exact L.elabPipeline.abstract_realize p L.elabPipeline.default
 
 end LambdaLab.Pipeline

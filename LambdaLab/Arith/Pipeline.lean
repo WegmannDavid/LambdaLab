@@ -1,4 +1,4 @@
-import LambdaLab.Pipeline.Biparser
+import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.Truncation

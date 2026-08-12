@@ -63,10 +63,10 @@ import LambdaLab.Pipeline.Basic
 -- it constructs is carved out of the grammar's reserved `Token`s. It is the one place the two
 -- folders' layering is inverted.
 import LambdaLab.TypeSystem.FreeName
-import LambdaLab.Pipeline.ElabStage
-import LambdaLab.Pipeline.Biparser
+import LambdaLab.Pipeline.Stages.Parse
+import LambdaLab.Pipeline.Stages.Elaborate
+import LambdaLab.Pipeline.Compose
 import LambdaLab.Pipeline.Example
-import LambdaLab.Pipeline.Pipeline
 import LambdaLab.NEList
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.IsoParser.Basic
