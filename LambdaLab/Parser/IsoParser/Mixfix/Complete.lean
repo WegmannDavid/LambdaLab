@@ -179,6 +179,153 @@ theorem not_continuesAt_tighter_head {e : G.Ent} {o : (G.entry e).Op} {t : Tok}
       subst this
       rw [hhole] at hnh; exact absurd hnh (by simp)
 
+/-! ## The shape of a parts sequence, and its two side conditions
+
+`parseExpr_exact`'s `motive2` has to say what a *body* needs in order to parse back exactly. Two
+separate things, and separating them is the point:
+
+* **`Seamed ps`** — internal: every hole with parts after it is stopped by the next name token, at
+  **that hole's own level**. Not `follow`: see `not_continuesAt_tighter_head` above for why the
+  operator's own operand seam cannot use it.
+* **`PartsFollow ps rest`** — external: what the tokens *after* the body must satisfy. Only a
+  trailing hole constrains them at all.
+
+`seamed_body` below is the payoff and the design check: every non-left-recursive operator body is
+`Seamed`, with the two seam kinds discharged by their two different lemmas. These are the
+prerequisites for the open theorem, not yet its proof.
+-/
+
+/-- Every hole with parts after it is stopped by the next name token, at the hole's own level. -/
+def Seamed : List (Part G) → Prop
+  | []      => True
+  | [_]     => True
+  | Part.hole e l :: y :: r =>
+      (match y with
+       | Part.namePart t => ¬ ContinuesAt e l t
+       | Part.hole _ _   => False) ∧ Seamed (y :: r)
+  | Part.namePart _ :: y :: r => Seamed (y :: r)
+
+/-- What must hold of the tokens *after* a parts sequence: only a trailing hole constrains them. -/
+def PartsFollow : List (Part G) → List Tok → Prop
+  | []                 , _    => True
+  | [Part.namePart _]  , _    => True
+  | [Part.hole e l]    , rest => FollowAt e l rest
+  | _ :: y :: r        , rest => PartsFollow (y :: r) rest
+
+omit [DecidableEq Tok] in
+theorem toParts_head (n : Notation Tok G.Ent) :
+    ∃ ps, Notation.toParts (G := G) n = Part.namePart n.firstTok :: ps := by
+  cases n with
+  | last t => exact ⟨[], rfl⟩
+  | cons t e' rest => exact ⟨Part.hole e' Level.loosest :: rest.toParts, rfl⟩
+
+/-- A notation's parts, followed by anything seamed, are seamed. -/
+theorem seamed_toParts_append (n : Notation Tok G.Ent) (suffix : List (Part G))
+    (hs : ∀ e' t, (e', t) ∈ n.holeFollowers → ¬ ContinuesAt e' Level.loosest t)
+    (hsuf : Seamed suffix) :
+    Seamed (Notation.toParts (G := G) n ++ suffix) := by
+  induction n with
+  | last t =>
+      cases suffix with
+      | nil => exact trivial
+      | cons y r => exact hsuf
+  | cons t e' rest ih =>
+      have hrest : Seamed (Notation.toParts (G := G) rest ++ suffix) :=
+        ih (fun e'' t'' hm => hs e'' t'' (List.mem_cons_of_mem _ hm))
+      have hseam : ¬ ContinuesAt e' Level.loosest rest.firstTok :=
+        hs e' rest.firstTok List.mem_cons_self
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) rest
+      show Seamed (Part.namePart t :: Part.hole e' Level.loosest ::
+        (Notation.toParts (G := G) rest ++ suffix))
+      rw [hps] at hrest ⊢
+      exact ⟨hseam, hrest⟩
+
+/-- `follow_of_interior`, in the pointwise per-level form `Seamed` wants. -/
+theorem not_continuesAt_of_interior {e : G.Ent} {o : (G.entry e).Op} {e' : G.Ent} {t : Tok}
+    {l : Level (G.entry e')}
+    (h : (e', t) ∈ ((G.entry e).operator o).holeFollowers) : ¬ ContinuesAt e' l t :=
+  followAt_of_follow (l := l) (rest := [t])
+    (fun c hc => by simp at hc; subst hc; exact follow_of_interior h) t rfl
+
+omit [DecidableEq Tok] in
+/-- A notation's first token is its operator's head token. -/
+theorem headTok?_toTokens (n : Notation Tok G.Ent) : n.toTokens.head? = some n.firstTok := by
+  cases n <;> rfl
+
+/-- **Operator bodies are seamed** — the two seam kinds, discharged by their two lemmas. -/
+theorem seamed_body {e : G.Ent} (a : (G.entry e).Op)
+    (hnl : ((G.entry e).operator a).leftRec = false) : Seamed (Operator.body e a) := by
+  have hint : ∀ (n : Notation Tok G.Ent), ((G.entry e).operator a).holeFollowers = n.holeFollowers →
+      ∀ e' t, (e', t) ∈ n.holeFollowers → ¬ ContinuesAt e' Level.loosest t := by
+    intro n hn e' t hm; exact not_continuesAt_of_interior (o := a) (by rw [hn]; exact hm)
+  have hown : ∀ (n : Notation Tok G.Ent), ((G.entry e).operator a).nameTokens = n.toTokens →
+      ((G.entry e).operator a).startsWithHole = true →
+      ¬ ContinuesAt e (Level.tighter a) n.firstTok := by
+    intro n hn hh
+    exact not_continuesAt_tighter_head hh
+      (by simp only [Operator.headTok?, hn]; exact headTok?_toTokens n)
+  -- the three hole-leading fixities share a shape: `hole :: (toParts n ++ tail)`
+  have lead : ∀ (n : Notation Tok G.Ent) (tail : List (Part G)),
+      ((G.entry e).operator a).nameTokens = n.toTokens →
+      ((G.entry e).operator a).startsWithHole = true →
+      ((G.entry e).operator a).holeFollowers = n.holeFollowers →
+      Seamed tail →
+      Seamed (Part.hole e (Level.tighter a) :: (Notation.toParts (G := G) n ++ tail)) := by
+    intro n tail hnt hh hhf htail
+    obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+    have hbody : Seamed (Notation.toParts (G := G) n ++ tail) :=
+      seamed_toParts_append (G := G) n tail (hint n hhf) htail
+    rw [hps] at hbody ⊢
+    exact ⟨hown n hnt hh, hbody⟩
+  cases hop : (G.entry e).operator a with
+  | closed n =>
+      have hb : Operator.body e a = Notation.toParts (G := G) n := by
+        unfold Operator.body; rw [hop]
+      rw [hb]
+      have := seamed_toParts_append (G := G) n [] (hint n (by rw [hop]; rfl)) trivial
+      simpa using this
+  | prefx n =>
+      have hb : Operator.body e a
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter a)] := by
+        unfold Operator.body; rw [hop]
+      rw [hb]
+      exact seamed_toParts_append (G := G) n _ (hint n (by rw [hop]; rfl)) trivial
+  | infx n =>
+      have hb : Operator.body e a = Part.hole e (Level.tighter a)
+          :: (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter a)]) := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]
+      exact lead n _ (by rw [hop]; rfl) (by rw [hop]; rfl) (by rw [hop]; rfl) trivial
+  | infxr n =>
+      have hb : Operator.body e a = Part.hole e (Level.tighter a)
+          :: (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq a)]) := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]
+      exact lead n _ (by rw [hop]; rfl) (by rw [hop]; rfl) (by rw [hop]; rfl) trivial
+  | postfx n =>
+      have hb : Operator.body e a
+          = Part.hole e (Level.tighter a) :: (Notation.toParts (G := G) n ++ []) := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]
+      exact lead n _ (by rw [hop]; rfl) (by rw [hop]; rfl) (by rw [hop]; rfl) trivial
+  | infxl n => rw [hop, Operator.leftRec] at hnl; exact absurd hnl (by simp)
+  | juxt    => rw [hop, Operator.leftRec] at hnl; exact absurd hnl (by simp)
+
+/-- The tail a left-associative fold parses repeatedly is seamed too. Its leading hole was
+consumed by the accumulator, so only the notation's interior seams remain. -/
+theorem seamed_body_tail {e : G.Ent} {o : (G.entry e).Op}
+    (hl : ((G.entry e).operator o).isInfxl = true) : Seamed (Operator.body e o).tail := by
+  cases hop : (G.entry e).operator o with
+  | infxl n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]
+      refine seamed_toParts_append (G := G) n _ ?_ trivial
+      intro e' t hm
+      exact not_continuesAt_of_interior (o := o) (by rw [hop]; exact hm)
+  | _ => rw [hop] at hl; simp [Operator.isInfxl] at hl
+
 /-! ## Unambiguity -/
 
 /-- **Unambiguity**: `flatten` is injective on each level. Required by *any* deterministic
@@ -221,6 +368,21 @@ For each parse function, the statement to prove on `t.flatten ++ rest`:
 The two accumulator folds need the *shifted* form (`acc.flatten ++ tkns`, not `tkns`) — stated
 unshifted the induction does not go through; `Sound.lean` hit the same wall and its `motive4`/
 `motive6` show the shape.
+
+`motive1`'s direction, which type-checks and is what the others follow:
+
+```lean
+motive1 e l tkns := ∀ (t : Expr G e l) (rest : List Tok),
+  tkns = t.flatten ++ rest → FollowAt e l rest →
+  ∃ t' s, parseExpr e l tkns = some (t', s) ∧ s.list = rest
+```
+
+and `motive2` carries `Seamed ps` and `PartsFollow ps rest` besides — both defined above, with
+`seamed_body` already discharging the first for every body the parser hands to `parseParts`.
+
+**The remaining hard part is the two folds.** For `motive4`/`motive6` the tree has to be decomposed
+into an accumulator and a *list* of further operands, and the statement quantified over that list —
+there is no such decomposition lemma yet, and writing it is where the next attempt should start.
 
 Three places carry the real content, and each is where one hypothesis earns its keep:
 
