@@ -122,6 +122,63 @@ theorem follow_of_interior {e : G.Ent} {o : (G.entry e).Op} {e' : G.Ent} {t : To
         have hne : h' ≠ t := fun heq => hheads o' (by rw [hh, heq])
         simp [hne]
 
+/-! ## Per-level seams: an operator's own head cannot continue its own operand
+
+`follow_of_interior` covers the seams *inside* a notation — the `)` of `( _ )`. It does not cover
+an operator's own leading operand hole, and it cannot: in `a + b` that hole is followed by `+`,
+and `follow e "+" = false` because `+` continues an expression. That seam is carried by the
+*per-level* condition instead, and the lemma below is why it holds. It is the second half of what
+`parseExpr_exact` needs from the grammar's lexical fields. -/
+
+omit [DecidableEq Tok] in
+/-- `Tighter` is irreflexive — it strictly decreases `rank`. -/
+theorem Tighter.irrefl {e : G.Ent} {o : (G.entry e).Op}
+    (h : Tighter (G.entry e).tighter o o) : False :=
+  Nat.lt_irrefl _ ((G.entry e).rank_lt_of_tighter h)
+
+omit [DecidableEq Tok] in
+/-- A head token is one of its operator's name tokens — the bridge to `varDisjoint`. -/
+theorem mem_nameTokens_of_headTok? {e : G.Ent} {o : (G.entry e).Op} {t : Tok}
+    (h : ((G.entry e).operator o).headTok? = some t) :
+    t ∈ ((G.entry e).operator o).nameTokens := by
+  simp only [Operator.headTok?] at h
+  cases hn : ((G.entry e).operator o).nameTokens with
+  | nil => rw [hn] at h; simp at h
+  | cons a as => rw [hn] at h; simp at h; subst h; simp
+
+/-- **An operator's own head token cannot continue its own operand.**
+
+The left operand of `a + b` is parsed at `Level.tighter (+)` and is followed by `+` itself, so this
+is exactly the seam that per-level FOLLOW exists to carry. Both disjuncts of `ContinuesAt` die by
+`headsDistinct`, which forces the continuing operator to *be* `o`:
+
+* a left-recursive continuation would need `Tighter o o`, impossible since `rank` strictly drops;
+* juxtaposition continues through an *operand*, so `t` would have to start one — but `t` is a name
+  token of `o`, so `varDisjoint` rules out the variable case, and the only operator heading `t` is
+  `o`, which begins with a hole and therefore starts no operand.
+
+Note the hypothesis: `o` must begin with a hole. That is precisely the case in which a leading
+operand hole exists to be followed. -/
+theorem not_continuesAt_tighter_head {e : G.Ent} {o : (G.entry e).Op} {t : Tok}
+    (hhole : ((G.entry e).operator o).startsWithHole = true)
+    (hhead : ((G.entry e).operator o).headTok? = some t) :
+    ¬ ContinuesAt e (Level.tighter o) t := by
+  rintro (⟨o', hcond, _, hhead'⟩ | ⟨j, hcond, _, hstart⟩)
+  · have : o = o' := (G.entry e).headsDistinct o o' (by rw [hhead]; rfl) (by rw [hhead, hhead'])
+    subst this
+    exact Tighter.irrefl (show Tighter (G.entry e).tighter o o from hcond)
+  · simp only [startsOperand, Bool.or_eq_true, List.any_eq_true] at hstart
+    rcases hstart with hvar | ⟨o'', _, ho''⟩
+    · exact absurd hvar (by
+        rw [(G.entry e).varDisjoint o t (mem_nameTokens_of_headTok? hhead)]; simp)
+    · simp only [Bool.and_eq_true, Bool.not_eq_true'] at ho''
+      obtain ⟨hnh, hh⟩ := ho''
+      have hhead'' : ((G.entry e).operator o'').headTok? = some t := by
+        revert hh; cases hx : ((G.entry e).operator o'').headTok? <;> simp_all
+      have : o = o'' := (G.entry e).headsDistinct o o'' (by rw [hhead]; rfl) (by rw [hhead, hhead''])
+      subst this
+      rw [hhole] at hnh; exact absurd hnh (by simp)
+
 /-! ## Unambiguity -/
 
 /-- **Unambiguity**: `flatten` is injective on each level. Required by *any* deterministic
@@ -174,9 +231,19 @@ Three places carry the real content, and each is where one hypothesis earns its 
 2. **Nothing runs long.** The greedy folds must not eat into `rest`. This is `FollowAt`: at the
    operand's level nothing in `rest` can continue the expression. Note the level-sensitivity —
    at `loosest` a variable *does* continue (juxtaposition), at a tighter level it does not.
-3. **Interior seams stop the hole.** Inside `( _ )`, what stops the hole's parser is the `)`, via
-   `follow_of_interior` from `Lawful.interiorTerminates` — and it must be read at the *hole's*
-   entry, not the host's.
+3. **Seams stop the hole**, and there are **two kinds**, needing different lemmas — worth knowing
+   before starting, since assuming one kind covers both is the obvious wrong turn:
+   * *Interior* seams, inside a notation: the `)` of `( _ )`. Full `follow` holds there, via
+     `follow_of_interior` from `interiorTerminates` — and it must be read at the *hole's* entry,
+     not the host's.
+   * The operator's *own operand* seam: the leading hole of `a + b` is followed by `+`. Full
+     `follow` is **false** here (`+` continues an expression), and `interiorTerminates` says
+     nothing about it, because `holeFollowers` covers only a notation's interior. What carries it
+     is the per-level condition, via `not_continuesAt_tighter_head` above.
+
+   So the side condition threaded through `motive2` cannot be "every hole is followed by a token in
+   `follow`". It has to be the per-level `¬ ContinuesAt e l t` at each hole's own level, which the
+   first bullet implies and the second bullet supplies directly.
 
 Useful existing machinery: `longer_eq_some` and `orElse_eq_some` (a bare `split` generalises both
 alternatives into opaque variables and severs the IHs), the cast lemmas
