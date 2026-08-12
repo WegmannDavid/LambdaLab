@@ -786,7 +786,36 @@ and discharging the cases. Every fact the three content-carrying places need is 
 | the base inherits the chain's FOLLOW | `FollowAt.tighter_of_tighterEq` |
 | a greedy fold cannot eat into `rest` | `no_tree_at_followAt_juxt`, via `Expr.flatten_startsOperand'` |
 
-so the remaining work is assembly rather than discovery.
+### The seven motives, validated
+
+These elaborate against `parseExpr.induct` — checked, so the next attempt need not re-derive them:
+
+```lean
+motive1 e l tkns        := ∀ t rest, tkns = t.flatten ++ rest → FollowAt e l rest →
+                             ∃ t' s, parseExpr e l tkns = some (t', s) ∧ s.list = rest
+motive2 ps tkns         := ∀ p rest, ps ≠ [] → Seamed ps → PartsFollow ps rest →
+                             tkns = p.flatten ++ rest →
+                             ∃ p' s, parseParts ps tkns = some (p', s) ∧ s.list = rest
+motive3/5 (InfixL/Juxt) := as motive1, at `Level.tighterEq o`
+motive4/6 (the folds)   := ∀ (ps/xs) rest, tkns = (…map flatten).flatten ++ rest →
+                             FollowAt e (tighterEq o) rest →
+                             (empty → extend … = none) ∧ (nonempty → … = some (t', s) ∧ …)
+motive7 e l cs h hr tkns := as motive1, plus `∃ c ∈ cs, TighterEq c o`
+```
+
+**`ps ≠ []` in `motive2` is load-bearing, not hygiene.** Without it the motive is *false*:
+`parseParts [] tkns = none` for every input, while `Parts G []` is inhabited by `nil` with empty
+flattening — so the motive would assert the parser succeeds on an empty body. Operator bodies are
+never empty, so the hypothesis costs nothing.
+
+### What the remaining work actually is
+
+Measured, not estimated: with the motives above, **26 of the 28 cases are still open**, and the
+catch-all tactic block that carries most of `Sound.lean` closes essentially none of them. Exactness
+is not soundness-with-the-arrow-turned-round; each case has to argue that the parser consumed
+*neither less nor more*, and the two halves need different machinery (longest-match for the first,
+FOLLOW for the second). Budget accordingly: this is a proof to be written case by case, not a
+grind against an existing template.
 
 Three places carry the real content, and each is where one hypothesis earns its keep:
 
