@@ -129,7 +129,7 @@ theorem strip_sound [DecidableEq Tok] {lp rp : Tok} (hlprp : lp ≠ rp) (cs : Li
 /-- Wrap a stage in arbitrarily many redundant parens. The annotation grows by the nesting depth;
 the canonical print (`default`) uses none. `hp`: no realization of `p` may look wrapped itself,
 else stripping would eat into it. -/
-def Abstraction.parens [DecidableEq Tok] (p : Abstraction (List Tok) V Ann) (lp rp : Tok)
+def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List Tok) V Ann) (lp rp : Tok)
     (hp : ∀ (v : V) (ann : Ann v),
       ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
     Abstraction (List Tok) V (fun v => Nat × Ann v) where
@@ -143,7 +143,7 @@ def Abstraction.parens [DecidableEq Tok] (p : Abstraction (List Tok) V Ann) (lp 
 
 /-- `parens` preserves losslessness: the depth measured by `strip` plus the inner annotation
 realize back to the exact input. -/
-theorem Abstraction.Lossless.parens [DecidableEq Tok] {p : Abstraction (List Tok) V Ann}
+theorem _root_.LambdaLab.Abstraction.Lossless.parens [DecidableEq Tok] {p : Abstraction (List Tok) V Ann}
     {lp rp : Tok} (hL : p.Lossless) (hlprp : lp ≠ rp)
     (hp : ∀ (v : V) (ann : Ann v),
       ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :

@@ -35,6 +35,7 @@ def Term.annotsGround : Term N → Bool
   | .lam _ τ body => τ.isGround && body.annotsGround
   | .app e₁ e₂    => e₁.annotsGround && e₂.annotsGround
 
+omit [NameAlphabet N] [HasVars N] in
 @[simp] theorem Term.annotsGround_iff : ∀ {e : Term N}, e.annotsGround = true ↔ e.AnnotsGround := by
   intro e
   induction e with

@@ -142,9 +142,11 @@ Each is `rfl`. They are stated so that a later change to the interface — reord
 wrapping a component, adding a parameter — fails here, at the plug-in, rather than silently
 rebinding one of STLC's notions to something else. -/
 
+omit [HasVars N] in
 @[simp] theorem hasType_eq :
     TypeSystem.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
+omit [HasVars N] in
 @[simp] theorem step_eq : TypeSystem.Step.Step (Tm := Term N) = Step := rfl
 
 @[simp] theorem elaborate_eq :

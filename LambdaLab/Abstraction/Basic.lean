@@ -37,7 +37,12 @@ abstract, matching the 1-cell direction of `Abstraction/Bicat.lean`.
 
 set_option autoImplicit false
 
-namespace LambdaLab.Abstraction
+/-! The structure is declared in `LambdaLab`, not in `LambdaLab.Abstraction`, so that its full name
+is `LambdaLab.Abstraction` and its API below lands in the namespace of the same name — the shape
+`Nat` and `Finset` have. Declaring it inside `LambdaLab.Abstraction` would name it
+`LambdaLab.Abstraction.Abstraction` and stutter through every projection. -/
+
+namespace LambdaLab
 
 /-- A lossy-but-annotated map from `Concrete` to `Abstract`: `abstract` (partial —
 not every concrete is meaningful) together with, for each abstract value, a family
@@ -122,4 +127,4 @@ theorem Lossless.reindex {f : Abstraction A B F} (e : ∀ b, F b ≃ F' b)
 
 end Abstraction
 
-end LambdaLab.Abstraction
+end LambdaLab

@@ -54,7 +54,10 @@ class NameAlphabet (N : Type) extends Hashable N where
   freshFor : List N → N
   freshFor_not_in : ∀ used : List N, freshFor used ∉ used
 
-attribute [instance] NameAlphabet.decEq
+/-! `reducible` is required of instance-valued projections, and harmless here: `decEq` is the
+only `DecidableEq N` a `NameAlphabet` offers, so there is no canonical instance for it to
+displace. -/
+attribute [reducible, instance] NameAlphabet.decEq
 
 export NameAlphabet (freshFor freshFor_not_in)
 

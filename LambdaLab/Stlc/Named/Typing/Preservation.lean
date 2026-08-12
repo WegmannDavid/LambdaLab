@@ -23,6 +23,7 @@ open LambdaLab.TypeSystem (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
+omit [HasVars N] in
 /-- **Subject reduction**: typing is preserved under a single β-step.
 
 No side conditions. They used to be here — `Γ.Ground`, `e.AnnotsGround`, `e'.AnnotsGround` — and

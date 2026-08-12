@@ -109,7 +109,7 @@ theorem PStep.toMStep : ∀ {e e' : Term}, e ⇉ e' → e ⟶* e' := by
 def Term.dev : Term → Term
   | .var n => .var n
   | .lam τ e => .lam τ e.dev
-  | .app (.lam τ e₁) e₂ => e₁.dev.subst 0 e₂.dev
+  | .app (.lam _ e₁) e₂ => e₁.dev.subst 0 e₂.dev
   | .app e₁ e₂ => .app e₁.dev e₂.dev
 
 /-- Triangle lemma: every parallel reduct of `e` parallel-reduces to `e.dev`. -/

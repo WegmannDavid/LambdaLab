@@ -93,6 +93,7 @@ inductive HasTypeJ : Nat → Ctx N → Term N → Ty → Equations Ty → Nat �
       HasTypeJ n Γ (.app e₁ e₂) (Ty.mvar n₂)
         ((τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂)) (n₂ + 1)
 
+omit [HasVars N] in
 /-- The supply only ever moves forward. This is the invariant that makes the drawn names actually
 fresh — and the one W's argument-derived indices fail to provide. -/
 theorem HasTypeJ.supply_le {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
@@ -159,6 +160,7 @@ def gen : Ctx N → Term N → Nat → Option (Ty × Equations Ty × Nat)
           | some (τ₂, C₂, n₂) =>
               some (Ty.mvar n₂, (τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂), n₂ + 1)
 
+omit [HasVars N] in
 /-- **`gen` computes `HasTypeJ`.** The counterpart of `W_correct`; with it, every property proved
 about the judgement transfers to the function. -/
 theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equations Ty) (n' : Nat),

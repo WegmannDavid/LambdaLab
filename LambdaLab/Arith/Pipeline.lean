@@ -95,8 +95,6 @@ def aEntry : Entry Token Unit where
         List.mem_cons, List.not_mem_nil, or_false] at ht <;>
       first
         | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
 
 /-- The grammar — much lighter than the CBiparser one: precedence `rank` and nothing else. -/
 def aGrammar : Grammar Token where
@@ -163,8 +161,6 @@ def tEntry : Entry Token Unit where
         List.mem_cons, List.not_mem_nil, or_false] at ht <;>
       first
         | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
 
 def tyGrammar : Grammar Token where
   Ent := Unit

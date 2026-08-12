@@ -122,6 +122,7 @@ theorem AgreeBelow.ctx {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
   | none => rfl
   | some τ => exact congrArg _ (h τ (hΓ x τ hx))
 
+omit [NameAlphabet N] [HasVars N] in
 theorem AgreeBelow.term {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
     (e : Term N) (he : HasVars.fresh e ≤ n) :
     HasSubst.pSubst e σ = HasSubst.pSubst e σ' := by
@@ -159,6 +160,7 @@ theorem EqsFreshBelow.mono {m n : Nat} {C : Equations Ty} (hmn : m ≤ n) (h : E
     EqsFreshBelow n C :=
   fun p hp => ⟨Nat.le_trans (h p hp).1 hmn, Nat.le_trans (h p hp).2 hmn⟩
 
+omit [HasVars N] in
 theorem HasTypeJ.fresh_bound {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty}
     {n' : Nat} (h : HasTypeJ n Γ e τ C n') :
     CtxFreshBelow n Γ → HasVars.fresh e ≤ n →

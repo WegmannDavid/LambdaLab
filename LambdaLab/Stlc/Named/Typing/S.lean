@@ -103,6 +103,7 @@ trivial. Both directions are short; together they say the syntactical system add
 kernel judgement in this language.
 -/
 
+omit [HasVars N] in
 /-- The kernel judgement embeds. -/
 theorem HasType.toS {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
     HasTypeS (SCtx.ofMono Γ) e τ := by
@@ -112,6 +113,7 @@ theorem HasType.toS {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
   | lam _ ih => exact HasTypeS.abs (HasTypeS.cong (SCtx.ofMono_cons_get? _ _ _) ih)
   | app _ _ ih₁ ih₂ => exact HasTypeS.app ih₁ ih₂
 
+omit [HasVars N] in
 /-- …and nothing more is derivable: over a monotype context `S` gives exactly `HasType`. -/
 theorem HasTypeS.toHasType : ∀ {Γ : Ctx N} {e : Term N} {τ : Ty},
     HasTypeS (SCtx.ofMono Γ) e τ → HasType Γ e τ := by
@@ -135,6 +137,7 @@ theorem HasTypeS.toHasType : ∀ {Γ : Ctx N} {e : Term N} {τ : Ty},
       cases h with
       | app h₀ h₁ => exact HasType.app (ih₁ h₀) (ih₂ h₁)
 
+omit [HasVars N] in
 /-- The equivalence, packaged. -/
 theorem HasTypeS.iff_hasType {Γ : Ctx N} {e : Term N} {τ : Ty} :
     HasTypeS (SCtx.ofMono Γ) e τ ↔ HasType Γ e τ :=

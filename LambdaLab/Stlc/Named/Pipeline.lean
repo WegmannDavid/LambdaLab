@@ -123,29 +123,27 @@ def tmEntry : Entry Pipeline.Token SEnt where
       first
         | (rcases ht with rfl | rfl <;> decide)
         | (rcases ht with rfl | rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
 
 def varEntry : Entry Pipeline.Token SEnt where
   Op := BSym
   operator | .paren => .closed (.cons (tkS "(") .var (.last (tkS ")")))
   ops := [.paren]
-  ops_complete := by intro o; cases o <;> decide
+  ops_complete := by intro o; cases o; decide
   loosest := [.paren]
   tighter | .paren => []
   rank | .paren => 0
   topRank := 1
-  rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
-  rank_lt_topRank := by intro o; cases o <;> decide
+  rank_tighter := by intro a b h; cases a; cases b; simp_all
+  rank_lt_topRank := by intro o; cases o; decide
   isVar := isVarTok
   headsDistinct := by
     intro o₁ o₂ h₁ h
-    cases o₁ <;> cases o₂ <;> rfl
+    cases o₁; cases o₂; rfl
   varDisjoint := by
     intro o t ht
-    cases o <;>
-      simp only [Operator.nameTokens, Notation.toTokens,
-        List.mem_cons, List.not_mem_nil, or_false] at ht
+    cases o
+    simp only [Operator.nameTokens, Notation.toTokens,
+      List.mem_cons, List.not_mem_nil, or_false] at ht
     rcases ht with rfl | rfl <;> decide
 
 def tyEntry : Entry Pipeline.Token SEnt where
@@ -172,10 +170,7 @@ def tyEntry : Entry Pipeline.Token SEnt where
     cases o <;>
       simp only [Operator.nameTokens, Notation.toTokens,
         List.mem_cons, List.not_mem_nil, or_false] at ht <;>
-      first
-        | (rcases ht with rfl | rfl <;> decide)
-        | (subst ht; decide)
-        | exact ht.elim
+      rcases ht with rfl | rfl <;> decide
 
 def stlcGrammar : Grammar Pipeline.Token where
   Ent := SEnt
@@ -186,7 +181,7 @@ def stlcGrammar : Grammar Pipeline.Token where
       simp only [tmEntry, varEntry, tyEntry, Operator.holeFollowers, Notation.holeFollowers,
         Notation.firstTok] at h <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq, reduceCtorEq,
-        false_and, and_false, false_or, or_false, true_and, and_true] at h <;>
+        false_and, false_or, or_false, true_and] at h <;>
       first
         | exact h.elim
         | (subst h; exact ⟨by decide, by intro o'; cases o' <;> decide⟩)

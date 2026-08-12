@@ -27,7 +27,7 @@ namespace LambdaLab.Pipeline
 
 open LambdaLab.Parser.IsoParser
 open LambdaLab.Parser.LossyParser (LossyParser)
-open LambdaLab.Abstraction (Abstraction)
+open LambdaLab (Abstraction)
 
 /-- An identifier: one token the language admits as a variable name. Aligned: source and value
 are `Var L`, so a name the language would reject is unrepresentable. -/

@@ -196,6 +196,7 @@ theorem HasTypeD.gen_foldr (Γ : SCtx N) (e : Term N) (τ : Ty) :
         (HasTypeD.gen_foldr Γ e τ as (fun α hα => hl α (List.mem_cons_of_mem _ hα)) h)
         (hl a List.mem_cons_self)
 
+omit [HasVars N] in
 /-- **The closure is derivable.** `Γ̄(τ)` is reachable from `τ` by iterated `[Gen]`, which is what
 lets the weakened `D`-to-`S` bridge recover a scheme by one final generalisation. -/
 theorem HasTypeD.close (Γ : SCtx N) (e : Term N) (τ : Ty) (h : HasTypeD Γ e (.mono τ)) :
@@ -228,6 +229,7 @@ theorem SCtx.ofMono_cons_get? (Γ : Ctx N) (x : N) (τ : Ty) (y : N) :
   rw [SCtx.ofMono_get?, Ctx.get?_cons, TypeSystem.Context.get?_cons, SCtx.ofMono_get?]
   by_cases h : x = y <;> simp [h]
 
+omit [HasVars N] in
 /-- `free(Γ)` is read off `get?`, so contexts that agree pointwise have the same free variables.
 This is why `HasTypeD.cong` needs no side condition for `[Gen]`. -/
 theorem SCtx.IsFree.congr {Γ Γ' : SCtx N} (hΓ : ∀ y, Γ.get? y = Γ'.get? y) (n : Nat) :
@@ -236,6 +238,7 @@ theorem SCtx.IsFree.congr {Γ Γ' : SCtx N} (hΓ : ∀ y, Γ.get? y = Γ'.get? y
   · rintro ⟨x, σ, hx, hf⟩; exact ⟨x, σ, (hΓ x) ▸ hx, hf⟩
   · rintro ⟨x, σ, hx, hf⟩; exact ⟨x, σ, (hΓ x).symm ▸ hx, hf⟩
 
+omit [HasVars N] in
 /-- `HasTypeD` only looks at the context through `get?`, so it transports along agreement. -/
 theorem HasTypeD.cong {Γ Γ' : SCtx N} {e : Term N} {σ : Scheme}
     (hΓ : ∀ y, Γ.get? y = Γ'.get? y) (h : HasTypeD Γ e σ) : HasTypeD Γ' e σ := by
@@ -248,6 +251,7 @@ theorem HasTypeD.cong {Γ Γ' : SCtx N} {e : Term N} {σ : Scheme}
   | inst _ hs ih => exact HasTypeD.inst (ih hΓ) hs
   | gen _ hα ih => exact HasTypeD.gen (ih hΓ) (fun hc => hα ((SCtx.IsFree.congr hΓ _).mpr hc))
 
+omit [HasVars N] in
 /-- **`HasType` embeds into `D`.** The kernel judgement is the fragment with no schemes in play. -/
 theorem HasType.toD {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
     HasTypeD (SCtx.ofMono Γ) e (.mono τ) := by
