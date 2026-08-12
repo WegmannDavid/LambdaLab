@@ -120,7 +120,7 @@ example {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty] :
 Substitution maps over the values, so lookup commutes with it. This is the *only* handle anything
 gets on a substituted context: `Std.HashMap` has no `getElem?` extensionality here, so two contexts
 that agree at every key cannot be proved equal — a client must reason through `get?` and a typing
-judgement that respects it (`TypeSystem.LawfulContext`). -/
+judgement that respects it (`TypeSystem.LawfulTypeSystem.cong`). -/
 
 theorem Context.pSubst_get? {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty]
     (Γ : Context N Ty) (σ : Subst Ty) (x : N) :

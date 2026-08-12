@@ -302,7 +302,7 @@ theorem stlcUnambiguous : Unambiguous stlcGrammar := by
   sorry
 
 /-- **`reducible` is load-bearing.** The front end asks for
-`Vernacular.Elaboratable (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
+`TypeSystem.PrincipalElaborate (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
 runs at reduced transparency: without this it cannot unfold the definition to discover that those
 are `VName`, `Term VName` and `Ty`, and the generic instance in `TypeSystem.lean` never matches.
 The alternative — restating the instance at the projected types — needs its `NameAlphabet`
@@ -344,7 +344,7 @@ the judgement `?0` is an atom equal to itself and nothing else — an extra base
 Solving is what the elaborator adds on top.
 
 **Nothing to write here.** The whole front end comes from `Stlc/Named/TypeSystem.lean`'s
-`instElaboratable`, which is a packaging of instances that predate the parser by a long way. This
+`instPrincipalElaborate`, built from theorems that predate the parser by a long way. This
 file's only contribution to elaboration is the observation that `Var stlcLanguage` *is* `VName`,
 so the generic instance applies at the name type the vernacular happens to use.
 

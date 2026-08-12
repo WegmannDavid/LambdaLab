@@ -90,6 +90,7 @@ one instance with content: building it *is* the claim that STLC is well-behaved 
 sense, since `Preservation` cannot be filled without a proof. -/
 instance instLawfulTypeSystem : TypeSystem.LawfulTypeSystem N (Term N) Ty where
   Preservation := HasType.preservation
+  cong h ht := HasType.cong h ht
 
 /-- Both substitution instances already exist, so fill from them rather than defining new ones —
 the copies are then definitionally canonical and lemmas about either apply to both. -/
@@ -102,6 +103,24 @@ instance instMVars : TypeSystem.MVars N (Term N) Ty where
 proof already existed, generic in `N`, before the interface asked for it. -/
 instance instLawfulMVars : TypeSystem.LawfulMVars N (Term N) Ty where
   Stability σ h := HasType.subst h σ
+  tyGroundStable := inferInstance
+  tmGroundStable := inferInstance
+  tyLawfulComp := inferInstance
+  tmLawfulComp := inferInstance
+
+/-! ## Groundness, decided
+
+`PrincipalElaborate` asks for these, and they are the reason it does: `HasVars.Ground` quantifies
+over every index, so no instance decides it by unfolding. Both were here long before the interface
+wanted them. Declared ahead of the instance that consumes them. -/
+
+/-- Groundness of a type, by the structural check — `Ty.ground_iff` routes it to `Ty.isGround`. -/
+instance : DecidablePred (HasVars.Ground : Ty → Prop) :=
+  fun _ => decidable_of_iff _ Ty.ground_iff
+
+/-- The same for terms, via `Term.AnnotsGround`. -/
+instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
+  fun _ => decidable_of_iff _ Term.annotsGround_iff_ground
 
 /-- The third instance with content, and the first that is algorithmic rather than metatheoretic.
 `elabMGU`'s negative branch is `no_typing_of_elabSubst_none` — a proof that nothing types the
@@ -114,42 +133,6 @@ class nobody instantiates. Everything downstream of this instance reports `sorry
 decision remains available on its own as `elabSolution`. -/
 instance instPrincipalElaborate : TypeSystem.PrincipalElaborate N (Term N) Ty where
   elaborate := elabMGU
-
-/-! ## What the vernacular asks for on top
-
-`TypeSystem/Vernacular/Elaborate.lean` derives a whole-program elaborator from
-`PrincipalElaborate`, and needs three more things to do it. All three were already here; none is
-a new proof. -/
-
-/-- Typing depends on the context only through lookup — `HasType.cong`, which predates the class
-that asks for it by a long way. This is what lets a declaration solved under a substituted context
-be re-read under the vernacular's own. -/
-instance instLawfulContext : TypeSystem.LawfulContext N (Term N) Ty where
-  cong h ht := HasType.cong h ht
-
-/-- Groundness of a type, decided by the structural check. `HasVars.Ground` quantifies over every
-index and so cannot be decided by unfolding; `Ty.ground_iff` routes it to `Ty.isGround`. -/
-instance : DecidablePred (HasVars.Ground : Ty → Prop) :=
-  fun _ => decidable_of_iff _ Ty.ground_iff
-
-/-- The same for terms, via `Term.AnnotsGround`. -/
-instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
-  fun _ => decidable_of_iff _ Term.annotsGround_iff_ground
-
-/-- **STLC elaborates whole files.** Every field is one of the instances above or beside, so this
-is a packaging step and not a proof: `Vernacular.Elaboratable` exists precisely so that a front
-end can ask for one thing instead of seven, and so that the seven it collects are the *same*
-instances the elaborator substitutes with.
-
-Generic in `N`, like everything else here — the vernacular names declarations by the object
-language's own variables, so the instance a parser needs is this one at its token-derived name
-type, not a separate one. -/
-instance instElaboratable : TypeSystem.Vernacular.Elaboratable N (Term N) Ty where
-  lawfulContext := inferInstance
-  tyGroundStable := inferInstance
-  tmGroundStable := inferInstance
-  tyLawfulComp := inferInstance
-  tmLawfulComp := inferInstance
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
 

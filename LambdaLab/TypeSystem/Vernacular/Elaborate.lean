@@ -45,7 +45,7 @@ Those agree when `Γ` is ground, but proving it needs:
 
 * `GroundStable Ty Ty` — substitution fixes a ground type. Then a ground context is unchanged
   keywise (`Context.pSubst_get?_of_ground`).
-* `LawfulContext N Tm Ty` — typing transports along keywise agreement. Needed because the
+* `LawfulTypeSystem.cong` — typing transports along keywise agreement. Needed because the
   *equation* `pSubst Γ σ = Γ` is unavailable: `Std.HashMap` has no `getElem?` extensionality, so
   keywise agreement is the strongest fact about contexts anyone here can have.
 
@@ -69,48 +69,18 @@ namespace LambdaLab.TypeSystem.Vernacular
 
 open HasVars (Ground)
 
-/-- **A type system whose whole *files* elaborate.** `PrincipalElaborate` decides one checking
-problem; a fold over a program needs the four laws and two decision procedures described above,
-and this is them, packaged so that a front end can ask for *one* thing.
+/-! ## What the fold asks for: `PrincipalElaborate`, and nothing else
 
-Every field is a mixin over an instance the language already has, so every field is filled with
-`inferInstance` — see `Stlc/Named/TypeSystem.lean`. Bundling them rather than taking seven
-separate binders is not only convenience: `GroundStable Tm Ty` is stated over the `HasSubst Tm Ty`
-that `MVars` carries, so collecting them here forces them to be the *same* instances the
-elaborator substitutes with, instead of leaving that to whatever happens to be in scope at the use
-site.
+Everything below runs off a single binder. That was not always so — the laws and decision
+procedures the fold needs used to be collected here in a seven-field `Elaboratable` class whose
+every field was `inferInstance`. They have since moved to the classes that *own* them:
+`cong` to `LawfulTypeSystem` (a property of the judgement), the four `GroundStable`/`LawfulComp`
+laws to `LawfulMVars` (properties of the substitution action), and the two `DecidablePred Ground`
+to `PrincipalElaborate` itself. Each is justified there without reference to a vernacular, so
+`TypeSystem/Basic.lean` still does not know this file exists.
+-/
 
-The parent is `PrincipalElaborate` rather than a second set of binders for the same reason
-`LawfulMVars` extends both its parents: separate binders would give separate `HasType`s. -/
-class Elaboratable (N Tm Ty : Type) [nameAlphabet : NameAlphabet N]
-    extends PrincipalElaborate N Tm Ty where
-  /-- Typing sees a context only through lookup — what lets a declaration solved under a
-  substituted context be re-read under the vernacular's own. -/
-  lawfulContext : LawfulContext N Tm Ty
-  /-- Substitution fixes a ground type. -/
-  tyGroundStable : GroundStable Ty Ty
-  /-- …and a term whose annotations are all solved. -/
-  tmGroundStable : GroundStable Tm Ty
-  /-- Substituting twice is substituting once, through the composite — at the type level… -/
-  tyLawfulComp : LawfulComp Ty Ty
-  /-- …and at the term level. -/
-  tmLawfulComp : LawfulComp Tm Ty
-  /-- `Ground` is `∀ n, ¬ isFree x n`, which no instance decides by unfolding; a language routes
-  it to its own structural check. -/
-  tyGroundDec : DecidablePred (Ground : Ty → Prop)
-  /-- The same for terms. -/
-  tmGroundDec : DecidablePred (Ground : Tm → Prop)
-
-/-! `low` for the reason `MVars.tySubst` needs it: at default priority a projection displaces the
-canonical instance it was filled from, resolving the class's other parameters by whatever single
-`Elaboratable` happens to be in scope. The two data-valued ones are `reducible` besides, so that
-a `Ground` check written against them is definitionally the language's own. -/
-
-attribute [instance low] Elaboratable.lawfulContext Elaboratable.tyGroundStable
-  Elaboratable.tmGroundStable Elaboratable.tyLawfulComp Elaboratable.tmLawfulComp
-attribute [reducible, instance low] Elaboratable.tyGroundDec Elaboratable.tmGroundDec
-
-variable {N Tm Ty : Type} [NameAlphabet N] [Elaboratable N Tm Ty]
+variable {N Tm Ty : Type} [NameAlphabet N] [PrincipalElaborate N Tm Ty]
 
 /-- The typing `elaborate` returns, re-read under the context the vernacular maintains rather than
 under the substituted one. This is the single step the two extra laws exist for. -/
@@ -119,7 +89,7 @@ theorem hasType_of_solution {Γ : Context N Ty} {t : Tm} {τ : Ty} {σ : Subst T
     (hσ : _root_.LambdaLab.TypeSystem.HasType.HasType
             (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :
     _root_.LambdaLab.TypeSystem.HasType.HasType Γ (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) :=
-  LawfulContext.cong (Context.pSubst_get?_of_ground Γ σ hΓ) hσ
+  LawfulTypeSystem.cong (Context.pSubst_get?_of_ground Γ σ hΓ) hσ
 
 /-- **Elaborate a list of declarations against a ground context**, returning the *substitution*
 that solves them all.
@@ -239,7 +209,7 @@ theorem elabCommands_isSome_congr {Γ Γ' : Context N Ty} (hΓ : CtxGround Γ) (
 
 Both branches use groundness. A `.impossible` answer claims *no* substitution types the
 declaration; instantiating it at `∅` and using groundness to strip the substitutions off `t` and
-`τ` contradicts the derivation directly — the context is handled by `LawfulContext`, since
+`τ` contradicts the derivation directly — the context is handled by `cong`, since
 `pSubst Γ ∅ = Γ` is only available keywise. A `.solution` answer passes both `Ground` checks for
 the same reason, and recurses on a list and a context that groundness shows are the originals. -/
 theorem elabCommands_isSome_of_hasTypeGround :
@@ -256,7 +226,7 @@ theorem elabCommands_isSome_of_hasTypeGround :
         refine absurd ?_ (hno ∅)
         rw [GroundStable.pSubst_ground (∅ : Subst Ty) ht,
             GroundStable.pSubst_ground (∅ : Subst Ty) hτ]
-        exact LawfulContext.cong (fun y => (Context.pSubst_get?_of_ground Γ ∅ hΓ y).symm) hty
+        exact LawfulTypeSystem.cong (fun y => (Context.pSubst_get?_of_ground Γ ∅ hΓ y).symm) hty
       · rename_i σ _ _ _
         have hgτ : Ground (HasSubst.pSubst τ σ) := by
           rw [GroundStable.pSubst_ground σ hτ]; exact hτ

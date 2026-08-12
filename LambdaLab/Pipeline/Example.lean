@@ -24,7 +24,7 @@ up to `anyTok` (sound: `firstOk` is a negative claim); `weakenFollow` narrows FO
 key token (sound: the round-trip is antitone in FOLLOW).
 
 `reducible` for the reason `stlcLanguage` is: instance search has to see through the definition to
-find the `Elaboratable` instance at `Var trivialLanguage`. -/
+find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
 @[reducible] def trivialLanguage : Language where
   Tm := Name
   Ty := Name
@@ -94,7 +94,7 @@ def reprint (s : String) : Option String :=
 /-! ## Giving it a semantics
 
 `trivialLanguage` is a `Language`, so it parses. Making its *types and terms* satisfy
-`Vernacular.Elaboratable` gets the whole front end including type checking — and note where the
+`TypeSystem.PrincipalElaborate` gets the whole front end including type checking — and note where the
 work happens: everything below is an instance of a `TypeSystem` class, with no mention of a
 parser, a token or a `Language`. The pipeline picks it up on its own.
 
@@ -142,7 +142,7 @@ def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
 
 /-- Substituting a context cannot change what it says, since substitution fixes every value.
 Stated at `declaredAt` rather than as `pSubst Γ σ = Γ`, which `Std.HashMap` does not let anyone
-prove — the same reason `LawfulContext` exists. -/
+prove — the same reason `LawfulTypeSystem.cong` exists. -/
 theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Name) (t τ : Name) :
     declaredAt (HasSubst.pSubst Γ σ) t τ = declaredAt Γ t τ := by
   rw [declaredAt, declaredAt, Context.pSubst_get?]
@@ -157,8 +157,6 @@ instance : TypeSystem.Step Name where Step _ _ := False
 instance : TypeSystem.TypeSystem Name Name Name where
 instance : TypeSystem.LawfulTypeSystem Name Name Name where
   Preservation _ hs := hs.elim
-
-instance : TypeSystem.LawfulContext Name Name Name where
   cong h ht := by
     show declaredAt _ _ _ = true
     rw [declaredAt, ← h]
@@ -174,6 +172,10 @@ instance : TypeSystem.LawfulMVars Name Name Name where
     show declaredAt (HasSubst.pSubst Γ σ) t τ = true
     rw [declaredAt_pSubst]
     exact ht
+  tyGroundStable := inferInstance
+  tmGroundStable := inferInstance
+  tyLawfulComp := inferInstance
+  tmLawfulComp := inferInstance
 
 /-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so all
 three obligations are immediate — the negative one is a genuine proof that *no* substitution helps
@@ -183,6 +185,8 @@ identity, so the empty answer is at least as general as anything with the empty 
 Worth noting against STLC, where the same field costs a `sorry`. Most-generality is only hard when
 there is inference to be most general *about*. -/
 instance : TypeSystem.PrincipalElaborate Name Name Name where
+  tyGroundDec := inferInstance
+  tmGroundDec := inferInstance
   elaborate Γ t τ :=
     if h : declaredAt Γ t τ = true then
       .mgu ∅
@@ -194,16 +198,6 @@ instance : TypeSystem.PrincipalElaborate Name Name Name where
       .impossible (fun σ hσ => h (by
         have h' : declaredAt (HasSubst.pSubst Γ σ) t τ = true := hσ
         rwa [declaredAt_pSubst] at h'))
-
-/-- **…and therefore whole files elaborate.** Seven `inferInstance`s and the front end exists. -/
-instance : TypeSystem.Vernacular.Elaboratable Name Name Name where
-  lawfulContext := inferInstance
-  tyGroundStable := inferInstance
-  tmGroundStable := inferInstance
-  tyLawfulComp := inferInstance
-  tmLawfulComp := inferInstance
-  tyGroundDec := inferInstance
-  tmGroundDec := inferInstance
 
 /-! ### The pipeline, for free
 

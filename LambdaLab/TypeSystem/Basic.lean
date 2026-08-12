@@ -49,33 +49,30 @@ class HasType (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] where
   /-- The typing judgement, over contexts keyed by `N`. -/
   HasType : Context N Ty → Tm → Ty → Prop
 
-/-- **Typing sees a context only through lookup.** Two contexts agreeing at every name type the
-same terms.
-
-True of any judgement worth the name — a context is a finite map, and a rule can only consult it
-by looking a variable up — but `HasType` is an arbitrary relation, so nothing may assume it. STLC
-proves it as `HasType.cong`, which is exactly this field.
-
-A **mixin** over `[HasType N Tm Ty]`, not an `extends`. Extending would create a second
-`HasType`, and a caller wanting this alongside `PrincipalElaborate` would then hold two unrelated
-judgements — the diamond `LawfulMVars` was restructured to flatten. A `Prop`-valued class over the
-instance already in scope cannot open one.
-
-It is what makes a substituted context usable: `Std.HashMap` has no `getElem?` extensionality, so
-`pSubst Γ σ = Γ` is not provable even when Γ is ground, and the keywise fact
-(`Context.pSubst_get?_of_ground`) is all there is. This law is what turns that into a statement
-about typing. -/
-class LawfulContext (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] [HasType N Tm Ty] : Prop where
-  /-- Typing transports along keywise agreement of contexts. -/
-  cong : ∀ {Γ Γ' : Context N Ty} {t : Tm} {τ : Ty},
-    (∀ x, Γ.get? x = Γ'.get? x) → HasType.HasType Γ t τ → HasType.HasType Γ' t τ
-
 class TypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasType N Tm Ty, Step Tm where
 
+/-- **A judgement that is well-behaved**: reduction preserves it, and it reads a context only
+through lookup.
+
+Both are properties of the *judgement alone* — neither mentions substitution, elaboration or any
+consumer — which is why they sit together here and not further down the tower. `TypeSystem` says
+what the pieces are; this says they behave. -/
 class LawfulTypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends TypeSystem N Tm Ty where
-  /-- A type system is a named object language together with the metatheory that makes it
-  well-behaved: typing, reduction, and a proof that reduction preserves types. -/
+  /-- Reduction preserves types. -/
   Preservation : ∀ {Γ t τ t'}, HasType Γ t τ → Step t t' → HasType Γ t' τ
+  /-- **Typing sees a context only through lookup**: two contexts agreeing at every name type the
+  same terms.
+
+  True of any judgement worth the name — a context is a finite map, and a rule can only consult it
+  by looking a variable up — but `HasType` is an arbitrary relation, so nothing may assume it. STLC
+  proves it as `HasType.cong`, which is exactly this field.
+
+  It is what makes a *substituted* context usable: `Std.HashMap` has no `getElem?` extensionality,
+  so `pSubst Γ σ = Γ` is not provable even when `Γ` is ground, and the keywise fact
+  (`Context.pSubst_get?_of_ground`) is all there is. This law turns that into a statement about
+  typing. -/
+  cong : ∀ {Γ Γ' : Context N Ty} {t : Tm} {τ : Ty},
+    (∀ x, Γ.get? x = Γ'.get? x) → HasType Γ t τ → HasType Γ' t τ
 
 /-- A type system whose types carry metavariables, so substitution acts on both levels:
 `pSubst : Tm → Subst Ty → Tm` for the type annotations inside a term, and
@@ -136,6 +133,28 @@ class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars
   constraint set be *applied* and still describe a typing. -/
   Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Ty),
     HasType Γ t τ → HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)
+  /-- Substitution fixes a ground type. -/
+  tyGroundStable : GroundStable Ty Ty
+  /-- …and a term whose annotations are all solved. -/
+  tmGroundStable : GroundStable Tm Ty
+  /-- Substituting twice is substituting once, through the composite — at the type level… -/
+  tyLawfulComp : LawfulComp Ty Ty
+  /-- …and at the term level. -/
+  tmLawfulComp : LawfulComp Tm Ty
+
+/-! The four laws above are `Prop` mixins over the `HasSubst` instances `MVars` carries, so
+gathering them here mints no new operation and reopens no diamond. `low`, like the projections at
+`:106` and for the same reason: a free-standing instance must keep winning where one applies. It
+always does apply for a concrete language, and it is *definitionally* the field, since the field
+was filled from it.
+
+They cannot replace the free-standing instances, and are not meant to. `Substitution/Basic.lean`
+derives `GroundStable`/`LawfulComp` for pairs and lists from their components, and `Bridge.lean`
+for any `Signature` — derivations that resolve by ordinary search, and which are what make a whole
+`Vernacular.Program` substitutable. What the fields buy is that a *generic* consumer, working at an
+abstract `Tm`/`Ty` where no such instance applies, needs one binder instead of five. -/
+attribute [instance low] LawfulMVars.tyGroundStable LawfulMVars.tmGroundStable
+  LawfulMVars.tyLawfulComp LawfulMVars.tmLawfulComp
 
 /-- **The elaboration problem, solved principally.** Given a context, a term and a declared type —
 any of which may still hold metavariables — produce a substitution making the triple a real typing
@@ -169,5 +188,26 @@ class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extend
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
       MGUProp (fun σ : Subst Ty =>
         HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ))
+  /-- **Groundness of a type is decidable.** `HasVars.Ground` is `∀ n, ¬ isFree x n`, which no
+  instance decides by unfolding, so a language routes it to its own structural check.
+
+  Data rather than a law, and the one field here that is arguably a consumer's concern rather than
+  a type system's — anything that *checks* elaboration output needs it, and nothing else does. It
+  is here because `Ground` is `HasVars` vocabulary, not vernacular vocabulary: a class promising
+  that its types carry metavariables and that it solves them principally may as well promise that
+  you can tell when they are gone.
+
+  It should eventually not be a field at all. `HasVars.fresh_gt_free` makes groundness a *bounded*
+  quantifier — `Ground x ↔ ∀ n < fresh x, ¬ isFree x n` — so `DecidablePred Ground` follows
+  generically from `Decidable (isFree x n)`, and belongs in `Substitution/Basic.lean` beside
+  `Ground` itself. That change touches every `HasVars` instance, so it is deliberately not made
+  here. -/
+  tyGroundDec : DecidablePred (HasVars.Ground : Ty → Prop)
+  /-- The same for terms. -/
+  tmGroundDec : DecidablePred (HasVars.Ground : Tm → Prop)
+
+/-! `reducible` besides `low`, so that a `Ground` check written against these is definitionally the
+language's own structural check rather than something merely propositionally equal to it. -/
+attribute [reducible, instance low] PrincipalElaborate.tyGroundDec PrincipalElaborate.tmGroundDec
 
 end LambdaLab.TypeSystem

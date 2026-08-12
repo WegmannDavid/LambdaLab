@@ -11,7 +11,7 @@ builds the *next* stage, `Program ⇝ well-typed Program`, and composes it on.
 
 Nowhere in this file. A `Language` says how to read and print; it says nothing about what a
 program *means*, and it never will — meaning is the type system's business. So the stage below is
-parameterised by `[Vernacular.Elaboratable (Var L) L.Tm L.Ty]`: **the moment a language's own
+parameterised by `[TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]`: **the moment a language's own
 types and terms satisfy the elaboration interface, the whole front end exists**, parse and check
 as one `Abs` morphism, with nothing further to supply.
 
@@ -47,9 +47,9 @@ open LambdaLab.Abstraction
 /-! Selectively, not wholesale: `Vernacular` also exports `Command` and `Program`, which this
 namespace has its own instantiated abbreviations for. -/
 open LambdaLab.TypeSystem.Vernacular
-  (Elaboratable HasType elabProgram elabProgram? elabProgram?_self)
+  (HasType elabProgram elabProgram? elabProgram?_self)
 
-variable (L : Language) [Elaboratable (Var L) L.Tm L.Ty]
+variable (L : Language) [TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]
 
 /-- The **elaborated programs** of `L`: well-typed, and with every metavariable solved.
 
