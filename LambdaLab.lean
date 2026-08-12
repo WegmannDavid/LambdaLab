@@ -66,6 +66,7 @@ import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Pipeline.Compose
+import LambdaLab.Pipeline.Cli
 import LambdaLab.Pipeline.Example
 import LambdaLab.NEList
 import LambdaLab.Parser.IsoParser.Adapters

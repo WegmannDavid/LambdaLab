@@ -6,8 +6,12 @@ defaultTargets = ["LambdaLab"]
 name = "LambdaLab"
 
 [[lean_exe]]
-name = "playground"
-root = "Main"
+name = "stlc"
+root = "Stlc"
+
+[[lean_exe]]
+name = "arith"
+root = "Arith"
 
 [[require]]
 name = "mathlib"
