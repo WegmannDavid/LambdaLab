@@ -1,6 +1,7 @@
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Parser.IsoParser.Adapters
@@ -88,6 +89,9 @@ def aEntry : Entry Token Unit where
     cases o₁ <;> cases o₂ <;>
       simp_all [aOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
       exact absurd h (by decide)
+  juxtUnique := by
+    intro o₁ o₂ h₁ h₂
+    cases o₁ <;> cases o₂ <;> simp_all [aOp]
   varDisjoint := by
     intro o t ht
     cases o <;>
@@ -154,6 +158,9 @@ def tEntry : Entry Token Unit where
     cases o₁ <;> cases o₂ <;>
       simp_all [tOp, Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
       exact absurd h (by decide)
+  juxtUnique := by
+    intro o₁ o₂ h₁ h₂
+    cases o₁ <;> cases o₂ <;> simp_all [tOp]
   varDisjoint := by
     intro o t ht
     cases o <;>
@@ -248,15 +255,14 @@ It cannot simply be dropped: a deterministic parser answers one tree per token l
 distinct trees with one flattening could not both round-trip. -/
 
 /-- **Assumed**: the arithmetic term grammar is unambiguous. True (the operators have pairwise
-distinct heads and the precedence DAG fixes every hole's level), but deriving it from the
-lexical conditions is open work — the empirical evidence is strong (exhaustive search over tens
-of thousands of grammars found no counterexample under exactly these conditions). -/
-theorem aUnambiguous : Unambiguous aGrammar := by
-  sorry
+distinct heads and the precedence DAG fixes every hole's level). No longer assumed here —
+the derivation is `Unambiguity.lean`'s `unambiguous`, which still rests on its three
+kernel sorries (`splitLeftRec`/`topOp_unique`/`varOp_ne`) — so this is not yet a closed
+proof, but the obligation now lives in one place instead of being assumed per grammar. -/
+theorem aUnambiguous : Unambiguous aGrammar := unambiguous aGrammar
 
-/-- **Assumed**: the type grammar is unambiguous. Same status as `aUnambiguous`. -/
-theorem tyUnambiguous : Unambiguous tyGrammar := by
-  sorry
+/-- The type grammar is unambiguous. Same status as `aUnambiguous`. -/
+theorem tyUnambiguous : Unambiguous tyGrammar := unambiguous tyGrammar
 
 /-! ### The language -/
 

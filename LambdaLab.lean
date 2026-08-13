@@ -80,6 +80,7 @@ import LambdaLab.Parser.IsoParser.Mixfix.Complete
 import LambdaLab.Parser.IsoParser.Mixfix.Parse
 import LambdaLab.Parser.IsoParser.Mixfix.Sound
 import LambdaLab.Parser.IsoParser.Mixfix.Tree
+import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.IsoParser.Notation
 import LambdaLab.Parser.IsoParser.Token
 import LambdaLab.Parser.IsoParser.Tokenize

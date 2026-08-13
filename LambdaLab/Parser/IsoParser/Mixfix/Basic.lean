@@ -158,6 +158,16 @@ structure Entry (Tok Ent : Type) where
   `a + b * c` with `+`/`*` unrelated simply fails to parse ("add parentheses"), which is sound. -/
   headsDistinct : ∀ o₁ o₂ : Op, (operator o₁).headTok?.isSome = true →
     (operator o₁).headTok? = (operator o₂).headTok? → o₁ = o₂
+  /-- **At most one operator is juxtaposition.** `headsDistinct`'s `isSome` guard deliberately
+  exempts `juxt`, which has no leading token — so without this field two distinct juxtaposition
+  operators are representable, and being tokenless they are *indistinguishable in the token
+  stream*: they give distinct trees with equal flattenings, i.e. an ambiguous grammar.
+
+  Nothing already proved is unsound without it (`mixfix` takes `Unambiguous` as a hypothesis, and
+  such a grammar simply cannot supply one), but unambiguity cannot be *derived* without it —
+  `not_continuesAt_tighter_juxt` needs exactly this to know that a juxt strictly tighter than `j`
+  must be `j`. Vacuous for a grammar with no juxtaposition, and `decide`-discharged otherwise. -/
+  juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
   /-- **No operator name part is a variable token** — the variable half of the same lexical
   determinism, so a token cannot be read as both a leaf and (part of) an operator. Ranges over the
   operator's finite name-part list, so a concrete grammar discharges it by `decide`. -/

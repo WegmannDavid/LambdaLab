@@ -4,6 +4,7 @@ import LambdaLab.Stlc.Named.TypeSystem
 import LambdaLab.Pipeline.Compose
 import LambdaLab.TypeSystem.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
+import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Parser.Numeral
@@ -115,6 +116,9 @@ def tmEntry : Entry Pipeline.Token SEnt where
     cases o₁ <;> cases o₂ <;>
       simp_all [Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
       exact absurd h (by decide)
+  juxtUnique := by
+    intro o₁ o₂ h₁ h₂
+    cases o₁ <;> cases o₂ <;> simp_all
   varDisjoint := by
     intro o t ht
     cases o <;>
@@ -139,6 +143,10 @@ def varEntry : Entry Pipeline.Token SEnt where
   headsDistinct := by
     intro o₁ o₂ h₁ h
     cases o₁; cases o₂; rfl
+  juxtUnique := by
+    intro o₁ o₂ h₁ h₂
+    -- one operator, and it is not `juxt`, so `cases` leaves a single contradictory goal
+    cases o₁; cases o₂; simp_all
   varDisjoint := by
     intro o t ht
     cases o
@@ -165,6 +173,9 @@ def tyEntry : Entry Pipeline.Token SEnt where
     cases o₁ <;> cases o₂ <;>
       simp_all [Operator.headTok?, Operator.nameTokens, Notation.toTokens] <;>
       exact absurd h (by decide)
+  juxtUnique := by
+    intro o₁ o₂ h₁ h₂
+    cases o₁ <;> cases o₂ <;> simp_all
   varDisjoint := by
     intro o t ht
     cases o <;>
@@ -290,10 +301,11 @@ theorem sFollow_def : follow (G := stlcGrammar) SEnt.tm (tkS "def") = true := by
 
 theorem sFollow_assign : follow (G := stlcGrammar) SEnt.ty (tkS ":=") = true := by decide
 
-/-- **Assumed**: the STLC grammar is unambiguous. Not decidable (it quantifies over all trees);
-deriving it from the lexical fields is the open conjecture. -/
-theorem stlcUnambiguous : Unambiguous stlcGrammar := by
-  sorry
+/-- The STLC grammar is unambiguous. Not decidable (it quantifies over all trees), and no longer
+assumed — the derivation is `Unambiguity.lean`'s `unambiguous`, which still rests on its three
+kernel sorries (`splitLeftRec`/`topOp_unique`/`varOp_ne`) — so this is not yet a closed
+proof, but the obligation now lives in one place instead of being assumed per grammar. -/
+theorem stlcUnambiguous : Unambiguous stlcGrammar := unambiguous stlcGrammar
 
 /-- **`reducible` is load-bearing.** The front end asks for
 `TypeSystem.PrincipalElaborate (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
