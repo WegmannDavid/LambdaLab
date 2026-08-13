@@ -107,6 +107,8 @@ instance instLawfulMVars : TypeSystem.LawfulMVars N (Term N) Ty where
   tmGroundStable := inferInstance
   tyLawfulComp := inferInstance
   tmLawfulComp := inferInstance
+  tyLawfulRestrict := inferInstance
+  tmLawfulRestrict := inferInstance
 
 /-! ## Groundness, decided
 

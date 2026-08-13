@@ -130,6 +130,7 @@ instance : HasSubst Name Name where
 
 instance : GroundStable Name Name where pSubst_ground _ _ := rfl
 instance : LawfulComp Name Name where pSubst_comp _ _ _ := rfl
+instance : LawfulRestrict Name Name where pSubst_restrictBelow _ _ _ _ := rfl
 
 /-- Nothing is ever free, so everything is ground — decidably. -/
 instance : DecidablePred (HasVars.Ground : Name → Prop) := fun _ => isTrue (fun _ h => h)
@@ -176,6 +177,8 @@ instance : TypeSystem.LawfulMVars Name Name Name where
   tmGroundStable := inferInstance
   tyLawfulComp := inferInstance
   tmLawfulComp := inferInstance
+  tyLawfulRestrict := inferInstance
+  tmLawfulRestrict := inferInstance
 
 /-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so all
 three obligations are immediate — the negative one is a genuine proof that *no* substitution helps

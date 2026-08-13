@@ -141,6 +141,11 @@ class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars
   tyLawfulComp : LawfulComp Ty Ty
   /-- …and at the term level. -/
   tmLawfulComp : LawfulComp Tm Ty
+  /-- Bindings above a type's threshold do not act on it… -/
+  tyLawfulRestrict : LawfulRestrict Ty Ty
+  /-- …nor on a term's. Together these are what let the vernacular hand back a solution pruned to
+  the source's own metavariables instead of the elaborator's internal scaffolding. -/
+  tmLawfulRestrict : LawfulRestrict Tm Ty
 
 /-! The four laws above are `Prop` mixins over the `HasSubst` instances `MVars` carries, so
 gathering them here mints no new operation and reopens no diamond. `low`, like the projections at
@@ -155,6 +160,7 @@ for any `Signature` — derivations that resolve by ordinary search, and which a
 abstract `Tm`/`Ty` where no such instance applies, needs one binder instead of five. -/
 attribute [instance low] LawfulMVars.tyGroundStable LawfulMVars.tmGroundStable
   LawfulMVars.tyLawfulComp LawfulMVars.tmLawfulComp
+  LawfulMVars.tyLawfulRestrict LawfulMVars.tmLawfulRestrict
 
 /-- **The elaboration problem, solved principally.** Given a context, a term and a declared type —
 any of which may still hold metavariables — produce a substitution making the triple a real typing

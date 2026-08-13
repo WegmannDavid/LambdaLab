@@ -968,6 +968,13 @@ theorem Signature.pSubst_restrictBelow {α : Type} [Signature α]
           exact foldr_max_ge (fun j => args.get j) _ i (List.mem_finRange i)
         exact Nat.le_trans hle h_fresh
 
+/-- `LawfulRestrict` for a signature's own type, packaged from the theorem above the way
+`instLawfulComp` packages `pSubst_comp`. This is the instance that lets a *generic* consumer — one
+holding only `[PrincipalElaborate N Tm Ty]`, with no `Signature` anywhere in sight — prune a
+computed substitution down to its source's threshold. -/
+instance instLawfulRestrict {α : Type} [Signature α] : LawfulRestrict α α where
+  pSubst_restrictBelow := fun t σ n h => Signature.pSubst_restrictBelow σ n t h
+
 theorem Signature.pSubst_insert_fresh {α : Type} [Signature α]
     (σ : Subst α) (k : Nat) (v : α) (t : α)
     (h_fresh : ¬ HasVars.isFree t k) :

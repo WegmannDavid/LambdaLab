@@ -69,7 +69,7 @@ means it, and `default` records the canonical such source — `p` itself. -/
 def Language.elabStage :
     Abstraction (Program L) L.Elaborated
       (fun p => { q : Program L // elabProgram? q = some p.val }) where
-  abstract q := (elabProgram q).map fun s => ⟨HasSubst.pSubst q s.val, s.property⟩
+  abstract q := (elabProgram q).map fun s => ⟨HasSubst.pSubst q s.val, s.property.1⟩
   realize ann := ann.val
   default {p} := ⟨p.val, elabProgram?_self p.property⟩
   abstract_realize p ann := by

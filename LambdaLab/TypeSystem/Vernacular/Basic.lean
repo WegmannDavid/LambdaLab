@@ -78,4 +78,15 @@ instance instLawfulCompCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
     show Command.decl x _ _ = Command.decl x _ _
     rw [LawfulComp.pSubst_comp ρ σ τ, LawfulComp.pSubst_comp t σ τ]
 
+/-- A declaration's threshold is the max of its type's and its body's, so a threshold the
+declaration sits under is one both sit under. With the pair and list instances this reaches a whole
+`Program`, which is what lets `elabProgram` prune its answer. -/
+instance instLawfulRestrictCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
+    [LawfulRestrict Tm Ty] [LawfulRestrict Ty Ty] : LawfulRestrict (Command N Tm Ty) Ty where
+  pSubst_restrictBelow c σ n h := by
+    obtain ⟨x, τ, t⟩ := c
+    show Command.decl x _ _ = Command.decl x _ _
+    rw [LawfulRestrict.pSubst_restrictBelow τ σ n (Nat.le_trans (Nat.le_max_left _ _) h),
+        LawfulRestrict.pSubst_restrictBelow t σ n (Nat.le_trans (Nat.le_max_right _ _) h)]
+
 end LambdaLab.TypeSystem.Vernacular

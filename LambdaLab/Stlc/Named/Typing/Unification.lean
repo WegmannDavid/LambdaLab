@@ -487,6 +487,12 @@ theorem Term.tyPSubst_restrictBelow (e : Term N) (σ : Subst Ty) (n : Nat)
       show Term.app _ _ = Term.app _ _
       rw [ih₁', ih₂']
 
+/-- The term specialization, packaged as the class — the form a generic consumer asks for. `Ty`
+gets its instance from `Signature` in `Bridge.lean`; a term is not a signature's own type (its
+metavariables live in annotations), so this one is proved here. -/
+instance : LawfulRestrict (Term N) Ty where
+  pSubst_restrictBelow := Term.tyPSubst_restrictBelow
+
 theorem Ctx.pSubst_restrictBelow_get? (Γ : Std.HashMap N Ty) (σ : Subst Ty) (n : Nat)
     (h : HasVars.fresh Γ ≤ n) (x : N) :
     (HasSubst.pSubst Γ (Subst.restrictBelow σ n)).get? x = (HasSubst.pSubst Γ σ).get? x := by

@@ -15,12 +15,16 @@ and every language that decides its own elaboration gets a vernacular elaborator
 
 ## What it produces: a substitution, not a new program
 
-`Option { σ // HasType (pSubst p σ) }`. The answer is the *solution*, and the certificate is
-about the program that was actually written — `p`, not some value the elaborator built and the
-caller must then relate back to its source. The elaborated form is `pSubst p σ`, available
-whenever anyone wants it (`elabProgram?`), and `Vernacular/Basic.lean`'s `Command` instance is
-what makes that one application well-defined: `Program` is `Command × List Command`, and the pair
-and list instances in `Substitution/Basic.lean` do the rest.
+`Option { σ // HasType (pSubst p σ) ∧ Minimal p σ }`. The answer is the *solution*, and the
+certificate is about the program that was actually written — `p`, not some value the elaborator
+built and the caller must then relate back to its source. The elaborated form is `pSubst p σ`,
+available whenever anyone wants it (`elabProgram?`), and `Vernacular/Basic.lean`'s `Command`
+instance is what makes that one application well-defined: `Program` is `Command × List Command`,
+and the pair and list instances in `Substitution/Basic.lean` do the rest.
+
+The second conjunct says σ binds nothing at or above `p`'s own threshold — no redundant bindings.
+It is a condition on σ's *domain*; see `Minimal` below for why that is the honest strengthening
+available here and `MGUProp` is not.
 
 One substitution for a whole program means metavariable indices are **global to the file**: `?0`
 in the third declaration is the same `?0` as in the first. That is a real commitment, and this
@@ -58,6 +62,9 @@ And composing the per-declaration answers needs:
 All four are mixins over instances already in scope, so none reopens the `HasType` diamond, and
 all four hold for STLC — three are one-line packagings of existing theorems (`HasType.cong`,
 `Term.pSubst_comp`, `Signature.pSubst_comp`).
+
+A fifth, `LawfulRestrict`, is not needed by the fold but by what `elabProgram` does with its
+result; it is discussed under "Pruning" below.
 
 Groundness must also be **decidable** to be checked. `HasVars.Ground` is `∀ n, ¬ isFree x n`,
 which no instance can decide by unfolding, so the check is requested as a `DecidablePred`
@@ -133,8 +140,46 @@ def elabCommands : (Γ : Context N Ty) → CtxGround Γ → (cs : List (Command 
   termination_by _ _ cs => cs.length
   decreasing_by simp [List.length_pSubst]
 
+/-! ## Pruning: the answer is about the source, and only about the source
+
+The fold's composite binds more than the program mentions. Each step's `elaborate` draws its own
+fresh metavariables, and although a language is expected to prune its *own* scaffolding (STLC's
+`elabSubst` restricts below `sourceFresh`), the fold then elaborates the tail against
+`pSubst cs σ` — a term whose metavariables may sit above anything in the source, because a solved
+binding's *range* can reach up even when its domain does not. Those bindings are algorithm
+exhaust. They are invisible to `p`, they are not part of the answer, and handing them to a caller
+invites it to depend on them.
+
+So `elabProgram` restricts the composite to `p`'s own threshold before returning it, and records
+that it did. This is the same boundary-pruning `Term.elaborate` performs one level down — option D
+of the principal-types discussion, applied to a program instead of a term. -/
+
+/-- **No redundant bindings**: σ binds no metavariable at or above `x`'s threshold.
+
+This is a condition on σ's *domain*, and it is deliberately not phrased through `MoreGeneral`,
+which constrains a substitution's action and says nothing about what it binds. It is also the
+weaker, numeric reading of "no redundant bindings" rather than the support condition
+`dom σ ⊆ mvars x`: proving the latter would need `elaborate` to promise something about its own
+domain, a field the interface does not have. Note too that `HasVars.fresh` is only required to be
+an *upper* bound, so a language that over-approximates it gets a correspondingly weaker guarantee.
+
+Stated get?-wise rather than as `σ = Subst.restrictBelow σ (fresh x)`: `Std.HashMap` has no
+`getElem?` extensionality here, so the equation is not available even when it is true. -/
+def Minimal {𝕋 𝕊 : Type} [HasVars 𝕋] (x : 𝕋) (σ : Subst 𝕊) : Prop :=
+  ∀ n, σ.get? n ≠ none → n < HasVars.fresh x
+
+/-- Pruning at exactly the threshold is what makes minimality true by construction, rather than
+something to be recovered afterwards from facts the interface does not supply. -/
+theorem minimal_restrictBelow {𝕋 𝕊 : Type} [HasVars 𝕋] (x : 𝕋) (σ : Subst 𝕊) :
+    Minimal x (Subst.restrictBelow σ (HasVars.fresh x)) := by
+  intro n hn
+  rw [Subst.restrictBelow_get?] at hn
+  cases h : Nat.decLt n (HasVars.fresh x) with
+  | isTrue hlt => exact hlt
+  | isFalse hge => rw [if_neg hge] at hn; exact absurd rfl hn
+
 /-- **Elaborate a whole program**: a substitution under which the *source* program is well-typed
-and fully resolved.
+and fully resolved, binding nothing the source does not reach.
 
 The certificate is about `p` itself, not about some other program the elaborator built — reading
 off the elaborated form is `HasSubst.pSubst p σ`, and the caller can do that whenever it wants
@@ -143,10 +188,14 @@ rather than being handed a value it must then relate back to what was written.
 The empty context is ground, so `nil`'s condition is discharged by construction and never surfaces
 as an obligation on the caller. -/
 def elabProgram (p : Program N Tm Ty) :
-    Option { σ : Subst Ty // HasType (HasSubst.pSubst p σ) } :=
+    Option { σ : Subst Ty // HasType (HasSubst.pSubst p σ) ∧ Minimal p σ } :=
   match elabCommands (Context.empty : Context N Ty) CtxGround.empty p.toList with
   | none => none
-  | some ⟨σ, h⟩ => some ⟨σ, h⟩
+  | some ⟨σ, h⟩ =>
+      some ⟨Subst.restrictBelow σ (HasVars.fresh p), by
+        refine ⟨?_, minimal_restrictBelow p σ⟩
+        rw [LawfulRestrict.pSubst_restrictBelow p σ _ (Nat.le_refl _)]
+        exact h⟩
 
 /-- The elaborated program itself, for a caller that wants the value rather than the solution. -/
 def elabProgram? (p : Program N Tm Ty) : Option (Program N Tm Ty) :=
@@ -159,7 +208,7 @@ theorem elabProgram?_hasType {p p' : Program N Tm Ty} (h : elabProgram? p = some
     HasType p' := by
   rw [elabProgram?, Option.map_eq_some_iff] at h
   obtain ⟨σ, _, rfl⟩ := h
-  exact σ.property
+  exact σ.property.1
 
 /-! ## An elaborated program is a fixed point of the elaborator
 
@@ -255,6 +304,8 @@ theorem elabProgram?_self {p : Program N Tm Ty} (h : HasType p) : elabProgram? p
   | some s =>
       obtain ⟨σ, hσ⟩ := s
       rw [Option.map_some, Option.some.injEq]
-      exact GroundStable.pSubst_ground σ h.ground
+      -- Pruning is irrelevant here: `p` is ground, so *every* substitution fixes it, restricted
+      -- or not.
+      exact GroundStable.pSubst_ground _ h.ground
 
 end LambdaLab.TypeSystem.Vernacular

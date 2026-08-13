@@ -188,6 +188,24 @@ class LawfulComp (𝕋 : Type) (𝕊 : outParam Type) [HasSubst 𝕋 𝕊] [HasS
   pSubst_comp : ∀ (x : 𝕋) (σ τ : Subst 𝕊),
     HasSubst.pSubst x (Subst.comp σ τ) = HasSubst.pSubst (HasSubst.pSubst x τ) σ
 
+/-- **Bindings above an object's threshold are invisible to it.** Dropping σ's bindings at or above
+`n` does not change how σ acts on anything whose free metavariables are all below `n`.
+
+This is what lets a caller *prune* a computed substitution down to the part that concerns its
+source, rather than handing back the algorithm's internal scaffolding as though it were part of
+the answer. `Signature.pSubst_restrictBelow` proves it for a signature's own type; the mixin exists
+so that a consumer working at an abstract `Tm`/`Ty` — where no `Signature` is in scope — can still
+prune. Same mixin discipline as `GroundStable` and `LawfulComp`: a `Prop` over the existing
+`HasSubst`, minting no second operation.
+
+Stated as an equality of *actions*, never as `σ = Subst.restrictBelow σ n`. The latter is not
+available: `Std.HashMap` has no `getElem?` extensionality in this toolchain, so two substitutions
+that agree everywhere still cannot be proved equal. -/
+class LawfulRestrict (𝕋 : Type) (𝕊 : outParam Type) [HasSubst 𝕋 𝕊] : Prop where
+  /-- Restricting below a threshold the object already sits under is a no-op on that object. -/
+  pSubst_restrictBelow : ∀ (x : 𝕋) (σ : Subst 𝕊) (n : Nat), HasVars.fresh x ≤ n →
+    HasSubst.pSubst x (Subst.restrictBelow σ n) = HasSubst.pSubst x σ
+
 /-! ## Generic instances -/
 
 /-- Componentwise substitution on pairs. Free vars and `fresh` use the
@@ -219,6 +237,16 @@ instance {α α' β : Type} [HasSubst α β] [HasSubst α' β] [GroundStable α 
     rw [GroundStable.pSubst_ground σ (fun n hn => h n (Or.inl hn)),
         GroundStable.pSubst_ground σ (fun n hn => h n (Or.inr hn))]
 
+/-- A pair's threshold is the max of its components', so a threshold the pair sits under is one
+both components sit under. -/
+instance {α α' β : Type} [HasSubst α β] [HasSubst α' β]
+    [LawfulRestrict α β] [LawfulRestrict α' β] : LawfulRestrict (α × α') β where
+  pSubst_restrictBelow p σ n h := by
+    show (HasSubst.pSubst p.1 _, HasSubst.pSubst p.2 _)
+        = (HasSubst.pSubst p.1 σ, HasSubst.pSubst p.2 σ)
+    rw [LawfulRestrict.pSubst_restrictBelow p.1 σ n (Nat.le_trans (Nat.le_max_left _ _) h),
+        LawfulRestrict.pSubst_restrictBelow p.2 σ n (Nat.le_trans (Nat.le_max_right _ _) h)]
+
 /-- Pointwise substitution on lists. `isFree` is "free in some element";
 `fresh` is the foldr of `max` over the per-element fresh values. -/
 instance {α β : Type} [HasSubst α β] : HasSubst (List α) β where
@@ -249,6 +277,15 @@ instance {α β : Type} [HasSubst α β] [GroundStable α β] : GroundStable (Li
     rw [List.map_congr_left
       (fun x hx => GroundStable.pSubst_ground σ (fun n hn => h n ⟨x, hx, hn⟩))]
     exact List.map_id xs
+
+/-- A list's threshold bounds every element's, by `List.foldr_max_of_mem` — so pruning invisible to
+the list is pruning invisible to each element, and the pointwise maps agree. -/
+instance {α β : Type} [HasSubst α β] [LawfulRestrict α β] : LawfulRestrict (List α) β where
+  pSubst_restrictBelow xs σ n h := by
+    show xs.map _ = xs.map _
+    refine List.map_congr_left (fun x hx => ?_)
+    exact LawfulRestrict.pSubst_restrictBelow x σ n
+      (Nat.le_trans (List.foldr_max_of_mem (fun y : α => HasVars.fresh y) xs x hx) h)
 
 /-- Substitution does not change a list's length — what lets a fold over a program recurse on the
 substituted tail and still terminate. -/
