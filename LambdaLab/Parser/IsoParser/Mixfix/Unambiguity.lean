@@ -642,22 +642,26 @@ Uniqueness then falls out of the ★ lemmas:
 
 ## Where the kernel actually stands (2026-08-13)
 
-The spine view above is built. Of the three kernel obligations this file's ancestor carried:
+The spine view is built and the three obligations this file's ancestor carried are down to two,
+which are no longer of the same kind:
 
 * **`varOp_ne` — CLOSED**, and without the spine. A variable leaf is one token, so an operator
-  node sharing its first token must overrun it, and `op_var_head` names the token that does the
-  overrunning: `varDisjoint` if the operator is token-led, otherwise a descent into its leading
-  hole, bottoming out at a variable leaf where `holeLed_split` applies.
-* **`topOp_unique` — half closed.** Token-led vs token-led is `headsDistinct`
-  (`topOp_unique_tokenLed`). The rest is `topOp_unique_holeLed`, still open; its docstring records
-  why it cannot be peeled off the way `varOp_ne` was.
-* **`splitLeftRec` — replaced** by `udPartsAux`, an induction on the *shape* (the operator it came
-  from is irrelevant). Empty and name-part cases are proved; only the hole case is open, and it is
-  open for one precise reason: it is a call to `udExpr`.
+  node sharing its first token must overrun it, and `op_var_head` names the token that does:
+  `varDisjoint` if the operator is token-led, otherwise a descent into its leading hole, bottoming
+  out at a variable leaf where `holeLed_split` applies.
+* **`udExpr`/`udParts` are now one `mutual`** on an explicit size bound, and **`udParts` is
+  closed** — including its hole case, which is the call back into `udExpr` at the hole's own entry
+  and level. Its two side conditions come from `Seamed`/`PartsFollow`, which is what a *shape* can
+  supply: a shape constrains what follows it only through a trailing hole and its interior only at
+  the seams.
+* **Two gaps remain, and they are different problems.**
+  1. `topOp_unique_holeLed` — two *distinct* operators, at least one hole-led. See its docstring:
+     the separating fact is which extent is shorter, so it belongs inside the recursion.
+  2. The `leftRec` branch of `udExprN` — `infxl`/`juxt` bodies are not `Seamed`, so `udParts` does
+     not apply to them and they must be normalised through `Expr.spine` first.
 
-So both remaining gaps are the same gap — `udExpr` and `udPartsAux` need to be one `mutual` block,
-terminating on summed sizes, with the leading `.tighterEq` hole of a left-recursive operator routed
-through `Expr.spine` first (that hole is the one case where neither ★ lemma gives FOLLOW). -/
+Both are about left-recursion and ambiguity of *extent*, which is what the spine exists for; the
+seam-and-FOLLOW half of the argument is finished. -/
 
 /-! ### The token-led halves, which need no induction
 
@@ -864,45 +868,6 @@ theorem op_var_head {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
   termination_by p.size
   decreasing_by simp only [Expr.size] at hsize; omega
 
-/-- **Two bodies over one shape agree** — the `udParts` content, by induction on the shape. The
-empty and name-part cases are structural; the hole case is the one that calls back into `udExpr`,
-and is the single remaining gap (see below). `hb` is not needed: the statement is about a shape,
-not about which operator produced it. -/
-theorem udPartsAux {e : G.Ent} {l : Level (G.entry e)} :
-    ∀ {shape : List (Part G)} (p₁ p₂ : Parts G shape) (s₁ s₂ : List Tok),
-      p₁.flatten ++ s₁ = p₂.flatten ++ s₂ → FollowAt e l s₁ → FollowAt e l s₂ →
-      p₁ = p₂ ∧ s₁ = s₂ := by
-  intro shape
-  induction shape with
-  | nil =>
-      intro p₁ p₂ s₁ s₂ heq _ _
-      cases p₁; cases p₂
-      exact ⟨rfl, by simpa [Parts.flatten] using heq⟩
-  | cons hd tl ih =>
-      match hd with
-      | .namePart tk =>
-          intro p₁ p₂ s₁ s₂ heq hs₁ hs₂
-          cases p₁ with
-          | namePart _ q₁ =>
-            cases p₂ with
-            | namePart _ q₂ =>
-              simp only [Parts.flatten, List.cons_append, List.cons.injEq] at heq
-              obtain ⟨hq, hs⟩ := ih q₁ q₂ s₁ s₂ heq.2 hs₁ hs₂
-              exact ⟨by rw [hq], hs⟩
-      | .hole e' L =>
-          intro p₁ p₂ s₁ s₂ heq hs₁ hs₂
-          -- ⚠ THE ONE REMAINING GAP. `p₁ = hole sub₁ q₁`, `p₂ = hole sub₂ q₂`, and
-          --   sub₁.flatten ++ (q₁.flatten ++ s₁) = sub₂.flatten ++ (q₂.flatten ++ s₂).
-          -- Concluding `sub₁ = sub₂` is exactly `udExpr` at `(e', L)`, so this theorem and
-          -- `udExpr` must become one `mutual` block, terminating on the summed sizes.
-          -- Its two side conditions are `FollowAt e' L (qᵢ.flatten ++ sᵢ)`, supplied by:
-          --   * `follow_of_interior` when `tl` starts with a name part (an interior seam);
-          --   * `FollowAt.tighten` when `tl = []` (a trailing hole, so the continuation is `sᵢ`);
-          --   * `not_continuesAt_tighter_head` / `not_continuesAt_tighter_juxt` for an operator's
-          --     own operand seam — and for a `.tighterEq` (left-recursive) hole neither applies,
-          --     which is why that case must first be normalised through `Expr.spine`.
-          sorry
-
 /-- **The remaining half of `topOp_unique`**: at least one of the two operators leads with a hole.
 
 Why this one cannot be peeled off the way `varOp_ne` was. There, the competing tree was a variable
@@ -965,52 +930,252 @@ theorem varOp_ne {e : G.Ent} {l : Level (G.entry e)} {t : Tok}
   have hs' : s₁ = as ++ s₂ := by simpa using hs
   exact hs₁ x (by rw [hs', hxr]; rfl) hcont
 
+/-! ### `PartsFollow` for a whole operator body
+
+`udParts` below takes `Complete.lean`'s `Seamed`/`PartsFollow` as its side conditions rather than
+an ambient `FollowAt`: a shape only constrains what follows it through a *trailing* hole, and only
+constrains its interior through the seams. `Seamed` for a body is `seamed_body`, already proved
+there. `PartsFollow` for a body is these lemmas — the trailing hole is at `.tighter o` or
+`.tighterEq o`, and `FollowAt` at the ambient level tightens to either. -/
+
+/-- A notation's parts never end in a hole, so they constrain what follows only through the
+suffix appended after them. (`PartsFollow` decides token equality through `FollowAt`, so this
+keeps `DecidableEq Tok`.) -/
+theorem partsFollow_toParts_append (n : Notation Tok G.Ent)
+    (suffix : List (Part G)) {s : List Tok} (hsuf : PartsFollow suffix s) :
+    PartsFollow (Notation.toParts (G := G) n ++ suffix) s := by
+  induction n generalizing suffix with
+  | last t =>
+      cases suffix with
+      | nil => exact trivial
+      | cons y r => exact hsuf
+  | cons t e' rest ih =>
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) rest
+      show PartsFollow (Part.namePart t :: Part.hole e' Level.loosest ::
+        (Notation.toParts (G := G) rest ++ suffix)) s
+      rw [hps]
+      have := ih suffix hsuf
+      rw [hps] at this
+      exact this
+
+/-- **A body constrains its continuation only through a trailing operand hole**, and that hole is
+never looser than the operator, so the ambient `FollowAt` tightens onto it. Left-recursive
+operators are excluded — they are handled by the spine, not by `udParts`. -/
+theorem partsFollow_body {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) (hnl : ((G.entry e).operator o).leftRec = false)
+    {s : List Tok} (hs : FollowAt e l s) : PartsFollow (Operator.body e o) s := by
+  have htight : FollowAt e (Level.tighter o) s :=
+    FollowAt.tighten (condition_up_tighter hc) hs
+  have hteq : FollowAt e (Level.tighterEq o) s :=
+    FollowAt.tighten (condition_up_tighterEq hc) hs
+  cases hop : (G.entry e).operator o with
+  | closed n =>
+      have hb : Operator.body e o = Notation.toParts (G := G) n ++ [] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append n [] trivial
+  | prefx n =>
+      have hb : Operator.body e o
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]
+      rw [hb]; exact partsFollow_toParts_append n _ htight
+  | infx n =>
+      have hb : Operator.body e o = Part.hole e (Level.tighter o) ::
+          (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)]) := by
+        unfold Operator.body; rw [hop]; rfl
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      rw [hb, hps]
+      have := partsFollow_toParts_append n [Part.hole e (Level.tighter o)] htight
+      rw [hps] at this
+      exact this
+  | infxr n =>
+      have hb : Operator.body e o = Part.hole e (Level.tighter o) ::
+          (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)]) := by
+        unfold Operator.body; rw [hop]; rfl
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      rw [hb, hps]
+      have := partsFollow_toParts_append n [Part.hole e (Level.tighterEq o)] hteq
+      rw [hps] at this
+      exact this
+  | postfx n =>
+      have hb : Operator.body e o
+          = Part.hole e (Level.tighter o) :: (Notation.toParts (G := G) n ++ []) := by
+        unfold Operator.body; rw [hop]; simp
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      rw [hb, hps]
+      -- `PartsFollow [] s` is `True` for every `s`, so the leftover must be pinned by hand
+      have := partsFollow_toParts_append (s := s) n [] trivial
+      rw [hps] at this
+      exact this
+  | infxl n => rw [hop] at hnl; simp [Operator.leftRec] at hnl
+  | juxt    => rw [hop] at hnl; simp [Operator.leftRec] at hnl
+
 /-! ## The mutual unique decomposition
 
-⚠ Neither theorem below is *currently* recursive: `udParts` delegates straight to the sorried
-`splitLeftRec`, so the `termination_by` clauses the ancestor carried
-(`t₁.size + t₂.size` for `udExpr`, `p₁.size + p₂.size` for `udParts`) are flagged unused and are
-dropped to keep the build warning-clean. **Put them back when `splitLeftRec` is replaced by the
-spine argument** — that is what makes `udParts` call back into `udExpr`, and the measure is what
-justifies it. -/
+`udExpr` and `udParts` are now genuinely mutually recursive, on summed sizes: an operator node
+hands its body to `udParts`, and each hole in a body hands its subtree back to `udExpr`.
+
+`udParts` takes `Seamed`/`PartsFollow` rather than an ambient `FollowAt`, because that is what a
+*shape* can actually supply. A shape constrains what follows it only through a trailing hole
+(`PartsFollow`) and constrains its interior only at the seams (`Seamed`) — and both are exactly
+what the hole case needs to call `udExpr` at the hole's own level. This is why the ancestor's
+`splitLeftRec` carried `hb : Operator.body e o = shape`: not to use the equation, but to know the
+shape came from a body at all. `Seamed`/`PartsFollow` replace that, and say it locally. -/
+
+/-! ⚠ **Both functions carry an explicit size bound `n` and recurse on it.** The natural measure
+`t₁.size + t₂.size` does not work: a `termination_by` measure is stated in terms of the function's
+*parameters*, and neither `match` nor `cases` refines it, so in the operator branch the decrease
+goal still reads `… < t₁.size + t₂.size` with `t₁` an opaque variable. A bound passed as an
+ordinary hypothesis *is* refined by `cases`, so the arithmetic becomes visible. `udExpr`/`udParts`
+below re-expose the natural statements. -/
 
 mutual
   /-- Two expressions at the same level whose flattenings agree up to leftovers that **stop** the
   level are equal, with equal leftovers. -/
-  theorem udExpr (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l)
-      (s₁ s₂ : List (Tok))
+  theorem udExprN (n : Nat) (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l)
+      (s₁ s₂ : List (Tok)) (hn : t₁.size + t₂.size ≤ n)
       (heq : t₁.flatten ++ s₁ = t₂.flatten ++ s₂)
       (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : t₁ = t₂ ∧ s₁ = s₂ := by
-    match t₁, t₂ with
-    | .var a ha, .var b hb =>
-        simp only [Expr.flatten, List.cons_append, List.cons.injEq] at heq
-        obtain ⟨rfl, hs⟩ := heq
-        exact ⟨rfl, hs⟩
-    | .var a ha, .op o c p =>
-        exact absurd heq (fun h => (varOp_ne ha c p s₁ s₂ (by simpa [Expr.flatten] using h)
-          hs₁ hs₂).elim)
-    | .op o c p, .var b hb =>
-        exact absurd heq (fun h => (varOp_ne hb c p s₂ s₁ (by simpa [Expr.flatten] using h.symm)
-          hs₂ hs₁).elim)
-    | .op o₁ c₁ p₁, .op o₂ c₂ p₂ =>
-        by_cases ho : o₁ = o₂
-        · subst ho
-          have hpe : p₁.flatten ++ s₁ = p₂.flatten ++ s₂ := by
-            simpa only [Expr.flatten] using heq
-          obtain ⟨hp, hss⟩ := udParts e l o₁ c₁ rfl p₁ p₂ s₁ s₂ hpe hs₁ hs₂
-          exact ⟨by rw [hp], hss⟩
-        · exact absurd heq (fun h => (topOp_unique ho c₁ c₂ p₁ p₂ s₁ s₂
-            (by simpa only [Expr.flatten] using h) hs₁ hs₂).elim)
+    cases t₁ with
+    | var a ha =>
+        cases t₂ with
+        | var b hb =>
+            simp only [Expr.flatten, List.cons_append, List.cons.injEq] at heq
+            obtain ⟨rfl, hs⟩ := heq
+            exact ⟨rfl, hs⟩
+        | op o c p =>
+            exact absurd heq (fun h => (varOp_ne ha c p s₁ s₂ (by simpa [Expr.flatten] using h)
+              hs₁ hs₂).elim)
+    | op o₁ c₁ p₁ =>
+        cases t₂ with
+        | var b hb =>
+            exact absurd heq (fun h => (varOp_ne hb c₁ p₁ s₂ s₁
+              (by simpa [Expr.flatten] using h.symm) hs₂ hs₁).elim)
+        | op o₂ c₂ p₂ =>
+            simp only [Expr.size] at hn
+            rcases Classical.em (o₁ = o₂) with ho | ho
+            -- ⚠ deliberately NOT substituted: substituting `o₂ := o₁` retypes `p₂`, and the size
+            -- bound then mentions a different copy. Transport instead; `Parts.size_opCast` and
+            -- `Parts.flatten_opCast` say the transport changes neither size nor flattening.
+            · cases hlr : ((G.entry e).operator o₁).leftRec with
+              | false =>
+                  have hsz : (ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).size = p₂.size :=
+                    Parts.size_opCast ho.symm p₂
+                  have hpe : p₁.flatten ++ s₁
+                      = (ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).flatten ++ s₂ := by
+                    rw [Parts.flatten_opCast ho.symm p₂]
+                    simpa only [Expr.flatten] using heq
+                  obtain ⟨hp, hss⟩ := udPartsN (p₁.size + p₂.size) p₁ (ho.symm ▸ p₂) s₁ s₂
+                    (by omega) (seamed_body o₁ hlr)
+                    (partsFollow_body c₁ hlr hs₁) (partsFollow_body c₁ hlr hs₂) hpe
+                  subst ho
+                  exact ⟨by rw [hp], hss⟩
+              | true =>
+                  -- ⚠ THE ONE REMAINING GAP: `infxl`/`juxt`. Their bodies are NOT `Seamed` — the
+                  -- leading hole is at `.tighterEq o₁`, where the operator's own head token (and,
+                  -- for `juxt`, an operand-starter) *does* continue, so neither ★ lemma bounds it
+                  -- and `udParts` does not apply. Normalise through `Expr.spine` first: compare
+                  -- the two strictly-tighter bases with `udExpr` at `.tighter o₁`, then the tail
+                  -- lists pairwise with `udParts` on `(Operator.body e o₁).tail` (which IS
+                  -- seamed — `seamed_body_tail`), and get the contradiction when one spine runs
+                  -- out first from the other still beginning with a token that continues at `l`.
+                  sorry
+            · exact absurd heq (fun h => (topOp_unique ho c₁ c₂ p₁ p₂ s₁ s₂
+                (by simpa only [Expr.flatten] using h) hs₁ hs₂).elim)
+  termination_by n
+  decreasing_by all_goals (simp only [Expr.size] at hn ⊢; omega)
 
-  /-- Two bodies of the **same** operator, over the same shape, with a common flatten-prefix. -/
-  theorem udParts (e : G.Ent) (l : Level (G.entry e)) (o : (G.entry e).Op)
-      (_hc : Level.condition l o)
-      {shape : List (Part G)} (_hb : Operator.body e o = shape)
-      (p₁ p₂ : Parts G shape) (s₁ s₂ : List (Tok))
-      (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
-      (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : p₁ = p₂ ∧ s₁ = s₂ :=
-    udPartsAux p₁ p₂ s₁ s₂ heq hs₁ hs₂
+  /-- **Two bodies over one shape agree.** Induction on the shape; the hole case is the call back
+  into `udExprN`, at the hole's own entry and level. -/
+  theorem udPartsN (n : Nat) {shape : List (Part G)} (p₁ p₂ : Parts G shape) (s₁ s₂ : List (Tok))
+      (hn : p₁.size + p₂.size ≤ n)
+      (hseam : Seamed shape) (hpf₁ : PartsFollow shape s₁) (hpf₂ : PartsFollow shape s₂)
+      (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) : p₁ = p₂ ∧ s₁ = s₂ := by
+    cases shape with
+    | nil =>
+        cases p₁; cases p₂
+        exact ⟨rfl, by simpa [Parts.flatten] using heq⟩
+    | cons hd tl =>
+        -- `PartsFollow` only reduces once `hd` is a constructor, so the tail facts are derived
+        -- inside each branch rather than once up front
+        cases hd with
+        | namePart tk =>
+            have hs' : Seamed tl := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hseam
+            have hf₁ : PartsFollow tl s₁ := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hpf₁
+            have hf₂ : PartsFollow tl s₂ := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hpf₂
+            cases p₁ with
+            | namePart _ q₁ =>
+              cases p₂ with
+              | namePart _ q₂ =>
+                simp only [Parts.flatten, List.cons_append, List.cons.injEq] at heq
+                simp only [Parts.size] at hn
+                obtain ⟨hq, hss⟩ := udPartsN (q₁.size + q₂.size) q₁ q₂ s₁ s₂ (by omega)
+                  hs' hf₁ hf₂ heq.2
+                exact ⟨by rw [hq], hss⟩
+        | hole e' L =>
+            have hs' : Seamed tl := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hseam.2
+            have hf₁ : PartsFollow tl s₁ := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hpf₁
+            have hf₂ : PartsFollow tl s₂ := by
+              cases tl with
+              | nil => exact trivial
+              | cons y r => exact hpf₂
+            cases p₁ with
+            | hole sub₁ q₁ =>
+              cases p₂ with
+              | hole sub₂ q₂ =>
+                simp only [Parts.size] at hn
+                -- the seam: whatever follows this hole must stop it, **at the hole's own level**
+                have hstop : ∀ (q : Parts G tl) (s : List Tok),
+                    PartsFollow (Part.hole e' L :: tl) s → FollowAt e' L (q.flatten ++ s) := by
+                  intro q s hpf
+                  cases tl with
+                  | nil =>
+                      cases q
+                      simpa [Parts.flatten] using hpf
+                  | cons y r =>
+                      match y, hseam with
+                      | .namePart t, ⟨hnc, _⟩ =>
+                          cases q with
+                          | namePart _ q' =>
+                              intro x hx
+                              simp only [Parts.flatten, List.cons_append, List.head?_cons,
+                                Option.some.injEq] at hx
+                              subst hx
+                              exact hnc
+                have heq' : sub₁.flatten ++ (q₁.flatten ++ s₁)
+                    = sub₂.flatten ++ (q₂.flatten ++ s₂) := by
+                  simpa only [Parts.flatten, List.append_assoc] using heq
+                obtain ⟨hsub, htail⟩ :=
+                  udExprN (sub₁.size + sub₂.size) e' L sub₁ sub₂
+                    (q₁.flatten ++ s₁) (q₂.flatten ++ s₂) (by omega) heq'
+                    (hstop q₁ s₁ hpf₁) (hstop q₂ s₂ hpf₂)
+                obtain ⟨hq, hss⟩ := udPartsN (q₁.size + q₂.size) q₁ q₂ s₁ s₂ (by omega)
+                  hs' hf₁ hf₂ htail
+                exact ⟨by rw [hsub, hq], hss⟩
+  termination_by n
+  decreasing_by all_goals (simp only [Parts.size] at hn ⊢; omega)
 end
+
+/-- Two expressions at one level with stopping leftovers are equal — the natural statement, with
+the size bound discharged. -/
+theorem udExpr (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l) (s₁ s₂ : List (Tok))
+    (heq : t₁.flatten ++ s₁ = t₂.flatten ++ s₂)
+    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : t₁ = t₂ ∧ s₁ = s₂ :=
+  udExprN _ e l t₁ t₂ s₁ s₂ (Nat.le_refl _) heq hs₁ hs₂
 
 /-! ## The payoff -/
 
