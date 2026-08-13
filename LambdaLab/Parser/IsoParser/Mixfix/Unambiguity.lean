@@ -640,39 +640,330 @@ Uniqueness then falls out of the ★ lemmas:
   that forces the two spines to have the same length, and it is the only place the *ambient* level
   is used.
 
-Building the spine view (an `Expr e (.tighterEq o)` ↔ `base + tails` isomorphism) is the remaining
-work. The kernel sorries below are stated in the un-normalised form and should be *replaced* by it,
-not proved directly. -/
+## Where the kernel actually stands (2026-08-13)
 
-/-- **The kernel**, un-normalised — see the spine note above: this is the statement to replace, not
-to prove head-on. -/
-theorem splitLeftRec {e : G.Ent} {l : Level (G.entry e)} (o : (G.entry e).Op)
-    (hc : Level.condition l o)
-    {shape : List (Part G)} (hb : Operator.body e o = shape)
-    (p₁ p₂ : Parts G shape) (s₁ s₂ : List (Tok))
-    (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
-    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) :
-    p₁ = p₂ ∧ s₁ = s₂ := by
-  sorry
+The spine view above is built. Of the three kernel obligations this file's ancestor carried:
 
-/-- **Two distinct top operators cannot share a flattening.** For the token-led fixities this is
-`headsDistinct`. For the hole-led ones it needs the spine. -/
-theorem topOp_unique {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
+* **`varOp_ne` — CLOSED**, and without the spine. A variable leaf is one token, so an operator
+  node sharing its first token must overrun it, and `op_var_head` names the token that does the
+  overrunning: `varDisjoint` if the operator is token-led, otherwise a descent into its leading
+  hole, bottoming out at a variable leaf where `holeLed_split` applies.
+* **`topOp_unique` — half closed.** Token-led vs token-led is `headsDistinct`
+  (`topOp_unique_tokenLed`). The rest is `topOp_unique_holeLed`, still open; its docstring records
+  why it cannot be peeled off the way `varOp_ne` was.
+* **`splitLeftRec` — replaced** by `udPartsAux`, an induction on the *shape* (the operator it came
+  from is irrelevant). Empty and name-part cases are proved; only the hole case is open, and it is
+  open for one precise reason: it is a call to `udExpr`.
+
+So both remaining gaps are the same gap — `udExpr` and `udPartsAux` need to be one `mutual` block,
+terminating on summed sizes, with the leading `.tighterEq` hole of a left-recursive operator routed
+through `Expr.spine` first (that hole is the one case where neither ★ lemma gives FOLLOW). -/
+
+/-! ### The token-led halves, which need no induction
+
+`topOp_unique` and `varOp_ne` each split on whether the operator's body leads with its own token or
+with a hole. The **token-led** half is immediate from the two lexical fields, and is proved here
+once so that the remaining kernel obligations are about hole-led operators only. -/
+
+omit [DecidableEq Tok] in
+/-- A token-led body flattens to its head token followed by the rest. -/
+theorem Parts.flatten_tokenLed {e : G.Ent} {o : (G.entry e).Op}
+    (hnh : ((G.entry e).operator o).startsWithHole = false)
+    (p : Parts G (Operator.body e o)) :
+    ∃ tk r, p.flatten = tk :: r ∧ ((G.entry e).operator o).headTok? = some tk := by
+  obtain ⟨tk, ps, hb, hhead⟩ := body_cons_namePart o hnh
+  obtain ⟨r, hr⟩ := Parts.flatten_cons_namePart (hb ▸ p)
+  exact ⟨tk, r, by rw [← Parts.flatten_cast hb p, hr], hhead⟩
+
+omit [DecidableEq Tok] in
+/-- **The token-led half of `varOp_ne`.** A variable leaf and a token-led operator cannot share a
+first token, because that token would be both a variable and an operator name part — exactly what
+`varDisjoint` forbids. No induction, no FOLLOW. -/
+theorem varOp_ne_tokenLed {e : G.Ent} {t : Tok}
+    (hv : (G.entry e).isVar t = true) {o : (G.entry e).Op}
+    (hnh : ((G.entry e).operator o).startsWithHole = false)
+    (p : Parts G (Operator.body e o)) (s₁ s₂ : List Tok)
+    (heq : [t] ++ s₁ = p.flatten ++ s₂) : False := by
+  obtain ⟨tk, r, hpf, hhead⟩ := Parts.flatten_tokenLed hnh p
+  rw [hpf] at heq
+  have htk : t = tk := by simpa using congrArg List.head? heq
+  have : (G.entry e).isVar tk = false :=
+    (G.entry e).varDisjoint o tk (Operator.headTok?_mem _ hhead)
+  rw [htk, this] at hv
+  exact Bool.noConfusion hv
+
+omit [DecidableEq Tok] in
+/-- **The token-led half of `topOp_unique`.** Two token-led operators whose flattenings agree share
+a head token, and `headsDistinct` says that makes them the same operator. -/
+theorem topOp_unique_tokenLed {e : G.Ent} {o₁ o₂ : (G.entry e).Op} (hne : o₁ ≠ o₂)
+    (hnh₁ : ((G.entry e).operator o₁).startsWithHole = false)
+    (hnh₂ : ((G.entry e).operator o₂).startsWithHole = false)
+    (p₁ : Parts G (Operator.body e o₁)) (p₂ : Parts G (Operator.body e o₂))
+    (s₁ s₂ : List Tok)
+    (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂) : False := by
+  obtain ⟨tk₁, r₁, hpf₁, hhead₁⟩ := Parts.flatten_tokenLed hnh₁ p₁
+  obtain ⟨tk₂, r₂, hpf₂, hhead₂⟩ := Parts.flatten_tokenLed hnh₂ p₂
+  rw [hpf₁, hpf₂] at heq
+  have htk : tk₁ = tk₂ := by simpa using congrArg List.head? heq
+  exact hne (head_inj hhead₁ (htk ▸ hhead₂))
+
+/-! ### Hole-led operators: what sits immediately after the leading operand
+
+The remaining halves are about an operator whose body *leads with a hole*. The fact that drives
+them: after that leading operand comes a token which **continues an expression at any level where
+the operator is applicable** — the operator's own head token for `infx`/`infxl`/`infxr`/`postfx`,
+and, for `juxt` (which owns no token), the first token of the right operand, which starts an
+operand. That is exactly the two disjuncts of `ContinuesAt`. -/
+
+/-- `ContinuesAt` is monotone in the level: widening which operators are applicable can only add
+ways for a token to continue. (`ContinuesAt` itself decides token equality through
+`startsOperand`, so this one keeps `DecidableEq Tok`.) -/
+theorem ContinuesAt.mono {e : G.Ent} {l L : Level (G.entry e)} {x : Tok}
+    (hup : ∀ o', Level.condition L o' → Level.condition l o')
+    (h : ContinuesAt e L x) : ContinuesAt e l x := by
+  rcases h with ⟨o', hc', hh', hd'⟩ | ⟨j, hc', hj', hs'⟩
+  · exact Or.inl ⟨o', hup _ hc', hh', hd'⟩
+  · exact Or.inr ⟨j, hup _ hc', hj', hs'⟩
+
+omit [DecidableEq Tok] in
+/-- An operand hole sits at `.tighter o` or `.tighterEq o`; either way everything applicable there
+is applicable wherever `o` is. -/
+theorem condition_up_tighter {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) :
+    ∀ o', Level.condition (Level.tighter o) o' → Level.condition l o' :=
+  fun _ h => Level.condition_up hc h.toTighterEq'
+
+omit [DecidableEq Tok] in
+theorem condition_up_tighterEq {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) :
+    ∀ o', Level.condition (Level.tighterEq o) o' → Level.condition l o' :=
+  fun _ h => Level.condition_up hc h
+
+/-- **The split, for the four token-bearing hole-led fixities.** Their bodies all have the shape
+`hole :: (notation ++ suffix)`, and a notation always leads with its first token — which is the
+operator's head token, hence continues wherever the operator is applicable. -/
+theorem holeLed_split_named {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) (hh : ((G.entry e).operator o).startsWithHole = true)
+    {L : Level (G.entry e)} {n : Notation Tok G.Ent} {suffix : List (Part G)}
+    (hb : Operator.body e o = .hole e L :: (Notation.toParts n ++ suffix))
+    (hhead : ((G.entry e).operator o).headTok? = some n.firstTok)
+    (hup : ∀ o', Level.condition L o' → Level.condition l o')
+    (p : Parts G (Operator.body e o)) :
+    ∃ (L' : Level (G.entry e)) (sub : Expr G e L') (x : Tok) (w : List Tok),
+      p.flatten = sub.flatten ++ x :: w ∧ sub.size < p.size ∧ ContinuesAt e l x ∧
+        (∀ o', Level.condition L' o' → Level.condition l o') := by
+  -- destructure the leading hole
+  cases hq : (hb ▸ p : Parts G (.hole e L :: (Notation.toParts n ++ suffix))) with
+  | hole sub q =>
+      -- and the notation's first token, which `toParts` always exposes
+      have hn := Notation.toParts_append_cons (G := G) n suffix
+      cases hq' : (hn ▸ q : Parts G (.namePart n.firstTok ::
+          ((Notation.toParts (G := G) n).tail ++ suffix))) with
+      | namePart _ q' =>
+          have hqf : q.flatten = n.firstTok :: q'.flatten := by
+            rw [← Parts.flatten_cast hn q, hq', Parts.flatten]
+          refine ⟨L, sub, n.firstTok, q'.flatten, ?_, ?_, Or.inl ⟨o, hc, hh, hhead⟩, hup⟩
+          · rw [← Parts.flatten_cast hb p, hq, Parts.flatten, hqf]
+          · rw [← Parts.size_cast hb p, hq, Parts.size]
+            omega
+
+/-- **After a hole-led operator's leading operand comes a token that continues the expression.**
+Uniform over all five hole-led fixities. `juxt` is the case that has to be done by hand: owning no
+token, it continues through its *right operand*, so the witness comes from
+`Expr.flatten_head` and lands in `ContinuesAt`'s second disjunct rather than its first. -/
+theorem holeLed_split {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) (hh : ((G.entry e).operator o).startsWithHole = true)
+    (p : Parts G (Operator.body e o)) :
+    ∃ (L' : Level (G.entry e)) (sub : Expr G e L') (x : Tok) (w : List Tok),
+      p.flatten = sub.flatten ++ x :: w ∧ sub.size < p.size ∧ ContinuesAt e l x ∧
+        (∀ o', Level.condition L' o' → Level.condition l o') := by
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | infx n =>
+      refine holeLed_split_named hc hh (L := Level.tighter o) (n := n)
+        (suffix := [.hole e (Level.tighter o)]) ?_ ?_ (condition_up_tighter hc) p
+      · unfold Operator.body; rw [hop]; rfl
+      · rw [hop]; simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+  | infxl n =>
+      refine holeLed_split_named hc hh (L := Level.tighterEq o) (n := n)
+        (suffix := [.hole e (Level.tighter o)]) ?_ ?_ (condition_up_tighterEq hc) p
+      · unfold Operator.body; rw [hop]; rfl
+      · rw [hop]; simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+  | infxr n =>
+      refine holeLed_split_named hc hh (L := Level.tighter o) (n := n)
+        (suffix := [.hole e (Level.tighterEq o)]) ?_ ?_ (condition_up_tighter hc) p
+      · unfold Operator.body; rw [hop]; rfl
+      · rw [hop]; simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+  | postfx n =>
+      refine holeLed_split_named hc hh (L := Level.tighter o) (n := n)
+        (suffix := []) ?_ ?_ (condition_up_tighter hc) p
+      · unfold Operator.body; rw [hop]; simp
+      · rw [hop]; simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+  | juxt =>
+      have hb : Operator.body e o
+          = .hole e (Level.tighterEq o) :: [.hole e (Level.tighter o)] := by
+        -- `rw` closes this one by itself: unlike the `[x] ++ ys` fixities, the juxt body is
+        -- already syntactically a cons
+        unfold Operator.body; rw [hop]
+      cases hq : (hb ▸ p : Parts G (.hole e (Level.tighterEq o) ::
+          [.hole e (Level.tighter o)])) with
+      | hole sub q =>
+          cases hq' : q with
+          | hole sub₂ tl =>
+              -- juxtaposition continues through its right operand, whose first token starts one
+              obtain ⟨x, r, hxr, hstart⟩ := Expr.flatten_head sub₂
+              refine ⟨Level.tighterEq o, sub, x, r ++ tl.flatten, ?_, ?_,
+                Or.inr ⟨o, hc, hop, hstart⟩, condition_up_tighterEq hc⟩
+              · rw [← Parts.flatten_cast hb p, hq, Parts.flatten, hq', Parts.flatten, hxr]
+                simp
+              · rw [← Parts.size_cast hb p, hq, Parts.size]
+                omega
+
+/-- **An operator tree that begins with a variable token is continued right after it.**
+
+This is the leftmost descent, and it is what makes `varOp_ne` provable *without* the full mutual
+decomposition. If an operator node's flattening starts with a variable token, the operator cannot
+be token-led (`varDisjoint`), so it leads with a hole; the variable is then the first token of that
+hole's subtree, and we recurse into it. The descent bottoms out at a variable leaf, at which point
+`holeLed_split` supplies the continuing token. Each step drops a whole `Parts` node, so the
+recursion is on `p.size`.
+
+The level travels with the recursion: the token found inside a hole continues at the *hole's*
+level, and `ContinuesAt.mono` lifts that to the ambient one, because an operand hole is never
+looser than its operator. -/
+theorem op_var_head {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) (p : Parts G (Operator.body e o))
+    {t : Tok} {w : List Tok} (hv : (G.entry e).isVar t = true)
+    (hf : p.flatten = t :: w) :
+    ∃ x r, w = x :: r ∧ ContinuesAt e l x := by
+  cases hnh : ((G.entry e).operator o).startsWithHole with
+  | false =>
+      exact absurd (varOp_ne_tokenLed hv hnh p w [] (by simp [hf])) (fun h => h)
+  | true =>
+      obtain ⟨L', sub, x, w', hsplit, hsize, hcont, hup⟩ := holeLed_split hc hnh p
+      rw [hf] at hsplit
+      cases sub with
+      | var t' hv' =>
+          -- the descent bottoms out: the variable *is* the whole leading operand
+          simp only [Expr.flatten, List.cons_append, List.nil_append,
+            List.cons.injEq] at hsplit
+          exact ⟨x, w', hsplit.2, hcont⟩
+      | op o'' hc'' p'' =>
+          simp only [Expr.flatten] at hsplit hsize
+          -- the leading operand is itself an operator node, and it too starts with `t`
+          obtain ⟨a, as, has⟩ : ∃ a as, p''.flatten = a :: as := by
+            cases hpf : p''.flatten with
+            | nil => exact absurd hpf (Parts.flatten_ne_nil p'' (Operator.body_ne_nil o''))
+            | cons a as => exact ⟨a, as, rfl⟩
+          rw [has] at hsplit
+          simp only [List.cons_append, List.cons.injEq] at hsplit
+          obtain ⟨rfl, hw⟩ := hsplit
+          obtain ⟨y, r, hyr, hcy⟩ := op_var_head hc'' p'' hv has
+          exact ⟨y, r ++ x :: w', by rw [hw, hyr]; simp, ContinuesAt.mono hup hcy⟩
+  termination_by p.size
+  decreasing_by simp only [Expr.size] at hsize; omega
+
+/-- **Two bodies over one shape agree** — the `udParts` content, by induction on the shape. The
+empty and name-part cases are structural; the hole case is the one that calls back into `udExpr`,
+and is the single remaining gap (see below). `hb` is not needed: the statement is about a shape,
+not about which operator produced it. -/
+theorem udPartsAux {e : G.Ent} {l : Level (G.entry e)} :
+    ∀ {shape : List (Part G)} (p₁ p₂ : Parts G shape) (s₁ s₂ : List Tok),
+      p₁.flatten ++ s₁ = p₂.flatten ++ s₂ → FollowAt e l s₁ → FollowAt e l s₂ →
+      p₁ = p₂ ∧ s₁ = s₂ := by
+  intro shape
+  induction shape with
+  | nil =>
+      intro p₁ p₂ s₁ s₂ heq _ _
+      cases p₁; cases p₂
+      exact ⟨rfl, by simpa [Parts.flatten] using heq⟩
+  | cons hd tl ih =>
+      match hd with
+      | .namePart tk =>
+          intro p₁ p₂ s₁ s₂ heq hs₁ hs₂
+          cases p₁ with
+          | namePart _ q₁ =>
+            cases p₂ with
+            | namePart _ q₂ =>
+              simp only [Parts.flatten, List.cons_append, List.cons.injEq] at heq
+              obtain ⟨hq, hs⟩ := ih q₁ q₂ s₁ s₂ heq.2 hs₁ hs₂
+              exact ⟨by rw [hq], hs⟩
+      | .hole e' L =>
+          intro p₁ p₂ s₁ s₂ heq hs₁ hs₂
+          -- ⚠ THE ONE REMAINING GAP. `p₁ = hole sub₁ q₁`, `p₂ = hole sub₂ q₂`, and
+          --   sub₁.flatten ++ (q₁.flatten ++ s₁) = sub₂.flatten ++ (q₂.flatten ++ s₂).
+          -- Concluding `sub₁ = sub₂` is exactly `udExpr` at `(e', L)`, so this theorem and
+          -- `udExpr` must become one `mutual` block, terminating on the summed sizes.
+          -- Its two side conditions are `FollowAt e' L (qᵢ.flatten ++ sᵢ)`, supplied by:
+          --   * `follow_of_interior` when `tl` starts with a name part (an interior seam);
+          --   * `FollowAt.tighten` when `tl = []` (a trailing hole, so the continuation is `sᵢ`);
+          --   * `not_continuesAt_tighter_head` / `not_continuesAt_tighter_juxt` for an operator's
+          --     own operand seam — and for a `.tighterEq` (left-recursive) hole neither applies,
+          --     which is why that case must first be normalised through `Expr.spine`.
+          sorry
+
+/-- **The remaining half of `topOp_unique`**: at least one of the two operators leads with a hole.
+
+Why this one cannot be peeled off the way `varOp_ne` was. There, the competing tree was a variable
+*leaf* — one token — so the operator tree was strictly longer and `op_var_head` could name the
+token that overran. Here both competitors are operator nodes of unknown extent, and both
+flattenings begin with a token that starts an operand: a token-led operator's head starts one by
+definition, and a hole-led operator inherits one from its leading operand
+(`Expr.flatten_head`). Nothing local separates them.
+
+The separating fact is which of the two extents is the shorter — and that is precisely unique
+decomposition, so this case has to be discharged *inside* the `udExpr`/`udParts` recursion rather
+than before it. Comparing the token-led tree against the hole-led one's leading operand does not
+help either: that operand sits at a tighter level `L`, and the token following it continues at `l`
+(`holeLed_split`), so `udExpr` at `l` has no FOLLOW to work with, while at `L` the token-led tree
+need not even be typeable. -/
+theorem topOp_unique_holeLed {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
     (hne : o₁ ≠ o₂) (hc₁ : Level.condition l o₁) (hc₂ : Level.condition l o₂)
+    (hhole : ((G.entry e).operator o₁).startsWithHole = true ∨
+             ((G.entry e).operator o₂).startsWithHole = true)
     (p₁ : Parts G (Operator.body e o₁)) (p₂ : Parts G (Operator.body e o₂))
     (s₁ s₂ : List (Tok))
     (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
     (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : False := by
   sorry
 
-/-- A variable and an operator cannot share a flattening. For a token-led operator this is
-`varDisjoint` on the first token; for a hole-led one it is again the spine. -/
+/-- **Two distinct top operators cannot share a flattening.** The token-led/token-led case is
+`headsDistinct` outright; everything else is `topOp_unique_holeLed`. -/
+theorem topOp_unique {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
+    (hne : o₁ ≠ o₂) (hc₁ : Level.condition l o₁) (hc₂ : Level.condition l o₂)
+    (p₁ : Parts G (Operator.body e o₁)) (p₂ : Parts G (Operator.body e o₂))
+    (s₁ s₂ : List (Tok))
+    (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
+    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : False := by
+  cases hnh₁ : ((G.entry e).operator o₁).startsWithHole with
+  | true => exact topOp_unique_holeLed hne hc₁ hc₂ (Or.inl hnh₁) p₁ p₂ s₁ s₂ heq hs₁ hs₂
+  | false =>
+      cases hnh₂ : ((G.entry e).operator o₂).startsWithHole with
+      | true => exact topOp_unique_holeLed hne hc₁ hc₂ (Or.inr hnh₂) p₁ p₂ s₁ s₂ heq hs₁ hs₂
+      | false => exact topOp_unique_tokenLed hne hnh₁ hnh₂ p₁ p₂ s₁ s₂ heq
+
+/-- **A variable and an operator cannot share a flattening.** ✅ *Closed.*
+
+A variable leaf prints one token, so if an operator node's flattening starts with it, the operator
+tree runs strictly longer — and `op_var_head` says the very next token continues an expression at
+`l`. That token heads `s₁`, which `FollowAt e l s₁` forbids. Both fixity families are handled:
+token-led inside `op_var_head` by `varDisjoint`, hole-led by the descent. -/
 theorem varOp_ne {e : G.Ent} {l : Level (G.entry e)} {t : Tok}
     (hv : (G.entry e).isVar t = true) {o : (G.entry e).Op} (hc : Level.condition l o)
     (p : Parts G (Operator.body e o)) (s₁ s₂ : List (Tok))
     (heq : [t] ++ s₁ = p.flatten ++ s₂)
-    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : False := by
-  sorry
+    (hs₁ : FollowAt e l s₁) (_hs₂ : FollowAt e l s₂) : False := by
+  obtain ⟨a, as, has⟩ : ∃ a as, p.flatten = a :: as := by
+    cases hpf : p.flatten with
+    | nil => exact absurd hpf (Parts.flatten_ne_nil p (Operator.body_ne_nil o))
+    | cons a as => exact ⟨a, as, rfl⟩
+  rw [has] at heq
+  simp only [List.cons_append, List.cons.injEq] at heq
+  obtain ⟨rfl, hs⟩ := heq
+  obtain ⟨x, r, hxr, hcont⟩ := op_var_head hc p hv has
+  have hs' : s₁ = as ++ s₂ := by simpa using hs
+  exact hs₁ x (by rw [hs', hxr]; rfl) hcont
 
 /-! ## The mutual unique decomposition
 
@@ -713,12 +1004,12 @@ mutual
 
   /-- Two bodies of the **same** operator, over the same shape, with a common flatten-prefix. -/
   theorem udParts (e : G.Ent) (l : Level (G.entry e)) (o : (G.entry e).Op)
-      (hc : Level.condition l o)
-      {shape : List (Part G)} (hb : Operator.body e o = shape)
+      (_hc : Level.condition l o)
+      {shape : List (Part G)} (_hb : Operator.body e o = shape)
       (p₁ p₂ : Parts G shape) (s₁ s₂ : List (Tok))
       (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
       (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : p₁ = p₂ ∧ s₁ = s₂ :=
-    splitLeftRec o hc hb p₁ p₂ s₁ s₂ heq hs₁ hs₂
+    udPartsAux p₁ p₂ s₁ s₂ heq hs₁ hs₂
 end
 
 /-! ## The payoff -/
