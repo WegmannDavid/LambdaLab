@@ -301,10 +301,8 @@ theorem sFollow_def : follow (G := stlcGrammar) SEnt.tm (tkS "def") = true := by
 
 theorem sFollow_assign : follow (G := stlcGrammar) SEnt.ty (tkS ":=") = true := by decide
 
-/-- The STLC grammar is unambiguous. Not decidable (it quantifies over all trees), and no longer
-assumed — the derivation is `Unambiguity.lean`'s `unambiguous`, which still rests on its three
-kernel sorries (`splitLeftRec`/`topOp_unique`/`varOp_ne`) — so this is not yet a closed
-proof, but the obligation now lives in one place instead of being assumed per grammar. -/
+/-- The STLC grammar is unambiguous. Not decidable (it quantifies over all trees) and not assumed:
+`Unambiguity.lean` derives it from the grammar's own lexical fields, sorry-free. -/
 theorem stlcUnambiguous : Unambiguous stlcGrammar := unambiguous stlcGrammar
 
 /-- **`reducible` is load-bearing.** The front end asks for
@@ -367,8 +365,8 @@ follow either: the elaborator commits to one solution per declaration, and a lat
 need a different one. What is proved is the direction a printer needs, `elabProgram?_self`: an
 already-elaborated program re-elaborates to itself.
 
-The front end reports `sorryAx` only through `stlcLanguage`, i.e. the assumed `stlcUnambiguous`
-above; the elaboration half is sorry-free.
+The front end no longer reports `sorryAx` at all: `stlcUnambiguous` is derived rather than
+assumed, and the elaboration half was already sorry-free.
 -/
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/

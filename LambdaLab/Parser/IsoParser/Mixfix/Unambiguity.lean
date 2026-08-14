@@ -13,11 +13,12 @@ It does not. The three lexical conditions already forced on a grammar —
 * `varDisjoint`        — no name token is a variable,
 * `interiorTerminates` — a token after an interior seam heads no operator of the hole's entry,
 
-— together with the fact that hole levels are fixed by the **fixity** rather than by the grammar
-author (`Operator.body`), appear to imply unambiguity outright. `unambiguity-hunt.py` (beside this
-file) models `Tree.lean` exactly and finds **no** ambiguous grammar among ~39k exhaustively
+— together with `juxtUnique` and the fact that hole levels are fixed by the **fixity** rather than
+by the grammar author (`Operator.body`), imply unambiguity outright. `unambiguity-hunt.py` (beside
+this file) models `Tree.lean` exactly and finds **no** ambiguous grammar among ~39k exhaustively
 enumerated and ~26k random ones; with `interiorTerminates` switched off it finds one within the
-first 139. That is the evidence. This file is the proof.
+first 139. That was the evidence. This file is the proof — `unambiguous`, at the bottom, is
+sorry-free, so no grammar in this development assumes unambiguity any more.
 
 ## The shape of the argument
 
@@ -558,10 +559,11 @@ open Classical in
 of body tails hanging off it, in left-to-right order. `n = 0` exactly when the top operator is not
 `o`.
 
-The kernel (`leftRecUd`) does **not** call this: unfolding one tree at a time would then need the
-unfold to be *injective*, i.e. a reconstruction lemma. Accumulating the tails and concluding about
-the refold (`Expr.leftRecFold`) gets that for free. This stays as the explicit normal form the
-argument is *about* — `spine_flatten` is the law it factors through. -/
+Neither kernel calls this: `leftRecUd` would then need the unfold to be *injective*, i.e. a
+reconstruction lemma, which accumulating the tails and concluding about the refold
+(`Expr.leftRecFold`) avoids; and the distinct-operator case needs the spine over *all* hole-led
+operators (`Expr.spineOf`), not one. This stays as the explicit normal form the argument is
+*about* — `spine_flatten` is the law it factors through. -/
 noncomputable def Expr.spine {e : G.Ent} {o : (G.entry e).Op}
     (hlr : ((G.entry e).operator o).leftRec = true) :
     Expr G e (Level.tighterEq o) →
@@ -644,29 +646,27 @@ Uniqueness then falls out of the ★ lemmas:
   that forces the two spines to have the same length, and it is the only place the *ambient* level
   is used.
 
-## Where the kernel actually stands (2026-08-14)
+## Where the kernel stands (2026-08-14): **closed**
 
-Of the three obligations this file's ancestor carried, **one is left**:
+All three obligations this file's ancestor carried are proved, and `unambiguous` below is
+sorry-free. How each fell:
 
-* **`varOp_ne` — CLOSED**, and without the spine. A variable leaf is one token, so an operator
-  node sharing its first token must overrun it, and `op_var_head` names the token that does:
-  `varDisjoint` if the operator is token-led, otherwise a descent into its leading hole, bottoming
-  out at a variable leaf where `holeLed_split` applies.
-* **`udExpr`/`udParts` are now one `mutual`** on an explicit size bound, and **`udParts` is
-  closed** — including its hole case, which is the call back into `udExpr` at the hole's own entry
-  and level. Its two side conditions come from `Seamed`/`PartsFollow`, which is what a *shape* can
-  supply: a shape constrains what follows it only through a trailing hole and its interior only at
-  the seams.
-* **The `leftRec` branch of `udExprN` — CLOSED**, by `leftRecUd` (below `partsFollow_body`).
-  `infxl`/`juxt` bodies are not `Seamed`, so `udParts` cannot touch them; the branch hands both
-  bodies to a spine descent instead. The descent carries the peeled-off tails in an accumulator and
-  concludes about the **refold** (`Expr.leftRecFold`), which the peeling leaves invariant — so
-  `Expr.spine` is not used and no spine-injectivity lemma is needed. It bottoms out at two
-  non-`o`-headed trees, which are trees at `.tighter o` (`leftRec_view`, `Expr.decomp`), where ★
+* **`varOp_ne`** — a variable leaf is one token, so an operator node sharing its first token must
+  overrun it, and `op_split_left` names the token that does. No spine needed.
+* **`udExpr`/`udParts`** are one `mutual` on an explicit size bound. `udParts`' hole case is the
+  call back into `udExpr` at the hole's own entry and level, and its side conditions come from
+  `Seamed`/`PartsFollow` — what a *shape* can supply, namely a constraint on what follows it only
+  through a trailing hole and on its interior only at the seams.
+* **The `leftRec` branch of `udExprN`** — `infxl`/`juxt` bodies are not `Seamed`, so `udParts`
+  cannot touch them. `leftRecUd` hands both bodies to a spine descent along the *one* operator
+  involved, carrying the peeled-off tails in an accumulator and concluding about the **refold**
+  (`Expr.leftRecFold`), which the peeling leaves invariant — so no spine-injectivity lemma is
+  needed. It bottoms out at two non-`o`-headed trees, which are trees at `.tighter o`, where ★
   restores FOLLOW.
-* **One gap remains**: `topOp_unique_holeLed` — two *distinct* operators, at least one hole-led.
-  See its docstring: the separating fact is which extent is shorter, so it belongs inside the
-  recursion. It is no longer about left-recursion at all. -/
+* **`topOp_unique`** — two *distinct* operators. Token-led against token-led is `headsDistinct`
+  outright; hole-led against token-led is `topOp_unique_mixed`; and hole-led against hole-led needs
+  the **general left spine**, over all hole-led operators at once (`Expr.spineOf`, `extsUd`), since
+  each tree's own operator is only the *last* entry of its spine. -/
 
 /-! ### The token-led halves, which need no induction
 
@@ -1442,37 +1442,702 @@ theorem topOp_unique_mixed {m : Nat}
     rw [this, (G.entry e).varDisjoint o₂ tk₂ (Operator.headTok?_mem _ hhead₂)] at hv
     exact Bool.noConfusion hv
 
-/-- **The last gap: two distinct operators, both leading with a hole.**
+/-! ### The general left spine
 
-Why neither closed case reaches it. Against a *token-led* competitor there is a token that pins the
-comparison — `topOp_unique_mixed` finds the hole-led tree's leftmost token-led node and matches it
-against the competitor outright. Here both flattenings begin with a token that merely *starts an
-operand* (a hole-led operator inherits one from its leading operand, `Expr.flatten_head`), and
-neither leading operand's extent is bounded by the other's.
+`leftRecUd` decomposes a tree along **one fixed** left-recursive operator. Two *distinct* hole-led
+operators need the same decomposition taken over **all** hole-led operators at once: a tree at `l`
+is a base — a variable or a token-led node, the only two things that start an operand — followed by
+a chain of hole-led **extensions**, innermost first. A tree's own top operator is then the *last*
+entry of its spine, so two trees that print alike have the same top operator.
 
-What the argument needs, and what `leftRecUd` supplies only for a **fixed** `o`, is the left-spine
-decomposition for **all** hole-led operators at once: a tree at `l` is a leftmost operand followed
-by a chain of extensions, each applicable at `l`. Uniqueness would then be: the bases agree by
-`udParts` (`op_split_left` already produces them, with the FOLLOW), the extensions agree one at a
-time by `headsDistinct` on the token each begins with (`juxtUnique` and
-`not_startsOperand_of_head` separating juxtaposition from the rest), and a chain that runs out
-first leaves the other's next head token in its leftover, which continues at `l`. The obstacle is
-not the argument but its *type*: the chain is dependent — each extension's leading hole must admit
-the accumulator's top operator — so it is not the plain `List` that `Expr.leftRecFold` gets to use
-for a single operator. -/
-theorem topOp_unique_bothHoleLed {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
+The chain is dependent: each extension's leading hole must admit the top operator of everything
+below it. Carrying that in the *type* would give a chain no plain `List` induction can walk. So the
+chain is a plain `List (Ext G e)` — operator plus body-tail, levels forgotten — and the level
+discipline is a **predicate** on it, `ExtsOk`. Comparing two spines is then ordinary list induction,
+and `ExtsOk` hands back exactly the two facts each step needs: that every operator in the chain is
+applicable at `l`, and that the next extension's leading hole admits the current one. -/
+
+omit [DecidableEq Tok] in
+/-- The level of a hole-led operator's **leading** hole: its own level for the left-recursive
+fixities, one strictly tighter for the rest. -/
+def leadLevel {e : G.Ent} (o : (G.entry e).Op) : Level (G.entry e) :=
+  match (G.entry e).operator o with
+  | .infxl _ => .tighterEq o
+  | .juxt    => .tighterEq o
+  | _        => .tighter o
+
+omit [DecidableEq Tok] in
+/-- A hole-led operator's body is its leading hole, at `leadLevel`, then the tail. -/
+theorem body_holeLed_cons {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) :
+    Operator.body e o = .hole e (leadLevel o) :: (Operator.body e o).tail := by
+  unfold Operator.body leadLevel
+  -- `unfold` first, so `cases` substitutes the scrutinee everywhere and the branches are `rfl`
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | infx n   => rfl
+  | infxl n  => rfl
+  | infxr n  => rfl
+  | postfx n => rfl
+  | juxt     => rfl
+
+omit [DecidableEq Tok] in
+/-- Everything the leading hole admits is at least as tight as the operator itself. This is what
+lets a fact stated at `.tighter o` be pushed down to `.tighter u` for any `u` in the hole. -/
+theorem leadLevel_tighterEq {e : G.Ent} {o u : (G.entry e).Op}
+    (h : Level.condition (leadLevel o) u) : TighterEq (G.entry e).tighter o u := by
+  unfold leadLevel at h
+  cases hop : (G.entry e).operator o <;> rw [hop] at h <;>
+    first
+      | exact h
+      | exact Tighter.toTighterEq' h
+
+omit [DecidableEq Tok] in
+/-- …and hence applicable wherever the operator is. -/
+theorem condition_leadLevel_up {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
+    (hc : Level.condition l o) :
+    ∀ u, Level.condition (leadLevel o) u → Level.condition l u :=
+  fun _ h => Level.condition_up hc (leadLevel_tighterEq h)
+
+/-- The leading operand of a hole-led body. -/
+def Parts.leadL {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    Expr G e (leadLevel o) :=
+  ((body_holeLed_cons hh ▸ ps :
+    Parts G (.hole e (leadLevel o) :: (Operator.body e o).tail))).headHole.1
+
+/-- The rest of a hole-led body, after its leading operand. -/
+def Parts.leadT {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    Parts G (Operator.body e o).tail :=
+  ((body_holeLed_cons hh ▸ ps :
+    Parts G (.hole e (leadLevel o) :: (Operator.body e o).tail))).headHole.2
+
+omit [DecidableEq Tok] in
+theorem Parts.lead_flatten {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    ps.flatten = (ps.leadL hh).flatten ++ (ps.leadT hh).flatten := by
+  rw [← Parts.flatten_cast (body_holeLed_cons hh) ps]
+  exact Parts.headHole_flatten _
+
+omit [DecidableEq Tok] in
+theorem Parts.leadL_size {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    (ps.leadL hh).size < ps.size := by
+  rw [← Parts.size_cast (body_holeLed_cons hh) ps]
+  exact Parts.headHole_size _
+
+omit [DecidableEq Tok] in
+theorem Parts.leadT_size {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    (ps.leadL hh).size + (ps.leadT hh).size < ps.size := by
+  rw [← Parts.size_cast (body_holeLed_cons hh) ps]
+  unfold Parts.leadL Parts.leadT
+  cases (body_holeLed_cons hh ▸ ps :
+      Parts G (.hole e (leadLevel o) :: (Operator.body e o).tail)) with
+  | hole a T => simp only [Parts.headHole, Parts.size]; omega
+
+omit [DecidableEq Tok] in
+theorem Parts.lead_eta {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) (ps : Parts G (Operator.body e o)) :
+    ps = (body_holeLed_cons hh).symm ▸ Parts.hole (ps.leadL hh) (ps.leadT hh) := by
+  rw [← cast_eq_iff (body_holeLed_cons hh) ps]
+  unfold Parts.leadL Parts.leadT
+  exact Parts.headHole_eta _
+
+omit [DecidableEq Tok] in
+/-- Precedence is antisymmetric — `rank` strictly decreases, so a two-way path is no path at all.
+Needed where an `infxr`'s trailing operand must be told apart from its own continuation. -/
+theorem TighterEq.antisymm {e : G.Ent} {a b : (G.entry e).Op}
+    (h₁ : TighterEq (G.entry e).tighter a b) (h₂ : TighterEq (G.entry e).tighter b a) : a = b := by
+  rcases h₁.toTighterOrEq with rfl | t₁
+  · rfl
+  · rcases h₂.toTighterOrEq with rfl | t₂
+    · rfl
+    · exact absurd (t₁.trans_tighterEq t₂.toTighterEq) Tighter.irrefl
+
+/-- The four token-bearing hole-led fixities, whose tail leads with the operator's own head token.
+-/
+theorem holeLed_tail_head_named {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true)
+    {n : Notation Tok G.Ent} {suffix : List (Part G)}
+    (hb : (Operator.body e o).tail = Notation.toParts (G := G) n ++ suffix)
+    (hhead : ((G.entry e).operator o).headTok? = some n.firstTok)
+    (T : Parts G (Operator.body e o).tail) :
+    ∃ x r, T.flatten = x :: r ∧
+      (∀ u, Level.condition (leadLevel o) u → ¬ ContinuesAt e (Level.tighter u) x) ∧
+      (∀ l', Level.condition l' o → ContinuesAt e l' x) ∧
+      (((G.entry e).operator o).headTok? = some x ∨
+        ((G.entry e).operator o = Operator.juxt ∧ startsOperand e x = true)) := by
+  have hb' : (Operator.body e o).tail = Part.namePart n.firstTok ::
+      ((Notation.toParts (G := G) n).tail ++ suffix) := by
+    rw [hb, Notation.toParts_append_cons]
+  obtain ⟨r, hr⟩ := Parts.flatten_cons_namePart (hb' ▸ T)
+  exact ⟨n.firstTok, r, by rw [← Parts.flatten_cast hb' T, hr],
+    fun u hu hcon => not_continuesAt_tighter_head hh hhead
+      (ContinuesAt.mono (L := Level.tighter u) (l := Level.tighter o)
+        (fun _ h₃ => Tighter.of_tighterEq (leadLevel_tighterEq hu) h₃) hcon),
+    fun _ hc => Or.inl ⟨o, hc, hh, hhead⟩, Or.inl hhead⟩
+
+/-- ★★ **The head token of any hole-led operator's body tail** — `leftRec_tail_head` for all five
+fixities. The three facts are the ones the spine argument runs on: the token does not continue
+below anything the *leading* hole admits (so it bounds what sits there), it does continue wherever
+the operator itself applies (so one spine cannot stop while another still has extensions), and it
+identifies the operator (so two spines' extensions can be matched up). -/
+theorem holeLed_tail_head {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true)
+    (T : Parts G (Operator.body e o).tail) :
+    ∃ x r, T.flatten = x :: r ∧
+      (∀ u, Level.condition (leadLevel o) u → ¬ ContinuesAt e (Level.tighter u) x) ∧
+      (∀ l', Level.condition l' o → ContinuesAt e l' x) ∧
+      (((G.entry e).operator o).headTok? = some x ∨
+        ((G.entry e).operator o = Operator.juxt ∧ startsOperand e x = true)) := by
+  have hhead : ∀ n : Notation Tok G.Ent, ((G.entry e).operator o) = .infx n ∨
+      ((G.entry e).operator o) = .infxl n ∨ ((G.entry e).operator o) = .infxr n ∨
+      ((G.entry e).operator o) = .postfx n →
+      ((G.entry e).operator o).headTok? = some n.firstTok := by
+    rintro n (hop | hop | hop | hop) <;>
+      rw [hop] <;> simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | infx n =>
+      rw [← hop]
+      exact holeLed_tail_head_named hh (suffix := [Part.hole e (Level.tighter o)])
+        (by unfold Operator.body; rw [hop]; simp) (hhead n (Or.inl hop)) T
+  | infxl n =>
+      rw [← hop]
+      exact holeLed_tail_head_named hh (suffix := [Part.hole e (Level.tighter o)])
+        (by unfold Operator.body; rw [hop]; simp) (hhead n (Or.inr (Or.inl hop))) T
+  | infxr n =>
+      rw [← hop]
+      exact holeLed_tail_head_named hh (suffix := [Part.hole e (Level.tighterEq o)])
+        (by unfold Operator.body; rw [hop]; simp) (hhead n (Or.inr (Or.inr (Or.inl hop)))) T
+  | postfx n =>
+      rw [← hop]
+      exact holeLed_tail_head_named hh (suffix := [])
+        (by unfold Operator.body; rw [hop]; simp) (hhead n (Or.inr (Or.inr (Or.inr hop)))) T
+  | juxt =>
+      -- juxtaposition owns no token, so the witness is its right operand's first token
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      cases hq : (hb ▸ T : Parts G [Part.hole e (Level.tighter o)]) with
+      | hole sub tl =>
+          obtain ⟨x, r, hxr, hstart⟩ := Expr.flatten_head sub
+          refine ⟨x, r ++ tl.flatten, ?_,
+            fun u hu hcon => not_continuesAt_tighter_juxt hop hstart
+              (ContinuesAt.mono (L := Level.tighter u) (l := Level.tighter o)
+                (fun _ h₃ => Tighter.of_tighterEq (leadLevel_tighterEq hu) h₃) hcon),
+            fun _ hc => Or.inr ⟨o, hc, hop, hstart⟩, Or.inr ⟨rfl, hstart⟩⟩
+          rw [← Parts.flatten_cast hb T, hq, Parts.flatten, hxr]; simp
+
+/-- Every hole-led body tail is seamed — the leading `.tighterEq` hole that spoils `Seamed` for the
+left-recursive fixities is exactly what `.tail` drops. -/
+theorem seamed_body_tail_holeLed {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) :
+    Seamed (Operator.body e o).tail := by
+  have hint : ∀ (n : Notation Tok G.Ent), ((G.entry e).operator o).holeFollowers = n.holeFollowers →
+      ∀ e' t, (e', t) ∈ n.holeFollowers → ¬ ContinuesAt e' Level.loosest t := by
+    intro n hn e' t hm; exact not_continuesAt_of_interior (o := o) (by rw [hn]; exact hm)
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | infx n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact seamed_toParts_append n _ (hint n (by rw [hop]; rfl)) trivial
+  | infxl n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact seamed_toParts_append n _ (hint n (by rw [hop]; rfl)) trivial
+  | infxr n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact seamed_toParts_append n _ (hint n (by rw [hop]; rfl)) trivial
+  | postfx n =>
+      have hb : (Operator.body e o).tail = Notation.toParts (G := G) n ++ [] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact seamed_toParts_append n _ (hint n (by rw [hop]; rfl)) trivial
+  | juxt =>
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      rw [hb]; exact trivial
+
+/-- What a hole-led body tail constrains about the tokens after it: only its trailing operand hole,
+which is at `.tighter o` for every fixity but `infxr`. `postfx` ends in a name part and constrains
+nothing at all. -/
+theorem partsFollow_body_tail_holeLed {e : G.Ent} {o : (G.entry e).Op}
+    (hh : ((G.entry e).operator o).startsWithHole = true) {s : List Tok}
+    (ht : FollowAt e (Level.tighter o) s)
+    (hte : ∀ n, (G.entry e).operator o = Operator.infxr n → FollowAt e (Level.tighterEq o) s) :
+    PartsFollow (Operator.body e o).tail s := by
+  cases hop : (G.entry e).operator o with
+  | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | infx n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append n _ ht
+  | infxl n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append n _ ht
+  | infxr n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append n _ (hte n hop)
+  | postfx n =>
+      have hb : (Operator.body e o).tail = Notation.toParts (G := G) n ++ [] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append (s := s) n [] trivial
+  | juxt =>
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      rw [hb]; exact ht
+
+/-! #### The spine, its level discipline, and its extraction -/
+
+/-- One left-spine extension: a hole-led operator and the rest of its body, **level forgotten**. -/
+abbrev Ext (G : Grammar Tok) (e : G.Ent) : Type :=
+  Σ v : (G.entry e).Op, Parts G (Operator.body e v).tail
+
+/-- A spine's base: the two things that can start an operand — a variable token, or a token-led
+operator with its body. Also level-forgotten (`Expr.decomp`'s codomain, restricted by `BaseOk`). -/
+abbrev Base (G : Grammar Tok) (e : G.Ent) : Type :=
+  (Σ u : (G.entry e).Op, Parts G (Operator.body e u)) ⊕ Tok
+
+namespace Ext
+def flatten {e : G.Ent} (x : Ext G e) : List Tok := x.2.flatten
+def size {e : G.Ent} (x : Ext G e) : Nat := x.2.size
+end Ext
+
+namespace Base
+def flatten {e : G.Ent} : Base G e → List Tok
+  | .inl q => q.2.flatten
+  | .inr t => [t]
+def size {e : G.Ent} : Base G e → Nat
+  | .inl q => q.2.size
+  | .inr _ => 1
+end Base
+
+def extsFlatten {e : G.Ent} (E : List (Ext G e)) : List Tok := (E.map Ext.flatten).flatten
+def extsSize {e : G.Ent} (E : List (Ext G e)) : Nat := (E.map Ext.size).sum
+
+omit [DecidableEq Tok] in
+@[simp] theorem extsFlatten_nil {e : G.Ent} : extsFlatten ([] : List (Ext G e)) = [] := rfl
+
+omit [DecidableEq Tok] in
+@[simp] theorem extsFlatten_cons {e : G.Ent} (x : Ext G e) (E : List (Ext G e)) :
+    extsFlatten (x :: E) = x.flatten ++ extsFlatten E := rfl
+
+omit [DecidableEq Tok] in
+theorem extsFlatten_append {e : G.Ent} (E : List (Ext G e)) (x : Ext G e) :
+    extsFlatten (E ++ [x]) = extsFlatten E ++ x.flatten := by
+  induction E with
+  | nil => simp [extsFlatten]
+  | cons y r ih => simp [extsFlatten_cons, ih]
+
+omit [DecidableEq Tok] in
+theorem extsSize_append {e : G.Ent} (E : List (Ext G e)) (x : Ext G e) :
+    extsSize (E ++ [x]) = extsSize E + x.size := by
+  induction E with
+  | nil => simp [extsSize]
+  | cons y r ih => simp only [List.cons_append, extsSize, List.map_cons, List.sum_cons] at *; omega
+
+/-- The level a spine's base sits at: the innermost extension's leading hole, or the ambient level
+if there are no extensions. -/
+def spineLevel {e : G.Ent} (E : List (Ext G e)) (l : Level (G.entry e)) : Level (G.entry e) :=
+  match E with
+  | []     => l
+  | x :: _ => leadLevel x.1
+
+omit [DecidableEq Tok] in
+theorem spineLevel_append {e : G.Ent} (E : List (Ext G e)) (x : Ext G e)
+    (l : Level (G.entry e)) : spineLevel (E ++ [x]) l = spineLevel E (leadLevel x.1) := by
+  cases E <;> rfl
+
+/-- **The level discipline**, as a predicate on the plain list: every extension is hole-led, and
+each is applicable at the level the one outside it puts it. This is the dependency that would
+otherwise have to live in the chain's *type*. -/
+def ExtsOk {e : G.Ent} : List (Ext G e) → Level (G.entry e) → Prop
+  | [], _ => True
+  | x :: rest, l =>
+      ((G.entry e).operator x.1).startsWithHole = true ∧
+      Level.condition (spineLevel rest l) x.1 ∧ ExtsOk rest l
+
+omit [DecidableEq Tok] in
+/-- Everything applicable at the base's level is applicable at the ambient one — the chain only ever
+tightens. -/
+theorem ExtsOk.condition_up {e : G.Ent} :
+    ∀ (E : List (Ext G e)) (l : Level (G.entry e)), ExtsOk E l →
+      ∀ u, Level.condition (spineLevel E l) u → Level.condition l u
+  | [], _, _, _, h => h
+  | _ :: rest, l, hok, u, h =>
+      ExtsOk.condition_up rest l hok.2.2 u
+        (Level.condition_up hok.2.1 (leadLevel_tighterEq h))
+
+omit [DecidableEq Tok] in
+/-- Hence every operator in a spine is applicable at the ambient level. That is what forbids a
+spine from stopping while the other still has extensions. -/
+theorem ExtsOk.mem_condition {e : G.Ent} :
+    ∀ (E : List (Ext G e)) (l : Level (G.entry e)), ExtsOk E l →
+      ∀ x ∈ E, Level.condition l x.1
+  | _x :: rest, l, hok, y, hy => by
+      rcases List.mem_cons.mp hy with rfl | hy
+      · exact ExtsOk.condition_up rest l hok.2.2 _ hok.2.1
+      · exact ExtsOk.mem_condition rest l hok.2.2 y hy
+
+omit [DecidableEq Tok] in
+/-- Appending an extension on the *outside*: the inner chain built the leading operand. -/
+theorem ExtsOk.append {e : G.Ent} {v : (G.entry e).Op} {l : Level (G.entry e)}
+    (hh : ((G.entry e).operator v).startsWithHole = true) (hc : Level.condition l v)
+    (T : Parts G (Operator.body e v).tail) :
+    ∀ (E : List (Ext G e)), ExtsOk E (leadLevel v) → ExtsOk (E ++ [⟨v, T⟩]) l
+  | [], _ => ⟨hh, hc, trivial⟩
+  | x :: rest, hok =>
+      ⟨hok.1, by
+        show Level.condition (spineLevel (rest ++ [(⟨v, T⟩ : Ext G e)]) l) x.1
+        rw [spineLevel_append]; exact hok.2.1, ExtsOk.append hh hc T rest hok.2.2⟩
+
+/-- What the base must satisfy where it sits: it really is a base, and — if an operator node — one
+applicable there. -/
+def BaseOk {e : G.Ent} (β : Base G e) (lm : Level (G.entry e)) : Prop :=
+  match β with
+  | .inl q => ((G.entry e).operator q.1).startsWithHole = false ∧ Level.condition lm q.1
+  | .inr t => (G.entry e).isVar t = true
+
+/-- **The left-spine extraction.** Walk into the leading hole while the top operator is hole-led,
+collecting each operator with the rest of its body; the extensions come out **innermost first**,
+which is the order they appear in the printed string. -/
+def Expr.spineOf {e : G.Ent} {l : Level (G.entry e)} : Expr G e l → Base G e × List (Ext G e)
+  | .var t _ => (.inr t, [])
+  | .op v _ ps =>
+      if hh : ((G.entry e).operator v).startsWithHole = true then
+        let sp := Expr.spineOf (ps.leadL hh)
+        (sp.1, sp.2 ++ [⟨v, ps.leadT hh⟩])
+      else (.inl ⟨v, ps⟩, [])
+  termination_by t => t.size
+  decreasing_by
+    simp_wf
+    have := Parts.leadL_size hh ps
+    simp only [Expr.size]
+    omega
+
+omit [DecidableEq Tok] in
+/-- The printed string is the base's, then the extensions' in order. -/
+theorem Expr.spineOf_flatten {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    t.flatten = t.spineOf.1.flatten ++ extsFlatten t.spineOf.2 := by
+  induction l, t using Expr.spineOf.induct with
+  | case1 lv tk hv => simp [Expr.spineOf, Expr.flatten, Base.flatten]
+  | case2 lv v hc ps hh ih =>
+      rw [Expr.spineOf, dif_pos hh, Expr.flatten, Parts.lead_flatten hh ps, ih]
+      simp [extsFlatten_append, Ext.flatten, List.append_assoc]
+  | case3 lv v hc ps hh => simp [Expr.spineOf, dif_neg hh, Expr.flatten, Base.flatten]
+
+omit [DecidableEq Tok] in
+/-- The extracted spine satisfies the level discipline. -/
+theorem Expr.spineOf_extsOk {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    ExtsOk t.spineOf.2 l := by
+  induction l, t using Expr.spineOf.induct with
+  | case1 lv tk hv => rw [Expr.spineOf]; exact trivial
+  | case2 lv v hc ps hh ih =>
+      rw [Expr.spineOf, dif_pos hh]
+      exact ExtsOk.append hh hc _ _ ih
+  | case3 lv v hc ps hh => rw [Expr.spineOf, dif_neg hh]; exact trivial
+
+omit [DecidableEq Tok] in
+/-- …and its base really is a base, at the level the spine leaves for it. -/
+theorem Expr.spineOf_baseOk {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    BaseOk t.spineOf.1 (spineLevel t.spineOf.2 l) := by
+  induction l, t using Expr.spineOf.induct with
+  | case1 lv tk hv => rw [Expr.spineOf]; exact hv
+  | case2 lv v hc ps hh ih =>
+      rw [Expr.spineOf, dif_pos hh]
+      rw [spineLevel_append]
+      exact ih
+  | case3 lv v hc ps hh =>
+      rw [Expr.spineOf, dif_neg hh]
+      exact ⟨by simpa using hh, hc⟩
+
+omit [DecidableEq Tok] in
+/-- The decomposition fits inside the tree's size budget, so comparing its pieces stays within the
+recursion that called for it. -/
+theorem Expr.spineOf_size {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
+    t.spineOf.1.size + extsSize t.spineOf.2 ≤ t.size := by
+  induction l, t using Expr.spineOf.induct with
+  | case1 lv tk hv => simp [Expr.spineOf, Expr.size, Base.size, extsSize]
+  | case2 lv v hc ps hh ih =>
+      rw [Expr.spineOf, dif_pos hh]
+      have h1 := Parts.leadT_size hh ps
+      simp only [extsSize_append, Ext.size, Expr.size] at *
+      omega
+  | case3 lv v hc ps hh => simp [Expr.spineOf, dif_neg hh, Expr.size, Base.size, extsSize]
+
+omit [DecidableEq Tok] in
+@[simp] theorem extsSize_nil {e : G.Ent} : extsSize ([] : List (Ext G e)) = 0 := rfl
+
+omit [DecidableEq Tok] in
+@[simp] theorem extsSize_cons {e : G.Ent} (x : Ext G e) (E : List (Ext G e)) :
+    extsSize (x :: E) = x.size + extsSize E := rfl
+
+/-- **Two hole-led operators whose body tails begin with the same token are the same operator.**
+The three-way separation the grammar's fields were put there for: `headsDistinct` for two
+token-bearing fixities, `juxtUnique` for two juxtapositions, and `not_startsOperand_of_head` to
+tell one from the other. -/
+theorem holeLed_head_inj {e : G.Ent} {v₁ v₂ : (G.entry e).Op} {x : Tok}
+    (hh₁ : ((G.entry e).operator v₁).startsWithHole = true)
+    (hh₂ : ((G.entry e).operator v₂).startsWithHole = true)
+    (h₁ : ((G.entry e).operator v₁).headTok? = some x ∨
+      ((G.entry e).operator v₁ = Operator.juxt ∧ startsOperand e x = true))
+    (h₂ : ((G.entry e).operator v₂).headTok? = some x ∨
+      ((G.entry e).operator v₂ = Operator.juxt ∧ startsOperand e x = true)) : v₁ = v₂ := by
+  rcases h₁ with hd₁ | ⟨hj₁, hst₁⟩ <;> rcases h₂ with hd₂ | ⟨hj₂, hst₂⟩
+  · exact head_inj hd₁ hd₂
+  · rw [not_startsOperand_of_head hh₁ hd₁] at hst₂; exact Bool.noConfusion hst₂
+  · rw [not_startsOperand_of_head hh₂ hd₂] at hst₁; exact Bool.noConfusion hst₁
+  · exact (G.entry e).juxtUnique v₁ v₂ hj₁ hj₂
+
+/-- The token beginning the **next** extension does not continue at `.tighterEq v`. Needed only for
+`infxr`, whose trailing operand chains at `.tighterEq`: were that token to continue there, its
+operator and `v` would be mutually tighter-or-equal, hence equal (`TighterEq.antisymm`), and `v`
+would sit strictly inside its own operand. -/
+theorem not_continuesAt_tighterEq_next {e : G.Ent} {v z : (G.entry e).Op} {x : Tok}
+    (hlead : leadLevel v = Level.tighter v)
+    (hz : ((G.entry e).operator z).startsWithHole = true)
+    (hc : Level.condition (leadLevel z) v)
+    (hx : ((G.entry e).operator z).headTok? = some x ∨
+      ((G.entry e).operator z = Operator.juxt ∧ startsOperand e x = true)) :
+    ¬ ContinuesAt e (Level.tighterEq v) x := by
+  have key : ∀ w : (G.entry e).Op, TighterEq (G.entry e).tighter v w →
+      ((G.entry e).operator w).startsWithHole = true →
+      (((G.entry e).operator w).headTok? = some x ∨
+        ((G.entry e).operator w = Operator.juxt ∧ startsOperand e x = true)) → False := by
+    intro w hvw hhw hxw
+    have hwz : w = z := holeLed_head_inj hhw hz hxw hx
+    subst hwz
+    have hvw' : v = w := TighterEq.antisymm hvw (leadLevel_tighterEq hc)
+    subst hvw'
+    rw [hlead] at hc
+    exact Tighter.irrefl hc
+  rintro (⟨o₃, hc₃, hh₃, hd₃⟩ | ⟨j, hcj, hjj, hsj⟩)
+  · exact key o₃ hc₃ hh₃ (Or.inl hd₃)
+  · exact key j hcj (by rw [hjj]; rfl) (Or.inr ⟨hjj, hsj⟩)
+
+/-- **What follows one extension stops its trailing operand**: either the next extension's head
+token — which cannot continue below the current operator, since the next extension's leading hole
+is where the current one sits — or the ambient leftover, which stops `l`. -/
+theorem extsFollow_tighter {e : G.Ent} {l : Level (G.entry e)} {v : (G.entry e).Op}
+    (r : List (Ext G e)) (s : List Tok) (hok : ExtsOk r l)
+    (hcond : Level.condition (spineLevel r l) v) (hs : FollowAt e l s) :
+    FollowAt e (Level.tighter v) (extsFlatten r ++ s) := by
+  have hcl : Level.condition l v := ExtsOk.condition_up r l hok v hcond
+  cases r with
+  | nil => simpa using FollowAt.tighten (condition_up_tighter hcl) hs
+  | cons z rest =>
+      obtain ⟨y, w, hy, hstop, -, -⟩ := holeLed_tail_head hok.1 z.2
+      intro t ht
+      simp only [extsFlatten_cons, Ext.flatten, hy, List.cons_append, List.head?_cons,
+        Option.some.injEq] at ht
+      subst ht
+      exact hstop v hcond
+
+/-- The same, as the `PartsFollow` a hole-led extension's tail needs. -/
+theorem extsFollow {e : G.Ent} {l : Level (G.entry e)} {v : (G.entry e).Op}
+    (hh : ((G.entry e).operator v).startsWithHole = true)
+    (r : List (Ext G e)) (s : List Tok) (hok : ExtsOk r l)
+    (hcond : Level.condition (spineLevel r l) v) (hs : FollowAt e l s) :
+    PartsFollow (Operator.body e v).tail (extsFlatten r ++ s) := by
+  have hcl : Level.condition l v := ExtsOk.condition_up r l hok v hcond
+  refine partsFollow_body_tail_holeLed hh (extsFollow_tighter r s hok hcond hs) ?_
+  · intro n hinfxr
+    have hlead : leadLevel v = Level.tighter v := by unfold leadLevel; rw [hinfxr]
+    cases r with
+    | nil => simpa using FollowAt.tighten (condition_up_tighterEq hcl) hs
+    | cons z rest =>
+        obtain ⟨y, w, hy, -, -, hid⟩ := holeLed_tail_head hok.1 z.2
+        intro t ht
+        simp only [extsFlatten_cons, Ext.flatten, hy, List.cons_append, List.head?_cons,
+          Option.some.injEq] at ht
+        subst ht
+        exact not_continuesAt_tighterEq_next hlead hok.1 hcond hid
+
+/-- **Two spines that print alike are equal.** Ordinary list induction, innermost extension first —
+which is the order they appear in the string, and the reason the spine is a plain list.
+
+* matching pair: the two tails begin at the same position, so `holeLed_head_inj` makes them the
+  same operator, `udParts` identifies their bodies, and the leftovers pass to the tail;
+* one spine exhausted: the other's next head token continues at `l` (`ExtsOk.mem_condition` puts
+  every operator of a spine at `l`), and it now heads a leftover that stops `l`. ⛔ -/
+theorem extsUd {m : Nat}
+    (ihP : ∀ {shape : List (Part G)} (q₁ q₂ : Parts G shape) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        Seamed shape → PartsFollow shape r₁ → PartsFollow shape r₂ → q₁ = q₂ ∧ r₁ = r₂)
+    {e : G.Ent} {l : Level (G.entry e)} :
+    ∀ (E₁ E₂ : List (Ext G e)) (s₁ s₂ : List Tok),
+      extsSize E₁ + extsSize E₂ ≤ m → ExtsOk E₁ l → ExtsOk E₂ l →
+      extsFlatten E₁ ++ s₁ = extsFlatten E₂ ++ s₂ →
+      FollowAt e l s₁ → FollowAt e l s₂ → E₁ = E₂ ∧ s₁ = s₂ := by
+  intro E₁
+  induction E₁ with
+  | nil =>
+      intro E₂ s₁ s₂ _ _ hok₂ heq hs₁ _
+      cases E₂ with
+      | nil => exact ⟨rfl, by simpa using heq⟩
+      | cons x r =>
+          exfalso
+          obtain ⟨y, w, hy, -, hcont, -⟩ := holeLed_tail_head hok₂.1 x.2
+          refine hs₁ y ?_ (hcont l (ExtsOk.mem_condition (x :: r) l hok₂ x List.mem_cons_self))
+          simp only [extsFlatten_nil, List.nil_append] at heq
+          rw [heq]; simp [Ext.flatten, hy]
+  | cons x₁ r₁ ih =>
+      intro E₂ s₁ s₂ hsz hok₁ hok₂ heq hs₁ hs₂
+      cases E₂ with
+      | nil =>
+          exfalso
+          obtain ⟨y, w, hy, -, hcont, -⟩ := holeLed_tail_head hok₁.1 x₁.2
+          refine hs₂ y ?_
+            (hcont l (ExtsOk.mem_condition (x₁ :: r₁) l hok₁ x₁ List.mem_cons_self))
+          simp only [extsFlatten_nil, List.nil_append] at heq
+          rw [← heq]; simp [Ext.flatten, hy]
+      | cons x₂ r₂ =>
+          obtain ⟨v₁, T₁⟩ := x₁
+          obtain ⟨v₂, T₂⟩ := x₂
+          obtain ⟨y₁, w₁, hy₁, -, -, hid₁⟩ := holeLed_tail_head hok₁.1 T₁
+          obtain ⟨y₂, w₂, hy₂, -, -, hid₂⟩ := holeLed_tail_head hok₂.1 T₂
+          have hyy : y₁ = y₂ := by
+            have h := congrArg List.head? heq
+            simp only [extsFlatten_cons, Ext.flatten, hy₁, hy₂, List.cons_append,
+              List.head?_cons, Option.some.injEq] at h
+            exact h
+          subst hyy
+          have hv : v₁ = v₂ := holeLed_head_inj hok₁.1 hok₂.1 hid₁ hid₂
+          subst hv
+          obtain ⟨hT, hrest⟩ := ihP T₁ T₂ (extsFlatten r₁ ++ s₁) (extsFlatten r₂ ++ s₂)
+            (by simp only [extsSize_cons, Ext.size] at hsz; omega)
+            (by simpa only [extsFlatten_cons, Ext.flatten, List.append_assoc] using heq)
+            (seamed_body_tail_holeLed hok₁.1)
+            (extsFollow hok₁.1 r₁ s₁ hok₁.2.2 hok₁.2.1 hs₁)
+            (extsFollow hok₁.1 r₂ s₂ hok₂.2.2 hok₂.2.1 hs₂)
+          obtain ⟨hr, hss⟩ := ih r₂ s₁ s₂ (by simp only [extsSize_cons] at hsz; omega)
+            hok₁.2.2 hok₂.2.2 hrest hs₁ hs₂
+          exact ⟨by rw [hT, hr], hss⟩
+
+/-- **Two spine bases that print alike leave the same leftover.** The three cases are the ones
+already settled for whole trees: two variables agree by their single token, a variable and a
+token-led node cannot share a first token (`varDisjoint`), and two token-led nodes share an
+operator by `headsDistinct` and then their bodies by `udParts`. -/
+theorem baseUd {m : Nat}
+    (ihP : ∀ {shape : List (Part G)} (q₁ q₂ : Parts G shape) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        Seamed shape → PartsFollow shape r₁ → PartsFollow shape r₂ → q₁ = q₂ ∧ r₁ = r₂)
+    {e : G.Ent} {l : Level (G.entry e)} (β₁ β₂ : Base G e) (E₁ E₂ : List (Ext G e))
+    (s₁ s₂ : List Tok) (hsz : β₁.size + β₂.size ≤ m)
+    (hok₁ : ExtsOk E₁ l) (hok₂ : ExtsOk E₂ l)
+    (hb₁ : BaseOk β₁ (spineLevel E₁ l)) (hb₂ : BaseOk β₂ (spineLevel E₂ l))
+    (heq : β₁.flatten ++ (extsFlatten E₁ ++ s₁) = β₂.flatten ++ (extsFlatten E₂ ++ s₂))
+    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) :
+    extsFlatten E₁ ++ s₁ = extsFlatten E₂ ++ s₂ := by
+  match β₁, β₂ with
+  | .inr t₁, .inr t₂ =>
+      simp only [Base.flatten, List.cons_append, List.nil_append, List.cons.injEq] at heq
+      exact heq.2
+  | .inr t, .inl ⟨u, q⟩ =>
+      exact absurd (varOp_ne_tokenLed hb₁ hb₂.1 q _ _ (by simpa [Base.flatten] using heq))
+        (fun h => h)
+  | .inl ⟨u, q⟩, .inr t =>
+      exact absurd (varOp_ne_tokenLed hb₂ hb₁.1 q _ _ (by simpa [Base.flatten] using heq.symm))
+        (fun h => h)
+  | .inl ⟨u₁, q₁⟩, .inl ⟨u₂, q₂⟩ =>
+      obtain ⟨tk₁, r₁, hf₁, hd₁⟩ := Parts.flatten_tokenLed hb₁.1 q₁
+      obtain ⟨tk₂, r₂, hf₂, hd₂⟩ := Parts.flatten_tokenLed hb₂.1 q₂
+      have htk : tk₁ = tk₂ := by
+        simp only [Base.flatten, hf₁, hf₂, List.cons_append] at heq
+        simpa using congrArg List.head? heq
+      have hu : u₁ = u₂ := head_inj hd₁ (htk ▸ hd₂)
+      subst hu
+      exact (ihP q₁ q₂ _ _ (by simpa [Base.size] using hsz) (by simpa [Base.flatten] using heq)
+        (seamed_body u₁ (Operator.leftRec_of_not_startsWithHole hb₁.1))
+        (partsFollow_body_tokenLed hb₁.1 (extsFollow_tighter E₁ s₁ hok₁ hb₁.2 hs₁))
+        (partsFollow_body_tokenLed hb₁.1 (extsFollow_tighter E₂ s₂ hok₂ hb₂.2 hs₂))).2
+
+/-- **Two trees at one level have the same left spine.** Base then extensions: `baseUd` lines the
+two spines up at their first extension, `extsUd` walks them out to the top. -/
+theorem spineUd {m : Nat}
+    (ihP : ∀ {shape : List (Part G)} (q₁ q₂ : Parts G shape) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        Seamed shape → PartsFollow shape r₁ → PartsFollow shape r₂ → q₁ = q₂ ∧ r₁ = r₂)
+    {e : G.Ent} {l : Level (G.entry e)} (t₁ t₂ : Expr G e l) (s₁ s₂ : List Tok)
+    (hsz : t₁.spineOf.1.size + extsSize t₁.spineOf.2
+         + (t₂.spineOf.1.size + extsSize t₂.spineOf.2) ≤ m)
+    (heq : t₁.flatten ++ s₁ = t₂.flatten ++ s₂)
+    (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) :
+    t₁.spineOf.2 = t₂.spineOf.2 ∧ s₁ = s₂ := by
+  have hbase : t₁.spineOf.1.flatten ++ (extsFlatten t₁.spineOf.2 ++ s₁)
+      = t₂.spineOf.1.flatten ++ (extsFlatten t₂.spineOf.2 ++ s₂) := by
+    rw [Expr.spineOf_flatten t₁, Expr.spineOf_flatten t₂] at heq
+    simpa only [List.append_assoc] using heq
+  have hmid := baseUd ihP _ _ _ _ s₁ s₂ (by omega) (Expr.spineOf_extsOk t₁)
+    (Expr.spineOf_extsOk t₂) (Expr.spineOf_baseOk t₁) (Expr.spineOf_baseOk t₂) hbase hs₁ hs₂
+  exact extsUd ihP _ _ s₁ s₂ (by omega) (Expr.spineOf_extsOk t₁) (Expr.spineOf_extsOk t₂)
+    hmid hs₁ hs₂
+
+/-- **Two distinct operators, both leading with a hole.** ✅ *Closed.*
+
+Nothing local separates them: both flattenings begin with a token that merely *starts an operand*
+(a hole-led operator inherits one from its leading operand, `Expr.flatten_head`), and neither
+leading operand's extent is bounded by the other's. The separating fact is the whole left spine —
+each tree's outermost extension is the *last* entry of its spine, and `spineUd` says the two spines
+are equal. -/
+theorem topOp_unique_bothHoleLed {m : Nat}
+    (ihP : ∀ {shape : List (Part G)} (q₁ q₂ : Parts G shape) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        Seamed shape → PartsFollow shape r₁ → PartsFollow shape r₂ → q₁ = q₂ ∧ r₁ = r₂)
+    {e : G.Ent} {l : Level (G.entry e)} {o₁ o₂ : (G.entry e).Op}
     (hne : o₁ ≠ o₂) (hc₁ : Level.condition l o₁) (hc₂ : Level.condition l o₂)
     (hh₁ : ((G.entry e).operator o₁).startsWithHole = true)
     (hh₂ : ((G.entry e).operator o₂).startsWithHole = true)
     (p₁ : Parts G (Operator.body e o₁)) (p₂ : Parts G (Operator.body e o₂))
-    (s₁ s₂ : List (Tok))
+    (s₁ s₂ : List (Tok)) (hbound : p₁.size + p₂.size ≤ m)
     (heq : p₁.flatten ++ s₁ = p₂.flatten ++ s₂)
     (hs₁ : FollowAt e l s₁) (hs₂ : FollowAt e l s₂) : False := by
-  sorry
+  -- each tree's own operator is the last entry of its spine
+  have hsp₁ : (Expr.op (l := l) o₁ hc₁ p₁).spineOf
+      = ((p₁.leadL hh₁).spineOf.1, (p₁.leadL hh₁).spineOf.2 ++ [⟨o₁, p₁.leadT hh₁⟩]) := by
+    rw [Expr.spineOf, dif_pos hh₁]
+  have hsp₂ : (Expr.op (l := l) o₂ hc₂ p₂).spineOf
+      = ((p₂.leadL hh₂).spineOf.1, (p₂.leadL hh₂).spineOf.2 ++ [⟨o₂, p₂.leadT hh₂⟩]) := by
+    rw [Expr.spineOf, dif_pos hh₂]
+  have hsz : (Expr.op (l := l) o₁ hc₁ p₁).spineOf.1.size
+        + extsSize (Expr.op (l := l) o₁ hc₁ p₁).spineOf.2
+      + ((Expr.op (l := l) o₂ hc₂ p₂).spineOf.1.size
+        + extsSize (Expr.op (l := l) o₂ hc₂ p₂).spineOf.2) ≤ m := by
+    have h₁ := Expr.spineOf_size (p₁.leadL hh₁)
+    have h₂ := Expr.spineOf_size (p₂.leadL hh₂)
+    have h₃ := Parts.leadT_size hh₁ p₁
+    have h₄ := Parts.leadT_size hh₂ p₂
+    rw [hsp₁, hsp₂]
+    simp only [extsSize_append, Ext.size] at *
+    omega
+  obtain ⟨hspine, -⟩ :=
+    spineUd ihP (Expr.op o₁ hc₁ p₁) (Expr.op o₂ hc₂ p₂) s₁ s₂ hsz
+      (by simpa only [Expr.flatten] using heq) hs₁ hs₂
+  -- equal spines have equal last entries, and those carry the two top operators
+  rw [hsp₁, hsp₂] at hspine
+  have hlast := congrArg List.reverse hspine
+  simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append,
+    List.cons_append, List.cons.injEq] at hlast
+  exact hne (congrArg Sigma.fst hlast.1)
 
 /-- **Two distinct top operators cannot share a flattening.** Token-led/token-led is
-`headsDistinct` outright, the mixed case is `topOp_unique_mixed`, and hole-led/hole-led is the one
-remaining gap. -/
+`headsDistinct` outright, the mixed case is `topOp_unique_mixed`, and hole-led/hole-led goes
+through the left spine. -/
 theorem topOp_unique {m : Nat}
     (ihP : ∀ {shape : List (Part G)} (q₁ q₂ : Parts G shape) (r₁ r₂ : List Tok),
         q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
@@ -1486,7 +2151,8 @@ theorem topOp_unique {m : Nat}
   cases hnh₁ : ((G.entry e).operator o₁).startsWithHole with
   | true =>
       cases hnh₂ : ((G.entry e).operator o₂).startsWithHole with
-      | true => exact topOp_unique_bothHoleLed hne hc₁ hc₂ hnh₁ hnh₂ p₁ p₂ s₁ s₂ heq hs₁ hs₂
+      | true =>
+          exact topOp_unique_bothHoleLed ihP hne hc₁ hc₂ hnh₁ hnh₂ p₁ p₂ s₁ s₂ hbound heq hs₁ hs₂
       | false => exact topOp_unique_mixed ihP hc₁ hc₂ hnh₁ hnh₂ p₁ p₂ s₁ s₂ hbound heq hs₂
   | false =>
       cases hnh₂ : ((G.entry e).operator o₂).startsWithHole with

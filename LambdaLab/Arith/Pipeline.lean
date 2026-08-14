@@ -249,19 +249,14 @@ end Truncation
 /-! ### Unambiguity
 
 The grammars' *lexical* conditions are discharged inline above, as `Entry`/`Grammar` fields.
-What `mixfix` still asks for is `Unambiguous` — `flatten` injective — which is **not** decidable
-(it quantifies over all trees) and not yet derivable from those fields, so it is assumed here.
-It cannot simply be dropped: a deterministic parser answers one tree per token list, so two
-distinct trees with one flattening could not both round-trip. -/
+What `mixfix` asks for on top of them is `Unambiguous` — `flatten` injective — which is **not**
+decidable, since it quantifies over all trees. It is not assumed either: `Unambiguity.lean` derives
+it from those fields for *every* grammar, so both theorems below are one application. -/
 
-/-- **Assumed**: the arithmetic term grammar is unambiguous. True (the operators have pairwise
-distinct heads and the precedence DAG fixes every hole's level). No longer assumed here —
-the derivation is `Unambiguity.lean`'s `unambiguous`, which still rests on its three
-kernel sorries (`splitLeftRec`/`topOp_unique`/`varOp_ne`) — so this is not yet a closed
-proof, but the obligation now lives in one place instead of being assumed per grammar. -/
+/-- The arithmetic term grammar is unambiguous — **derived**, not assumed, and sorry-free. -/
 theorem aUnambiguous : Unambiguous aGrammar := unambiguous aGrammar
 
-/-- The type grammar is unambiguous. Same status as `aUnambiguous`. -/
+/-- The type grammar is unambiguous. Same one-liner. -/
 theorem tyUnambiguous : Unambiguous tyGrammar := unambiguous tyGrammar
 
 /-! ### The language -/
