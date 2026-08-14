@@ -60,6 +60,27 @@ def MoreGeneral {α : Type} [HasSubst α α] (σ σ' : Subst α) : Prop :=
   ∃ τ : Subst α, ∀ t : α,
     HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
 
+/-- `MoreGeneralBelow n σ σ'` is `MoreGeneral` restricted to the objects whose variables all lie
+**below `n`** — one witness τ still serves all of them.
+
+The restriction is what principality looks like when the general answer has variables of its own.
+An elaborator draws metavariables the source never mentioned, and its answer may legitimately
+mention them (`?0 ↦ ?2 ⇒ ⋆` for a term whose intermediate type is unconstrained). A competing σ'
+says nothing about `?2`, so no τ can factor σ' through σ *at the type `?2` itself* — and
+`MoreGeneral`, quantifying over every `t`, asks exactly that. Below the source threshold the
+question does not arise, and there the factoring is real.
+
+Not a weakening of convenience: `Stlc/Named/Typing/Principality.lean` proves the unrestricted form
+false for the STLC elaborator. -/
+def MoreGeneralBelow {α : Type} [HasSubst α α] (n : Nat) (σ σ' : Subst α) : Prop :=
+  ∃ τ : Subst α, ∀ t : α, HasVars.fresh t ≤ n →
+    HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) τ
+
+/-- Generality everywhere is generality below any threshold. -/
+theorem MoreGeneral.below {α : Type} [HasSubst α α] {σ σ' : Subst α} (h : MoreGeneral σ σ')
+    (n : Nat) : MoreGeneralBelow n σ σ' :=
+  ⟨h.choose, fun t _ => h.choose_spec t⟩
+
 /-- Parallel composition of substitutions. `comp σ τ` is the substitution
 whose intended action is "apply τ first, then σ" — i.e. function
 composition `σ ∘ τ` on terms.

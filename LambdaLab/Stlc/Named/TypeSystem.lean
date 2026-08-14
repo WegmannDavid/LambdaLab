@@ -35,19 +35,18 @@ proved here, which is the point — the interface asks for what the development 
 * `PrincipalElaborate` is discharged by `elabMGU`. Its negative branch is
   `no_typing_of_elabSubst_none`, the one that took work: `none` has to mean *there is no typing*,
   not *this algorithm found none*. Its positive branch pairs `elabSubst_sound` with
-  `elabSubst_principal`.
+  `elabSubst_principal_below`.
 
-## The one thing claimed on credit
+## Most-generality, and the shape it takes
 
-`elaborate` returns an `MGUProp`, so filling it demands most-generality — the same wall
-`W_principal` hits from the other side, and the only obligation in this file that is not already a
-theorem. It is discharged by `Typing/JComplete.lean`'s **`elabSubst_principal`, which is `sorry`**.
+`elaborate` returns a `PrincipalProp`, so filling it demands most-generality as well as the
+decision. It is discharged by `Typing/JComplete.lean`'s **`elabSubst_principal_below`, a theorem** —
+principality *on the source*, which is what the claim can be: the elaborator draws metavariables of
+its own, and `Typing/Principality.lean` proves the unrestricted `MoreGeneral` form false for this
+very elaborator. The threshold is `sourceFresh`, the same one `elabSubst` prunes to, handed to the
+class through its own field.
 
-That is a deliberate trade. The interface used to split the claim in two, recording the decision as
-soon as it was proved and leaving principality to a class with no instance; folding them back into
-one `MGUProp` means the open obligation shows up at the plug-in, where an instance is actually
-built, instead of being invisible. The cost is that this instance — and the vernacular fold and
-pipeline above it — report `sorryAx`.
+Nothing in this file is claimed on credit any more, and nothing downstream reports `sorryAx`.
 
 So the honest report is: STLC satisfies the metatheory unconditionally, decides elaboration
 unconditionally (`elabSolution` is proved and still exported), and claims principality on credit.
@@ -127,13 +126,13 @@ instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
 /-- The third instance with content, and the first that is algorithmic rather than metatheoretic.
 `elabMGU`'s negative branch is `no_typing_of_elabSubst_none` — a proof that nothing types the
 triple, not a report that nothing was found — and its positive branch is `elabSubst_sound` paired
-with **`elabSubst_principal`, which is `sorry`**.
+with `elabSubst_principal_below`. Both are theorems, so this instance is discharged in full.
 
-So this is the one instance in the file that is not fully discharged: most-generality is the open
-problem, and asking `elaborate` for an `MGUProp` is what makes it visible here rather than in a
-class nobody instantiates. Everything downstream of this instance reports `sorryAx`. The sorry-free
-decision remains available on its own as `elabSolution`. -/
+`sourceFresh` is `Target.sourceFresh`, the threshold `elabSubst` prunes its answer to; the
+principality the class asks for is stated below it, which is the only place it can hold
+(`Typing/Principality.lean`). The plain decision remains available on its own as `elabSolution`. -/
 instance instPrincipalElaborate : TypeSystem.PrincipalElaborate N (Term N) Ty where
+  sourceFresh := sourceFresh
   elaborate := elabMGU
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance

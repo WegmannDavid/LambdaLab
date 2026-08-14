@@ -106,7 +106,7 @@ attribute [reducible, instance low] MVars.tmSubst MVars.tySubst
 law that makes them mean something: **typing is stable under substitution**.
 
 Without it an `MVars` instance may pair a perfectly good `HasType` with a `pSubst` that has no
-relation to it, and `PrincipalElaborate` below would still typecheck — its `MGUProp`
+relation to it, and `PrincipalElaborate` below would still typecheck — its `PrincipalProp`
 predicate is built entirely out of `pSubst`, so a nonsense `pSubst` yields a nonsense
 specification that an implementation could satisfy vacuously. Stability is what ties the algorithmic side back to the
 judgement.
@@ -180,20 +180,37 @@ the two back into the `MGUProp` they should have been. The split bought instance
 before their hard law is proved, and cost a three-way spread of one idea — with the reassembly
 written out by hand, and its converse only asserted in prose.
 
-`MGUProp` was already the right type; `Substitution/Unification/MGU.lean` defines it, so nothing
-new is introduced here. A caller that does not want most-generality does not need a weaker class
-either — `MGUProp.toSolution` forgets it, and everything proved about `SolutionProp` applies.
+`PrincipalProp` was already the right type; `Substitution/Unification/MGU.lean` defines it, so
+nothing new is introduced here. A caller that does not want most-generality does not need a weaker
+class either — `PrincipalProp.toSolution` forgets it, and everything proved about `SolutionProp`
+applies.
 
-**What it costs, stated plainly.** Deciding typeability is settled for STLC; most-generality is
-not, and an instance therefore cannot be built today without a `sorry` somewhere. That is a real
-price, and the reason the split existed. It is paid in one named theorem at the plug-in
-(`Stlc/Named/Typing/JComplete.lean`), where the obligation is visible, rather than hidden behind a
-class nobody instantiates. -/
+## Which most-generality, and why not the obvious one
+
+`elaborate` is compared at `MoreGeneralBelow`, not `MoreGeneral`. That is forced, not chosen:
+an elaborator draws metavariables the source never mentioned, and its answer may legitimately
+mention them — `f (g b)` with `f, g` unknown elaborates to `?0 ↦ ?2 ⇒ ⋆`, `?1 ↦ ⋆ ⇒ ?2`, where
+`?2` names the intermediate type. A competing solution says nothing about `?2`, so no witness can
+factor it through the answer *at the type `?2` itself*, which is what `MoreGeneral`'s `∀ t` demands.
+`Stlc/Named/Typing/Principality.lean` proves that statement false for the STLC elaborator; the
+restricted one is `JComplete.elabSubst_principal_below`, and it is a theorem.
+
+`sourceFresh` is the threshold, supplied by the language rather than computed here. `Context N Ty`
+has two `HasVars` instances — the generic `HashMap` one, which counts keys, and the `Context` one,
+which does not — and a threshold computed in this file would be read against the first while a
+language's own lemmas are stated against the second. A field sidesteps the question: the language
+says what its source threshold is, and proves its principality against that. -/
 class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
-  /-- Decidable typing judgement, with a principal witness. -/
+  /-- The index above which metavariables belong to the *elaborator* rather than to the source
+  triple — the threshold `elaborate`'s principality is stated below. A language that draws no
+  metavariables of its own can say `0`, and then the claim is unrestricted. -/
+  sourceFresh : Context N Ty → Tm → Ty → Nat
+  /-- Decidable typing judgement, with a principal witness — principal on the source, in the sense
+  of `MoreGeneralBelow` and for the reason set out above. -/
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
-      MGUProp (fun σ : Subst Ty =>
-        HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ))
+      PrincipalProp (MoreGeneralBelow (sourceFresh Γ t τ))
+        (fun σ : Subst Ty =>
+          HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ))
   /-- **Groundness of a type is decidable.** `HasVars.Ground` is `∀ n, ¬ isFree x n`, which no
   instance decides by unfolding, so a language routes it to its own structural check.
 

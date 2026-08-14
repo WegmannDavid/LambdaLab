@@ -204,17 +204,28 @@ of absence*, not a failure to find one; that distinction is the whole content of
 Strictly stronger than `Decidable (∃ σ, P σ)`, which is why it is worth writing down: the map
 `MGUProp P → Decidable (∃ σ, P σ)` is definable, the converse is not, because `∃` lives in `Prop`
 and `isTrue` therefore carries no extractable σ. `𝕊` is implicit, being determined by `P`. -/
-inductive MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) where
-  /-- A σ satisfying `P` that every other solution factors through. -/
-  | mgu (σ : Subst 𝕊) (hσ : P σ) (hmgu : ∀ σ', P σ' → MoreGeneral σ σ') : MGUProp P
+inductive PrincipalProp {𝕊 : Type} (R : Subst 𝕊 → Subst 𝕊 → Prop) (P : Subst 𝕊 → Prop) where
+  /-- A σ satisfying `P` that every other solution factors through, in the sense of `R`. -/
+  | mgu (σ : Subst 𝕊) (hσ : P σ) (hmgu : ∀ σ', P σ' → R σ σ') : PrincipalProp R P
   /-- No σ satisfies `P`. -/
-  | impossible (h : ∀ σ, ¬ P σ) : MGUProp P
+  | impossible (h : ∀ σ, ¬ P σ) : PrincipalProp R P
+
+/-- **The unification instance**: most general in the full `MoreGeneral` sense, which is the right
+comparison here — `unify`'s answer is compared against other *unifiers of the same equations*, and
+those speak about every variable the equations mention.
+
+An elaborator cannot ask for this: it draws variables its caller never mentioned, and a competing
+solution says nothing about them (`Stlc/Named/Typing/Principality.lean` proves the resulting
+statement false). That is why the comparison is a parameter and not baked in — see
+`TypeSystem.PrincipalElaborate`, which instantiates it at `MoreGeneralBelow`. -/
+abbrev MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) : Type :=
+  PrincipalProp MoreGeneral P
 
 /-- Forget most-generality. The converse is not definable, which is what makes the split worth
 having: everything proved about `SolutionProp` applies to an `MGUProp` for free, and nothing that
 merely decides has to pretend to more. -/
-def MGUProp.toSolution {𝕊 : Type} [HasSubst 𝕊 𝕊] {P : Subst 𝕊 → Prop} :
-    MGUProp P → SolutionProp P
+def PrincipalProp.toSolution {𝕊 : Type} {R : Subst 𝕊 → Subst 𝕊 → Prop} {P : Subst 𝕊 → Prop} :
+    PrincipalProp R P → SolutionProp P
   | .mgu σ hσ _ => .solution σ hσ
   | .impossible h => .impossible h
 

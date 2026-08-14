@@ -359,14 +359,15 @@ and no later declaration can ever observe an unsolved one.
 
 **What is and is not claimed.** `elabSubst_sound` is sorry-free, so a successful elaboration
 carries a real `HasType` derivation, and `JComplete.elabSubst_complete` is too, so a *declaration*
-that fails to elaborate has no typing. Most-generality is **not** claimed — that is
-`TypeSystem.PrincipalElaborate`, still open — and without it whole-*program* completeness does not
-follow either: the elaborator commits to one solution per declaration, and a later declaration may
-need a different one. What is proved is the direction a printer needs, `elabProgram?_self`: an
+that fails to elaborate has no typing. Most-generality is claimed **on the source**
+(`JComplete.elabSubst_principal_below`), which is the strongest form available — the unrestricted
+one is false, and `Typing/Principality.lean` proves it. Whole-*program* completeness still does not
+follow: the elaborator commits to one solution per declaration, and a later declaration may need a
+different one. What is proved is the direction a printer needs, `elabProgram?_self`: an
 already-elaborated program re-elaborates to itself.
 
-The front end no longer reports `sorryAx` at all: `stlcUnambiguous` is derived rather than
-assumed, and the elaboration half was already sorry-free.
+Nothing here reports `sorryAx`: `stlcUnambiguous` is derived rather than assumed, and both halves
+of elaboration are theorems.
 -/
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/

@@ -188,6 +188,8 @@ identity, so the empty answer is at least as general as anything with the empty 
 Worth noting against STLC, where the same field costs a `sorry`. Most-generality is only hard when
 there is inference to be most general *about*. -/
 instance : TypeSystem.PrincipalElaborate Name Name Name where
+  -- this language draws no metavariables of its own, so the principality claim is unrestricted
+  sourceFresh _ _ _ := 0
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
   elaborate Γ t τ :=
@@ -196,7 +198,7 @@ instance : TypeSystem.PrincipalElaborate Name Name Name where
         (by
           show declaredAt (HasSubst.pSubst Γ (∅ : Subst Name)) t τ = true
           rw [declaredAt_pSubst]; exact h)
-        (fun _ _ => ⟨∅, fun _ => rfl⟩)
+        (fun _ _ => ⟨∅, fun _ _ => rfl⟩)
     else
       .impossible (fun σ hσ => h (by
         have h' : declaredAt (HasSubst.pSubst Γ σ) t τ = true := hσ

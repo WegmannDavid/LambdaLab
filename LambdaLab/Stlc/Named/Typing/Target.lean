@@ -66,8 +66,8 @@ This file used to also carry `elaborate`, returning a subtype that demanded most
 alongside the typing, and `Complete`, the corresponding `none`-case obligation. Nothing ever
 consumed either: the elaborator on the live path is `elabSubst`, and the two obligations are now
 stated where an instance can discharge them — most-generality as
-`TypeSystem.PrincipalElaborate.Principal` (still open), completeness as a theorem (proved). Both
-are deleted rather than kept as an unreferenced specification carrying the file's only `sorry`.
+`TypeSystem.PrincipalElaborate`'s comparison, completeness as a theorem. Both are deleted rather
+than kept as an unreferenced specification carrying the file's only `sorry`.
 -/
 
 /-- **The computation.** Generate every constraint, then solve once — with the *declared* type
@@ -125,13 +125,13 @@ of substitutions agreeing below `n` (`AgreeBelow`). One wrinkle the sketch misse
 form does not induct, because the `lam` case would have to split a declared `τ` that may be a bare
 metavariable. `JComplete.complete_aux` is the synthesising form that does.
 
-**And that is not the end of it — most-generality remains open.** `unify_mgu` then gives
-`MoreGeneral σ σ''`, and transferring that to σ' needs the generality witness patched above the
-threshold — sound only if the *pruned* substitution's **range** also stays below it. It need not:
-unifying `(?0, ⋆ → ?d)` for a drawn `?d`
-binds the source variable `?0` to a type mentioning `?d`. Establishing that bound is the same
-obstacle `W_principal` has, reached by a different road, and it is why
-`TypeSystem.PrincipalElaborate` — the class that now states this conjunct — has no instance. -/
+**And it is exactly half of most-generality.** `unify_mgu` then gives `MoreGeneral σ σ''`, and
+transferring that to σ' works *below the source threshold* and only there: the pruned
+substitution's **range** need not stay below it — unifying `(?0, ⋆ → ?d)` for a drawn `?d` binds
+the source variable `?0` to a type mentioning `?d` — so above the threshold there is nothing to
+transfer. That is not a gap in the argument but a fact about the problem:
+`Typing/Principality.lean` proves the unrestricted claim false. The restricted one is
+`JComplete.elabSubst_principal_below`, and it is what `TypeSystem.PrincipalElaborate` asks for. -/
 def GenerationComplete : Prop :=
   ∀ (Γ : Ctx N) (t : Term N) (τ τg : Ty) (n n' : Nat) (C : Equations Ty) (σ' : Subst Ty),
     HasVars.fresh Γ ≤ n → HasVars.fresh t ≤ n → HasVars.fresh τ ≤ n →
