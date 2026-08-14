@@ -168,7 +168,15 @@ def parseVar {G : Grammar Tok} (e : G.Ent) (l : Level (G.entry e)) :
         some (Expr.var t h, RightSublist.consTail t rest)
       else none
 
-/-! ## Longest match among candidate operators -/
+/-! ## Longest match at the parser's two choice points
+
+`parseExprList` picks among a level's candidate operators, and `parseExpr` at a `.tighterEq` level
+picks between the operator's own body and a strictly tighter tree. **Both** take the longest match
+rather than the first success, and both have to: a candidate that does not use its operator falls
+through to a bare operand and so "succeeds" trivially, which under `orElse` would let candidate
+order decide the parse. It is also what makes exactness provable — `Exact.lean`'s induction shows
+at each choice point that the printed tree is *among* the alternatives, and longest match does the
+rest. -/
 
 /-- Prefer whichever parse consumed **more** (shorter leftover); ties go to the first argument. -/
 def longer {α : Type} {tkns : List Tok}
@@ -203,14 +211,17 @@ mutual
         else if hl : ((G.entry e).operator a).isInfxl = true then
           parseInfixL e a hl tkns
         else
+          -- longest match, not `orElse`: the fall-through always succeeds when a tighter tree
+          -- parses, so preferring the body unconditionally could stop short of it
           let fallthrough : Option (Expr G e (.tighterEq a) × RightSublist tkns) :=
             (parseExpr e (.tighter a) tkns).map
               (fun x => (x.1.reindex (l := .tighter a) (l' := .tighterEq a)
                           (fun _o hh => Tighter.toTighterEq
                             (show Tighter (G.entry e).tighter a _o from hh)), x.2))
-          ((parseParts (Operator.body e a) tkns).map
-            (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G e (.tighterEq a)), x.2))).orElse
-            (fun _ => fallthrough)
+          longer
+            ((parseParts (Operator.body e a) tkns).map
+              (fun x => ((Expr.op a TighterEq.refl x.1 : Expr G e (.tighterEq a)), x.2)))
+            fallthrough
   termination_by (tkns.length, Level.measure l, 0)
   decreasing_by
     all_goals simp_wf

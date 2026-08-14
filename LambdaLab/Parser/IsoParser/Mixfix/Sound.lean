@@ -100,13 +100,16 @@ theorem parseExpr_sound (e : G.Ent) (l : Level (G.entry e)) (tkns : List Tok) :
         t.flatten ++ s.list = acc.flatten ++ tkns)
     (motive7 := fun e l cs h hrank tkns =>
       ∀ t s, @parseExprList Tok inst G e l cs h hrank tkns = some (t, s) → t.flatten ++ s.list = tkns)
-  case case5 e tkns a hj hl ihExpr ihParts =>
-    intro t s heq
+  case case5 =>
+    -- Named from the *end* (`intros; rename_i`) rather than by positional `case` binders: the same
+    -- script runs against three different `induct` principles, and those differ in how many
+    -- inaccessible variables precede the case's own.
+    intros
+    rename_i hj hl ihExpr ihParts t s heq
     rw [parseExpr] at heq
     rw [dif_neg hj, dif_neg hl] at heq
     dsimp only at heq
-    rw [orElse_eq_some] at heq
-    rcases heq with h | ⟨_, h⟩
+    rcases longer_eq_some heq with h | h
     · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
       obtain ⟨⟨xp, xs⟩, hx, rfl, rfl⟩ := h
       simpa [Expr.flatten] using ihParts xp xs hx
@@ -143,7 +146,310 @@ theorem parseExpr_sound (e : G.Ent) (l : Level (G.entry e)) (tkns : List Tok) :
     rw [parseJuxt] at ha
     simp_all (config := { zetaDelta := true })
     try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
-  case case14 e l y rest' tkns ihExpr ihParts p s heq =>
+  case case14 =>
+    intros
+    rename_i ihExpr ihParts p s heq
+    rw [parseParts] at heq
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff, Prod.mk.injEq] at heq
+    obtain ⟨x, hx, z, hz, rfl, rfl⟩ := heq
+    have h1 := ihParts x z.1 z.2 hz
+    have h2 := ihExpr x.1 x.2 hx
+    simp only [Parts.flatten, RightSublist.trans_list, List.append_assoc, h1, h2]
+  all_goals intros
+  all_goals first
+    | done
+    | (simp_all [parseParts, parseExprList, parseVar, Expr.flatten, Parts.flatten]; done)
+    | (rename_i heq
+       rw [parseExprList] at heq
+       rcases longer_eq_some heq with h | h <;>
+         first
+           | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at h
+              obtain ⟨x, hx, rfl, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+              obtain ⟨x, hx, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done))
+    | (rename_i heq
+       rw [parseExpr] at heq
+       rw [orElse_eq_some] at heq
+       rcases heq with h | ⟨_, h⟩ <;>
+         first
+           | (exact parseVar_sound _ _ _ h)
+           | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at h
+              obtain ⟨x, hx, rfl, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+              obtain ⟨x, hx, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done))
+    | (rename_i heq
+       first
+         | rw [parseParts] at heq
+         | rw [parseJuxtExtend] at heq
+         | rw [parseInfixLExtend] at heq
+         | rw [parseExprList] at heq
+         | rw [parseExpr] at heq
+         | rw [parseJuxt] at heq
+         | rw [parseInfixL] at heq
+       first
+         | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨x, hx, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at heq
+            obtain ⟨x, hx, y, hy, rfl, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨x, hx, y, hy, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨a, b, hab, rfl, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp_all (config := { zetaDelta := true })
+              [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]
+            try (obtain ⟨rfl, rfl⟩ := heq
+                 simp_all (config := { zetaDelta := true })
+                   [parseVar, Expr.flatten, Parts.flatten, List.append_assoc])
+            done)
+         | (split at heq <;>
+              first
+                | (simp at heq; done)
+                | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+                   obtain ⟨a, b, hab, rfl, rfl⟩ := heq
+                   simp_all [Expr.flatten, Parts.flatten, List.append_assoc])
+                | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)))
+
+/-- **Soundness of `parseParts`**, exported.
+
+The same seven-motive induction as above, asking for the *body* conclusion instead of the
+expression one. Exactness needs it in order to bound a body parse it did not itself produce, and
+functional induction gives no way to export two conclusions from a single run — hence the repeated
+script rather than a shared lemma. -/
+theorem parseParts_sound (ps : List (Part G)) (tkns : List Tok) :
+    ∀ (p : Parts G ps) (s : RightSublist tkns),
+      parseParts ps tkns = some (p, s) → p.flatten ++ s.list = tkns := by
+  induction ps, tkns using parseParts.induct
+    (motive1 := fun e l tkns =>
+      ∀ t s, @parseExpr Tok inst G e l tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive3 := fun e o hl tkns =>
+      ∀ t s, @parseInfixL Tok inst G e o hl tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive4 := fun e o hl acc tkns =>
+      ∀ t s, @parseInfixLExtend Tok inst G e o hl acc tkns = some (t, s) →
+        t.flatten ++ s.list = acc.flatten ++ tkns)
+    (motive5 := fun e j hj tkns =>
+      ∀ t s, @parseJuxt Tok inst G e j hj tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive6 := fun e j hj acc tkns =>
+      ∀ t s, @parseJuxtExtend Tok inst G e j hj acc tkns = some (t, s) →
+        t.flatten ++ s.list = acc.flatten ++ tkns)
+    (motive7 := fun e l cs h hrank tkns =>
+      ∀ t s, @parseExprList Tok inst G e l cs h hrank tkns = some (t, s) → t.flatten ++ s.list = tkns)
+  case case5 =>
+    -- Named from the *end* (`intros; rename_i`) rather than by positional `case` binders: the same
+    -- script runs against three different `induct` principles, and those differ in how many
+    -- inaccessible variables precede the case's own.
+    intros
+    rename_i hj hl ihExpr ihParts t s heq
+    rw [parseExpr] at heq
+    rw [dif_neg hj, dif_neg hl] at heq
+    dsimp only at heq
+    rcases longer_eq_some heq with h | h
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨⟨xp, xs⟩, hx, rfl, rfl⟩ := h
+      simpa [Expr.flatten] using ihParts xp xs hx
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨⟨xp, xs⟩, hx, rfl, rfl⟩ := h
+      simpa using ihExpr xp xs hx
+  case case15 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case16 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case17 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case21 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case22 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case23 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case14 =>
+    intros
+    rename_i ihExpr ihParts p s heq
+    rw [parseParts] at heq
+    simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff, Prod.mk.injEq] at heq
+    obtain ⟨x, hx, z, hz, rfl, rfl⟩ := heq
+    have h1 := ihParts x z.1 z.2 hz
+    have h2 := ihExpr x.1 x.2 hx
+    simp only [Parts.flatten, RightSublist.trans_list, List.append_assoc, h1, h2]
+  all_goals intros
+  all_goals first
+    | done
+    | (simp_all [parseParts, parseExprList, parseVar, Expr.flatten, Parts.flatten]; done)
+    | (rename_i heq
+       rw [parseExprList] at heq
+       rcases longer_eq_some heq with h | h <;>
+         first
+           | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at h
+              obtain ⟨x, hx, rfl, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+              obtain ⟨x, hx, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done))
+    | (rename_i heq
+       rw [parseExpr] at heq
+       rw [orElse_eq_some] at heq
+       rcases heq with h | ⟨_, h⟩ <;>
+         first
+           | (exact parseVar_sound _ _ _ h)
+           | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at h
+              obtain ⟨x, hx, rfl, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done)
+           | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
+              obtain ⟨x, hx, rfl⟩ := h
+              simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+              done))
+    | (rename_i heq
+       first
+         | rw [parseParts] at heq
+         | rw [parseJuxtExtend] at heq
+         | rw [parseInfixLExtend] at heq
+         | rw [parseExprList] at heq
+         | rw [parseExpr] at heq
+         | rw [parseJuxt] at heq
+         | rw [parseInfixL] at heq
+       first
+         | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨x, hx, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff, Prod.mk.injEq] at heq
+            obtain ⟨x, hx, y, hy, rfl, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨x, hx, y, hy, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+            obtain ⟨a, b, hab, rfl, rfl⟩ := heq
+            simp_all [Expr.flatten, Parts.flatten, List.append_assoc]
+            done)
+         | (simp_all (config := { zetaDelta := true })
+              [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]
+            try (obtain ⟨rfl, rfl⟩ := heq
+                 simp_all (config := { zetaDelta := true })
+                   [parseVar, Expr.flatten, Parts.flatten, List.append_assoc])
+            done)
+         | (split at heq <;>
+              first
+                | (simp at heq; done)
+                | (simp only [Option.map_eq_some_iff, Option.bind_eq_some_iff] at heq
+                   obtain ⟨a, b, hab, rfl, rfl⟩ := heq
+                   simp_all [Expr.flatten, Parts.flatten, List.append_assoc])
+                | (simp_all [parseVar, Expr.flatten, Parts.flatten, List.append_assoc]; done)))
+
+/-- **Soundness of `parseExprList`**, exported, for the same reason as `parseParts_sound`. -/
+theorem parseExprList_sound (e : G.Ent) (l : Level (G.entry e)) (cs : List (G.entry e).Op)
+    (h : ∀ c ∈ cs, ∀ o, TighterEq (G.entry e).tighter c o → Level.condition l o)
+    (hrank : ∀ c ∈ cs, (G.entry e).rank c < Level.base l) (tkns : List Tok) :
+    ∀ (t : Expr G e l) (s : RightSublist tkns),
+      parseExprList e l cs h hrank tkns = some (t, s) → t.flatten ++ s.list = tkns := by
+  induction e, l, cs, h, hrank, tkns using parseExprList.induct
+    (motive1 := fun e l tkns =>
+      ∀ t s, @parseExpr Tok inst G e l tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive2 := fun ps tkns =>
+      ∀ p s, @parseParts Tok inst G ps tkns = some (p, s) → p.flatten ++ s.list = tkns)
+    (motive3 := fun e o hl tkns =>
+      ∀ t s, @parseInfixL Tok inst G e o hl tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive4 := fun e o hl acc tkns =>
+      ∀ t s, @parseInfixLExtend Tok inst G e o hl acc tkns = some (t, s) →
+        t.flatten ++ s.list = acc.flatten ++ tkns)
+    (motive5 := fun e j hj tkns =>
+      ∀ t s, @parseJuxt Tok inst G e j hj tkns = some (t, s) → t.flatten ++ s.list = tkns)
+    (motive6 := fun e j hj acc tkns =>
+      ∀ t s, @parseJuxtExtend Tok inst G e j hj acc tkns = some (t, s) →
+        t.flatten ++ s.list = acc.flatten ++ tkns)
+  case case5 =>
+    -- Named from the *end* (`intros; rename_i`) rather than by positional `case` binders: the same
+    -- script runs against three different `induct` principles, and those differ in how many
+    -- inaccessible variables precede the case's own.
+    intros
+    rename_i hj hl ihExpr ihParts t s heq
+    rw [parseExpr] at heq
+    rw [dif_neg hj, dif_neg hl] at heq
+    dsimp only at heq
+    rcases longer_eq_some heq with h | h
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨⟨xp, xs⟩, hx, rfl, rfl⟩ := h
+      simpa [Expr.flatten] using ihParts xp xs hx
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨⟨xp, xs⟩, hx, rfl, rfl⟩ := h
+      simpa using ihExpr xp xs hx
+  case case15 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case16 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case17 =>
+    intros; rename_i ha
+    rw [parseInfixL] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case21 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case22 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case23 =>
+    intros; rename_i ha
+    rw [parseJuxt] at ha
+    simp_all (config := { zetaDelta := true })
+    try (obtain ⟨rfl, rfl⟩ := ha; simp_all (config := { zetaDelta := true }))
+  case case14 =>
+    intros
+    rename_i ihExpr ihParts p s heq
     rw [parseParts] at heq
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff, Prod.mk.injEq] at heq
     obtain ⟨x, hx, z, hz, rfl, rfl⟩ := heq

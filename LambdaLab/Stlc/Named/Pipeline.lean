@@ -319,7 +319,7 @@ after the same unfolding. -/
   AnnTm := fun x => { t : Expr stlcGrammar SEnt.tm .loosest // truncExpr sRules t = x }
 
   pTy :=
-    ((mixfix stlcUnambiguous (G := stlcGrammar) SEnt.ty .loosest).weakenFollow
+    ((mixfix (G := stlcGrammar) SEnt.ty .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwAssign := ht
@@ -331,7 +331,7 @@ after the same unfolding. -/
   keywords_excluded := by decide
 
   pTm :=
-    ((mixfix stlcUnambiguous (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
+    ((mixfix (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht

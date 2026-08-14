@@ -5,20 +5,23 @@ import LambdaLab.Parser.IsoParser.Basic
 # FOLLOW, the grammar's lexical conditions, and the round-trip law — decomposed
 
 The round-trip law (print a tree, parse it back, recover *that* tree) splits into three parts,
-only one of which is open:
+none of which is open any more:
 
 ```
-  parseExpr_exact   (OPEN)  -- the parser consumes EXACTLY the printed tokens
+  parseExpr_exact   (proved, Exact.lean)  -- the parser consumes EXACTLY the printed tokens
 + parseExpr_sound   (proved, Sound.lean)
-+ Unambiguous G     (hypothesis)
++ Unambiguous G     (proved, Unambiguity.lean)
 ⇒ parseExpr_complete       ⇒  mixfix's `ok`
 ```
 
-Two hypotheses are genuinely necessary, not artifacts of the proof:
+`Unambiguous G` is genuinely necessary and not an artifact of the proof: `Ambiguity.lean` exhibits
+a grammar with two operators sharing a notation and *proves* the law false for it
+(`law_not_universal`). Any deterministic parser returns one tree for one token list, so the other
+cannot round-trip. It is no longer a *hypothesis* only because `Unambiguity.lean` derives it from
+the grammar's own lexical fields.
 
-* **`Unambiguous G`.** `Ambiguity.lean` exhibits a grammar with two operators sharing a notation
-  and *proves* the law false for it (`law_not_universal`). Any deterministic parser returns one
-  tree for one token list, so the other cannot round-trip. No proof effort removes this.
+This file supplies the FOLLOW machinery both halves need; `Exact.lean` finishes the law.
+
 The grammar's three **lexical** conditions (`headsDistinct`, `varDisjoint` on `Entry`;
 `interiorTerminates` on `Grammar`) are *fields*, not hypotheses: they would otherwise thread
 through all seven motives of `parseExpr_exact` and through the whole unambiguity development.
@@ -731,143 +734,17 @@ def runExpr (e : G.Ent) (l : Level (G.entry e)) (input : List Tok) :
     Option (Expr G e l × List Tok) :=
   (parseExpr e l input).map (fun x => (x.1, x.2.list))
 
-/-- **The one open lemma.** The parser succeeds on a printed tree followed by an admissible
-continuation, and consumes *exactly* the printed part.
+/-! ## Where the law is finished
 
-It does **not** mention unambiguity: it is purely a statement about how *much* is consumed. This
-is where the per-level FOLLOW earns its keep (stopping the greedy folds from eating into `rest`),
-where `interiorTerminates` earns its keep (the `)` of `( _ )` stops the hole's parser), and where
-longest-match earns its keep (a candidate that really uses its operator consumes strictly more
-than one that falls through to a bare operand, so the parser cannot stop short).
+`parseExpr_exact` and `parseExpr_complete` used to live here, the first of them a `sorry` with a
+long roadmap attached. They are now **proved**, in `Exact.lean` — which has to sit above
+`Unambiguity.lean` rather than here, because half of exactness ("the parser did not run long") is
+unique decomposition, and that is what `Unambiguity.lean` proves.
 
-## Roadmap
-
-The induction is mutual over `parseExpr.induct`'s **seven** motives, exactly as `Sound.lean`'s.
-For each parse function, the statement to prove on `t.flatten ++ rest`:
-
-| function            | statement                                                              |
-|---------------------|------------------------------------------------------------------------|
-| `parseExpr`         | succeeds, leftover `= rest`                                             |
-| `parseExprList`     | ditto, *given* the printed tree's top operator is among the candidates  |
-| `parseParts`        | ditto for a body shape, operand by operand                              |
-| `parseJuxt`         | ditto for a whole application chain                                     |
-| `parseJuxtExtend`   | **shifted**: from `acc`, consumes the remaining chain (`acc.flatten ++ …`) |
-| `parseInfixL`       | ditto for a left-associative chain                                      |
-| `parseInfixLExtend` | **shifted**, as `parseJuxtExtend`                                       |
-
-The two accumulator folds need the *shifted* form (`acc.flatten ++ tkns`, not `tkns`) — stated
-unshifted the induction does not go through; `Sound.lean` hit the same wall and its `motive4`/
-`motive6` show the shape.
-
-`motive1`'s direction, which type-checks and is what the others follow:
-
-```lean
-motive1 e l tkns := ∀ (t : Expr G e l) (rest : List Tok),
-  tkns = t.flatten ++ rest → FollowAt e l rest →
-  ∃ t' s, parseExpr e l tkns = some (t', s) ∧ s.list = rest
-```
-
-and `motive2` carries `Seamed ps` and `PartsFollow ps rest` besides — both defined above, with
-`seamed_body` already discharging the first for every body the parser hands to `parseParts`.
-
-The decompositions the two fold motives are stated over — `juxt_decomp'` and `infxl_decomp'` —
-now exist above, together with the folds themselves (`juxtFold`, `infxlFold`) and their `snoc` and
-`flatten` laws. So all seven motives can now be written down.
-
-**What is left is the induction itself**: instantiating `parseExpr.induct` with the seven motives
-and discharging the cases. Every fact the three content-carrying places need is now proved:
-
-| what the case needs | lemma |
-|---|---|
-| interior seam stops the hole | `follow_of_interior` |
-| an operator's own operand seam | `not_continuesAt_tighter_head` |
-| bodies satisfy the seam condition | `seamed_body`, `seamed_body_tail` |
-| a chain is a base plus a list | `juxt_decomp'`, `infxl_decomp'` |
-| the base inherits the chain's FOLLOW | `FollowAt.tighter_of_tighterEq` |
-| a greedy fold cannot eat into `rest` | `no_tree_at_followAt_juxt`, via `Expr.flatten_startsOperand'` |
-
-### The seven motives, validated
-
-These elaborate against `parseExpr.induct` — checked, so the next attempt need not re-derive them:
-
-```lean
-motive1 e l tkns        := ∀ t rest, tkns = t.flatten ++ rest → FollowAt e l rest →
-                             ∃ t' s, parseExpr e l tkns = some (t', s) ∧ s.list = rest
-motive2 ps tkns         := ∀ p rest, ps ≠ [] → Seamed ps → PartsFollow ps rest →
-                             tkns = p.flatten ++ rest →
-                             ∃ p' s, parseParts ps tkns = some (p', s) ∧ s.list = rest
-motive3/5 (InfixL/Juxt) := as motive1, at `Level.tighterEq o`
-motive4/6 (the folds)   := ∀ (ps/xs) rest, tkns = (…map flatten).flatten ++ rest →
-                             FollowAt e (tighterEq o) rest →
-                             (empty → extend … = none) ∧ (nonempty → … = some (t', s) ∧ …)
-motive7 e l cs h hr tkns := as motive1, plus `∃ c ∈ cs, TighterEq c o`
-```
-
-**`ps ≠ []` in `motive2` is load-bearing, not hygiene.** Without it the motive is *false*:
-`parseParts [] tkns = none` for every input, while `Parts G []` is inhabited by `nil` with empty
-flattening — so the motive would assert the parser succeeds on an empty body. Operator bodies are
-never empty, so the hypothesis costs nothing.
-
-### What the remaining work actually is
-
-Measured, not estimated: with the motives above, **26 of the 28 cases are still open**, and the
-catch-all tactic block that carries most of `Sound.lean` closes essentially none of them. Exactness
-is not soundness-with-the-arrow-turned-round; each case has to argue that the parser consumed
-*neither less nor more*, and the two halves need different machinery (longest-match for the first,
-FOLLOW for the second). Budget accordingly: this is a proof to be written case by case, not a
-grind against an existing template.
-
-Three places carry the real content, and each is where one hypothesis earns its keep:
-
-1. **Nothing stops short.** `longer` takes the longest match, and a candidate that genuinely uses
-   its operator consumes strictly more than one that falls through to a bare operand — so the
-   fold cannot stop early. Needs: the printed tree's own operator is a candidate at this level
-   (`Level.condition`), and its parse consumes everything it printed (the IH).
-2. **Nothing runs long.** The greedy folds must not eat into `rest`. This is `FollowAt`: at the
-   operand's level nothing in `rest` can continue the expression. Note the level-sensitivity —
-   at `loosest` a variable *does* continue (juxtaposition), at a tighter level it does not.
-3. **Seams stop the hole**, and there are **two kinds**, needing different lemmas — worth knowing
-   before starting, since assuming one kind covers both is the obvious wrong turn:
-   * *Interior* seams, inside a notation: the `)` of `( _ )`. Full `follow` holds there, via
-     `follow_of_interior` from `interiorTerminates` — and it must be read at the *hole's* entry,
-     not the host's.
-   * The operator's *own operand* seam: the leading hole of `a + b` is followed by `+`. Full
-     `follow` is **false** here (`+` continues an expression), and `interiorTerminates` says
-     nothing about it, because `holeFollowers` covers only a notation's interior. What carries it
-     is the per-level condition, via `not_continuesAt_tighter_head` above.
-
-   So the side condition threaded through `motive2` cannot be "every hole is followed by a token in
-   `follow`". It has to be the per-level `¬ ContinuesAt e l t` at each hole's own level, which the
-   first bullet implies and the second bullet supplies directly.
-
-Useful existing machinery: `longer_eq_some` and `orElse_eq_some` (a bare `split` generalises both
-alternatives into opaque variables and severs the IHs), the cast lemmas
-`Parts.flatten_cast`/`Expr.reindex_flatten`/`juxtApp_flatten`/`infxlApp_flatten`, and
-`zetaDelta := true` for the `let`-bound left operand. `parseExpr.induct` already splits the
-nested matches — re-splitting them is what breaks the IHs. -/
-theorem parseExpr_exact {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l)
-    (rest : List Tok) (hF : FollowAt e l rest) :
-    ∃ t', runExpr e l (t.flatten ++ rest) = some (t', rest) := by
-  sorry
-
-/-- **Completeness**: printing a tree and parsing it back recovers *that* tree. Three lines from
-the decomposition — soundness turns "leftover = rest" into "the trees print alike", and
-unambiguity turns that into "the trees are equal". -/
-theorem parseExpr_complete (hU : Unambiguous G) {e : G.Ent}
-    {l : Level (G.entry e)} (t : Expr G e l) (rest : List Tok)
-    (hF : HeadIn (fun t => follow e t = true) rest) :
-    runExpr e l (t.flatten ++ rest) = some (t, rest) := by
-  obtain ⟨t', ht'⟩ := parseExpr_exact t rest (followAt_of_follow hF)
-  have hsound : t'.flatten ++ rest = t.flatten ++ rest := by
-    simp only [runExpr, Option.map_eq_some_iff] at ht'
-    obtain ⟨x, hx, hxe⟩ := ht'
-    have hs := parseExpr_sound e l (t.flatten ++ rest) x.1 x.2 hx
-    simp only [Prod.mk.injEq] at hxe
-    obtain ⟨rfl, hrest⟩ := hxe
-    rw [hrest] at hs
-    exact hs
-  have ht : t' = t := hU e l t' t (by simpa using hsound)
-  subst ht
-  exact ht'
+What stays in this file is what the proof consumes: the per-level FOLLOW (`ContinuesAt`/
+`FollowAt`), the two seam lemmas (`follow_of_interior`, `not_continuesAt_tighter_head`), the body
+side conditions (`Seamed`/`PartsFollow`, `seamed_body`, `seamed_body_tail`), the two chain
+decompositions (`juxt_decomp'`, `infxl_decomp'`), and the fact that no tree starts at a FOLLOW
+token (`no_tree_at_followAt_juxt`). Each is used by name there. -/
 
 end LambdaLab.Parser.IsoParser.Mixfix

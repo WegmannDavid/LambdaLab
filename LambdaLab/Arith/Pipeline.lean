@@ -15,9 +15,9 @@ which the framework derives the command parser, the file parser, the round-trip 
 morphism, and the `List Char ⇝ Program` pipeline (`Main.lean` runs it).
 
 Historical layers this file once carried (a combinator-only grammar and a hand-proved recursive
-parser — the unconditional round-trip proof whose mixfix analogue is still the one open `sorry`)
-were superseded by the `Parser/` stack and live in git history; the combinator idioms are shown
-in `Parser/IsoParser/Example.lean`.
+parser — the unconditional round-trip proof whose mixfix analogue was for a long time the one open
+`sorry`, and is now `Mixfix/Exact.lean`) were superseded by the `Parser/` stack and live in git
+history; the combinator idioms are shown in `Parser/IsoParser/Example.lean`.
 -/
 
 namespace LambdaLab.Arith
@@ -249,9 +249,10 @@ end Truncation
 /-! ### Unambiguity
 
 The grammars' *lexical* conditions are discharged inline above, as `Entry`/`Grammar` fields.
-What `mixfix` asks for on top of them is `Unambiguous` — `flatten` injective — which is **not**
-decidable, since it quantifies over all trees. It is not assumed either: `Unambiguity.lean` derives
-it from those fields for *every* grammar, so both theorems below are one application. -/
+`Unambiguous` — `flatten` injective — is **not** decidable, since it quantifies over all trees, and
+is no longer asked for: `Unambiguity.lean` derives it from those fields for *every* grammar, so
+`mixfix` takes no hypothesis at all. The two theorems below are one application each, and are kept
+because they are what that derivation says about *these* grammars. -/
 
 /-- The arithmetic term grammar is unambiguous — **derived**, not assumed, and sorry-free. -/
 theorem aUnambiguous : Unambiguous aGrammar := unambiguous aGrammar
@@ -282,7 +283,7 @@ def arithLanguage : Language where
   -- types: the mixfix parser at the type grammar; FOLLOW narrowed to `:=` — sound exactly
   -- because `:=` is in it (`follow_assign`).
   pTy :=
-    ((mixfix tyUnambiguous (G := tyGrammar) () .loosest).weakenFollow
+    ((mixfix (G := tyGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwAssign := ht
@@ -296,7 +297,7 @@ def arithLanguage : Language where
   keywords_excluded := by decide
 
   pTm :=
-    ((mixfix aUnambiguous (G := aGrammar) () .loosest).weakenFollow
+    ((mixfix (G := aGrammar) () .loosest).weakenFollow
       (by
         intro t ht
         have h : t = kwDef := ht

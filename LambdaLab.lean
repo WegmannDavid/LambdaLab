@@ -77,6 +77,7 @@ import LambdaLab.Parser.IsoParser.Fix
 import LambdaLab.Parser.IsoParser.Mixfix.Basic
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Complete
+import LambdaLab.Parser.IsoParser.Mixfix.Exact
 import LambdaLab.Parser.IsoParser.Mixfix.Parse
 import LambdaLab.Parser.IsoParser.Mixfix.Sound
 import LambdaLab.Parser.IsoParser.Mixfix.Tree
