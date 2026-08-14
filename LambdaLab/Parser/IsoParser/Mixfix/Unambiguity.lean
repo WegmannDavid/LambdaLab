@@ -338,9 +338,8 @@ means `(a + b) + c` precisely because the left operand is allowed to run through
 
 So these operators need a different bound: the left operand is the **longest** decomposition, and
 uniqueness comes from the right operand sitting at `.tighter o` — *strictly* tighter — so it can
-carry no `o` at its top. Formally that is a depth-0/bracket-counting argument on the flattening,
-which is the kernel Danielsson–Norell only sketch and the earlier stack also left open
-(`topOp_unique_holeLed`). It is isolated as `splitLeftRec` below and is the whole remaining task.
+carry no `o` at its top. That is what `leftRecUd` does, by descending the chain and comparing the
+two spines; see "The left-recursive kernel" below.
 
 `juxt` is the sharpest case: it has **no token at all**, so the split of `f x y` into
 `juxt (juxt f x) y` is bounded by nothing lexical whatsoever — only by the right operand being a
@@ -557,7 +556,12 @@ theorem Parts.flatten_opCast {e : G.Ent} {o o' : (G.entry e).Op} (h : o' = o)
 open Classical in
 /-- **The spine unfold.** A tree at `.tighterEq o` becomes a *strictly tighter* base plus the list
 of body tails hanging off it, in left-to-right order. `n = 0` exactly when the top operator is not
-`o`. -/
+`o`.
+
+The kernel (`leftRecUd`) does **not** call this: unfolding one tree at a time would then need the
+unfold to be *injective*, i.e. a reconstruction lemma. Accumulating the tails and concluding about
+the refold (`Expr.leftRecFold`) gets that for free. This stays as the explicit normal form the
+argument is *about* — `spine_flatten` is the law it factors through. -/
 noncomputable def Expr.spine {e : G.Ent} {o : (G.entry e).Op}
     (hlr : ((G.entry e).operator o).leftRec = true) :
     Expr G e (Level.tighterEq o) →
@@ -640,10 +644,9 @@ Uniqueness then falls out of the ★ lemmas:
   that forces the two spines to have the same length, and it is the only place the *ambient* level
   is used.
 
-## Where the kernel actually stands (2026-08-13)
+## Where the kernel actually stands (2026-08-14)
 
-The spine view is built and the three obligations this file's ancestor carried are down to two,
-which are no longer of the same kind:
+Of the three obligations this file's ancestor carried, **one is left**:
 
 * **`varOp_ne` — CLOSED**, and without the spine. A variable leaf is one token, so an operator
   node sharing its first token must overrun it, and `op_var_head` names the token that does:
@@ -654,14 +657,16 @@ which are no longer of the same kind:
   and level. Its two side conditions come from `Seamed`/`PartsFollow`, which is what a *shape* can
   supply: a shape constrains what follows it only through a trailing hole and its interior only at
   the seams.
-* **Two gaps remain, and they are different problems.**
-  1. `topOp_unique_holeLed` — two *distinct* operators, at least one hole-led. See its docstring:
-     the separating fact is which extent is shorter, so it belongs inside the recursion.
-  2. The `leftRec` branch of `udExprN` — `infxl`/`juxt` bodies are not `Seamed`, so `udParts` does
-     not apply to them and they must be normalised through `Expr.spine` first.
-
-Both are about left-recursion and ambiguity of *extent*, which is what the spine exists for; the
-seam-and-FOLLOW half of the argument is finished. -/
+* **The `leftRec` branch of `udExprN` — CLOSED**, by `leftRecUd` (below `partsFollow_body`).
+  `infxl`/`juxt` bodies are not `Seamed`, so `udParts` cannot touch them; the branch hands both
+  bodies to a spine descent instead. The descent carries the peeled-off tails in an accumulator and
+  concludes about the **refold** (`Expr.leftRecFold`), which the peeling leaves invariant — so
+  `Expr.spine` is not used and no spine-injectivity lemma is needed. It bottoms out at two
+  non-`o`-headed trees, which are trees at `.tighter o` (`leftRec_view`, `Expr.decomp`), where ★
+  restores FOLLOW.
+* **One gap remains**: `topOp_unique_holeLed` — two *distinct* operators, at least one hole-led.
+  See its docstring: the separating fact is which extent is shorter, so it belongs inside the
+  recursion. It is no longer about left-recursion at all. -/
 
 /-! ### The token-led halves, which need no induction
 
@@ -1009,6 +1014,329 @@ theorem partsFollow_body {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op
   | infxl n => rw [hop] at hnl; simp [Operator.leftRec] at hnl
   | juxt    => rw [hop] at hnl; simp [Operator.leftRec] at hnl
 
+/-! ## The left-recursive kernel
+
+`infxl` and `juxt` are the operators `udParts` cannot see: their bodies are not `Seamed`, because
+the leading hole sits at `.tighterEq o`, exactly the level at which the operator's own continuation
+is applicable. The fix is the spine — but not `Expr.spine`, which would then need an injectivity
+proof. Instead the descent carries the tails it has peeled off as an explicit **accumulator**, and
+states its conclusion about the *refold*:
+
+    leftRecFold t₁ tails₁ = leftRecFold t₂ tails₂
+
+Peeling one node off `t₁` moves it into `tails₁` and leaves that expression unchanged
+(`leftRecFold acc (T :: ts) = leftRecFold (leftRecApp acc T) ts` is the definition), so the goal is
+literally invariant under the descent and no reconstruction lemma is needed. When both sides have
+descended to a **non-`o`-headed** tree, those are trees at `.tighter o` — where the ★ lemmas do
+supply FOLLOW — and the accumulated tail sequences are compared pairwise by `udParts`. -/
+
+omit [DecidableEq Tok] in
+/-- A left-recursive body is one node, its leading operand, and its tail. -/
+theorem Parts.leftRec_size {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (ps : Parts G (Operator.body e o)) :
+    ps.size = 1 + (ps.leftRecL hlr).size + (ps.leftRecT hlr).size := by
+  have hb := body_leftRec_cons hlr
+  rw [← Parts.size_cast hb ps]
+  unfold Parts.leftRecL Parts.leftRecT
+  cases (hb ▸ ps : Parts G (.hole e (Level.tighterEq o) :: (Operator.body e o).tail)) with
+  | hole L T => rfl
+
+/-- **The refold.** Hang a sequence of body tails off an accumulator, leftmost first — the inverse
+of the spine descent, and the invariant the kernel is stated over. -/
+def Expr.leftRecFold {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) :
+    Expr G e (Level.tighterEq o) → List (Parts G (Operator.body e o).tail) →
+      Expr G e (Level.tighterEq o)
+  | acc, []      => acc
+  | acc, T :: ts => Expr.leftRecFold hlr (Expr.leftRecApp hlr acc T) ts
+
+/-- The size of a tail sequence — the accumulator's share of the induction measure. -/
+def tailsSize {shape : List (Part G)} (ts : List (Parts G shape)) : Nat :=
+  (ts.map Parts.size).sum
+
+omit [DecidableEq Tok] in
+@[simp] theorem tailsSize_nil {shape : List (Part G)} :
+    tailsSize ([] : List (Parts G shape)) = 0 := rfl
+
+omit [DecidableEq Tok] in
+@[simp] theorem tailsSize_cons {shape : List (Part G)} (T : Parts G shape)
+    (ts : List (Parts G shape)) : tailsSize (T :: ts) = T.size + tailsSize ts := rfl
+
+/-- **The level-free content of a tree**: its top operator with its body, or its variable token.
+The level index and the applicability proof carry no data, so two trees at *one* level are equal as
+soon as this is (`Expr.eq_of_decomp`) — which is what lets a tree be re-levelled from
+`.tighterEq o` down to `.tighter o` when its top operator is not `o`, compared there, and the
+verdict carried back. -/
+def Expr.decomp {e : G.Ent} {l : Level (G.entry e)} :
+    Expr G e l → (Σ o : (G.entry e).Op, Parts G (Operator.body e o)) ⊕ Tok
+  | .op o _ ps => .inl ⟨o, ps⟩
+  | .var t _   => .inr t
+
+omit [DecidableEq Tok] in
+/-- Equal content at one level means equal trees: the two proof fields are `Prop`s. -/
+theorem Expr.eq_of_decomp {e : G.Ent} {l : Level (G.entry e)} (t₁ t₂ : Expr G e l)
+    (h : t₁.decomp = t₂.decomp) : t₁ = t₂ := by
+  cases t₁ with
+  | op o₁ c₁ ps₁ =>
+      cases t₂ with
+      | op o₂ c₂ ps₂ =>
+          simp only [Expr.decomp, Sum.inl.injEq, Sigma.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          rfl
+      | var b hb => simp [Expr.decomp] at h
+  | var a ha =>
+      cases t₂ with
+      | op o₂ c₂ ps₂ => simp [Expr.decomp] at h
+      | var b hb =>
+          simp only [Expr.decomp, Sum.inr.injEq] at h
+          subst h; rfl
+
+omit [DecidableEq Tok] in
+/-- One step of the descent: an `o`-headed tree at `.tighterEq o` *is* a `leftRecApp`. -/
+theorem leftRec_step {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true)
+    (c : Level.condition (Level.tighterEq o) o) (ps : Parts G (Operator.body e o)) :
+    ∃ (L : Expr G e (Level.tighterEq o)) (T : Parts G (Operator.body e o).tail),
+      Expr.op (l := Level.tighterEq o) o c ps = Expr.leftRecApp hlr L T ∧
+      (Expr.op (l := Level.tighterEq o) o c ps).flatten = L.flatten ++ T.flatten ∧
+      (Expr.op (l := Level.tighterEq o) o c ps).size = 2 + L.size + T.size := by
+  refine ⟨ps.leftRecL hlr, ps.leftRecT hlr, ?_, ?_, ?_⟩
+  · refine Expr.eq_of_decomp _ _ ?_
+    simp only [Expr.leftRecApp, Expr.decomp]
+    rw [← Parts.leftRec_eta hlr ps]
+  · rw [Expr.flatten, Parts.leftRec_flatten hlr ps]
+  · rw [Expr.size, Parts.leftRec_size hlr ps]; omega
+
+omit [DecidableEq Tok] in
+/-- **The dichotomy the descent runs on.** A tree at `.tighterEq o` either is `o`-headed — one
+`leftRecApp` step onto a strictly smaller tree — or already lives at `.tighter o`, where the ★
+lemmas apply (`TighterEq` minus reflexivity is `Tighter`; a `var` inhabits every level). -/
+theorem leftRec_view {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (t : Expr G e (Level.tighterEq o)) :
+    (∃ (L : Expr G e (Level.tighterEq o)) (T : Parts G (Operator.body e o).tail),
+        t = Expr.leftRecApp hlr L T ∧ t.flatten = L.flatten ++ T.flatten ∧
+          t.size = 2 + L.size + T.size)
+    ∨ (∃ b : Expr G e (Level.tighter o),
+        b.decomp = t.decomp ∧ b.flatten = t.flatten ∧ b.size = t.size) := by
+  cases t with
+  | var a ha => exact Or.inr ⟨Expr.var a ha, rfl, rfl, rfl⟩
+  | op o' c ps =>
+      by_cases h : o' = o
+      · subst h; exact Or.inl (leftRec_step hlr c ps)
+      · have hc : Level.condition (Level.tighter o) o' := by
+          rcases TighterEq.toTighterOrEq c with heq | hT
+          · exact absurd heq.symm h
+          · exact hT
+        exact Or.inr ⟨Expr.op o' hc ps, rfl, rfl, rfl⟩
+
+omit [DecidableEq Tok] in
+/-- `leftRecApp` is injective on the components a body splits into — the inversion that turns the
+kernel's spine equality back into an equality of bodies. -/
+theorem Parts.eq_of_leftRecApp {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (p₁ p₂ : Parts G (Operator.body e o))
+    (h : Expr.leftRecApp hlr (p₁.leftRecL hlr) (p₁.leftRecT hlr)
+       = Expr.leftRecApp hlr (p₂.leftRecL hlr) (p₂.leftRecT hlr)) : p₁ = p₂ := by
+  have hd := congrArg Expr.decomp h
+  simp only [Expr.leftRecApp, Expr.decomp, Sum.inl.injEq, Sigma.mk.injEq, heq_eq_eq,
+    true_and] at hd
+  rw [Parts.leftRec_eta hlr p₁, Parts.leftRec_eta hlr p₂, hd]
+
+/-- ★★ **The head token of a body tail**, and the two facts the whole kernel runs on. For `infxl`
+it is the operator's own head token; for `juxt`, the first token of the right operand, which starts
+an operand. Either way it does **not** continue at `.tighter o` (the two ★ lemmas — this is what
+bounds the base) but **does** continue at `.tighterEq o`, where `o` is applicable by reflexivity —
+and that is what forbids one spine from running out before the other. -/
+theorem leftRec_tail_head {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) (T : Parts G (Operator.body e o).tail) :
+    ∃ x r, T.flatten = x :: r ∧ ¬ ContinuesAt e (Level.tighter o) x ∧
+      ContinuesAt e (Level.tighterEq o) x := by
+  cases hop : (G.entry e).operator o with
+  | infxl n =>
+      have hh : ((G.entry e).operator o).startsWithHole = true := by rw [hop]; rfl
+      have hhead : ((G.entry e).operator o).headTok? = some n.firstTok := by
+        rw [hop]; simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]
+      have hb : (Operator.body e o).tail = Part.namePart n.firstTok ::
+          ((Notation.toParts (G := G) n).tail ++ [Part.hole e (Level.tighter o)]) := by
+        unfold Operator.body; rw [hop]; simp [Notation.toParts_append_cons]
+      obtain ⟨r, hr⟩ := Parts.flatten_cons_namePart (hb ▸ T)
+      exact ⟨n.firstTok, r, by rw [← Parts.flatten_cast hb T, hr],
+        not_continuesAt_tighter_head hh hhead, Or.inl ⟨o, TighterEq.refl, hh, hhead⟩⟩
+  | juxt =>
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      cases hq : (hb ▸ T : Parts G [Part.hole e (Level.tighter o)]) with
+      | hole sub tl =>
+          obtain ⟨x, r, hxr, hstart⟩ := Expr.flatten_head sub
+          refine ⟨x, r ++ tl.flatten, ?_, not_continuesAt_tighter_juxt hop hstart,
+            Or.inr ⟨o, TighterEq.refl, hop, hstart⟩⟩
+          rw [← Parts.flatten_cast hb T, hq, Parts.flatten, hxr]; simp
+  | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+
+/-- **A tail sequence, then a stopping leftover, stops the base's level.** Either a tail follows —
+and its head token does not continue at `.tighter o` — or the leftover does, and stopping
+`.tighterEq o` stops `.tighter o`. This is the FOLLOW that the base comparison needs and that the
+`.tighterEq o` level cannot give. -/
+theorem tails_followAt_tighter {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true)
+    (tails : List (Parts G (Operator.body e o).tail)) {s : List Tok}
+    (hs : FollowAt e (Level.tighterEq o) s) :
+    FollowAt e (Level.tighter o) ((tails.map Parts.flatten).flatten ++ s) := by
+  cases tails with
+  | nil => simpa using FollowAt.tighter_of_tighterEq hs
+  | cons T ts =>
+      obtain ⟨x, r, hT, hnc, -⟩ := leftRec_tail_head hlr T
+      intro t ht
+      simp only [List.map_cons, List.flatten_cons, hT, List.cons_append, List.head?_cons,
+        Option.some.injEq] at ht
+      subst ht; exact hnc
+
+/-- A body tail ends in the right operand's hole, at `.tighter o` — so that is all it constrains
+about what follows it. -/
+theorem partsFollow_body_tail {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) {s : List Tok}
+    (hs : FollowAt e (Level.tighter o) s) : PartsFollow (Operator.body e o).tail s := by
+  cases hop : (G.entry e).operator o with
+  | infxl n =>
+      have hb : (Operator.body e o).tail
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; simp
+      rw [hb]; exact partsFollow_toParts_append n _ hs
+  | juxt =>
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      rw [hb]; exact hs
+  | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+
+/-- A left-recursive body tail **is** seamed, unlike the body it came from: the offending leading
+`.tighterEq` hole is exactly what `.tail` drops. `seamed_body_tail` for `infxl`; for `juxt` the
+tail is a single part, which is seamed vacuously. -/
+theorem seamed_body_tail_leftRec {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) : Seamed (Operator.body e o).tail := by
+  cases hop : (G.entry e).operator o with
+  | infxl n => exact seamed_body_tail (by rw [hop]; rfl)
+  | juxt =>
+      have hb : (Operator.body e o).tail = [Part.hole e (Level.tighter o)] := by
+        unfold Operator.body; rw [hop]; rfl
+      rw [hb]; exact trivial
+  | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+
+/-- **Two tail sequences that print alike are equal.** Pairwise comparison is `udParts` on
+`(Operator.body e o).tail`; a sequence that runs out first leaves the *other's* head token in its
+leftover, and that token continues at `.tighterEq o` — which the leftover stops. That is the step
+that forces equal lengths, and the only one that uses the ambient level. -/
+theorem udTails {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) {m : Nat}
+    (ihP : ∀ (q₁ q₂ : Parts G (Operator.body e o).tail) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        PartsFollow (Operator.body e o).tail r₁ → PartsFollow (Operator.body e o).tail r₂ →
+        q₁ = q₂ ∧ r₁ = r₂) :
+    ∀ (tails₁ tails₂ : List (Parts G (Operator.body e o).tail)) (s₁ s₂ : List Tok),
+      tailsSize tails₁ + tailsSize tails₂ ≤ m →
+      (tails₁.map Parts.flatten).flatten ++ s₁ = (tails₂.map Parts.flatten).flatten ++ s₂ →
+      FollowAt e (Level.tighterEq o) s₁ → FollowAt e (Level.tighterEq o) s₂ →
+      tails₁ = tails₂ ∧ s₁ = s₂ := by
+  intro tails₁
+  induction tails₁ with
+  | nil =>
+      intro tails₂ s₁ s₂ _ heq hs₁ hs₂
+      cases tails₂ with
+      | nil => exact ⟨rfl, by simpa using heq⟩
+      | cons T ts =>
+          exfalso
+          obtain ⟨x, r, hT, -, hcont⟩ := leftRec_tail_head hlr T
+          refine hs₁ x ?_ hcont
+          simp only [List.map_nil, List.flatten_nil, List.nil_append] at heq
+          rw [heq]; simp [hT]
+  | cons T₁ ts ih =>
+      intro tails₂ s₁ s₂ hsz heq hs₁ hs₂
+      cases tails₂ with
+      | nil =>
+          exfalso
+          obtain ⟨x, r, hT, -, hcont⟩ := leftRec_tail_head hlr T₁
+          refine hs₂ x ?_ hcont
+          simp only [List.map_nil, List.flatten_nil, List.nil_append] at heq
+          rw [← heq]; simp [hT]
+      | cons T₂ ts₂ =>
+          have heq' : T₁.flatten ++ ((ts.map Parts.flatten).flatten ++ s₁)
+              = T₂.flatten ++ ((ts₂.map Parts.flatten).flatten ++ s₂) := by
+            simpa only [List.map_cons, List.flatten_cons, List.append_assoc] using heq
+          obtain ⟨hT, hrest⟩ := ihP T₁ T₂ _ _ (by simp only [tailsSize_cons] at hsz; omega) heq'
+            (partsFollow_body_tail hlr (tails_followAt_tighter hlr ts hs₁))
+            (partsFollow_body_tail hlr (tails_followAt_tighter hlr ts₂ hs₂))
+          obtain ⟨hts, hss⟩ := ih ts₂ s₁ s₂ (by simp only [tailsSize_cons] at hsz; omega)
+            hrest hs₁ hs₂
+          exact ⟨by rw [hT, hts], hss⟩
+
+/-- **The left-recursive kernel.** Two `.tighterEq o` trees carrying tail accumulators, whose
+printings agree up to leftovers that stop `.tighterEq o`, refold to the same tree.
+
+The descent peels `o`-headed nodes off either side into its accumulator — which leaves the refold
+invariant, so no reconstruction is needed — until both sides are non-`o`-headed. Those are trees at
+`.tighter o`, so `udExpr` applies there (`tails_followAt_tighter` is the FOLLOW), and the two tail
+sequences are then compared by `udTails`. The two induction hypotheses are passed in rather than
+taken from the mutual block, which keeps this recursion independent of that one. -/
+theorem leftRecUd (k : Nat) {e : G.Ent} {o : (G.entry e).Op}
+    (hlr : ((G.entry e).operator o).leftRec = true) {m : Nat}
+    (ihE : ∀ (u₁ u₂ : Expr G e (Level.tighter o)) (r₁ r₂ : List Tok),
+        u₁.size + u₂.size ≤ m → u₁.flatten ++ r₁ = u₂.flatten ++ r₂ →
+        FollowAt e (Level.tighter o) r₁ → FollowAt e (Level.tighter o) r₂ → u₁ = u₂ ∧ r₁ = r₂)
+    (ihP : ∀ (q₁ q₂ : Parts G (Operator.body e o).tail) (r₁ r₂ : List Tok),
+        q₁.size + q₂.size ≤ m → q₁.flatten ++ r₁ = q₂.flatten ++ r₂ →
+        PartsFollow (Operator.body e o).tail r₁ → PartsFollow (Operator.body e o).tail r₂ →
+        q₁ = q₂ ∧ r₁ = r₂)
+    (t₁ t₂ : Expr G e (Level.tighterEq o))
+    (tails₁ tails₂ : List (Parts G (Operator.body e o).tail)) (s₁ s₂ : List Tok)
+    (hk : t₁.size + tailsSize tails₁ + (t₂.size + tailsSize tails₂) ≤ k)
+    (hm : t₁.size + tailsSize tails₁ + (t₂.size + tailsSize tails₂) ≤ m)
+    (heq : t₁.flatten ++ ((tails₁.map Parts.flatten).flatten ++ s₁)
+         = t₂.flatten ++ ((tails₂.map Parts.flatten).flatten ++ s₂))
+    (hs₁ : FollowAt e (Level.tighterEq o) s₁) (hs₂ : FollowAt e (Level.tighterEq o) s₂) :
+    Expr.leftRecFold hlr t₁ tails₁ = Expr.leftRecFold hlr t₂ tails₂ ∧ s₁ = s₂ := by
+  rcases leftRec_view hlr t₁ with ⟨L₁, T₁, he₁, hf₁, hz₁⟩ | ⟨b₁, hd₁, hbf₁, hbz₁⟩
+  · -- peel one node off the left
+    have hdec : L₁.size + tailsSize (T₁ :: tails₁) + (t₂.size + tailsSize tails₂) < k := by
+      simp only [tailsSize_cons]; omega
+    have hrec := leftRecUd (L₁.size + tailsSize (T₁ :: tails₁) + (t₂.size + tailsSize tails₂))
+      hlr ihE ihP L₁ t₂ (T₁ :: tails₁) tails₂ s₁ s₂ (Nat.le_refl _)
+      (by simp only [tailsSize_cons] at *; omega)
+      (by rw [hf₁] at heq; simpa only [List.map_cons, List.flatten_cons, ← List.append_assoc]
+            using heq)
+      hs₁ hs₂
+    rw [he₁]
+    exact hrec
+  · rcases leftRec_view hlr t₂ with ⟨L₂, T₂, he₂, hf₂, hz₂⟩ | ⟨b₂, hd₂, hbf₂, hbz₂⟩
+    · -- peel one node off the right
+      have hdec : t₁.size + tailsSize tails₁ + (L₂.size + tailsSize (T₂ :: tails₂)) < k := by
+        simp only [tailsSize_cons]; omega
+      have hrec := leftRecUd (t₁.size + tailsSize tails₁ + (L₂.size + tailsSize (T₂ :: tails₂)))
+        hlr ihE ihP t₁ L₂ tails₁ (T₂ :: tails₂) s₁ s₂ (Nat.le_refl _)
+        (by simp only [tailsSize_cons] at *; omega)
+        (by rw [hf₂] at heq; simpa only [List.map_cons, List.flatten_cons, ← List.append_assoc]
+              using heq)
+        hs₁ hs₂
+      rw [he₂]
+      exact hrec
+    · -- both sides are bases: compare them at `.tighter o`, then the accumulators
+      obtain ⟨hb, hrest⟩ := ihE b₁ b₂ _ _ (by omega) (by rw [hbf₁, hbf₂]; exact heq)
+        (tails_followAt_tighter hlr tails₁ hs₁) (tails_followAt_tighter hlr tails₂ hs₂)
+      have ht : t₁ = t₂ := Expr.eq_of_decomp t₁ t₂ (by rw [← hd₁, ← hd₂, hb])
+      obtain ⟨hts, hss⟩ := udTails hlr ihP tails₁ tails₂ s₁ s₂ (by omega) hrest hs₁ hs₂
+      exact ⟨by rw [ht, hts], hss⟩
+  termination_by k
+  decreasing_by all_goals omega
+
 /-! ## The mutual unique decomposition
 
 `udExpr` and `udParts` are now genuinely mutually recursive, on summed sizes: an operator node
@@ -1070,15 +1398,43 @@ mutual
                   subst ho
                   exact ⟨by rw [hp], hss⟩
               | true =>
-                  -- ⚠ THE ONE REMAINING GAP: `infxl`/`juxt`. Their bodies are NOT `Seamed` — the
-                  -- leading hole is at `.tighterEq o₁`, where the operator's own head token (and,
-                  -- for `juxt`, an operand-starter) *does* continue, so neither ★ lemma bounds it
-                  -- and `udParts` does not apply. Normalise through `Expr.spine` first: compare
-                  -- the two strictly-tighter bases with `udExpr` at `.tighter o₁`, then the tail
-                  -- lists pairwise with `udParts` on `(Operator.body e o₁).tail` (which IS
-                  -- seamed — `seamed_body_tail`), and get the contradiction when one spine runs
-                  -- out first from the other still beginning with a token that continues at `l`.
-                  sorry
+                  -- `infxl`/`juxt`: the body is NOT `Seamed` — its leading hole is at
+                  -- `.tighterEq o₁`, where the operator's own head token (and, for `juxt`, an
+                  -- operand-starter) *does* continue, so neither ★ lemma bounds it and `udParts`
+                  -- does not apply. Hand the two bodies to `leftRecUd` as one-tail spines
+                  -- instead: it peels the chain down to two bases at `.tighter o₁`, where FOLLOW
+                  -- is available again, and compares the accumulated tails with `udParts` on
+                  -- `(Operator.body e o₁).tail` (which IS seamed).
+                  have hsz : (ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).size = p₂.size :=
+                    Parts.size_opCast ho.symm p₂
+                  have hpe : p₁.flatten ++ s₁
+                      = (ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).flatten ++ s₂ := by
+                    rw [Parts.flatten_opCast ho.symm p₂]
+                    simpa only [Expr.flatten] using heq
+                  have hz₁ := Parts.leftRec_size hlr p₁
+                  have hz₂ := Parts.leftRec_size hlr (ho.symm ▸ p₂ : Parts G (Operator.body e o₁))
+                  obtain ⟨hfold, hss⟩ := leftRecUd _ hlr (m := p₁.size + p₂.size)
+                    (fun u₁ u₂ r₁ r₂ hb hf f₁ f₂ =>
+                      udExprN (p₁.size + p₂.size) e (Level.tighter o₁) u₁ u₂ r₁ r₂ hb hf f₁ f₂)
+                    (fun q₁ q₂ r₁ r₂ hb hf f₁ f₂ =>
+                      udPartsN (p₁.size + p₂.size) q₁ q₂ r₁ r₂ hb
+                        (seamed_body_tail_leftRec hlr) f₁ f₂ hf)
+                    (p₁.leftRecL hlr)
+                    ((ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).leftRecL hlr)
+                    [p₁.leftRecT hlr]
+                    [(ho.symm ▸ p₂ : Parts G (Operator.body e o₁)).leftRecT hlr] s₁ s₂
+                    (Nat.le_refl _)
+                    (by simp only [tailsSize_cons, tailsSize_nil]; omega)
+                    (by rw [Parts.leftRec_flatten hlr p₁,
+                          Parts.leftRec_flatten hlr (ho.symm ▸ p₂ :
+                            Parts G (Operator.body e o₁))] at hpe
+                        simpa using hpe)
+                    (FollowAt.tighten (condition_tighterEq_up c₁) hs₁)
+                    (FollowAt.tighten (condition_tighterEq_up c₁) hs₂)
+                  have hp : p₁ = (ho.symm ▸ p₂ : Parts G (Operator.body e o₁)) :=
+                    Parts.eq_of_leftRecApp hlr _ _ (by simpa [Expr.leftRecFold] using hfold)
+                  subst ho
+                  exact ⟨by rw [hp], hss⟩
             · exact absurd heq (fun h => (topOp_unique ho c₁ c₂ p₁ p₂ s₁ s₂
                 (by simpa only [Expr.flatten] using h) hs₁ hs₂).elim)
   termination_by n
