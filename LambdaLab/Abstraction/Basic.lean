@@ -28,8 +28,8 @@ abstract value. That is the compiler-grade guarantee; `Lossless` is only about
 preserving the *user's* spelling.
 
 On `default` for an elaborator: the fully-annotated spelling makes it cheap to
-provide; the fully-erased spelling is principal typing (`W_principal` for STLC) — a
-theorem about an instance, not a field obligation.
+provide; the fully-erased spelling is principal typing (`JComplete.elabSubst_principal_below`
+for STLC) — a theorem about an instance, not a field obligation.
 
 Argument order is `(Concrete, Abstract)`: a morphism `A ⇝ B` reads concrete-to-
 abstract, matching the 1-cell direction of `Abstraction/Bicat.lean`.

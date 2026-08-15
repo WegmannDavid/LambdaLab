@@ -160,10 +160,10 @@ theorem Subst.comp_getD [HasSubst α α] (σ τ : Subst α) (n : Nat) (d : α) :
 /-! ## Restriction by domain threshold
 
 `Subst.restrictBelow σ n` is σ with all bindings whose key is `≥ n`
-dropped. Used by the elaborator to prune W's internal fresh-mvar
-bindings (which sit at indices ≥ the source's fresh threshold) so the
-substitution returned by `Term.elaborate` doesn't expose algorithm
-scaffolding. -/
+dropped. Used by the elaborator to prune the internal fresh-mvar
+bindings it drew (which sit at indices ≥ the source's fresh threshold)
+so the substitution returned by `Target.elabSubst` doesn't expose
+algorithm scaffolding. -/
 
 /-- Restrict σ to keys strictly below `n`. -/
 def Subst.restrictBelow {α : Type} (σ : Subst α) (n : Nat) : Subst α :=

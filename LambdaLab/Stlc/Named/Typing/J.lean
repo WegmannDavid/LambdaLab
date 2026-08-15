@@ -10,7 +10,7 @@ import LambdaLab.Substitution.Unification.MGU
 resulting substitution into the remaining premises. That is the shape Milner's presentation uses,
 and, as the standard account puts it, W "was formulated to aid the proof of soundness" — which is
 exactly how it has played out here. `W_correct` and `HasTypeW.toHasType` went through; principality
-(`W_principal`) is stuck, and stuck *because* of the interleaving: the fresh index at each node is
+is stuck, and stuck *because* of the interleaving: the fresh index at each node is
 computed from the arguments at hand, so an index consumed in one subcall can be re-consumed by a
 sibling whose arguments happen not to mention it.
 
@@ -249,7 +249,7 @@ tree. `Signature.pSubst_insert_fresh` is the workhorse, as in `W_principal_lam_s
 The agreement must be phrased as **equality on a set of variables** — `∀ m ∈ V, σ m = σ' m` — and
 not as a numeric threshold. A threshold quantifies over types mentioning variables that occur
 nowhere in the problem, and the induction has nothing to say about those; that is exactly the
-counterexample which sank the `app` case of `W_principal` (see the note there).
+counterexample which sank the `app` case of W's principality (see the note in `Typing/W.lean`).
 
 **Principality.** Immediate, given completeness: `unify C` is a most general solution by
 `unify_mgu`, and it exists whenever a solution does by `unify_complete`. The domain and range of

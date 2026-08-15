@@ -225,9 +225,9 @@ theorem W_correct : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ : Subst Ty),
          rw [Term.tyPSubst_size]; simp only [Term.size]; omega))
 
 /-- Source-fresh threshold: any `k ≥ srcFresh Γ e τ` is not free in
-any of `Γ`, `e`, `τ`. Used by `W_principal` to prune W's internal
-fresh-mvar bindings from the substitution exposed at the elaboration
-boundary. -/
+any of `Γ`, `e`, `τ`. It bounds the quantifier in the source-restricted principality statement
+below, and is the same threshold `Typing/Target.lean`'s `sourceFresh` recomputes for the
+constraint-based elaborator. -/
 def srcFresh (Γ : Ctx N) (e : (Term N)) (τ : Ty) : Nat :=
   max (HasVars.fresh Γ) (max (HasVars.fresh e) (HasVars.fresh τ))
 
@@ -246,10 +246,11 @@ theorem freshIdxApp_eq_srcFresh (Γ : Ctx N) (e₁ e₂ : Term N) (τ : Ty) :
   have h : HasVars.fresh (Term.app e₁ e₂) = max (HasVars.fresh e₁) (HasVars.fresh e₂) := rfl
   rw [h]; omega
 
-/-! ## Towards `W_principal`: the cases, in source-restricted form
+/-! ## Towards principality: the cases, in source-restricted form
 
-`W_principal` as stated below cannot be inducted on directly (see its docstring). The workable form
-prunes the *quantifier* rather than `σ`:
+Principality for W is *not* claimed by this file — see the closing section for why the obvious
+statement is false. The shape worth aiming at prunes the quantifier rather than `σ`, matching
+`JComplete.elabSubst_principal_below`:
 
 ```
 ∃ σ, W Γ e τ = some σ ∧ ∃ ρ, ∀ t, fresh t ≤ srcFresh Γ e τ → t[σ'] = (t[σ])[ρ]
@@ -262,7 +263,7 @@ after them records why it is not merely more of the same.
 
 /-- **Principality at a variable.** No threshold is needed here: `W` on a variable is a single
 `unify`, so the answer is most general against *every* substitution, not just on the source
-fragment. This is the base case of `W_principal`. -/
+fragment. This is the base case. -/
 theorem W_principal_var (Γ : Ctx N) (x : N) (τ : Ty) (σ' : Subst Ty)
     (h : HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst (Term.var x) σ')
                  (HasSubst.pSubst τ σ')) :
@@ -360,24 +361,52 @@ So finishing this most likely means changing `W` to thread a counter — a chang
 not only to the proof — after which the `app` case becomes the same shape as `lam` above.
 -/
 
-/-- **Principal types theorem for W (option D form).** For any σ' that
-types the σ'-substituted triple, W succeeds with some σ, and **σ
-restricted to source mvars** is at least as general as σ'.
+/-! ## Principality: what is and is not claimed
 
-Why the restriction? σ's full domain may include W's internal fresh
-mvars (introduced by `freshIdxLam`/`freshIdxApp`), to which σ' is
-freshness-blind. Quantifying `MoreGeneral` over *all* `t` then fails at
-`t = mvar k` for those internal `k` — σ commits to a concrete type but
-σ' is undefined. Pruning σ before quoting MoreGeneral removes the
-internal bindings, recovering the universal-`t` form.
+Soundness is proved above, unconditionally: `W_correct` bridges `W` to `HasTypeW` and
+`HasTypeW.toHasType` bridges that to `HasType`. **Principality is not claimed at all.**
 
-## Why the context must be ground
+It used to be, as `W_principal`, in the `MoreGeneral` ∀-types form with W's σ pruned to the
+source-fresh threshold (option D):
 
-`Ctx.Ground Γ` is `free(Γ) = ∅`, and it is a genuine side condition, not tidiness. The standard
-account records that the correspondence between W and the deductive system "can only be made for
-contexts with `free(Γ) = ∅`", because the algorithm *refines* variables the context already
-mentions, and the deduction rules permit no such refinement. Concretely, with `a : ⋆` and
-`f : ?0`:
+```
+∃ σ, W Γ e τ = some σ ∧ MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ'
+```
+
+That statement is **false**, and `Typing/Principality.lean` proves it so for the constraint-based
+elaborator, which carried the same shape as `elabSubst_principal`. Over
+
+```
+Γ = f : ?0, g : ?1, b : ⋆   ⊢   f (g b) : ⋆
+```
+
+nothing determines the type of `g b`, so the computed answer has to *name* it, and the only names
+available are the ones the algorithm drew; `MoreGeneral`'s `∀ t` then forces that name to be two
+different things at once. Pruning σ does not help, because the name is what σ *maps to*, not a key
+it is pruned by. The theorem was deleted rather than left as a `sorry` — with it went `W_complete`
+and `W_principal_of_eq`, which had no other proof, and `Elaboration`/`ElaborationResult`/
+`Term.elaborate`, whose `mgu` field was the only thing distinguishing them from what
+`Typing/Target.lean` already provides.
+
+The true statement is the source-restricted one at the head of the previous section, proved for
+the constraint-based elaborator as `JComplete.elabSubst_principal_below`. For W, `var` and `lam`
+are discharged above and `app` is open, for the reason recorded there: `freshIdxLam`/`freshIdxApp`
+re-derive freshness from the arguments at hand rather than threading a supply, so a sibling call
+can re-consume an index a subcall already spent. Urban–Nipkow make the same point from the other
+direction — a numeric threshold is too generous for W, which wants a variable *set* — so even the
+restricted form may need the algorithm changed before it is provable.
+
+None of this reaches the compiler. The live elaborator is `Typing/Target.lean`'s `elabSubst`,
+whose principality *is* proved; `W` is here as the classical algorithm, proved sound, and nothing
+outside this file uses it.
+
+## Why the correspondence needs a ground context
+
+`Ctx.Ground Γ` is `free(Γ) = ∅`, and it was a genuine side condition on the statement above, not
+tidiness. The standard account records that the correspondence between W and the deductive system
+"can only be made for contexts with `free(Γ) = ∅`", because the algorithm *refines* variables the
+context already mentions, and the deduction rules permit no such refinement. Concretely, with
+`a : ⋆` and `f : ?0`:
 
 ```
 infer Γ (f a)   = none                     -- no derivation: ?0 is an atom, not an arrow
@@ -385,143 +414,10 @@ W     Γ (f a) ?9 = some {0 ↦ ⋆ → ?9, …}    -- W refines the context's o
 ```
 
 So W accepts terms the judgement rejects — it "fails to detect all type errors" — and any
-completeness statement without the hypothesis is simply false. The earlier version of this theorem
-omitted it.
+completeness statement without the hypothesis is simply false.
 
 Worth noting that `Vernacular.HasTypeGround`'s groundness demand is exactly this condition,
 arrived at independently from "no metavariable may leak between declarations".
-
-**Status: open.** Beyond the missing side condition, the obstacle is the *shape of the statement*,
-not missing lemmas — inducting on
-this form directly fails, because the lam step needs the unify equations built from the
-*unrestricted* `σ_body`, while the induction hypothesis only speaks about the pruned one, and W's
-output domain legitimately contains internal fresh mvars above `srcFresh`.
-
-The workable reformulation prunes the *quantifier* instead of `σ`:
-
-```
-∃ σ, W Γ e τ = some σ ∧ ∃ ρ, ∀ t, HasVars.fresh t ≤ srcFresh Γ e τ → t[σ'] = (t[σ])[ρ]
-```
-
-With that, `var` closes from `unify_complete` + `unify_mgu` + `unify_keys`; `lam` closes by
-extending σ' at the fresh index (`pSubst_insert_fresh`) and feeding the induction hypothesis's ρ to
-`unify_complete` — legitimate because `freshIdxLam_eq_srcFresh` above pins the recursive
-threshold at exactly one more than the outer one, so `τ` and `α` are both inside it.
-
-What is still missing is *support* bookkeeping, and only for `app` and for the final descent to
-the pruned form: both need a substitution's ρ patched above a threshold, which needs to know that
-the other substitution cannot see up there. `unify_keys`/`unify_range` supply exactly that for a
-single `unify` call; what has to be added is closure of the bound under `Subst.comp`, and then a
-strengthened induction that carries it. -/
-theorem W_principal : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ' : Subst Ty),
-    Γ.Ground →
-    HasType (HasSubst.pSubst Γ σ')
-            (HasSubst.pSubst e σ')
-            (HasSubst.pSubst τ σ') →
-    ∃ σ, W Γ e τ = some σ ∧
-         MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
-  intro Γ e τ σ' _hΓ _h
-  sorry
-
-/-- W succeeds whenever any substitution makes the triple well-typed. -/
-theorem W_complete {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ' : Subst Ty}
-    (hΓ : Γ.Ground)
-    (h : HasType (HasSubst.pSubst Γ σ')
-                 (HasSubst.pSubst e σ')
-                 (HasSubst.pSubst τ σ')) :
-    W Γ e τ ≠ none := by
-  obtain ⟨σ, h_W, _⟩ := W_principal Γ e τ σ' hΓ h
-  rw [h_W]
-  exact Option.some_ne_none σ
-
-/-- Corollary of `W_principal` once W's returned σ is fixed. Returns
-the pruned-σ form (option D). -/
-theorem W_principal_of_eq {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ σ' : Subst Ty}
-    (hΓ : Γ.Ground)
-    (h_W : W Γ e τ = some σ)
-    (h : HasType (HasSubst.pSubst Γ σ')
-                 (HasSubst.pSubst e σ')
-                 (HasSubst.pSubst τ σ')) :
-    MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ' := by
-  obtain ⟨σ₀, h_W₀, h_mgu⟩ := W_principal Γ e τ σ' hΓ h
-  rw [h_W] at h_W₀
-  have : σ = σ₀ := by injection h_W₀
-  rw [this]
-  exact h_mgu
-
-/-! ## The elaboration boundary
-
-`Elaboration`/`ElaborationResult` used to live in a general `Language` interface. They are stated
-here instead, at STLC, because nothing else ever used them: the general interface's only instance
-was STLC's, and its parser-free `Language` struct has been superseded by `Pipeline.Language` for
-the surface and the `TypeSystem` classes for the semantics.
-
-What is kept is the part that interface got right and the classes deliberately do not demand:
-`mgu` requires the returned substitution be *most general*, not merely one that works.
-The vernacular fold runs on `PrincipalElaborate`, whose decision half is proved and stops
-there — most-generality is `TypeSystem.PrincipalElaborate`, still open — so a language wanting
-principality has to state it, as here, in its own terms.
 -/
-
-/-- A **principal** solution for `(Γ, e, τ)`: a substitution that types the triple, and is more
-general than any other that does. `σ` is a field rather than an existential so callers can
-destructure it in `Type`-valued definitions. -/
-structure Elaboration (Γ : Ctx N) (e : Term N) (τ : Ty) : Type where
-  σ    : Subst Ty
-  hSat : HasType (HasSubst.pSubst Γ σ)
-                 (HasSubst.pSubst e σ)
-                 (HasSubst.pSubst τ σ)
-  mgu  : ∀ σ' : Subst Ty,
-           HasType (HasSubst.pSubst Γ σ')
-                   (HasSubst.pSubst e σ')
-                   (HasSubst.pSubst τ σ') →
-           MoreGeneral σ σ'
-
-/-- Elaborating `e` at `τ` under `Γ`: a principal solution, or a *proof* there is none. The error
-branch carries a refutation rather than a diagnostic — restoring diagnostics means giving it a
-payload. -/
-inductive ElaborationResult (Γ : Ctx N) (e : Term N) (τ : Ty) : Type where
-  | error : (Elaboration Γ e τ → False) → ElaborationResult Γ e τ
-  | ok    : Elaboration Γ e τ → ElaborationResult Γ e τ
-
-/-- The σ exposed to elaboration consumers: W's output pruned to keys
-strictly below the source-fresh threshold. The unpruned σ may bind W's
-internal scaffolding mvars; the pruned form drops those so the
-`MoreGeneral` field's `∀ t` quantifier works against arbitrary σ'. -/
-private def elabσ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ_full : Subst Ty) : Subst Ty :=
-  Subst.restrictBelow σ_full (srcFresh Γ e τ)
-
-/-- Elaboration at a **ground** context. The hypothesis is not decoration: the correspondence
-between W and the deductive system only holds for `free(Γ) = ∅`, which `Ctx.Ground` is (see
-`W_principal`). -/
-def Term.elaborate :
-    (Γ : Ctx N) → Γ.Ground → (e : (Term N)) → (τ : Ty) → ElaborationResult Γ e τ
-  | Γ, hΓg, e, τ =>
-      match Heq : W Γ e τ with
-      | none   =>
-          ElaborationResult.error
-            (fun ⟨_σ', hSat, _⟩ => W_complete hΓg hSat Heq)
-      | some σ_full =>
-          ElaborationResult.ok
-          { σ := elabσ Γ e τ σ_full
-            hSat := by
-              -- `HasType` on the *pruned* triple from `HasType` on the full one. Each of Γ, e, τ
-              -- has its free mvars below `srcFresh`, so dropping σ's bindings at or above that
-              -- threshold — which is exactly W's internal scaffolding — changes nothing.
-              have hbase := (W_correct Γ e τ σ_full Heq).toHasType
-              have hΓ : HasVars.fresh Γ ≤ srcFresh Γ e τ := Nat.le_max_left _ _
-              have he : HasVars.fresh e ≤ srcFresh Γ e τ :=
-                Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-              have hτ : HasVars.fresh τ ≤ srcFresh Γ e τ :=
-                Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
-              show HasType (HasSubst.pSubst Γ (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
-                     (HasSubst.pSubst e (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
-                     (HasSubst.pSubst τ (Subst.restrictBelow σ_full (srcFresh Γ e τ)))
-              rw [Term.tyPSubst_restrictBelow e σ_full _ he,
-                  Signature.pSubst_restrictBelow σ_full _ τ hτ]
-              -- the context only agrees key-by-key, which is what `cong` wants
-              exact HasType.cong
-                (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ_full _ hΓ y).symm) hbase
-            mgu := fun σ' h_σ' => W_principal_of_eq hΓg Heq h_σ' }
 
 end LambdaLab.Stlc.Named

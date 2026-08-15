@@ -151,8 +151,8 @@ exhaust. They are invisible to `p`, they are not part of the answer, and handing
 invites it to depend on them.
 
 So `elabProgram` restricts the composite to `p`'s own threshold before returning it, and records
-that it did. This is the same boundary-pruning `Term.elaborate` performs one level down — option D
-of the principal-types discussion, applied to a program instead of a term. -/
+that it did. This is the same boundary-pruning `Target.elabSubst` performs one level down — option
+D of the principal-types discussion, applied to a program instead of a term. -/
 
 /-- **No redundant bindings**: σ binds no metavariable at or above `x`'s threshold.
 
