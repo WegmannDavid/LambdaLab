@@ -262,17 +262,11 @@ theorem HasType.toD {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
 
 /-! ### It computes
 
-Over the empty context everything free in the type is quantified; a context that already mentions
-a variable pins it, and only the rest generalise.
--/
+Over the empty context everything free in the type is quantified — `Γ̄(?0 ⇒ ?0) = ∀0. ?0 ⇒ ?0`. A
+context that already mentions a variable pins it, and only the rest generalise: under `y : ?0`,
+`Γ̄(?0 ⇒ ?1) = ∀1. ?0 ⇒ ?1`.
 
-#eval SCtx.close (SCtx.ofMono (Ctx.empty : Ctx String)) (Ty.mvar 0 ⇒ Ty.mvar 0)
--- ∀0. ?0 ⇒ ?0
-#eval SCtx.close (SCtx.ofMono ((Ctx.empty : Ctx String).cons "y" (Ty.mvar 0)))
-        (Ty.mvar 0 ⇒ Ty.mvar 1)
--- ∀1. ?0 ⇒ ?1   — `?0` is pinned by `y : ?0`
-
-/-! ## The converse fails, and precisely as the standard account says
+## The converse fails, and precisely as the standard account says
 
 One might hope for the converse: a `D` derivation whose scheme instantiates to `τ` gives
 `HasType Γ e τ`. It does not, and the reason is the one the standard development gives for `S`
@@ -315,11 +309,10 @@ theorem polyId_hasTypeD :
     rw [SCtx.ofMono_get?, Ctx.get?_empty] at hx
     exact absurd hx (by simp))
 
--- The scheme above is not ad hoc: it is exactly `Γ̄` of the identity's type over the empty
--- context, i.e. the *canonical* generalisation. So the counterexample is not an artefact of
--- picking a strange scheme — it is what `[Let]` would have produced.
-#eval decide (SCtx.close (SCtx.ofMono (Ctx.empty : Ctx String)) (Ty.mvar 0 ⇒ Ty.mvar 0)
-              = polyIdScheme)   -- true
+-- The scheme above is not ad hoc: it is `SCtx.close (SCtx.ofMono Ctx.empty) (?0 ⇒ ?0)`, i.e. `Γ̄`
+-- of the identity's type over the empty context — the *canonical* generalisation. So the
+-- counterexample is not an artefact of picking a strange scheme; it is what `[Let]` would have
+-- produced. (Not stated as a theorem: `close` runs through a `HashMap`, so `decide` sticks.)
 
 /-- **The naive converse of `HasType.toD` is false.** Instantiating a `D`-derivable scheme does not
 give a `HasType` derivation, so `D` is strictly stronger than the kernel judgement even here.

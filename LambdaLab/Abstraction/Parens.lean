@@ -27,7 +27,7 @@ Scope: this wraps the *whole* input in parens (a toy grammar), not parens at eve
 of a recursive grammar — that generalization is the mixfix-as-`Abs` port, later.
 
 The bottom of the file composes `tokenizer ⋙ parens atom` into the first two-stage pipeline
-`List Char ⇝ {var}` and `#eval`s the round trip.
+`List Char ⇝ {var}`, losslessness and all.
 -/
 
 namespace LambdaLab.Abstraction
@@ -193,19 +193,6 @@ def parenVarPipeline :
 theorem parenVarPipeline_lossless : parenVarPipeline.Lossless :=
   (tokenizer_lossless ' ' rfl).comp
     ((atom_lossless isVarT).parens lp_ne_rp (atom_neverWrapped lp_ne_rp))
-
-/-- Abstract, then canonically re-print (realize at `default`). -/
-private def roundtrip (s : String) : Option String :=
-  (parenVarPipeline.abstract s.toList).map fun v =>
-    String.ofList (parenVarPipeline.realize (parenVarPipeline.default (a := v)))
-
-#eval (parenVarPipeline.abstract "( ( ( ( a ) ) ) )".toList).map (·.1.val)  -- some "a"
-#eval roundtrip "( ( ( ( a ) ) ) )"   -- some "a"   (canonical: no parens, no extra spaces)
-#eval roundtrip "( x )"               -- some "x"
-#eval roundtrip "y"                   -- some "y"
-#eval roundtrip "( ( a )"             -- none  (unbalanced)
-#eval roundtrip "( )"                 -- none  (no variable)
-#eval roundtrip "a b"                 -- none  (two tokens)
 
 end Demo
 

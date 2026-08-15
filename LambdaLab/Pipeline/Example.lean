@@ -53,18 +53,6 @@ def prog2 : Program trivialLanguage :=
 def canonPrint (p : Program trivialLanguage) : List Token :=
   trivialLanguage.parser.print (trivialLanguage.parser.default (v := p))
 
--- printing:  ["def", "x", ":", "A", ":=", "e"]
-#eval (canonPrint prog).map (·.val)
--- and back — the leftover is `[]`, i.e. the whole file was consumed:
-#eval (trivialLanguage.parser.run (canonPrint prog)).map (·.2.map (·.val))
--- the parsed names, recovered:
-#eval (trivialLanguage.parser.run (canonPrint prog)).map
-        (fun r => r.1.toList.map (fun c => c.name.val.val))
-
--- two commands round-trip too — the `many1` seam ("no further `def`") holds at end-of-input
-#eval (canonPrint prog2).map (·.val)
-#eval (trivialLanguage.parser.run (canonPrint prog2)).isSome
-
 /-- The round-trip, instantiated: **free**, inherited from the framework — now for *any*
 spelling `ann`, not only the canonical one. -/
 example (p : Program trivialLanguage) (ann : Program.Ann trivialLanguage p) :
@@ -84,12 +72,6 @@ def parseNames (s : String) : Option (List String) :=
 /-- Parse a file, re-render it canonically (single spaces, canonical spellings). -/
 def reprint (s : String) : Option String :=
   (trivialLanguage.parseFile s).map trivialLanguage.renderProgram
-
-#eval parseNames "def x : A := e   def y : B := f"   -- some ["x", "y"]
-#eval reprint    "def x : A := e   def y : B := f"   -- some "def x : A := e def y : B := f"
-#eval reprint    "  def   x :   A := e  "            -- some "def x : A := e"   (normalized)
-#eval parseNames "def x : A e"                       -- none  (missing `:=`)
-#eval parseNames ""                                  -- none  (a program is non-empty)
 
 /-! ## Giving it a semantics
 
@@ -213,16 +195,6 @@ from characters to a *well-typed* program. -/
 def checkNames (s : String) : Option (List String) :=
   (trivialLanguage.elaborateFile s).map fun p =>
     p.val.toList.map (fun c => c.name.val.val)
-
--- accepted: `y` is unbound at its use, then `x` is used at the `A` it was declared with
-#eval checkNames "def x : A := y   def z : A := x"     -- some ["x", "z"]
--- rejected: `x` was declared at `A`, so using it at `B` does not check
-#eval checkNames "def x : A := y   def z : B := x"     -- none
--- the parse still succeeds on the rejected file — it is elaboration that refuses
-#eval parseNames "def x : A := y   def z : B := x"     -- some ["x", "z"]
--- and the whole front end still round-trips: elaborate, then render
-#eval (trivialLanguage.elaborateFile "  def x : A := y   def z : A := x ").map
-        trivialLanguage.renderElaborated
 
 /-- The round trip over the *elaborating* pipeline: render an elaborated program and read it back,
 and you land on exactly the program you started from — parsing and type checking together. Free,

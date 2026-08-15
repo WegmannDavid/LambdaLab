@@ -34,11 +34,10 @@ A language author supplies exactly a `Grammar` (operators, precedence with expli
 two boundary adapters. The grammar is *lighter* than the CBiparser one: no `tighter_wf`,
 `juxtUnique`, `headsDistinct`, or `interiorTerminates` — the parser needs only the precedence rank.
 
-### ⚠ The round-trip law here is CONDITIONAL
+### The round-trip law here is unconditional
 
-`Mixfix.mixfix`'s `ok` (the greedy left-associative round-trip) is still an open `sorry`, so
-`arithLanguage`'s round-trip laws depend on `sorryAx`. The parser itself does not: it `#eval`s and
-runs. Discharging that one lemma turns these laws unconditional with no change here.
+`Mixfix.mixfix` takes no hypothesis: the greedy left-associative round-trip is `parseExpr_exact`
+(`Mixfix/Exact.lean`), a theorem, so `arithLanguage`'s round-trip laws are sorry-free.
 
 Note the contrast with `Recursive` above: that section proves exactly this shape of greedy
 left-associative reconstruction by hand, for a fixed grammar.

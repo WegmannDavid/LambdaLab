@@ -30,11 +30,6 @@ def roundtrip (s : String) : Option String :=
   | some (v, []) => some (String.ofList (binding.print v).2)
   | _ => none
 
-#eval roundtrip "1=2"    -- some "1=2"
-#eval roundtrip "7=3"    -- some "7=3"
-#eval roundtrip "1+2"    -- none   (no `=`)
-#eval roundtrip "1="     -- none   (missing rhs)
-
 /-! ## example 2: just the two digits — `(Digit × Digit)`, no record -/
 
 def twoDigits : IsoParser Char (fun c => c.isDigit = true) (fun _ => True)
@@ -44,15 +39,10 @@ def twoDigits : IsoParser Char (fun c => c.isDigit = true) (fun _ => True)
   let b ← comap Prod.snd (sat Char.isDigit)
   return (a, b)
 
-#eval (twoDigits.run "1=2".toList).map (fun r => (r.1.1.val, r.1.2.val))  -- some ('1', '2')
-
 -- …and it still round-trips: the printer puts the `=` back
 def roundtrip2 (s : String) : Option String :=
   match twoDigits.run s.toList with
   | some (v, []) => some (String.ofList (twoDigits.print v).2)
   | _ => none
-
-#eval roundtrip2 "1=2"    -- some "1=2"
-#eval roundtrip2 "8=9"    -- some "8=9"
 
 end LambdaLab.Parser.IsoParser.Playground

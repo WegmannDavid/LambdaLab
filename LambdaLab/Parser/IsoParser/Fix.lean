@@ -148,10 +148,6 @@ def pParens : IsoParser Char (fun c => c = 'a' ∨ c = '(') (fun _ => True) Nat 
           subst hrv
           rfl)
 
-#eval pParens.run "((a))".toList  -- some (2, [])
-#eval pParens.run "((a)".toList   -- none
-#eval (pParens.print 3).2         -- ['(', '(', '(', 'a', ')', ')', ')']
-
 /-- The round-trip — a theorem, free. -/
 example (n : Nat) : pParens.run (pParens.print n).2 = some ((pParens.print n).1, []) :=
   pParens.roundtrip n

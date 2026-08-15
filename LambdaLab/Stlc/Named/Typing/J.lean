@@ -229,28 +229,12 @@ theorem inferPrincipal_sound {Γ : Ctx N} {e : Term N} {n : Nat} {τ : Ty}
 
 /-! ### It runs
 
-A `Ctx String` is enough to exercise it. The supply starts above every index the context and term
-mention — here `1`, since `?0` is the largest in play.
--/
+`inferPrincipal` computes: over `f : ?0, a : ⋆, g : ⋆ → ⋆` it types `f a` at the
+still-unconstrained `?1` (solving `?0 := ⋆ → ?1`), and accepts `(λx:⋆.x) f` by solving
+`⋆ → ⋆ = ?0 → ?1`. A genuine type error surfaces as an *unsatisfiable* constraint set, never as a
+failure of generation: `(λx:⋆.x) g` generates `⋆ = ⋆ → ⋆`, which `unify` then rejects.
 
-/-- `f : ?0` (unconstrained), `a : ⋆`, `g : ⋆ → ⋆`. -/
-def demoCtx : Ctx String :=
-  ((Ctx.empty.cons "a" Ty.base).cons "g" (Ty.base ⇒ Ty.base)).cons "f" (Ty.mvar 0)
-
--- the identity at ⋆ needs no constraints at all
-#eval inferPrincipal (N := String) Ctx.empty (.lam "x" Ty.base (.var "x")) 1
--- applying it to `a : ⋆` forces the drawn result name to ⋆
-#eval inferPrincipal demoCtx (.app (.lam "x" Ty.base (.var "x")) (.var "a")) 1
--- `f a` with `f : ?0` solves `?0 := ⋆ → ?1`, so the result is the still-unconstrained `?1`
-#eval inferPrincipal demoCtx (.app (.var "f") (.var "a")) 1
--- feeding the identity `f : ?0` is *not* an error: `⋆ → ⋆ = ?0 → ?1` is solved by `?0, ?1 := ⋆`
-#eval inferPrincipal demoCtx (.app (.lam "x" Ty.base (.var "x")) (.var "f")) 1
--- a genuine type error is an *unsatisfiable* constraint set, never a failure of generation:
--- `g : ⋆ → ⋆` forces `⋆ = ⋆ → ⋆`
-#eval (gen demoCtx (.app (.lam "x" Ty.base (.var "x")) (.var "g")) 1).map (fun r => r.2.1)
-#eval inferPrincipal demoCtx (.app (.lam "x" Ty.base (.var "x")) (.var "g")) 1
-
-/-! ## What remains
+## What remains
 
 Two theorems complete the story, and both are now statements about `HasTypeJ`, so both are
 inductions over a derivation rather than over the term.
