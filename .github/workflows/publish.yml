@@ -1,0 +1,101 @@
+# Publish the compiler as a container image.
+#
+# This is the producer half of the two-repo split: the website repo never sees Lean source,
+# it consumes the image this workflow pushes. What that image promises is written down in
+# packaging/README.md and checked by packaging/smoke.sh before anything is published.
+#
+# Why the steps are spelled out rather than delegated to lean-action: the interesting part
+# of this pipeline is the caching, and that is easier to reason about when the commands are
+# visible.
+
+name: Publish compiler
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something that can change the binary changes. Editing the README or
+    # adding a paper to literature/ should not spend 40 minutes of runner time.
+    paths:
+      - 'LambdaLab/**'
+      - 'Stlc.lean'
+      - 'Arith.lean'
+      - 'lakefile.toml'
+      - 'lake-manifest.json'
+      - 'lean-toolchain'
+      - 'packaging/**'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read      # to check out this repo
+  packages: write     # to push to GHCR, using the built-in GITHUB_TOKEN — no secret needed
+
+# A push that supersedes an in-flight run makes that run pointless. Cancel it rather than
+# paying for both; `latest` should track the newest commit, not whichever build finished last.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90    # a cold build is ~40 min; this is a backstop against a hang
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Linking an executable that imports Mathlib means compiling ~3000 Mathlib modules
+      # from generated C to native objects — the single most expensive thing in this
+      # pipeline, and the reason a cold run takes ~40 minutes and a warm one ~10.
+      #
+      # `lake exe cache get` (below) fetches Mathlib's .olean and .c files but NOT these
+      # objects, so they are ours to cache. They total about 0.2 GB, which is small against
+      # the 10 GB per-repo cache budget.
+      #
+      # The key covers the toolchain and the dependency manifest, because either changing
+      # invalidates every object. Nothing about our own source belongs in it — our modules
+      # are recompiled every run regardless, and including them would throw away Mathlib's
+      # objects on every commit.
+      - name: Cache compiled Mathlib objects
+        uses: actions/cache@v4
+        with:
+          path: .lake/packages/*/.lake/build/ir
+          key: lean-ir-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+        # --default-toolchain none because elan reads lean-toolchain and installs the right
+        # version on first use; pinning it here would just be a second place to keep in sync.
+
+      - name: Fetch Mathlib build cache
+        run: lake exe cache get
+
+      - name: Build
+        run: lake build stlc
+
+      # 174 MB unstripped, 129 MB stripped. Debug symbols are of no use inside a container
+      # that ships no source, and they are 45 MB on every pull.
+      - name: Stage the binary
+        run: |
+          cp .lake/build/bin/stlc packaging/stlc
+          strip packaging/stlc
+          ls -lh packaging/stlc
+
+      # Verify the contract against the artifact we are about to publish, not against some
+      # earlier build. A failure here means the image never exists.
+      - name: Check the published contract
+        run: packaging/smoke.sh packaging/stlc
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # GHCR paths must be lowercase; the owner login is not.
+      - name: Build and push the image
+        run: |
+          IMAGE="ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/lambdalab-compiler"
+          docker build -f packaging/Dockerfile -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" packaging
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "published $IMAGE:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
