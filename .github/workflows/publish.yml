@@ -76,6 +76,23 @@ jobs:
       - name: Check the published contract
         run: packaging/smoke.sh packaging/stlc
 
+      # The consumer's own tests, run here, against this binary, before it ships.
+      #
+      # This is the point of splitting the repos. The website depends on a handful of
+      # properties of this executable; that list lives in *their* repo because they are the
+      # ones who know what they rely on. Running it here means a compiler change that breaks
+      # them fails in this pipeline, with their test naming what broke — rather than being
+      # discovered after `latest` has already moved.
+      #
+      # A plain unauthenticated clone: both repos are public, so no token is involved and
+      # there is no secret to rotate. Their `main`, deliberately — if they add an
+      # expectation we do not yet satisfy, this job is where we hear about it.
+      - name: Fetch the consumer's contract suite
+        run: git clone --depth 1 https://github.com/WegmannDavid/LambdaLab-web.git consumer
+
+      - name: Check the consumer's contract
+        run: python3 consumer/contract/check.py "$PWD/packaging/stlc"
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
