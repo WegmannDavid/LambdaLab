@@ -27,7 +27,7 @@ are in that file and its history.
 -/
 
 -- `p.truncate` dot-notation forces the declaration under `LambdaLab.Parser.IsoParser.IsoParser`.
-set_option linter.dupNamespace false
+-- Mathlib's `linter.dupNamespace` was silenced here until Mathlib left the executables' cone.
 
 namespace LambdaLab.Parser
 

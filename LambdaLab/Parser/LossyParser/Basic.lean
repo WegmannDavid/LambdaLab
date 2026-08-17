@@ -44,9 +44,10 @@ FIRST/FOLLOW and progress-in-the-type are kept verbatim from `IsoParser`, so the
 mechanical; nothing downstream depends on the word.)
 -/
 
--- `p.toLossyParser` dot-notation forces declarations under `LambdaLab.Parser.IsoParser.IsoParser`,
--- which this linter dislikes; the repetition is inherited from IsoParser's own naming.
-set_option linter.dupNamespace false
+-- `p.toLossyParser` dot-notation forces declarations under `LambdaLab.Parser.IsoParser.IsoParser`;
+-- the repetition is inherited from IsoParser's own naming. Mathlib's `linter.dupNamespace`
+-- objects to that, and this file used to silence it — but the linter is Mathlib's, and Mathlib is
+-- no longer in the executables' import cone, so the option no longer names anything that exists.
 
 namespace LambdaLab.Parser.LossyParser
 

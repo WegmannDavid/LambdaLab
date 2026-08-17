@@ -32,7 +32,7 @@ Instantiation checklist for a language: one `DecidableEq (E.Op)` projection inst
 unfold `myEntry.Op` to the underlying enum by itself), then the bundle — see `Arith/Pipeline.lean`.
 -/
 
-set_option linter.dupNamespace false
+-- Mathlib's `linter.dupNamespace` was silenced here until Mathlib left the executables' cone.
 
 namespace LambdaLab.Parser.Truncation.Mixfix
 
