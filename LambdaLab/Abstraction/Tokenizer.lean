@@ -1,4 +1,3 @@
-import Mathlib.Tactic
 import LambdaLab.Abstraction.Basic
 import LambdaLab.Parser.IsoParser.Tokenize
 
@@ -211,7 +210,12 @@ theorem realize_complete_aux (cs : List Char) :
       have he : skipSep sep cs = t.val.toList ++ afterWord sep (skipSep sep cs) := by
         rw [htchars]; exact hw.symm
       have htcs2 : tokens sep cs = t :: tokens sep (afterWord sep (skipSep sep cs)) := by
-        rw [htcs]; nth_rewrite 1 [he]; exact tokens_token t hawhead
+        -- `he` rewrites `skipSep sep cs`, which occurs on both sides; only the left one
+        -- should go. `nth_rewrite 1 [he]` says that more directly but is Mathlib's, and
+        -- this file is the last thing standing between the executable and a Mathlib-free
+        -- import cone — one tactic was pulling in 6668 modules. Core's `conv` does it.
+        rw [htcs]; conv => lhs; rw [he]
+        exact tokens_token t hawhead
       obtain ⟨g', hg'⟩ := realize_complete_aux (afterWord sep (skipSep sep cs))
       rw [htcs2]
       have hne : tokens sep (afterWord sep (skipSep sep cs)) ≠ [] → g'.leading.val ≠ [] := by
