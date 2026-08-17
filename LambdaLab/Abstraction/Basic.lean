@@ -46,9 +46,10 @@ namespace LambdaLab
 
 This is Mathlib's `Equiv`, and this file used `Equiv` until the cost was measured: everything
 the executables import is linked into them, and one Mathlib import — any Mathlib import — puts
-about 1300 modules into that closure. Four fields are not worth 1300 modules. The seventeen
-modules outside the executables' import cone still use Mathlib freely; this is not a policy
-against Mathlib, only against Mathlib *below* `Stlc` and `Arith`. -/
+about 1300 modules into that closure. Four fields are not worth 1300 modules; removing this one
+and `Nat.digits` in `Parser/Numeral` took `stlc` from 129 MB to 2.8 MB. The seventeen modules
+outside the executables' import cone still use Mathlib freely; this is not a policy against
+Mathlib, only against Mathlib *below* `Stlc` and `Arith`. -/
 structure Iso (α β : Type) where
   /-- The forward map. -/
   toFun : α → β

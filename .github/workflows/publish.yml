@@ -39,28 +39,10 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 90    # a cold build is ~40 min; this is a backstop against a hang
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v5
-
-      # Linking an executable that imports Mathlib means compiling ~3000 Mathlib modules
-      # from generated C to native objects — the single most expensive thing in this
-      # pipeline, and the reason a cold run takes ~40 minutes and a warm one ~10.
-      #
-      # `lake exe cache get` (below) fetches Mathlib's .olean and .c files but NOT these
-      # objects, so they are ours to cache. They total about 0.2 GB, which is small against
-      # the 10 GB per-repo cache budget.
-      #
-      # The key covers the toolchain and the dependency manifest, because either changing
-      # invalidates every object. Nothing about our own source belongs in it — our modules
-      # are recompiled every run regardless, and including them would throw away Mathlib's
-      # objects on every commit.
-      - name: Cache compiled Mathlib objects
-        uses: actions/cache@v4
-        with:
-          path: .lake/packages/*/.lake/build/ir
-          key: lean-ir-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
 
       - name: Install elan
         run: |
@@ -69,9 +51,15 @@ jobs:
         # --default-toolchain none because elan reads lean-toolchain and installs the right
         # version on first use; pinning it here would just be a second place to keep in sync.
 
-      - name: Fetch Mathlib build cache
-        run: lake exe cache get
-
+      # No `lake exe cache get`, and no object cache. Nothing in the executables' import cone
+      # imports Mathlib, so none of Mathlib is built or linked here — `lake build stlc`
+      # compiles 65 of our own modules against core and Std, and that is all.
+      #
+      # This used to be the expensive job: linking pulled in ~3000 Mathlib modules that had to
+      # be compiled from generated C to native objects, ~40 minutes cold. Mathlib is still a
+      # dependency of the *library* (Bicat needs `Bicategory`), so lake still clones it during
+      # dependency resolution — but a clone is not a build, and the test workflow is where the
+      # library gets built.
       - name: Build
         run: lake build stlc
 
