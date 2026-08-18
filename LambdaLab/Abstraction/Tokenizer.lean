@@ -89,6 +89,26 @@ def defaultInner (sc : Char) (hsc : sep sc = true) :
   | [_]          => emptyRun
   | _ :: u :: us => (scGap sc hsc, defaultInner sc hsc (u :: us))
 
+/-! ## Gaps for a concatenation
+
+The printers above this file emit a token stream as *blocks* — one per command — concatenated.
+Gaps decompose the same way, which is what lets a canonical layout be assembled where the block
+structure is known rather than guessed from token content. This combinator is the only thing that
+needs saying, and it says nothing about any language: a gap sits between two tokens.
+
+Note `Inner` keeps the *trailing* run in its last token's slot, so joining replaces the left
+block's trailing run with `joint`. Nothing is lost that anyone had: this builds a canonical
+annotation, it does not transport a recorded one. -/
+
+/-- Gaps for `ts ++ us`: the left block's own gaps, then `joint` at the seam, then the right
+block's. -/
+def joinInner (joint : NEGap sep) : (ts : List (Token sep)) → Inner sep ts →
+    (us : List (Token sep)) → Inner sep us → Inner sep (ts ++ us)
+  | [],           _,  _,      iu => iu
+  | [_],          tr, [],     _  => tr
+  | [_],          _,  _ :: _, iu => (joint, iu)
+  | _ :: v :: vs, it, us,     iu => (it.1, joinInner joint (v :: vs) it.2 us iu)
+
 /-! ## `abstract ∘ realize = some ts`
 
 Rendering the gaps and re-tokenizing recovers `ts`: the leading run is skipped, and each token is

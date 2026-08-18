@@ -112,6 +112,29 @@ def comp (f : Abstraction A B F) (g : Abstraction B C G) :
     rw [f.abstract_realize (g.realize γ.1) γ.2]
     exact g.abstract_realize c γ.1
 
+/-- Re-choose the canonical annotation, keeping the morphism itself. Legitimate because
+`default` carries **no law of its own**: `abstract_realize` is quantified over *every*
+annotation, so any element of the family may serve as the canonical one and this leaves the
+proof obligation untouched (it is literally `f`'s).
+
+This is what lets a *composite* be pretty-printed. `comp` fixes `default := ⟨g.default,
+f.default⟩`, and `f.default : ∀ {b}, F b` is uniform in its index — the earlier stage cannot
+consult the later one, so a layout that depends on the abstract structure (one command per
+line) is not expressible stage-locally. Re-defaulting the composite is: there both components
+are in scope, and the choice is made where the structure is known instead of guessed. -/
+def withDefault (f : Abstraction A B F) (d : ∀ {b : B}, F b) : Abstraction A B F :=
+  { f with default := d }
+
+/-- Re-defaulting changes only the canonical annotation. -/
+@[simp] theorem withDefault_abstract (f : Abstraction A B F) (d : ∀ {b : B}, F b) :
+    (f.withDefault d).abstract = f.abstract := rfl
+
+@[simp] theorem withDefault_realize (f : Abstraction A B F) (d : ∀ {b : B}, F b) {b : B} :
+    (f.withDefault d).realize (a := b) = f.realize := rfl
+
+@[simp] theorem withDefault_default (f : Abstraction A B F) (d : ∀ {b : B}, F b) {b : B} :
+    (f.withDefault d).default (a := b) = d := rfl
+
 /-- Transport an abstraction along a fibrewise bijection of annotation families —
 swap an unwieldy annotation type (e.g. the `Σ`-nest a composite produces) for a
 hand-rolled presentation of the same data. -/
@@ -132,6 +155,11 @@ def Lossless (f : Abstraction A B F) : Prop :=
 
 theorem id_lossless (A : Type) : (id A).Lossless :=
   fun _ _ h => ⟨(), (Option.some.inj h).symm⟩
+
+/-- Losslessness is about `realize`, not `default`, so it survives re-defaulting: the two
+morphisms have the same `abstract` and the same `realize`, and `Lossless` mentions only those. -/
+theorem withDefault_lossless {f : Abstraction A B F} (d : ∀ {b : B}, F b) (h : f.Lossless) :
+    (f.withDefault d).Lossless := h
 
 theorem Lossless.comp {f : Abstraction A B F} {g : Abstraction B C G}
     (hf : f.Lossless) (hg : g.Lossless) : (f.comp g).Lossless := by
