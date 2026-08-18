@@ -16,7 +16,8 @@ List Char  ⇝  List Token  ⇝  Program  ⇝  Elaborated
 
 ① `Abstraction/Tokenizer.lean` — generic, shared by every language, so it has no file under
   `Stages/`. Instantiated below at the vernacular's own separator (`isSep`, whitespace), so the
-  alphabet agreement between ① and ② is by construction rather than coincidence.
+  alphabet agreement between ① and ② is by construction rather than coincidence. It knows nothing
+  of commands; the layout that puts one per line is imposed here, on the composite.
 ② `Stages/Parse.lean` — `Language.abstraction`, built from the language's two parsers.
 ③ `Stages/Elaborate.lean` — `Language.elabStage`, built from its type system.
 
@@ -55,7 +56,44 @@ namespace LambdaLab.Pipeline
 
 open LambdaLab.Abstraction
 
+open LambdaLab.Parser.IsoParser (many1PrintOut)
+
 open LambdaLab.TypeSystem.Vernacular (elabProgram?)
+
+/-! ## The canonical layout
+
+Pretty-printing lives here, and it *has* to: it is a statement about whitespace (①) indexed by
+where the commands end (②), so it is expressible only where both stages are in scope. Neither
+stage can state it alone — which is why it is not a stage, but a choice of `default` on the
+composite (`withDefault`).
+
+The parser emits a command's tokens as a block and concatenates the blocks (`many1PrintOut`), so
+the gaps split the same way: `defaultInner ' '` inside a block, a newline at each seam
+(`joinInner`). The word `def` appears nowhere below — a line ends because a *command* ended.
+-/
+
+/-- The newline seam between two commands. -/
+def nlSeam : NEGap isSep := scGap '\n' (by decide)
+
+/-- Layout for the commands after the first: mirrors `many1PrintOut`'s own recursion. -/
+def Language.layoutTail (L : Language) :
+    (cs : List (Command L)) → (as : ListAnn L cs) →
+      Inner isSep (many1PrintOut L.commandIso (zipAnnList L cs as))
+  | [], _ => PUnit.unit
+  | c :: cs, (a, as) =>
+      joinInner nlSeam
+        (L.commandIso.print ⟨c, a⟩).2 (defaultInner ' ' (by decide) _)
+        (many1PrintOut L.commandIso (zipAnnList L cs as)) (L.layoutTail cs as)
+
+/-- **The canonical layout of a program**: one command per line, single spaces within a command,
+no leading or trailing whitespace. An annotation of the composite's gap component, so it is a
+legal `default` and nothing about the morphism changes. -/
+def Language.layout (L : Language) {prog : Program L} (ann : Program.Ann L prog) :
+    Gaps isSep (L.parser.print ann) :=
+  ⟨emptyRun,
+    joinInner nlSeam
+      (L.commandIso.print ⟨prog.1, ann.1⟩).2 (defaultInner ' ' (by decide) _)
+      (many1PrintOut L.commandIso (zipAnnList L prog.2 ann.2)) (L.layoutTail prog.2 ann.2)⟩
 
 /-! ## ① ∘ ② — reading, no semantics required -/
 
@@ -64,14 +102,15 @@ Available for every `Language`, since neither stage knows what a program means. 
 def Language.parsePipeline (L : Language) :
     Abstraction (List Char) (NEList (Command L))
       (fun prog => Σ ann : Program.Ann L prog, Gaps isSep (L.parser.print ann)) :=
-  (tokenizer (sep := isSep) ' ' (by decide)).comp L.abstraction
+  ((tokenizer (sep := isSep) ' ' (by decide)).comp L.abstraction).withDefault
+    (fun {_prog} => ⟨L.parser.default, L.layout L.parser.default⟩)
 
 /-- Parse a source file into a program. Whole-input: leading/trailing whitespace is fine,
 anything unconsumed is not. -/
 def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
   L.parsePipeline.abstract s.toList
 
-/-- Render a program canonically: every command in its canonical spelling, single spaces. -/
+/-- Render a program canonically: every command in its canonical spelling, one per line. -/
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.parsePipeline.realize (L.parsePipeline.default (a := prog)))
 
@@ -96,8 +135,8 @@ def Language.elabPipeline :
 def Language.elaborateFile (s : String) : Option L.Elaborated :=
   L.elabPipeline.abstract s.toList
 
-/-- Render an elaborated program canonically: every declaration in its canonical spelling, with
-the types elaboration solved written out. -/
+/-- Render an elaborated program canonically: every declaration on its own line, in its canonical
+spelling, with the types elaboration solved written out. -/
 def Language.renderElaborated (p : L.Elaborated) : String :=
   String.ofList (L.elabPipeline.realize (L.elabPipeline.default (a := p)))
 
