@@ -170,7 +170,8 @@ def wrapExpr {e : G.Ent} {o : (G.entry e).Op} {lp rp : Tok}
 
 mutual
 /-- The canonical tree of a target value: its `dest` spelling, operands via `operandExpr`. -/
-def injC (R : Rules G C) {e : G.Ent} (x : C e) : Expr G e .loosest :=
+def injC (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] {e : G.Ent} (x : C e) :
+    Expr G e .loosest :=
   match hd : R.dest x with
   | .var t h => .var t h
   | .node o vs => .op o (R.topOk e o)
@@ -179,7 +180,7 @@ def injC (R : Rules G C) {e : G.Ent} (x : C e) : Expr G e .loosest :=
 termination_by (R.size x, 2, 0)
 
 /-- Rebuild a body: name parts from the shape, operands from the vector. -/
-def buildParts (R : Rules G C) (bound : Nat) :
+def buildParts (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] (bound : Nat) :
     (shape : List (Part G)) → HolesOk R.parenOp shape →
     (vs : CVec C (holeEnts shape)) → CVec.All (fun y => R.size y < bound) vs → Parts G shape
   | [], _, _, _ => .nil
@@ -188,13 +189,21 @@ def buildParts (R : Rules G C) (bound : Nat) :
       .hole (operandExpr R bound l' hok.1 vs.1 hsz.1) (buildParts R bound ps hok.2 vs.2 hsz.2)
 termination_by shape _ _ _ => (bound, 1, shape.length)
 
-/-- An operand: bare if its head is a variable (vars inhabit every level), else its canonical
-tree wrapped in the paren operator. -/
-def operandExpr (R : Rules G C) (bound : Nat) {e' : G.Ent} (l' : Level (G.entry e'))
+/-- An operand, with **the parentheses the level actually requires**. Bare in two cases: a
+variable (they inhabit every level), or a value whose own top operator already satisfies the
+hole's precedence condition — the very condition `Expr`'s index demands, so asking it is what
+makes the spelling minimal *and* keeps it reparseable. Only an operand that would not fit the
+level is wrapped in the paren operator, which `holesOk` guarantees always fits. -/
+def operandExpr (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] (bound : Nat)
+    {e' : G.Ent} (l' : Level (G.entry e'))
     (hp : l'.condition (R.parenOp e')) (y : C e') (_hy : R.size y < bound) : Expr G e' l' :=
-  match R.dest y with
+  match hd : R.dest y with
   | .var t h => .var t h
-  | .node _ _ => wrapExpr (R.paren_eq e') hp (injC R y)
+  | .node o vs =>
+      if hc : l'.condition o then
+        .op o hc (buildParts R (R.size y) (Operator.body e' o) (R.holesOk e' o) vs
+          (by have h := R.dest_size y; rw [hd] at h; exact h))
+      else wrapExpr (R.paren_eq e') hp (injC R y)
 termination_by (bound, 0, 0)
 end
 
@@ -219,7 +228,8 @@ theorem truncExpr_wrap (R : Rules G C) {e : G.Ent} {o : (G.entry e).Op} {lp rp :
 mutual
 /-- **The section law**: inject, truncate, recover — the witness `truncate` needs, derived from
 the bundle's per-constructor laws. -/
-theorem trunc_inj (R : Rules G C) : ∀ {e : G.Ent} (x : C e), truncExpr R (injC R x) = x
+theorem trunc_inj (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] :
+    ∀ {e : G.Ent} (x : C e), truncExpr R (injC R x) = x
   | e, x => by
       simp only [injC]
       split
@@ -236,7 +246,7 @@ theorem trunc_inj (R : Rules G C) : ∀ {e : G.Ent} (x : C e), truncExpr R (injC
           exact ha
 termination_by _ x => (R.size x, 2, 0)
 
-theorem trunc_buildParts (R : Rules G C) (bound : Nat) :
+theorem trunc_buildParts (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] (bound : Nat) :
     ∀ (shape : List (Part G)) (hok : HolesOk R.parenOp shape)
       (vs : CVec C (holeEnts shape)) (hsz : CVec.All (fun y => R.size y < bound) vs),
       truncParts R (buildParts R bound shape hok vs hsz) = vs
@@ -251,7 +261,8 @@ theorem trunc_buildParts (R : Rules G C) (bound : Nat) :
       rfl
 termination_by shape _ _ _ => (bound, 1, shape.length)
 
-theorem trunc_operand (R : Rules G C) (bound : Nat) {e' : G.Ent} (l' : Level (G.entry e'))
+theorem trunc_operand (R : Rules G C) [∀ e : G.Ent, DecidableEq (G.entry e).Op] (bound : Nat)
+    {e' : G.Ent} (l' : Level (G.entry e'))
     (hp : l'.condition (R.parenOp e')) (y : C e') (hy : R.size y < bound) :
     truncExpr R (operandExpr R bound l' hp y hy) = y := by
   simp only [operandExpr]
@@ -261,9 +272,16 @@ theorem trunc_operand (R : Rules G C) (bound : Nat) {e' : G.Ent} (l' : Level (G.
       have ha := R.alg_dest y
       rw [hd] at ha
       exact ha
-  · next hd =>
-      rw [truncExpr_wrap, trunc_inj R y]
-      exact R.op_paren y
+  · next o vs hd =>
+      split
+      · next hc =>
+          simp only [truncExpr]
+          rw [trunc_buildParts R (R.size y) (Operator.body e' o)]
+          have ha := R.alg_dest y
+          rw [hd] at ha
+          exact ha
+      · rw [truncExpr_wrap, trunc_inj R y]
+        exact R.op_paren y
 termination_by (bound, 0, 0)
 end
 
@@ -272,7 +290,8 @@ end
 /-- **Instructions in, `LossyParser` out**: chain any aligned echoing `IsoParser` producing this
 grammar's trees (e.g. `mixfix`) through the rules. The annotation is the fiber of the fold —
 every tree spelling a target value; the canonical print is `injC`. -/
-def Rules.truncateParser {α : Type} {fst fol : α → Prop} (R : Rules G C) {e : G.Ent}
+def Rules.truncateParser {α : Type} {fst fol : α → Prop} (R : Rules G C)
+    [∀ e : G.Ent, DecidableEq (G.entry e).Op] {e : G.Ent}
     (p : IsoParser α fst fol (Expr G e .loosest) (Expr G e .loosest))
     (echo : ∀ a, (p.print a).1 = a) :
     LossyParser α fst fol (C e) (fun x => { t : Expr G e .loosest // truncExpr R t = x }) :=
