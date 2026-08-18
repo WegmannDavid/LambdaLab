@@ -233,4 +233,19 @@ class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extend
 language's own structural check rather than something merely propositionally equal to it. -/
 attribute [reducible, instance low] PrincipalElaborate.tyGroundDec PrincipalElaborate.tmGroundDec
 
+class StronglyNormalizing (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
+  /-- **No infinite reduction sequence.** Stated with the arrow reversed, and that is the whole
+  content: `WellFounded r` forbids chains with `r xₙ₊₁ xₙ`, so `WellFounded Step` would forbid
+  infinite *backward* histories — a term being reachable from ever-longer predecessors — while
+  strong normalization is the absence of `t₀ → t₁ → t₂ → ⋯` going forward. Flipping the relation
+  is what makes the field say the second. -/
+  StronglyNormalizing : WellFounded (fun t t' => Step t' t)
+
+class HasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
+  eval : Tm → Tm
+
+class LawfulHasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasEval N Tm Ty, StronglyNormalizing N Tm Ty where
+  -- eval t is a normal form of t
+  -- eval t is reachable from t
+
 end LambdaLab.TypeSystem
