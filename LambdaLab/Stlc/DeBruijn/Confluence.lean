@@ -149,7 +149,7 @@ theorem PStep.diamond : ∀ {e e₁ e₂}, e ⇉ e₁ → e ⇉ e₂ → ∃ e',
 theorem MStep.strip : ∀ {e e₁ e₂},
     e ⇉ e₁ → e ⟶* e₂ → ∃ e', e₁ ⟶* e' ∧ e₂ ⇉ e' := by
   intro e e₁ e₂ hp hm
-  induction hm generalizing e₁ with
+  induction hm using RTC.head_induction_on generalizing e₁ with
   | refl => exact ⟨e₁, .refl, hp⟩
   | head s rest ih =>
       have hp' := s.toPStep
@@ -161,7 +161,7 @@ theorem MStep.strip : ∀ {e e₁ e₂},
 theorem MStep.confluent : ∀ {e e₁ e₂},
     e ⟶* e₁ → e ⟶* e₂ → ∃ e', e₁ ⟶* e' ∧ e₂ ⟶* e' := by
   intro e e₁ e₂ h₁ h₂
-  induction h₁ generalizing e₂ with
+  induction h₁ using RTC.head_induction_on generalizing e₂ with
   | refl => exact ⟨e₂, h₂, .refl⟩
   | head s rest ih =>
       have hp := s.toPStep

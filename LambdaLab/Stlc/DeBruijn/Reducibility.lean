@@ -163,7 +163,7 @@ theorem Reducible.preserves_mstep {τ : Ty} {e e' : Term}
     (hm : e ⟶* e') : Reducible τ e → Reducible τ e' := by
   induction hm with
   | refl => exact id
-  | head s _ ih => intro h; exact ih (Reducible.preserves h s)
+  | tail _ s ih => intro h; exact Reducible.preserves (ih h) s
 
 /-! ## Head expansion for β-redexes
 

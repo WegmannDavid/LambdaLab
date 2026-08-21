@@ -39,7 +39,7 @@ theorem Stlc.DeBruijn.SN.mstep : ∀ {d d' : Stlc.DeBruijn.Term},
   intro d d' hsn hms
   induction hms with
   | refl => exact hsn
-  | head s _ ih => exact ih (hsn.unfold s)
+  | tail _ s ih => exact ih.unfold s
 
 /-! ## Transfer: DB strong normalization ⟹ Named strong normalization
 
@@ -62,20 +62,18 @@ private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d
       have hfv' : ∀ x ∈ e'.freeVars, x ∈ binders :=
         fun x hx => hfv x (Step.preserves_freeVars hs x hx)
       have hsim := Step.toDB_step binders hfv hs
-      cases hms with
-      | refl =>
-          -- d = e.toDB binders. Use Step.toDB_pos to get a single DB head step.
-          obtain ⟨d_mid, h_step_db, h_rest⟩ := Step.toDB_pos binders hfv hs
-          exact ihStep d_mid h_step_db e' binders hfv' h_rest
-      | head h_step_d rest_d =>
-          rename_i d_mid_d
-          exact ihStep d_mid_d h_step_d e' binders hfv' (rest_d.trans hsim)
+      rcases RTC.cases_head hms with heq | ⟨d_mid_d, h_step_d, rest_d⟩
+      · -- d = e.toDB binders. Use Step.toDB_pos to get a single DB head step.
+        subst heq
+        obtain ⟨d_mid, h_step_db, h_rest⟩ := Step.toDB_pos binders hfv hs
+        exact ihStep d_mid h_step_db e' binders hfv' h_rest
+      · exact ihStep d_mid_d h_step_d e' binders hfv' (rest_d.trans hsim)
 
 theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     Stlc.DeBruijn.SN (e.toDB binders) → SN e :=
   fun e binders hfv hsn =>
-    SN.fromDB_aux hsn e binders hfv Stlc.DeBruijn.MStep.refl
+    SN.fromDB_aux hsn e binders hfv .refl
 
 /-! ## Strong normalization for the named system -/
 

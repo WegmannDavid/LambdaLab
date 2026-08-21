@@ -1,5 +1,6 @@
 -- This module serves as the root of the `LambdaLab` library.
 -- Import modules here that should be built as part of the library.
+import LambdaLab.Relation.Basic
 import LambdaLab.Stlc.DeBruijn.Basic
 import LambdaLab.Stlc.DeBruijn.Typing
 import LambdaLab.Stlc.DeBruijn.Step

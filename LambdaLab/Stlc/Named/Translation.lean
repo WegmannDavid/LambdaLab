@@ -407,7 +407,7 @@ theorem MStep.preserves_freeVars : ∀ {e e' : (Term N)},
   intro e e' hms
   induction hms with
   | refl => intro w hw; exact hw
-  | head s _ ih => intro w hw; exact Step.preserves_freeVars s w (ih w hw)
+  | tail _ s ih => intro w hw; exact ih w (Step.preserves_freeVars s w hw)
 
 /-! ## Step simulation -/
 
@@ -470,7 +470,6 @@ theorem Step.toDB_pos : ∀ {e e' : (Term N)} (Γ : List N),
       refine ⟨(body.toDB (x :: Γ)).subst 0 (v.toDB Γ),
               Stlc.DeBruijn.Step.beta, ?_⟩
       rw [hbody_aux]
-      exact Stlc.DeBruijn.MStep.refl
   | @lam e₀ e₀' xn τn _ ih =>
       simp only [Term.toDB]
       obtain ⟨d_mid, h_step, h_rest⟩ := ih (xn :: Γ) (by grind [Term.freeVars])
@@ -492,10 +491,10 @@ theorem MStep.toDB_step : ∀ {e e' : (Term N)} (Γ : List N),
     Stlc.DeBruijn.MStep (e.toDB Γ) (e'.toDB Γ) := by
   intro e e' Γ hfv hms
   induction hms with
-  | refl => exact Stlc.DeBruijn.MStep.refl
-  | head s _ ih =>
-      exact (Step.toDB_step Γ hfv s).trans
-            (ih (fun w hw => hfv w (Step.preserves_freeVars s w hw)))
+  | refl => exact .refl
+  | tail rest s ih =>
+      exact ih.trans
+        (Step.toDB_step Γ (fun w hw => hfv w (MStep.preserves_freeVars rest w hw)) s)
 
 /-! ## Type translation back: `DB.Ty → Ty` -/
 
@@ -714,6 +713,6 @@ theorem Stlc.DeBruijn.MStep.preservation :
   intro Γ e e' τ ht hms
   induction hms with
   | refl => exact ht
-  | head s _ ih => exact ih (Stlc.DeBruijn.HasType.preservation ht s)
+  | tail _ s ih => exact Stlc.DeBruijn.HasType.preservation ih s
 
 end LambdaLab.Stlc.Named

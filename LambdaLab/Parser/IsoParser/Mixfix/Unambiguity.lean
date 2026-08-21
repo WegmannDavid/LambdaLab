@@ -191,23 +191,14 @@ down there. That is `Stops.tighten` below, and it rests on the up-closure of `Le
 /-- Reachability is transitive, so an operator valid at `l` makes everything *tighter* than it
 valid at `l` too. -/
 theorem TighterEq.trans {Op : Type} {t : Op → List Op} {a b c : Op}
-    (h₁ : TighterEq t a b) (h₂ : TighterEq t b c) : TighterEq t a c := by
-  induction h₁ with
-  | refl => exact h₂
-  | step hm _ ih => exact .step hm (ih h₂)
+    (h₁ : TighterEq t a b) (h₂ : TighterEq t b c) : TighterEq t a c := RTC.trans h₁ h₂
 
 theorem Tighter.toTighterEq' {Op : Type} {t : Op → List Op} {a b : Op}
-    (h : Tighter t a b) : TighterEq t a b := by
-  induction h with
-  | base hm => exact .step hm .refl
-  | step hm _ ih => exact .step hm ih
+    (h : Tighter t a b) : TighterEq t a b := h.toRTC
 
 /-- Extend a strictly-tighter path by one more step at the far end. -/
 theorem Tighter.snoc {Op : Type} {t : Op → List Op} {a o b : Op}
-    (h : Tighter t a o) (hm : b ∈ t o) : Tighter t a b := by
-  induction h with
-  | base hb => exact .step hb (.base hm)
-  | step hb _ ih => exact .step hb (ih hm)
+    (h : Tighter t a o) (hm : b ∈ t o) : Tighter t a b := h.tail hm
 
 omit [DecidableEq Tok] in
 /-- **Up-closure of the level condition.** If `o` inhabits level `l` and `o'` is at least as tight
@@ -218,10 +209,7 @@ theorem Level.condition_up {e : G.Ent} {l : Level (G.entry e)} {o o' : (G.entry 
   cases l with
   | tighter a =>
       -- `Tighter a o` then `TighterEq o o'` gives `Tighter a o'`
-      revert hc
-      induction ht with
-      | refl => exact id
-      | step hm _ ih => exact fun hc => ih (hc.snoc hm)
+      exact TC.transLeft hc ht
   | tighterEq a => exact TighterEq.trans hc ht
   | loosest =>
       obtain ⟨a, ha, hr⟩ := hc
@@ -264,10 +252,7 @@ below take the hypothesis directly instead of the operator. -/
 
 /-- A strictly-tighter path composed with a tighter-or-equal one stays strict. -/
 theorem Tighter.trans_tighterEq {Op : Type} {t : Op → List Op} {a b c : Op}
-    (h₁ : Tighter t a b) (h₂ : TighterEq t b c) : Tighter t a c := by
-  induction h₂ with
-  | refl => exact h₁
-  | step hm _ ih => exact ih (h₁.snoc hm)
+    (h₁ : Tighter t a b) (h₂ : TighterEq t b c) : Tighter t a c := TC.transLeft h₁ h₂
 
 /-! ### The interior tokens of a notation are exactly its seam tokens
 
@@ -753,11 +738,7 @@ omit [DecidableEq Tok] in
 `Tighter.trans_tighterEq`, and what lets a fact about `.tighter o` be pushed down to `.tighter o'`
 for any `o'` the leading hole admits. -/
 theorem Tighter.of_tighterEq {Op : Type} {t : Op → List Op} {a b c : Op}
-    (h₁ : TighterEq t a b) (h₂ : Tighter t b c) : Tighter t a c := by
-  revert h₂
-  induction h₁ with
-  | refl => exact id
-  | step hm _ ih => exact fun h => Tighter.step hm (ih h)
+    (h₁ : TighterEq t a b) (h₂ : Tighter t b c) : Tighter t a c := TC.ofRTC h₁ h₂
 
 /-- **The split, for the four token-bearing hole-led fixities.** Their bodies all have the shape
 `hole :: (notation ++ suffix)`, and a notation always leads with its first token — which is the

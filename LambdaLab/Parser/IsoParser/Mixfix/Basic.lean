@@ -1,4 +1,5 @@
 import LambdaLab.Parser.IsoParser.Combinators
+import LambdaLab.Relation.Basic
 
 /-!
 # General mixfix grammar — self-contained (independent of `CBiparser`)
@@ -95,36 +96,39 @@ def Operator.holeFollowers {Tok Ent : Type} : Operator Tok Ent → List (Ent × 
 
 /-! ## Precedence order (reachability through `tighter`) -/
 
+/-- The one-step precedence relation: `b` is *immediately* tighter than `a`. `TighterEq` and
+`Tighter` are its reflexive-transitive and transitive closures, taken from
+`LambdaLab/Relation/Basic.lean` rather than spelled out again here. The `step`/`base` lemmas
+below reconstruct the constructors the bespoke inductives used to have, so a proof that builds
+a precedence chain reads exactly as before; a proof that *consumes* one from the front wants
+`RTC.head_induction_on` / `TC.head_induction_on` instead of a plain `induction`. -/
+abbrev TighterStep {Op : Type} (t : Op → List Op) (a b : Op) : Prop := b ∈ t a
+
 /-- `b` binds at least as tightly as `a`: reachable from `a` by repeatedly stepping into `t`. -/
-inductive TighterEq {Op : Type} (t : Op → List Op) : Op → Op → Prop where
-  | refl {a} : TighterEq t a a
-  | step {a b c} : b ∈ t a → TighterEq t b c → TighterEq t a c
+abbrev TighterEq {Op : Type} (t : Op → List Op) : Op → Op → Prop := RTC (TighterStep t)
 
 /-- `b` binds *strictly* more tightly than `a`: one or more `tighter` steps. -/
-inductive Tighter {Op : Type} (t : Op → List Op) : Op → Op → Prop where
-  | base {a b} : b ∈ t a → Tighter t a b
-  | step {a b c} : b ∈ t a → Tighter t b c → Tighter t a c
+abbrev Tighter {Op : Type} (t : Op → List Op) : Op → Op → Prop := TC (TighterStep t)
+
+theorem TighterEq.refl {Op : Type} {t : Op → List Op} {a : Op} : TighterEq t a a := RTC.refl
+
+theorem TighterEq.step {Op : Type} {t : Op → List Op} {a b c : Op}
+    (hmem : b ∈ t a) (h : TighterEq t b c) : TighterEq t a c := RTC.head hmem h
+
+theorem Tighter.base {Op : Type} {t : Op → List Op} {a b : Op}
+    (hmem : b ∈ t a) : Tighter t a b := TC.single hmem
+
+theorem Tighter.step {Op : Type} {t : Op → List Op} {a b c : Op}
+    (hmem : b ∈ t a) (h : Tighter t b c) : Tighter t a c := TC.head hmem h
 
 theorem Tighter.toTighterEq {Op : Type} {t : Op → List Op} {a b : Op}
-    (h : Tighter t a b) : TighterEq t a b := by
-  induction h with
-  | base hmem => exact TighterEq.step hmem TighterEq.refl
-  | step hmem _ ih => exact TighterEq.step hmem ih
+    (h : Tighter t a b) : TighterEq t a b := h.toRTC
 
 theorem TighterEq.toTighterOrEq {Op : Type} {t : Op → List Op} {a b : Op}
-    (h : TighterEq t a b) : a = b ∨ Tighter t a b := by
-  induction h with
-  | refl => exact Or.inl rfl
-  | step hmem _ ih =>
-      cases ih with
-      | inl hEq => exact Or.inr (hEq ▸ Tighter.base hmem)
-      | inr hT  => exact Or.inr (Tighter.step hmem hT)
+    (h : TighterEq t a b) : a = b ∨ Tighter t a b := h.eq_or_tc
 
 theorem Tighter.ofMemTighterEq {Op : Type} {t : Op → List Op} {a b o : Op}
-    (hmem : b ∈ t a) (h : TighterEq t b o) : Tighter t a o := by
-  cases h.toTighterOrEq with
-  | inl hEq => exact hEq ▸ Tighter.base hmem
-  | inr hT  => exact Tighter.step hmem hT
+    (hmem : b ∈ t a) (h : TighterEq t b o) : Tighter t a o := TC.ofMemRTC hmem h
 
 /-! ## Entries and grammars -/
 
@@ -225,11 +229,11 @@ theorem teqFuel_complete {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] :
     ∀ {a b : E.Op}, TighterEq E.tighter a b →
       ∀ {n : Nat}, E.rank a ≤ n → teqFuel E.tighter n a b = true := by
   intro a b h
-  induction h with
+  induction h using RTC.head_induction_on with
   | refl =>
       intro n _
       cases n <;> simp [teqFuel]
-  | step hmem _ ih =>
+  | head hmem _ ih =>
       intro n hn
       cases n with
       | zero => exact absurd (E.rank_tighter _ _ hmem) (by omega)
@@ -243,14 +247,7 @@ instance {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] (a b : E.Op) :
     ⟨teqFuel_sound, fun h => teqFuel_complete E h (Nat.le_refl _)⟩
 
 theorem tighter_iff {Op : Type} {t : Op → List Op} {a b : Op} :
-    Tighter t a b ↔ ∃ c ∈ t a, TighterEq t c b := by
-  constructor
-  · intro h
-    cases h with
-    | base hmem => exact ⟨b, hmem, .refl⟩
-    | step hmem hrest => exact ⟨_, hmem, hrest.toTighterEq⟩
-  · rintro ⟨c, hc, hrest⟩
-    exact Tighter.ofMemTighterEq hc hrest
+    Tighter t a b ↔ ∃ c ∈ t a, TighterEq t c b := TC.head_iff
 
 instance {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] (a b : E.Op) :
     Decidable (Tighter E.tighter a b) :=

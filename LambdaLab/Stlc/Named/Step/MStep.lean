@@ -1,41 +1,45 @@
 import LambdaLab.Stlc.Named.Step.Basic
+import LambdaLab.Relation.Basic
 
 /-!
 # Multi-step reduction (named)
 
 Reflexive-transitive closure of `Step`, with congruence rules for
-lambda and application — same shape as the de Bruijn `MStep`.
+lambda and application — same shape as the de Bruijn `MStep`, and, like it,
+the shared `RTC` rather than a bespoke inductive. See
+`LambdaLab/Stlc/DeBruijn/MStep.lean` for the note on `head` vs `tail`.
 -/
 
 namespace LambdaLab.Stlc.Named
 
 variable {N : Type} [LambdaLab.TypeSystem.NameAlphabet N]
 
-inductive MStep {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] : Term N → Term N → Prop where
-  | refl {e : Term N} : MStep e e
-  | head {e e' e'' : Term N} : e ⟶ e' → MStep e' e'' → MStep e e''
+/-- Multi-step (full-beta) reduction: the reflexive-transitive closure of `Step`. -/
+abbrev MStep {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] : Term N → Term N → Prop :=
+  RTC Step
 
 infix:50 " ⟶* " => MStep
 
-theorem MStep.lift {e e' : Term N} : e ⟶ e' → e ⟶* e' :=
-  fun s => .head s .refl
-
-theorem MStep.trans {e e' e'' : Term N} : MStep e e' → MStep e' e'' → MStep e e''
-  | .refl, h => h
-  | .head s rest, h => .head s (rest.trans h)
+theorem MStep.lift {e e' : Term N} : e ⟶ e' → e ⟶* e' := RTC.single
 
 theorem MStep.lam {e e' : Term N} {x : N} {τ : Ty} :
-    MStep e e' → MStep (.lam x τ e) (.lam x τ e')
-  | .refl => .refl
-  | .head s rest => .head (Step.lam s) (MStep.lam rest)
+    MStep e e' → MStep (.lam x τ e) (.lam x τ e') := by
+  intro h
+  induction h with
+  | refl => exact .refl
+  | tail _ s ih => exact ih.tail (Step.lam s)
 
-theorem MStep.appL {e₁ e₁' e₂ : Term N} : MStep e₁ e₁' → MStep (.app e₁ e₂) (.app e₁' e₂)
-  | .refl => .refl
-  | .head s rest => .head (Step.appL s) (MStep.appL rest)
+theorem MStep.appL {e₁ e₁' e₂ : Term N} : MStep e₁ e₁' → MStep (.app e₁ e₂) (.app e₁' e₂) := by
+  intro h
+  induction h with
+  | refl => exact .refl
+  | tail _ s ih => exact ih.tail (Step.appL s)
 
-theorem MStep.appR {e₁ e₂ e₂' : Term N} : MStep e₂ e₂' → MStep (.app e₁ e₂) (.app e₁ e₂')
-  | .refl => .refl
-  | .head s rest => .head (Step.appR s) (MStep.appR rest)
+theorem MStep.appR {e₁ e₂ e₂' : Term N} : MStep e₂ e₂' → MStep (.app e₁ e₂) (.app e₁ e₂') := by
+  intro h
+  induction h with
+  | refl => exact .refl
+  | tail _ s ih => exact ih.tail (Step.appR s)
 
 theorem MStep.app {e₁ e₁' e₂ e₂' : Term N} (h₁ : MStep e₁ e₁') (h₂ : MStep e₂ e₂') :
     MStep (.app e₁ e₂) (.app e₁' e₂') :=

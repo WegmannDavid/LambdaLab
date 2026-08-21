@@ -48,8 +48,8 @@ variable {Ent : Type}
 theorem Entry.rank_lt_of_tighter (E : Entry Tok Ent) {a b : E.Op}
     (h : Tighter E.tighter a b) : E.rank b < E.rank a := by
   induction h with
-  | base hmem       => exact E.rank_tighter _ _ hmem
-  | step hmem _ ih  => exact Nat.lt_trans ih (E.rank_tighter _ _ hmem)
+  | single hmem    => exact E.rank_tighter _ _ hmem
+  | tail _ hmem ih => exact Nat.lt_trans (E.rank_tighter _ _ hmem) ih
 
 /-- The `Nat` looseness of a level: `loosest` sits at `topRank`, an operand level at its rank. -/
 def Level.base {E : Entry Tok Ent} : Level E → Nat

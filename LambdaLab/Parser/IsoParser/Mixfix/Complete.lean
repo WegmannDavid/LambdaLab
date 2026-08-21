@@ -422,9 +422,9 @@ omit [DecidableEq Tok] in
 /-- `TighterEq j o` with `o ≠ j` is `Tighter j o`. -/
 theorem tighter_of_tighterEq_ne {e : G.Ent} {j o : (G.entry e).Op}
     (h : TighterEq (G.entry e).tighter j o) (hne : ¬ o = j) : Tighter (G.entry e).tighter j o := by
-  cases h with
-  | refl => exact absurd rfl hne
-  | step hmem hrest => exact Tighter.ofMemTighterEq hmem hrest
+  cases h.toTighterOrEq with
+  | inl heq => exact absurd heq.symm hne
+  | inr hT  => exact hT
 
 omit [DecidableEq Tok] in
 /-- **A juxtaposition chain is a base operand plus a list of arguments.**
