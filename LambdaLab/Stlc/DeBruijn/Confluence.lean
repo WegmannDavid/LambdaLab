@@ -158,7 +158,7 @@ theorem MStep.strip : ∀ {e e₁ e₂},
       exact ⟨e_f, h_e1d.toMStep.trans h_de_f, h_e2e_f⟩
 
 /-- Confluence (Church-Rosser) of full-beta reduction. -/
-theorem MStep.confluent : ∀ {e e₁ e₂},
+theorem MStep.confluent : ∀ {e e₁ e₂ : Term},
     e ⟶* e₁ → e ⟶* e₂ → ∃ e', e₁ ⟶* e' ∧ e₂ ⟶* e' := by
   intro e e₁ e₂ h₁ h₂
   induction h₁ using RTC.head_induction_on generalizing e₂ with

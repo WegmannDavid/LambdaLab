@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.TypeSystem.Basic
 
 /-!
 # Full single-step beta reduction
@@ -15,6 +16,7 @@ inductive Step : Term → Term → Prop where
   | appL : Step e₁ e₁' → Step (.app e₁ e₂) (.app e₁' e₂)
   | appR : Step e₂ e₂' → Step (.app e₁ e₂) (.app e₁ e₂')
 
-infix:50 " ⟶ " => Step
+instance instStep : LambdaLab.TypeSystem.Step Term where
+  Step := Step
 
 end LambdaLab.Stlc.DeBruijn

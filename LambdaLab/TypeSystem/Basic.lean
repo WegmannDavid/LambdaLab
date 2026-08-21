@@ -1,3 +1,4 @@
+import LambdaLab.Relation.Basic
 import LambdaLab.TypeSystem.Context
 import LambdaLab.Substitution.Unification.MGU
 
@@ -42,6 +43,11 @@ namespace LambdaLab.TypeSystem
 class Step (Tm : Type) where
   /-- Single-step reduction. -/
   Step : Tm → Tm → Prop
+
+@[inherit_doc] infix:50 " ⟶ " => Step.Step
+
+/-- Multi-step reduction: the reflexive-transitive closure of `Step`. -/
+infix:50 " ⟶* " => RTC Step.Step
 
 /-- A named object language together with the metatheory that makes it well-behaved: typing,
 reduction, and a proof that reduction preserves types. -/

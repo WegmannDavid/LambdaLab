@@ -18,8 +18,6 @@ variable {N : Type} [LambdaLab.TypeSystem.NameAlphabet N]
 abbrev MStep {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] : Term N → Term N → Prop :=
   RTC Step
 
-infix:50 " ⟶* " => MStep
-
 theorem MStep.lift {e e' : Term N} : e ⟶ e' → e ⟶* e' := RTC.single
 
 theorem MStep.lam {e e' : Term N} {x : N} {τ : Ty} :

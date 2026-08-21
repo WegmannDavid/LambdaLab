@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.Named.Basic
+import LambdaLab.TypeSystem.Basic
 
 /-!
 # Full single-step beta reduction (named variables)
@@ -16,6 +17,8 @@ inductive Step {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] : Term N → Ter
   | appL : Step e₁ e₁' → Step (.app e₁ e₂) (.app e₁' e₂)
   | appR : Step e₂ e₂' → Step (.app e₁ e₂) (.app e₁ e₂')
 
-infix:50 " ⟶ " => Step
+instance instStep {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] :
+    LambdaLab.TypeSystem.Step (Term N) where
+  Step := Step
 
 end LambdaLab.Stlc.Named

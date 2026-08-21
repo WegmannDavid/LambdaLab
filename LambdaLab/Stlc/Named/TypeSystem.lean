@@ -77,11 +77,6 @@ at its own name type `VName` instead of calling the elaborator directly.
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
-/-- Reduction is parametric too: the β-rule's capture-avoiding substitution draws its fresh names
-from `NameAlphabet.freshFor`. -/
-instance instStep : TypeSystem.Step (Term N) where
-  Step := Step
-
 instance instTypeSystem : TypeSystem.TypeSystem N (Term N) Ty := {}
 
 /-- The metatheory field, discharged by the unconditional subject-reduction theorem. This is the

@@ -20,9 +20,7 @@ namespace LambdaLab.Stlc.DeBruijn
 /-- Multi-step (full-beta) reduction: the reflexive-transitive closure of `Step`. -/
 abbrev MStep : Term → Term → Prop := RTC Step
 
-infix:50 " ⟶* " => MStep
-
-theorem MStep.lift : e ⟶ e' → e ⟶* e' := RTC.single
+theorem MStep.lift {e e' : Term} : e ⟶ e' → e ⟶* e' := RTC.single
 
 theorem MStep.lam : MStep e e' → MStep (.lam τ e) (.lam τ e') := by
   intro h
