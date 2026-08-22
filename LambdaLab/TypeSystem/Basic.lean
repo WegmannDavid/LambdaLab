@@ -1,4 +1,5 @@
-import LambdaLab.Relation.Basic
+import LambdaLab.Relation.Closure
+import LambdaLab.Relation.Normalization
 import LambdaLab.TypeSystem.Context
 import LambdaLab.Substitution.Unification.MGU
 
@@ -283,13 +284,18 @@ attribute [reducible, instance low] PrincipalElaborate.tyGroundDec PrincipalElab
 `String` (`Stlc.Named.sn_of_hasType`, from `HasType.sn`) and records it beside its instances; no
 instance of this class exists yet. -/
 class StronglyNormalizing (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
-  /-- **No infinite reduction sequence.** Stated with the arrow reversed, and that is the whole
-  content: `WellFounded r` forbids chains with `r xₙ₊₁ xₙ`, so `WellFounded Step` would forbid
-  infinite *backward* histories — a term being reachable from ever-longer predecessors — while
-  strong normalization is the absence of `t₀ → t₁ → t₂ → ⋯` going forward. Flipping the relation
-  is what makes the field say the second. -/
-  StronglyNormalizing : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty},
-    Γ ⊢ t : τ → WellFounded (fun t t' : Tm => t' ⟶ t)
+  /-- **The term at hand admits no infinite reduction sequence.**
+
+  `SN` is `Relation/Normalization.lean`'s, so the direction question is settled there rather than
+  here: `SN (· ⟶ ·) t` means every reduction sequence *out of* `t` is finite, and the reversal an
+  `Acc` formulation would need is exactly what that file's inductive avoids.
+
+  It says `SN` of **this** term, not well-foundedness of `⟶`. The latter would assert termination
+  for every term of `Tm`, which no language can discharge: a term type holds the untypable
+  divergent terms too, and `Γ ⊢ t : τ` says nothing about them — `Stlc.Named.omega_not_sn` is the
+  witness. `SN` restricts the claim to the term the derivation is about, which is what
+  `Stlc.Named.HasType.sn` proves. -/
+  StronglyNormalizing : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty}, Γ ⊢ t : τ → SN (· ⟶ ·) t
 
 /-- **A normalizer.** Data only — `LawfulHasEval` below is where the answer acquires meaning.
 

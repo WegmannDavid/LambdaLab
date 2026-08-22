@@ -1,5 +1,5 @@
 import LambdaLab.Parser.IsoParser.Combinators
-import LambdaLab.Relation.Basic
+import LambdaLab.Relation.Closure
 
 /-!
 # General mixfix grammar — self-contained (independent of `CBiparser`)
@@ -98,7 +98,7 @@ def Operator.holeFollowers {Tok Ent : Type} : Operator Tok Ent → List (Ent × 
 
 /-- The one-step precedence relation: `b` is *immediately* tighter than `a`. `TighterEq` and
 `Tighter` are its reflexive-transitive and transitive closures, taken from
-`LambdaLab/Relation/Basic.lean` rather than spelled out again here. The `step`/`base` lemmas
+`LambdaLab/Relation/Closure.lean` rather than spelled out again here. The `step`/`base` lemmas
 below reconstruct the constructors the bespoke inductives used to have, so a proof that builds
 a precedence chain reads exactly as before; a proof that *consumes* one from the front wants
 `RTC.head_induction_on` / `TC.head_induction_on` instead of a plain `induction`. -/

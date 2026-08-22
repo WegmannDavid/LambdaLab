@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Relation.Basic
+import LambdaLab.Relation.Closure
 
 /-!
 # Multi-step reduction
@@ -7,7 +7,7 @@ import LambdaLab.Relation.Basic
 Reflexive-transitive closure of `Step`, with congruence rules for
 lambda and application.
 
-`MStep` is `RTC Step` — the shared closure from `LambdaLab/Relation/Basic.lean`, not a
+`MStep` is `RTC Step` — the shared closure from `LambdaLab/Relation/Closure.lean`, not a
 bespoke inductive. Its constructors are `refl`/`tail` (snoc-shaped); the head-shaped view
 this development is written against comes from `RTC.head` and, for proofs that genuinely
 consume a reduction from the front, `RTC.head_induction_on`. The congruence lemmas below

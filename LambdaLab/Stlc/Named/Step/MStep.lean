@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Step.Basic
-import LambdaLab.Relation.Basic
+import LambdaLab.Relation.Closure
 
 /-!
 # Multi-step reduction (named)

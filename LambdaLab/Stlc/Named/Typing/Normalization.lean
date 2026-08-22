@@ -24,13 +24,42 @@ The chain:
 
 namespace LambdaLab.Stlc.Named
 
-/-! ## Named SN (mirroring the DB definition) -/
+/-! ## Named SN
 
-inductive SN : (Term String) → Prop where
-  | intro : (∀ e', Step e e' → SN e') → SN e
+`LambdaLab.SN` at this `Step`, not a copy of it: `Relation/Normalization.lean` owns the inductive
+and `TypeSystem.StronglyNormalizing` asks for it in that form, so an instance for this language is
+`HasType.sn` and nothing else. `SN.intro`, `SN.unfold` and `induction h with | intro` all read as
+before, through the abbreviation. -/
 
-theorem SN.unfold : ∀ {e e'}, SN e → Step e e' → SN e'
-  | _, _, .intro h, hs => h _ hs
+abbrev SN : (Term String) → Prop := LambdaLab.SN Step
+
+/-! ## Why `SN e` and not well-foundedness of `Step`
+
+`HasType.sn` claims termination for the term its derivation is about. The stronger reading — that
+`Step` is well-founded, i.e. *every* named term terminates — is false, and stays refuted here
+because `TypeSystem.StronglyNormalizing`'s field shape depends on it: `Term String` contains the
+untypable divergent terms, `Ω` among them. -/
+
+/-- `λx:⋆. x x` — self-application: untypable, and the engine of `Ω`. -/
+def selfApp : Term String := .lam "x" .base (.app (.var "x") (.var "x"))
+
+/-- `Ω = (λx:⋆. x x) (λx:⋆. x x)`, which β-reduces to itself. -/
+def omega : Term String := .app selfApp selfApp
+
+theorem omega_step : Step omega omega := by
+  have h : ((Term.app (Term.var "x") (Term.var "x")).subst "x" selfApp) = omega := by
+    simp [Term.subst, omega]
+  show Step (.app (.lam "x" .base (.app (.var "x") (.var "x"))) selfApp) omega
+  exact h ▸ Step.beta
+
+/-- **`Ω` is not strongly normalizing**, so no language can be asked for well-foundedness of its
+reduction relation — only for `SN` of the terms it can type. -/
+theorem omega_not_sn : ¬ SN omega := by
+  have key : ∀ e : Term String, SN e → e = omega → False := by
+    intro e h
+    induction h with
+    | intro _ ih => rintro rfl; exact ih omega omega_step rfl
+  exact fun h => key omega h rfl
 
 /-! ## DB strong normalization is preserved by multi-step -/
 
@@ -57,7 +86,7 @@ private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d
   induction hsn with
   | intro hStep ihStep =>
       intro e binders hfv hms
-      apply SN.intro
+      apply LambdaLab.SN.intro
       intro e' hs
       have hfv' : ∀ x ∈ e'.freeVars, x ∈ binders :=
         fun x hx => hfv x (Step.preserves_freeVars hs x hx)

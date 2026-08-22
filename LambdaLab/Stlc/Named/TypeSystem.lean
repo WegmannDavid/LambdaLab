@@ -131,6 +131,30 @@ instance instPrincipalElaborate : TypeSystem.PrincipalElaborate N (Term N) Ty wh
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
 
+/-! ## Normalization — `String` only, and only this one of the reduction classes
+
+`StronglyNormalizing` is discharged; `Confluent` and `HasEval`/`LawfulHasEval` are not, and the
+reasons differ:
+
+* **`Confluent` is not available for this variant at all.** `Named.MStep.confluent` does not claim
+  joint convergence on named terms and says so: two reduction paths pick different fresh binder
+  names, so they converge only up to α-equivalence, and the theorem states convergence *after*
+  translation to de Bruijn. The class asks for a common reduct in `Tm` itself. De Bruijn has that
+  unconditionally (`Stlc.DeBruijn.MStep.confluent`) but cannot instantiate anything here — its
+  context is a `List Ty`, not a `Context N Ty`. An instance needs α-equivalence on named terms, or
+  a class stated up to a congruence.
+* **`HasEval` is open by choice** — the evaluator exists (`Step/Eval.lean`, on `SNTerm`) but what
+  it should be at the interface has not been settled. -/
+
+/-- **Strong normalization**, pinned at `String` like everything that detours through de Bruijn
+binder lists. The field is `HasType.sn` outright — `Named.SN` *is* `LambdaLab.SN` at this `Step`,
+so there is nothing to convert.
+
+The field could not ask for well-foundedness of `⟶`: `omega_not_sn` refutes that. -/
+instance instStronglyNormalizing :
+    TypeSystem.StronglyNormalizing String (Term String) Ty where
+  StronglyNormalizing h := HasType.sn h
+
 /-! ## The fields are definitionally what they came from
 
 Each is `rfl`. They are stated so that a later change to the interface — reordering fields,
