@@ -49,11 +49,30 @@ class Step (Tm : Type) where
 /-- Multi-step reduction: the reflexive-transitive closure of `Step`. -/
 infix:50 " ⟶* " => RTC Step.Step
 
+/-- **`t` is in normal form**: no reduction applies to it.
+
+Spelled `∀ t', ¬ t ⟶ t'` rather than `¬ ∃ t', t ⟶ t'` — the two are equivalent, but this form
+applies directly to a candidate reduct, so discharging it is `intro t' h` and refuting `h`,
+with no `push_neg` in between.
+
+This is what makes a normalizer's output an *answer* rather than merely some term reachable from
+the input; `LawfulHasEval` demands it of `eval`, and it is the only place the framework says what
+"done reducing" means. -/
+def NormalForm {Tm : Type} [Step Tm] (t : Tm) : Prop := ∀ t', ¬ t ⟶ t'
+
 /-- A named object language together with the metatheory that makes it well-behaved: typing,
 reduction, and a proof that reduction preserves types. -/
 class HasType (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] where
   /-- The typing judgement, over contexts keyed by `N`. -/
   HasType : Context N Ty → Tm → Ty → Prop
+
+/-- **The typing judgement**: `Γ ⊢ t : τ` — under `Γ`, the term `t` has type `τ`.
+
+Precedence and spelling are the concrete judgements' (`Stlc/Named/Typing/Basic.lean`,
+`Stlc/DeBruijn/Typing.lean`), so a generic statement reads exactly like the instance it will be
+applied to. Those two remain separate notations for their own inductives; where a language's
+instance is in scope this one overloads with them, and the elaborator picks by the type of `Γ`. -/
+notation:40 Γ " ⊢ " t " : " τ => HasType.HasType Γ t τ
 
 class TypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasType N Tm Ty, Step Tm where
 
@@ -245,13 +264,19 @@ class StronglyNormalizing (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] exten
   infinite *backward* histories — a term being reachable from ever-longer predecessors — while
   strong normalization is the absence of `t₀ → t₁ → t₂ → ⋯` going forward. Flipping the relation
   is what makes the field say the second. -/
-  StronglyNormalizing : WellFounded (fun t t' => Step t' t)
+  StronglyNormalizing : HasType Γ t τ → WellFounded (fun t t' => Step t' t)
 
 class HasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
-  eval : Tm → Tm
+  eval Γ t τ : HasType Γ t τ → Tm
 
 class LawfulHasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasEval N Tm Ty, StronglyNormalizing N Tm Ty where
-  -- eval t is a normal form of t
-  -- eval t is reachable from t
+  /-- **`eval` finishes the job**: its result admits no further reduction. -/
+  evalNormal {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : HasType Γ t τ) :
+    NormalForm (eval Γ t τ h)
+  /-- **`eval` answers the question asked**: its result is reachable from the input, so it is a
+  normal form *of `t`* and not merely some normal form. Neither field implies the other —
+  the first alone is satisfied by any constant normal term, the second by `eval = id`. -/
+  evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : HasType Γ t τ) :
+    t ⟶* eval Γ t τ h
 
 end LambdaLab.TypeSystem

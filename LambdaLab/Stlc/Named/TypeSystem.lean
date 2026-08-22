@@ -56,11 +56,10 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.TypeSystem (NameAlphabet)
 
-/-! ## The judgement — any name alphabet -/
+/-! ## The judgement — any name alphabet
 
-/-- Typing is parametric in the name alphabet: nothing in the judgement inspects a name. -/
-instance instHasType {N : Type} [NameAlphabet N] : TypeSystem.HasType N (Term N) Ty where
-  HasType := HasType
+`instHasType` is not here: it lives beside the inductive in `Typing/Basic.lean`, so that the `⊢`
+notation the class owns is available from the judgement's own file onwards. -/
 
 /-! ## Reduction and above — every name alphabet too
 

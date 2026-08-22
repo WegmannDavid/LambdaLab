@@ -1,5 +1,6 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.TypeSystem.Context
+import LambdaLab.TypeSystem.Basic
 
 /-!
 # Typing (named variables, hashmap context)
@@ -58,7 +59,11 @@ inductive HasType {N : Type} [NameAlphabet N] : Ctx N → Term N → Ty → Prop
   | app : HasType Γ e₁ (τ₁ ⇒ τ₂) → HasType Γ e₂ τ₁ →
           HasType Γ (.app e₁ e₂) τ₂
 
-notation:40 Γ " ⊢ " e " : " τ => HasType Γ e τ
+/-- Typing is parametric in the name alphabet: nothing in the judgement inspects a name. Declared
+here rather than in `Named/TypeSystem.lean` so that `Γ ⊢ e : τ` — the class notation, and now the
+only one — reads at the judgement itself, exactly as `instStep` sits beside `Step`. -/
+instance instHasType : TypeSystem.HasType N (Term N) Ty where
+  HasType := HasType
 
 /-- A typing context is *ground* if every type it assigns is ground. -/
 def Ctx.Ground (Γ : Ctx N) : Prop := ∀ x τ, Γ.get? x = some τ → τ.Ground
