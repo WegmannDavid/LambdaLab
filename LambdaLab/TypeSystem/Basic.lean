@@ -72,7 +72,7 @@ Precedence and spelling are the concrete judgements' (`Stlc/Named/Typing/Basic.l
 `Stlc/DeBruijn/Typing.lean`), so a generic statement reads exactly like the instance it will be
 applied to. Those two remain separate notations for their own inductives; where a language's
 instance is in scope this one overloads with them, and the elaborator picks by the type of `Γ`. -/
-notation:40 Γ " ⊢ " t " : " τ => HasType.HasType Γ t τ
+notation:40 Γ:41 " ⊢ " t:41 " : " τ:41 => HasType.HasType Γ t τ
 
 class TypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasType N Tm Ty, Step Tm where
 
@@ -84,7 +84,7 @@ consumer — which is why they sit together here and not further down the tower.
 what the pieces are; this says they behave. -/
 class LawfulTypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends TypeSystem N Tm Ty where
   /-- Reduction preserves types. -/
-  Preservation : ∀ {Γ t τ t'}, HasType Γ t τ → Step t t' → HasType Γ t' τ
+  Preservation : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} {t' : Tm}, Γ ⊢ t : τ → t ⟶ t' → Γ ⊢ t' : τ
   /-- **Typing sees a context only through lookup**: two contexts agreeing at every name type the
   same terms.
 
@@ -97,7 +97,7 @@ class LawfulTypeSystem (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends 
   (`Context.pSubst_get?_of_ground`) is all there is. This law turns that into a statement about
   typing. -/
   cong : ∀ {Γ Γ' : Context N Ty} {t : Tm} {τ : Ty},
-    (∀ x, Γ.get? x = Γ'.get? x) → HasType Γ t τ → HasType Γ' t τ
+    (∀ x, Γ.get? x = Γ'.get? x) → Γ ⊢ t : τ → Γ' ⊢ t : τ
 
 /-- A type system whose types carry metavariables, so substitution acts on both levels:
 `pSubst : Tm → Subst Ty → Tm` for the type annotations inside a term, and
@@ -157,7 +157,7 @@ class LawfulMVars (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends MVars
   For a system whose types carry metavariables this is the workhorse: it is what lets a solved
   constraint set be *applied* and still describe a typing. -/
   Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Ty),
-    HasType Γ t τ → HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)
+    Γ ⊢ t : τ → HasSubst.pSubst Γ σ ⊢ HasSubst.pSubst t σ : HasSubst.pSubst τ σ
   /-- Substitution fixes a ground type. -/
   tyGroundStable : GroundStable Ty Ty
   /-- …and a term whose annotations are all solved. -/
@@ -235,7 +235,7 @@ class PrincipalElaborate (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extend
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
       PrincipalProp (MoreGeneralBelow (sourceFresh Γ t τ))
         (fun σ : Subst Ty =>
-          HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ))
+          HasSubst.pSubst Γ σ ⊢ HasSubst.pSubst t σ : HasSubst.pSubst τ σ)
   /-- **Groundness of a type is decidable.** `HasVars.Ground` is `∀ n, ¬ isFree x n`, which no
   instance decides by unfolding, so a language routes it to its own structural check.
 
@@ -264,19 +264,20 @@ class StronglyNormalizing (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] exten
   infinite *backward* histories — a term being reachable from ever-longer predecessors — while
   strong normalization is the absence of `t₀ → t₁ → t₂ → ⋯` going forward. Flipping the relation
   is what makes the field say the second. -/
-  StronglyNormalizing : HasType Γ t τ → WellFounded (fun t t' => Step t' t)
+  StronglyNormalizing : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty},
+    Γ ⊢ t : τ → WellFounded (fun t t' : Tm => t' ⟶ t)
 
 class HasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends LawfulMVars N Tm Ty where
-  eval Γ t τ : HasType Γ t τ → Tm
+  eval (Γ : Context N Ty) (t : Tm) (τ : Ty) : Γ ⊢ t : τ → Tm
 
 class LawfulHasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends HasEval N Tm Ty, StronglyNormalizing N Tm Ty where
   /-- **`eval` finishes the job**: its result admits no further reduction. -/
-  evalNormal {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : HasType Γ t τ) :
+  evalNormal {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     NormalForm (eval Γ t τ h)
   /-- **`eval` answers the question asked**: its result is reachable from the input, so it is a
   normal form *of `t`* and not merely some normal form. Neither field implies the other —
   the first alone is satisfied by any constant normal term, the second by `eval = id`. -/
-  evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : HasType Γ t τ) :
+  evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     t ⟶* eval Γ t τ h
 
 end LambdaLab.TypeSystem

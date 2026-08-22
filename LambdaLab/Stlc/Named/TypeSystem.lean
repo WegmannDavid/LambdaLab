@@ -157,7 +157,7 @@ thing it excludes in view. -/
 
 /-- STLC is strongly normalizing — a property the interface does not require. -/
 theorem sn_of_hasType {Γ : Ctx String} {e : Term String} {τ : Ty} :
-    TypeSystem.HasType.HasType Γ e τ → SN e :=
+    Γ ⊢ e : τ → SN e :=
   HasType.sn
 
 end LambdaLab.Stlc.Named
