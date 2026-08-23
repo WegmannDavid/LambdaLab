@@ -1,6 +1,6 @@
 import LambdaLab.Relation.Closure
 import LambdaLab.Relation.Normalization
-import LambdaLab.TypeSystem.Context
+import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.Substitution.Unification.MGU
 
 /-!
@@ -49,7 +49,7 @@ becomes `Ambiguous term`; the local ones were removed for that reason. Argument 
 so that `Γ ⊢ t : τ → P` splits at the arrow.
 -/
 
-namespace LambdaLab.TypeSystem
+namespace LambdaLab.TypeSystem.Named
 
 /-- **Reduction.** One relation and no law; `LawfulTypeSystem` is where it acquires one. -/
 class Step (Tm : Type) where
@@ -344,4 +344,4 @@ class LawfulHasEval (N Tm Ty : Type) [nameAlphabet : NameAlphabet N] extends
   evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     t ⟶* eval Γ t τ h
 
-end LambdaLab.TypeSystem
+end LambdaLab.TypeSystem.Named

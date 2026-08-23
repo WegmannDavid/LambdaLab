@@ -166,7 +166,7 @@ inductive SolutionProp {𝕊 : Type} (P : Subst 𝕊 → Prop) where
 Exists so that a *law* about a `SolutionProp`-valued field can be stated without naming the
 constructor's proof argument: `d.subst? = some σ → …` quantifies over the σ alone, whereas
 `d = .solution σ hσ` drags an existential over `hσ` along with it. This is what
-`TypeSystem.PrincipalElaborate` uses to add most-generality on top of a decision rather than
+`TypeSystem.Named.PrincipalElaborate` uses to add most-generality on top of a decision rather than
 inside it. -/
 def SolutionProp.subst? {𝕊 : Type} {P : Subst 𝕊 → Prop} : SolutionProp P → Option (Subst 𝕊)
   | .solution σ _ => some σ
@@ -217,7 +217,7 @@ those speak about every variable the equations mention.
 An elaborator cannot ask for this: it draws variables its caller never mentioned, and a competing
 solution says nothing about them (`Stlc/Named/Typing/Principality.lean` proves the resulting
 statement false). That is why the comparison is a parameter and not baked in — see
-`TypeSystem.PrincipalElaborate`, which instantiates it at `MoreGeneralBelow`. -/
+`TypeSystem.Named.PrincipalElaborate`, which instantiates it at `MoreGeneralBelow`. -/
 abbrev MGUProp {𝕊 : Type} [HasSubst 𝕊 𝕊] (P : Subst 𝕊 → Prop) : Type :=
   PrincipalProp MoreGeneral P
 

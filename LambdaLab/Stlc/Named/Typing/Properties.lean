@@ -10,7 +10,7 @@ translation. They mirror similar facts on the de Bruijn side.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

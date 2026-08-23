@@ -1,5 +1,5 @@
-import LambdaLab.TypeSystem.Vernacular.Basic
-import LambdaLab.TypeSystem.Basic
+import LambdaLab.TypeSystem.Named.Vernacular.Basic
+import LambdaLab.TypeSystem.Named.Basic
 
 /-!
 # When a program is well-typed
@@ -54,7 +54,7 @@ declaration names, and a vernacular wanting to reject shadowing states it separa
 by making well-typedness fail.
 -/
 
-namespace LambdaLab.TypeSystem.Vernacular
+namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
 
@@ -63,7 +63,7 @@ language's class in the parent namespace. Both are wanted under those names, so 
 the class is qualified: an unqualified one in a statement written after the `abbrev` resolves to
 the program-level judgement and fails with an arity mismatch. -/
 
-variable {N Tm Ty : Type} [NameAlphabet N] [_root_.LambdaLab.TypeSystem.HasType N Tm Ty]
+variable {N Tm Ty : Type} [NameAlphabet N] [_root_.LambdaLab.TypeSystem.Named.HasType N Tm Ty]
   [HasVars Tm] [HasVars Ty]
 
 /-- Every type bound in `Γ` is ground.
@@ -98,7 +98,7 @@ inductive HasTypeGround : Context N Ty → List (Command N Tm Ty) → Prop where
   metavariable — and the declarations after it are well-typed in the context that `x : τ` has been
   added to. -/
   | decl {Γ : Context N Ty} {x : N} {τ : Ty} {t : Tm} {cs : List (Command N Tm Ty)} :
-      _root_.LambdaLab.TypeSystem.HasType.HasType Γ t τ → Ground τ → Ground t →
+      _root_.LambdaLab.TypeSystem.Named.HasType.HasType Γ t τ → Ground τ → Ground t →
       HasTypeGround (Γ.cons x τ) cs →
       HasTypeGround Γ (Command.decl x τ t :: cs)
 
@@ -154,7 +154,7 @@ theorem HasType.ground_of_mem {p : Program N Tm Ty} (h : HasType p)
 the empty context, with neither carrying a metavariable. -/
 theorem hasType_singleton {x : N} {τ : Ty} {t : Tm} :
     HasType (NEList.singleton (Command.decl x τ t)) ↔
-      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ
+      _root_.LambdaLab.TypeSystem.Named.HasType.HasType (Context.empty : Context N Ty) t τ
         ∧ Ground τ ∧ Ground t := by
   constructor
   · intro h
@@ -167,7 +167,7 @@ theorem hasType_singleton {x : N} {τ : Ty} {t : Tm} :
 ground — in the empty context, and the rest check in the context that declaration extends. -/
 theorem hasType_cons {x : N} {τ : Ty} {t : Tm} {cs : List (Command N Tm Ty)} :
     HasType (Command.decl x τ t, cs) ↔
-      _root_.LambdaLab.TypeSystem.HasType.HasType (Context.empty : Context N Ty) t τ
+      _root_.LambdaLab.TypeSystem.Named.HasType.HasType (Context.empty : Context N Ty) t τ
         ∧ Ground τ ∧ Ground t
         ∧ HasTypeGround ((Context.empty : Context N Ty).cons x τ) cs := by
   constructor
@@ -177,4 +177,4 @@ theorem hasType_cons {x : N} {τ : Ty} {t : Tm} {cs : List (Command N Tm Ty)} :
   · intro ⟨hty, hτ, ht, hrest⟩
     exact .decl hty hτ ht hrest
 
-end LambdaLab.TypeSystem.Vernacular
+end LambdaLab.TypeSystem.Named.Vernacular

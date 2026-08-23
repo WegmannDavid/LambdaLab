@@ -24,7 +24,7 @@ List Char  ⇝  List Token  ⇝  Program  ⇝  Elaborated
 ## Two chains, because ③ is conditional
 
 ① and ② need nothing but a `Language`. ③ additionally needs
-`[TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]` — the language's own types and terms must
+`[TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]` — the language's own types and terms must
 satisfy the elaboration interface. So there are two composites, each named for how far it goes:
 
 * `parsePipeline : List Char ⇝ Program`, and its `String`-level API `parseFile`/`renderProgram`;
@@ -58,7 +58,7 @@ open LambdaLab.Abstraction
 
 open LambdaLab.Parser.IsoParser (many1PrintOut)
 
-open LambdaLab.TypeSystem.Vernacular (elabProgram?)
+open LambdaLab.TypeSystem.Named.Vernacular (elabProgram?)
 
 /-! ## The canonical layout
 
@@ -120,7 +120,7 @@ Everything below is the same construction with one more stage on the end. The on
 requirement is the `PrincipalElaborate` instance; the moment a language's own types and terms
 satisfy it, the whole front end exists with nothing further to supply. -/
 
-variable (L : Language) [TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]
+variable (L : Language) [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]
 
 /-- **Characters to an elaborated program**, in `Abs`. Parsing and elaboration are one morphism,
 so the round-trip law covers both — `realize` of any annotation re-parses *and* re-elaborates to

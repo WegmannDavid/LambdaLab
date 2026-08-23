@@ -1,14 +1,14 @@
-import LambdaLab.TypeSystem.Basic
+import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.JComplete
-import LambdaLab.TypeSystem.Vernacular.Elaborate
+import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
 # STLC against the `TypeSystem` interface
 
-The named STLC plugged into the classes of `TypeSystem/Basic.lean`, as `Pipeline.lean` plugs it
+The named STLC plugged into the classes of `TypeSystem/Named/Basic.lean`, as `Pipeline.lean` plugs it
 into `Pipeline.Language`. Every field is an existing declaration under its own name; nothing is
 proved here, which is the point — the interface asks for what the development already has.
 
@@ -54,7 +54,7 @@ unconditionally (`elabSolution` is proved and still exported), and claims princi
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 /-! ## The judgement — any name alphabet
 
@@ -76,25 +76,25 @@ at its own name type `VName` instead of calling the elaborator directly.
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
-instance instTypeSystem : TypeSystem.TypeSystem N (Term N) Ty := {}
+instance instTypeSystem : TypeSystem.Named.TypeSystem N (Term N) Ty := {}
 
 /-- The metatheory field, discharged by the unconditional subject-reduction theorem. This is the
 one instance with content: building it *is* the claim that STLC is well-behaved in the framework's
 sense, since `Preservation` cannot be filled without a proof. -/
-instance instLawfulTypeSystem : TypeSystem.LawfulTypeSystem N (Term N) Ty where
+instance instLawfulTypeSystem : TypeSystem.Named.LawfulTypeSystem N (Term N) Ty where
   Preservation := HasType.preservation
   cong h ht := HasType.cong h ht
 
 /-- Both substitution instances already exist, so fill from them rather than defining new ones —
 the copies are then definitionally canonical and lemmas about either apply to both. -/
-instance instMVars : TypeSystem.MVars N (Term N) Ty where
+instance instMVars : TypeSystem.Named.MVars N (Term N) Ty where
   tmSubst := inferInstance
   tySubst := inferInstance
 
 /-- The second instance with content: stability of typing under substitution, discharged by
 `HasType.subst`. Like `Preservation` this is a field, so it cannot be skipped — and like it, the
 proof already existed, generic in `N`, before the interface asked for it. -/
-instance instLawfulMVars : TypeSystem.LawfulMVars N (Term N) Ty where
+instance instLawfulMVars : TypeSystem.Named.LawfulMVars N (Term N) Ty where
   Stability σ h := HasType.subst h σ
   tyGroundStable := inferInstance
   tmGroundStable := inferInstance
@@ -125,7 +125,7 @@ with `elabSubst_principal_below`. Both are theorems, so this instance is dischar
 `sourceFresh` is `Target.sourceFresh`, the threshold `elabSubst` prunes its answer to; the
 principality the class asks for is stated below it, which is the only place it can hold
 (`Typing/Principality.lean`). The plain decision remains available on its own as `elabSolution`. -/
-instance instPrincipalElaborate : TypeSystem.PrincipalElaborate N (Term N) Ty where
+instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N) Ty where
   sourceFresh := sourceFresh
   elaborate := elabMGU
   tyGroundDec := inferInstance
@@ -152,7 +152,7 @@ so there is nothing to convert.
 
 The field could not ask for well-foundedness of `⟶`: `omega_not_sn` refutes that. -/
 instance instStronglyNormalizing :
-    TypeSystem.StronglyNormalizing String (Term String) Ty where
+    TypeSystem.Named.StronglyNormalizing String (Term String) Ty where
   StronglyNormalizing h := HasType.sn h
 
 /-! ## The fields are definitionally what they came from
@@ -163,19 +163,19 @@ rebinding one of STLC's notions to something else. -/
 
 omit [HasVars N] in
 @[simp] theorem hasType_eq :
-    TypeSystem.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
+    TypeSystem.Named.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
 omit [HasVars N] in
-@[simp] theorem step_eq : TypeSystem.Step.Step (Tm := Term N) = Step := rfl
+@[simp] theorem step_eq : TypeSystem.Named.Step.Step (Tm := Term N) = Step := rfl
 
 @[simp] theorem elaborate_eq :
-    TypeSystem.PrincipalElaborate.elaborate (N := N) (Tm := Term N) (Ty := Ty)
+    TypeSystem.Named.PrincipalElaborate.elaborate (N := N) (Tm := Term N) (Ty := Ty)
       = elabMGU := rfl
 
 /-! ## Beyond the interface
 
 STLC satisfies strictly more than `LawfulTypeSystem` asks. Recorded next to the instance so the
-gap is documented where someone comparing the two will look — `TypeSystem/Basic.lean` argues at
+gap is documented where someone comparing the two will look — `TypeSystem/Named/Basic.lean` argues at
 length for keeping normalization *out* of the interface, and that argument reads better with the
 thing it excludes in view. -/
 

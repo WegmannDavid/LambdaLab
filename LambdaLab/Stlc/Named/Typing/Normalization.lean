@@ -27,7 +27,7 @@ namespace LambdaLab.Stlc.Named
 /-! ## Named SN
 
 `LambdaLab.SN` at this `Step`, not a copy of it: `Relation/Normalization.lean` owns the inductive
-and `TypeSystem.StronglyNormalizing` asks for it in that form, so an instance for this language is
+and `TypeSystem.Named.StronglyNormalizing` asks for it in that form, so an instance for this language is
 `HasType.sn` and nothing else. `SN.intro`, `SN.unfold` and `induction h with | intro` all read as
 before, through the abbreviation. -/
 
@@ -37,7 +37,7 @@ abbrev SN : (Term String) → Prop := LambdaLab.SN Step
 
 `HasType.sn` claims termination for the term its derivation is about. The stronger reading — that
 `Step` is well-founded, i.e. *every* named term terminates — is false, and stays refuted here
-because `TypeSystem.StronglyNormalizing`'s field shape depends on it: `Term String` contains the
+because `TypeSystem.Named.StronglyNormalizing`'s field shape depends on it: `Term String` contains the
 untypable divergent terms, `Ω` among them. -/
 
 /-- `λx:⋆. x x` — self-application: untypable, and the engine of `Ω`. -/

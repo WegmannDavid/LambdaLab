@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.TypeSystem.NameAlphabet
+import LambdaLab.TypeSystem.Named.NameAlphabet
 
 /-!
 # `FreeName` — the name alphabet a language gets from its reserved list
@@ -27,7 +27,7 @@ syntax. So this is the one module whose folder does not match its layer. Moving 
 would restore the layering at the cost of separating it from the class it instantiates.
 -/
 
-namespace LambdaLab.TypeSystem
+namespace LambdaLab.TypeSystem.Named
 
 open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
 
@@ -79,4 +79,4 @@ instance instNameAlphabetFreeName (reserved : List Token) : NameAlphabet (FreeNa
       List.mem_map.mpr ⟨_, hmem, rfl⟩
     exact aRun_maxLen_not_mem (List.mem_append_left _ hval)
 
-end LambdaLab.TypeSystem
+end LambdaLab.TypeSystem.Named

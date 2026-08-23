@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Compose
-import LambdaLab.TypeSystem.FreeName
+import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Adapters
 
 /-!
@@ -12,7 +12,7 @@ round-trip proof all come back **for free**.
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.TypeSystem (Context)
+open LambdaLab.TypeSystem.Named (Context)
 
 open LambdaLab.Parser.IsoParser
 
@@ -76,7 +76,7 @@ def reprint (s : String) : Option String :=
 /-! ## Giving it a semantics
 
 `trivialLanguage` is a `Language`, so it parses. Making its *types and terms* satisfy
-`TypeSystem.PrincipalElaborate` gets the whole front end including type checking — and note where the
+`TypeSystem.Named.PrincipalElaborate` gets the whole front end including type checking — and note where the
 work happens: everything below is an instance of a `TypeSystem` class, with no mention of a
 parser, a token or a `Language`. The pipeline picks it up on its own.
 
@@ -102,7 +102,7 @@ context-specific one, which is deliberately `low`. The generic vernacular code w
 where no `HasVars N` was in scope, so its goals carry the context instance; raising its priority
 here makes the concrete lemmas below talk about the same `pSubst` those goals do. -/
 
-attribute [local instance 2000] LambdaLab.TypeSystem.instHasSubstContext
+attribute [local instance 2000] LambdaLab.TypeSystem.Named.instHasSubstContext
 
 instance : HasSubst Name Name where
   pSubst t _ := t
@@ -131,25 +131,25 @@ theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Name) (t τ : Nam
   rw [declaredAt, declaredAt, Context.pSubst_get?]
   cases Γ.get? t <;> rfl
 
-instance : TypeSystem.HasType Name Name Name where
+instance : TypeSystem.Named.HasType Name Name Name where
   HasType Γ t τ := declaredAt Γ t τ = true
 
 /-- Nothing reduces, so preservation is vacuous. -/
-instance : TypeSystem.Step Name where Step _ _ := False
+instance : TypeSystem.Named.Step Name where Step _ _ := False
 
-instance : TypeSystem.TypeSystem Name Name Name where
-instance : TypeSystem.LawfulTypeSystem Name Name Name where
+instance : TypeSystem.Named.TypeSystem Name Name Name where
+instance : TypeSystem.Named.LawfulTypeSystem Name Name Name where
   Preservation _ hs := hs.elim
   cong h ht := by
     show declaredAt _ _ _ = true
     rw [declaredAt, ← h]
     exact ht
 
-instance : TypeSystem.MVars Name Name Name where
+instance : TypeSystem.Named.MVars Name Name Name where
   tmSubst := inferInstance
   tySubst := inferInstance
 
-instance : TypeSystem.LawfulMVars Name Name Name where
+instance : TypeSystem.Named.LawfulMVars Name Name Name where
   Stability := by
     intro Γ t τ σ ht
     show declaredAt (HasSubst.pSubst Γ σ) t τ = true
@@ -169,7 +169,7 @@ identity, so the empty answer is at least as general as anything with the empty 
 
 Worth noting against STLC, where the same field costs a `sorry`. Most-generality is only hard when
 there is inference to be most general *about*. -/
-instance : TypeSystem.PrincipalElaborate Name Name Name where
+instance : TypeSystem.Named.PrincipalElaborate Name Name Name where
   -- this language draws no metavariables of its own, so the principality claim is unrestricted
   sourceFresh _ _ _ := 0
   tyGroundDec := inferInstance

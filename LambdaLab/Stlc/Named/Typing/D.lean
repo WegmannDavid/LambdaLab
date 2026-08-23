@@ -42,7 +42,7 @@ Metavariables (`Ty.mvar`) serve as the type variables `α`. In `D` they are genu
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -64,7 +64,7 @@ def Scheme.IsFree : Scheme → Nat → Prop
   | .all α σ, n => n ≠ α ∧ Scheme.IsFree σ n
 
 /-- A context assigning *schemes* — what `D` needs and `HasType` does not have. -/
-abbrev SCtx (N : Type) [NameAlphabet N] : Type := TypeSystem.Context N Scheme
+abbrev SCtx (N : Type) [NameAlphabet N] : Type := TypeSystem.Named.Context N Scheme
 
 /-- `free(Γ) = ⋃_{x:σ ∈ Γ} free(σ)`. -/
 def SCtx.IsFree (Γ : SCtx N) (n : Nat) : Prop :=
@@ -226,7 +226,7 @@ omit [HasVars N] in
 omit [HasVars N] in
 theorem SCtx.ofMono_cons_get? (Γ : Ctx N) (x : N) (τ : Ty) (y : N) :
     (SCtx.ofMono (Γ.cons x τ)).get? y = ((SCtx.ofMono Γ).cons x (Scheme.mono τ)).get? y := by
-  rw [SCtx.ofMono_get?, Ctx.get?_cons, TypeSystem.Context.get?_cons, SCtx.ofMono_get?]
+  rw [SCtx.ofMono_get?, Ctx.get?_cons, TypeSystem.Named.Context.get?_cons, SCtx.ofMono_get?]
   by_cases h : x = y <;> simp [h]
 
 omit [HasVars N] in
@@ -247,7 +247,7 @@ theorem HasTypeD.cong {Γ Γ' : SCtx N} {e : Term N} {σ : Scheme}
   | app _ _ ih₁ ih₂ => exact HasTypeD.app (ih₁ hΓ) (ih₂ hΓ)
   | abs _ ih =>
       exact HasTypeD.abs (ih (fun y => by
-        rw [TypeSystem.Context.get?_cons, TypeSystem.Context.get?_cons, hΓ]))
+        rw [TypeSystem.Named.Context.get?_cons, TypeSystem.Named.Context.get?_cons, hΓ]))
   | inst _ hs ih => exact HasTypeD.inst (ih hΓ) hs
   | gen _ hα ih => exact HasTypeD.gen (ih hΓ) (fun hc => hα ((SCtx.IsFree.congr hΓ _).mpr hc))
 

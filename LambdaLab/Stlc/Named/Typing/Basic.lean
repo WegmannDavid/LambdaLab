@@ -1,11 +1,11 @@
 import LambdaLab.Stlc.Named.Basic
-import LambdaLab.TypeSystem.Context
-import LambdaLab.TypeSystem.Basic
+import LambdaLab.TypeSystem.Named.Context
+import LambdaLab.TypeSystem.Named.Basic
 
 /-!
 # Typing (named variables, hashmap context)
 
-The context is `TypeSystem.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
+The context is `TypeSystem.Named.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
 (overrides). Lookup is `get?`.
 
 ## Parametric in the name alphabet
@@ -14,8 +14,8 @@ The context is `TypeSystem.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is 
 too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed context
 cannot receive one without a conversion at the boundary.
 
-`Ctx N` is therefore literally `TypeSystem.Context N Ty`, not a copy of it. That is deliberate:
-the `TypeSystem` classes are all stated over a `TypeSystem.Context`, so anything short of
+`Ctx N` is therefore literally `TypeSystem.Named.Context N Ty`, not a copy of it. That is deliberate:
+the `TypeSystem` classes are all stated over a `TypeSystem.Named.Context`, so anything short of
 definitional equality would put a bridge on the interface boundary, which is exactly what the name
 parameter exists to remove.
 
@@ -26,7 +26,7 @@ than generalized because pinning is free and generalizing costs a sweep through 
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet Context)
+open LambdaLab.TypeSystem.Named (NameAlphabet Context)
 
 variable {N : Type} [NameAlphabet N]
 
@@ -62,7 +62,7 @@ inductive HasType {N : Type} [NameAlphabet N] : Ctx N → Term N → Ty → Prop
 /-- Typing is parametric in the name alphabet: nothing in the judgement inspects a name. Declared
 here rather than in `Named/TypeSystem.lean` so that `Γ ⊢ e : τ` — the class notation, and now the
 only one — reads at the judgement itself, exactly as `instStep` sits beside `Step`. -/
-instance instHasType : TypeSystem.HasType N (Term N) Ty where
+instance instHasType : TypeSystem.Named.HasType N (Term N) Ty where
   HasType := HasType
 
 /-- A typing context is *ground* if every type it assigns is ground. -/

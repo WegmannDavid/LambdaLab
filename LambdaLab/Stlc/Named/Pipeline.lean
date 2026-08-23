@@ -2,7 +2,7 @@ import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.TypeSystem
 import LambdaLab.Pipeline.Compose
-import LambdaLab.TypeSystem.FreeName
+import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.IsoParser.Adapters
@@ -306,7 +306,7 @@ theorem sFollow_assign : follow (G := stlcGrammar) SEnt.ty (tkS ":=") = true := 
 theorem stlcUnambiguous : Unambiguous stlcGrammar := unambiguous stlcGrammar
 
 /-- **`reducible` is load-bearing.** The front end asks for
-`TypeSystem.PrincipalElaborate (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
+`TypeSystem.Named.PrincipalElaborate (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
 runs at reduced transparency: without this it cannot unfold the definition to discover that those
 are `VName`, `Term VName` and `Ty`, and the generic instance in `TypeSystem.lean` never matches.
 The alternative — restating the instance at the projected types — needs its `NameAlphabet`

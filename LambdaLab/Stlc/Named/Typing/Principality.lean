@@ -119,7 +119,7 @@ Exactly the statement `JComplete.lean` used to carry as a `sorry`, refuted at `N
 witness is the triple above; the two instances of `MoreGeneral`'s `∀ t` that collide are `?0` and
 the drawn `?2`. -/
 theorem elabSubst_not_principal :
-    ¬ (∀ {N : Type} [LambdaLab.TypeSystem.NameAlphabet N] [HasVars N]
+    ¬ (∀ {N : Type} [LambdaLab.TypeSystem.Named.NameAlphabet N] [HasVars N]
         {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty},
         elabSubst Γ t τ = some σ →
         ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →

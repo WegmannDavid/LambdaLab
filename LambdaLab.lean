@@ -55,17 +55,18 @@ import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Arith.Pipeline
 import LambdaLab.Inductive.Basic
 import LambdaLab.Inductive.Example
-import LambdaLab.TypeSystem.NameAlphabet
-import LambdaLab.TypeSystem.Context
-import LambdaLab.TypeSystem.Basic
-import LambdaLab.TypeSystem.Vernacular.Basic
-import LambdaLab.TypeSystem.Vernacular.Typing
-import LambdaLab.TypeSystem.Vernacular.Elaborate
+import LambdaLab.TypeSystem.Named.NameAlphabet
+import LambdaLab.TypeSystem.Named.Context
+import LambdaLab.TypeSystem.Named.Basic
+import LambdaLab.TypeSystem.Intrinsic.Basic
+import LambdaLab.TypeSystem.Named.Vernacular.Basic
+import LambdaLab.TypeSystem.Named.Vernacular.Typing
+import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 import LambdaLab.Pipeline.Basic
 -- NB: `FreeName` lives in `TypeSystem/` but sits *above* `Pipeline.Basic`, since the alphabet
 -- it constructs is carved out of the grammar's reserved `Token`s. It is the one place the two
 -- folders' layering is inverted.
-import LambdaLab.TypeSystem.FreeName
+import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Pipeline.Compose

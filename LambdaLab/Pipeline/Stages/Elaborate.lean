@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.TypeSystem.Vernacular.Elaborate
+import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
 # The elaboration stage: `Program ⇝ well-typed Program`
@@ -16,7 +16,7 @@ is what makes that visible in the import list rather than merely asserted below.
 
 Nowhere in this file. A `Language` says how to read and print; it says nothing about what a
 program *means*, and it never will — meaning is the type system's business. So the stage below is
-parameterised by `[TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]`: **the moment a language's own
+parameterised by `[TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]`: **the moment a language's own
 types and terms satisfy the elaboration interface, the whole front end exists**, parse and check
 as one `Abs` morphism, with nothing further to supply.
 
@@ -51,10 +51,10 @@ open LambdaLab.Abstraction
 
 /-! Selectively, not wholesale: `Vernacular` also exports `Command` and `Program`, which this
 namespace has its own instantiated abbreviations for. -/
-open LambdaLab.TypeSystem.Vernacular
+open LambdaLab.TypeSystem.Named.Vernacular
   (HasType elabProgram elabProgram? elabProgram?_self)
 
-variable (L : Language) [TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty]
+variable (L : Language) [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]
 
 /-- The **elaborated programs** of `L`: well-typed, and with every metavariable solved.
 

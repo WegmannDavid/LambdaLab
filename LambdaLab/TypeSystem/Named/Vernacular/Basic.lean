@@ -1,7 +1,7 @@
-import LambdaLab.TypeSystem.Basic
+import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.NEList
 
-namespace LambdaLab.TypeSystem.Vernacular
+namespace LambdaLab.TypeSystem.Named.Vernacular
 
 /-- A single declaration: `def x : τ := t`.
 
@@ -89,4 +89,4 @@ instance instLawfulRestrictCommand [HasSubst Tm Ty] [HasSubst Ty Ty]
     rw [LawfulRestrict.pSubst_restrictBelow τ σ n (Nat.le_trans (Nat.le_max_left _ _) h),
         LawfulRestrict.pSubst_restrictBelow t σ n (Nat.le_trans (Nat.le_max_right _ _) h)]
 
-end LambdaLab.TypeSystem.Vernacular
+end LambdaLab.TypeSystem.Named.Vernacular

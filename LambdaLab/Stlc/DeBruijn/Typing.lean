@@ -18,7 +18,7 @@ inductive HasType : Ctx → Term → Ty → Prop where
   | app : HasType Γ e₁ (τ₁ ⇒ τ₂) → HasType Γ e₂ τ₁ → HasType Γ (.app e₁ e₂) τ₂
 
 /-- De Bruijn keeps its own turnstile: its context is a `List Ty`, which cannot instantiate
-`TypeSystem.HasType` (stated over a `Context N Ty`), so there is nothing to share the class
+`TypeSystem.Named.HasType` (stated over a `Context N Ty`), so there is nothing to share the class
 notation with. Argument levels are pinned so that `Γ ⊢ e : τ → P` splits at the arrow instead of
 parsing `τ → P` as the type — the class notation pins them for the same reason. -/
 notation:40 Γ:41 " ⊢ " e:41 " : " τ:41 => HasType Γ e τ

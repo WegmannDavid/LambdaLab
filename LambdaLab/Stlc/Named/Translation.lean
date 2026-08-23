@@ -38,7 +38,7 @@ that are quotient-friendly (e.g. confluence, preservation up to α).
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet freshFor freshFor_not_in)
+open LambdaLab.TypeSystem.Named (NameAlphabet freshFor freshFor_not_in)
 
 variable {N : Type} [NameAlphabet N]
 
@@ -551,7 +551,7 @@ theorem CtxCompat.cons {Γ : Ctx N} {binders : List N} {db_ctx : Stlc.DeBruijn.C
   by_cases hyx : y = x
   · subst hyx
     refine ⟨τ₁, ?_, ?_⟩
-    · simp [Ctx.cons, TypeSystem.Context.cons]
+    · simp [Ctx.cons, TypeSystem.Named.Context.cons]
     · have hlk : lookupVar y (y :: binders) = 0 := by simp [lookupVar]
       rw [hlk]; exact .here
   · rcases List.mem_cons.mp hy with hyEq | hy'

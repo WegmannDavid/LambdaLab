@@ -1,4 +1,4 @@
-import LambdaLab.TypeSystem.NameAlphabet
+import LambdaLab.TypeSystem.Named.NameAlphabet
 import LambdaLab.Substitution.Basic
 
 /-!
@@ -21,7 +21,7 @@ The lemmas are the two from `Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized 
 `decEq` supplies the `LawfulBEq` that `getElem?_insert` needs.
 -/
 
-namespace LambdaLab.TypeSystem
+namespace LambdaLab.TypeSystem.Named
 
 variable {N : Type} [NameAlphabet N] {Ty : Type}
 
@@ -120,7 +120,7 @@ example {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty] :
 Substitution maps over the values, so lookup commutes with it. This is the *only* handle anything
 gets on a substituted context: `Std.HashMap` has no `getElem?` extensionality here, so two contexts
 that agree at every key cannot be proved equal — a client must reason through `get?` and a typing
-judgement that respects it (`TypeSystem.LawfulTypeSystem.cong`). -/
+judgement that respects it (`TypeSystem.Named.LawfulTypeSystem.cong`). -/
 
 theorem Context.pSubst_get? {N Ty : Type} [NameAlphabet N] [HasSubst Ty Ty]
     (Γ : Context N Ty) (σ : Subst Ty) (x : N) :
@@ -140,4 +140,4 @@ theorem Context.pSubst_get?_of_ground {N Ty : Type} [NameAlphabet N] [HasSubst T
   | none => rfl
   | some τ => exact congrArg some (GroundStable.pSubst_ground σ (hΓ x τ hx))
 
-end LambdaLab.TypeSystem
+end LambdaLab.TypeSystem.Named

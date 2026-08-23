@@ -3,7 +3,7 @@
 
 `SN r a` says every `r`-sequence starting at `a` is finite. Both STLC variants define exactly
 this inductive over their own `Step` (`Stlc/DeBruijn/Reducibility.lean`,
-`Stlc/Named/Typing/Normalization.lean`) and `TypeSystem.StronglyNormalizing` asks for it of an
+`Stlc/Named/Typing/Normalization.lean`) and `TypeSystem.Named.StronglyNormalizing` asks for it of an
 abstract `Tm`, so it belongs beside `RTC` rather than in any one of them — the same reasoning
 that put the closures in `Closure.lean`.
 

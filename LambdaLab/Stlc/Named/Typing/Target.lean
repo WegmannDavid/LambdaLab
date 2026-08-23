@@ -14,12 +14,12 @@ either machinery for these or a specification to compare them against.
 The obligations themselves are no longer stated here. They were, as unreferenced `Prop`s and an
 `Option`-of-subtype wrapper nobody called, and keeping them meant keeping a `sorry` in a file on
 the live path. They now sit where they can be discharged: completeness as `JComplete`'s theorems,
-most-generality as `TypeSystem.PrincipalElaborate`'s field.
+most-generality as `TypeSystem.Named.PrincipalElaborate`'s field.
 -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -59,14 +59,14 @@ The *computation* is separated from the proofs about it, so that consumers which
 working, certified-sound elaborator inherit nothing else. Both declarations below are sorry-free,
 and so is everything downstream of them: completeness is `JComplete.elabSubst_complete`, and the
 two together are packaged as `JComplete.elabSolution`. Note it is `JComplete.elabMGU` that fills
-`TypeSystem.PrincipalElaborate` — `elabSolution` plus the still-open `elabSubst_principal` — so the
+`TypeSystem.Named.PrincipalElaborate` — `elabSolution` plus the still-open `elabSubst_principal` — so the
 sorry-free path stops here, and `elabSolution` is what to use when most-generality is not wanted.
 
 This file used to also carry `elaborate`, returning a subtype that demanded most-generality
 alongside the typing, and `Complete`, the corresponding `none`-case obligation. Nothing ever
 consumed either: the elaborator on the live path is `elabSubst`, and the two obligations are now
 stated where an instance can discharge them — most-generality as
-`TypeSystem.PrincipalElaborate`'s comparison, completeness as a theorem. Both are deleted rather
+`TypeSystem.Named.PrincipalElaborate`'s comparison, completeness as a theorem. Both are deleted rather
 than kept as an unreferenced specification carrying the file's only `sorry`.
 -/
 
@@ -131,7 +131,7 @@ substitution's **range** need not stay below it — unifying `(?0, ⋆ → ?d)` 
 the source variable `?0` to a type mentioning `?d` — so above the threshold there is nothing to
 transfer. That is not a gap in the argument but a fact about the problem:
 `Typing/Principality.lean` proves the unrestricted claim false. The restricted one is
-`JComplete.elabSubst_principal_below`, and it is what `TypeSystem.PrincipalElaborate` asks for. -/
+`JComplete.elabSubst_principal_below`, and it is what `TypeSystem.Named.PrincipalElaborate` asks for. -/
 def GenerationComplete : Prop :=
   ∀ (Γ : Ctx N) (t : Term N) (τ τg : Ty) (n n' : Nat) (C : Equations Ty) (σ' : Subst Ty),
     HasVars.fresh Γ ≤ n → HasVars.fresh t ≤ n → HasVars.fresh τ ≤ n →

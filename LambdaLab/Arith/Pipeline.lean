@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Stages.Parse
-import LambdaLab.TypeSystem.FreeName
+import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.Truncation

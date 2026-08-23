@@ -1,4 +1,4 @@
-import LambdaLab.TypeSystem.Vernacular.Typing
+import LambdaLab.TypeSystem.Named.Vernacular.Typing
 
 /-!
 # The program elaborator, derived from the object language's
@@ -72,7 +72,7 @@ instance; a language supplies it from its own structural check (STLC: `Ty.ground
 `Term.annotsGround_iff_ground` against `decide`).
 -/
 
-namespace LambdaLab.TypeSystem.Vernacular
+namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
 
@@ -84,7 +84,7 @@ every field was `inferInstance`. They have since moved to the classes that *own*
 `cong` to `LawfulTypeSystem` (a property of the judgement), the four `GroundStable`/`LawfulComp`
 laws to `LawfulMVars` (properties of the substitution action), and the two `DecidablePred Ground`
 to `PrincipalElaborate` itself. Each is justified there without reference to a vernacular, so
-`TypeSystem/Basic.lean` still does not know this file exists.
+`TypeSystem/Named/Basic.lean` still does not know this file exists.
 -/
 
 variable {N Tm Ty : Type} [NameAlphabet N] [PrincipalElaborate N Tm Ty]
@@ -93,9 +93,9 @@ variable {N Tm Ty : Type} [NameAlphabet N] [PrincipalElaborate N Tm Ty]
 under the substituted one. This is the single step the two extra laws exist for. -/
 theorem hasType_of_solution {Γ : Context N Ty} {t : Tm} {τ : Ty} {σ : Subst Ty}
     (hΓ : CtxGround Γ)
-    (hσ : _root_.LambdaLab.TypeSystem.HasType.HasType
+    (hσ : _root_.LambdaLab.TypeSystem.Named.HasType.HasType
             (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :
-    _root_.LambdaLab.TypeSystem.HasType.HasType Γ (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) :=
+    _root_.LambdaLab.TypeSystem.Named.HasType.HasType Γ (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) :=
   LawfulTypeSystem.cong (Context.pSubst_get?_of_ground Γ σ hΓ) hσ
 
 /-- **Elaborate a list of declarations against a ground context**, returning the *substitution*
@@ -308,4 +308,4 @@ theorem elabProgram?_self {p : Program N Tm Ty} (h : HasType p) : elabProgram? p
       -- or not.
       exact GroundStable.pSubst_ground _ h.ground
 
-end LambdaLab.TypeSystem.Vernacular
+end LambdaLab.TypeSystem.Named.Vernacular

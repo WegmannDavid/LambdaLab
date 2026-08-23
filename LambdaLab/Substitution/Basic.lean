@@ -38,11 +38,11 @@ states no laws at all, so nothing downstream may assume it.
 A **mixin**, taking `[HasSubst 𝕋 𝕊]` as a parameter rather than `extends`-ing it. That is not
 stylistic: a class extending `HasSubst` would carry its own copy, and a caller asking for both it
 and something else built on `HasSubst` would get two unrelated `pSubst`s. Same diamond
-`TypeSystem.LawfulMVars` exists to flatten; a `Prop`-valued mixin over the existing instance
+`TypeSystem.Named.LawfulMVars` exists to flatten; a `Prop`-valued mixin over the existing instance
 cannot open it in the first place.
 
 Wanted by anything that computes a substitution and then needs to know what it did *not* touch —
-`TypeSystem/Vernacular/Elaborate.lean` is the first such caller, where a solved declaration must
+`TypeSystem/Named/Vernacular/Elaborate.lean` is the first such caller, where a solved declaration must
 be re-read under the context it was checked in rather than under the substituted one. -/
 class GroundStable (𝕋 : Type) (𝕊 : outParam Type) [HasSubst 𝕋 𝕊] : Prop where
   /-- Substituting into a ground object leaves it alone. -/

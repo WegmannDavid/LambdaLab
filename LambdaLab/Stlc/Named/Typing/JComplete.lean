@@ -23,7 +23,7 @@ using agreement to put `τ` back under the new substitution.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -400,7 +400,7 @@ needs `no_typing_of_elabSubst_none`, proved above. -/
 
 /-- **The elaborator, decided.** Either a substitution under which the declared triple really is a
 typing, or a proof that no substitution makes it one. Fills
-the sorry-free half of `TypeSystem.PrincipalElaborate.elaborate`; see `elabMGU` below. -/
+the sorry-free half of `TypeSystem.Named.PrincipalElaborate.elaborate`; see `elabMGU` below. -/
 def elabSolution (Γ : Ctx N) (t : Term N) (τ : Ty) :
     SolutionProp (fun σ : Subst Ty =>
       HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
@@ -417,7 +417,7 @@ proofs attached to the one already there. -/
 
 /-! ## Most-generality
 
-`TypeSystem.PrincipalElaborate.elaborate` returns a `PrincipalProp`, so filling it needs one thing
+`TypeSystem.Named.PrincipalElaborate.elaborate` returns a `PrincipalProp`, so filling it needs one thing
 more than the decision above: that the substitution `elabSubst` computes is at least as general as
 any other typing. It is — on the source, which is the only place the claim can be true. See
 `Principality.lean` for the proof that the unrestricted claim is false, and the class's own
@@ -460,7 +460,7 @@ theorem elabSubst_principal_below {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subs
     rw [← hag u hu', hρ u, Signature.pSubst_restrictBelow σ₀ _ u hu']
 
 /-- **The elaborator, decided and principal.** `elabSolution` with most-generality attached; fills
-`TypeSystem.PrincipalElaborate.elaborate`. Both branches are theorems, so this is sorry-free: the
+`TypeSystem.Named.PrincipalElaborate.elaborate`. Both branches are theorems, so this is sorry-free: the
 `impossible` branch is `no_typing_of_elabSubst_none` and the positive one is
 `elabSubst_principal_below`, at the threshold `elabSubst` itself prunes to. -/
 def elabMGU (Γ : Ctx N) (t : Term N) (τ : Ty) :

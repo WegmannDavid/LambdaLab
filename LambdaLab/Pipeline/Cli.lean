@@ -39,7 +39,7 @@ terms satisfy `PrincipalElaborate`. A `none` here means either the source did no
 not type — the two are not distinguished, because the composite is a single `Abs` morphism and
 that is precisely what makes its round-trip law cover both stages. -/
 def Language.compileElab (L : Language)
-    [TypeSystem.PrincipalElaborate (Var L) L.Tm L.Ty] (src : String) : Except String String :=
+    [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty] (src : String) : Except String String :=
   match L.elaborateFile src with
   | none => .error "error: not a well-formed program, or it does not elaborate"
   | some p => .ok (L.renderElaborated p)

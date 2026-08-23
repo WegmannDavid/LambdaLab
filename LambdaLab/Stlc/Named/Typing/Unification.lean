@@ -9,7 +9,7 @@ discharged by `unify` from the unification module. -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem (NameAlphabet)
+open LambdaLab.TypeSystem.Named (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 
@@ -153,7 +153,7 @@ instance : HasSubst (Term N) Ty where
 
 STLC says "no metavariables" twice: `Ty.Ground` and `Term.AnnotsGround` recurse on the syntax and
 are *decidable*, while `HasVars.Ground` says it for any `HasVars` at all — no free index anywhere.
-The generic one is what a name-agnostic client can state (`TypeSystem/Vernacular/Typing.lean`
+The generic one is what a name-agnostic client can state (`TypeSystem/Named/Vernacular/Typing.lean`
 demands it of every declaration); the structural one is what anybody actually discharges, by
 `decide` or by `simp`. These bridge them, so a client asking for the generic condition can be
 answered with the concrete check.
