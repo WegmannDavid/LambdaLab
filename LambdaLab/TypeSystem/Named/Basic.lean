@@ -51,6 +51,8 @@ so that `Γ ⊢ t : τ → P` splits at the arrow.
 
 namespace LambdaLab.TypeSystem.Named
 
+open LambdaLab.Nominal (NameAlphabet)
+
 /-- **Reduction.** One relation and no law; `LawfulTypeSystem` is where it acquires one. -/
 class Step (Tm : Type) where
   /-- Single-step reduction. -/

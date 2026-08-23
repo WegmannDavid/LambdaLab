@@ -42,7 +42,7 @@ Completeness (`D ⟹ S`, weakened) is *not* here; see the end of the file for wh
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

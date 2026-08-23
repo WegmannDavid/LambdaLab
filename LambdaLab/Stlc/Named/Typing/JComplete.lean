@@ -23,7 +23,7 @@ using agreement to put `τ` back under the new substitution.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

@@ -75,6 +75,7 @@ instance; a language supplies it from its own structural check (STLC: `Ty.ground
 namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
+open LambdaLab.Nominal (NameAlphabet)
 
 /-! ## What the fold asks for: `PrincipalElaborate`, and nothing else
 

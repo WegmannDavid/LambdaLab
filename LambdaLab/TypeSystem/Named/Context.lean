@@ -1,4 +1,4 @@
-import LambdaLab.TypeSystem.Named.NameAlphabet
+import LambdaLab.Nominal.Basic
 import LambdaLab.Substitution.Basic
 
 /-!
@@ -22,6 +22,8 @@ The lemmas are the two from `Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized 
 -/
 
 namespace LambdaLab.TypeSystem.Named
+
+open LambdaLab.Nominal (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] {Ty : Type}
 

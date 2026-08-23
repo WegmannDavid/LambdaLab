@@ -19,7 +19,7 @@ translation lemmas in `LambdaLab.Stlc.Named.Translation`:
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

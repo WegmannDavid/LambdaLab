@@ -42,7 +42,7 @@ Metavariables (`Ty.mvar`) serve as the type variables `α`. In `D` they are genu
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 
 variable {N : Type} [NameAlphabet N] [HasVars N]
 

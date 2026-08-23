@@ -21,12 +21,16 @@ already known to be well-formed surface tokens (`Stlc.Named.VName`), instead of 
 put proofs inside the data and force `Subtype.ext` into every lemma; a parameter costs nothing at
 use sites.
 
-It lives in `TypeSystem/` because it is what a *typed* object language needs of a name, below
-and independent of any concrete syntax: it imports nothing but `Std.HashMap`, and `Pipeline/`
-depends on it rather than the other way round.
+It lives in `Nominal/` because a name alphabet is the bottom of the nominal development: atoms
+are names plus sorts, so `AtomAlphabet` extends this class rather than restating it, and the
+nominal theory of freshness and swapping is built on the supply of names this class guarantees.
+Nothing here mentions sorts or permutations, so the STLC tower can — and does — import it
+without importing any of that; it still imports nothing but `Std.HashMap`, and `TypeSystem/`
+and `Pipeline/` depend on it rather than the other way round.
 
-The module is `NameAlphabet`, not `Name`: `Pipeline.Name` is already the vernacular's
-declaration-name type.
+The declaration is `NameAlphabet`, not `Name`: `Pipeline.Name` is already the vernacular's
+declaration-name type. The module is `Nominal.Basic` and not `Nominal.NameAlphabet` because
+sorted atoms belong beside it, in the same file, not one import above.
 
 ## Status: in use
 
@@ -45,7 +49,7 @@ class tower is now parametric, which is what lets the vernacular — whose names
 *binder lists*: confluence, normalization, `eval`.
 -/
 
-namespace LambdaLab.TypeSystem.Named
+namespace LambdaLab.Nominal
 
 /-- A type usable as variable names: decidable equality, hashable, and an inexhaustible supply. -/
 class NameAlphabet (N : Type) extends Hashable N where
@@ -99,4 +103,4 @@ instance : NameAlphabet String where
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in
 
-end LambdaLab.TypeSystem.Named
+end LambdaLab.Nominal

@@ -26,7 +26,8 @@ than generalized because pinning is free and generalizing costs a sweep through 
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet Context)
+open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.TypeSystem.Named (Context)
 
 variable {N : Type} [NameAlphabet N]
 

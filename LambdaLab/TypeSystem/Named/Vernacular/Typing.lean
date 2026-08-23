@@ -57,6 +57,7 @@ by making well-typedness fail.
 namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
+open LambdaLab.Nominal (NameAlphabet)
 
 /-! `HasType` below is the *program*-level judgement, and it shares its name with the object
 language's class in the parent namespace. Both are wanted under those names, so every reference to

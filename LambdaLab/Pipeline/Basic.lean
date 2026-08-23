@@ -1,12 +1,12 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
-import LambdaLab.TypeSystem.Named.NameAlphabet
+import LambdaLab.Nominal.Basic
 import LambdaLab.TypeSystem.Named.Vernacular.Basic
 
 namespace LambdaLab.Pipeline
 
 open LambdaLab.Parser.IsoParser
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 open LambdaLab.Parser.LossyParser (LossyParser)
 
 /-! ## Lexemes

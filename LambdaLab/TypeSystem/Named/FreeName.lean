@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.TypeSystem.Named.NameAlphabet
+import LambdaLab.Nominal.Basic
 
 /-!
 # `FreeName` — the name alphabet a language gets from its reserved list
@@ -30,6 +30,7 @@ would restore the layering at the cost of separating it from the class it instan
 namespace LambdaLab.TypeSystem.Named
 
 open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
+open LambdaLab.Nominal (NameAlphabet freshFor freshFor_not_in le_foldr_max)
 
 -- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Name` and
 -- `Pipeline.Language.isVarName` can be phrased with them; this file adds the instance.

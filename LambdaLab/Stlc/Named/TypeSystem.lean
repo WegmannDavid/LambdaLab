@@ -54,7 +54,7 @@ unconditionally (`elabSolution` is proved and still exported), and claims princi
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.TypeSystem.Named (NameAlphabet)
+open LambdaLab.Nominal (NameAlphabet)
 
 /-! ## The judgement — any name alphabet
 
