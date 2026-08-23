@@ -29,9 +29,9 @@ belongs in a lossy layer above, whose annotation records which binders were elid
 
 ## The parser lands in `Term` itself
 
-There is no surface AST. `Term` is parametric in its name alphabet (`Stlc/Named/Basic.lean`), so
+There is no surface AST. `Term` is parametric in its atoms (`Stlc/Named/Basic.lean`), so
 terms parse into `Term VName`, named by the non-reserved tokens — and `VName` is `FreeName
-sReserved`, whose `NameAlphabet` instance `Language/FreeName.lean` proves once for every
+sReserved`, whose `Atoms` instance `Language/FreeName.lean` proves once for every
 language.
 
 That closes the last gap. `Term String` would *not* work: `Term.var "def"` and `Term.var ""`
@@ -205,7 +205,7 @@ instance : ∀ e : stlcGrammar.Ent, DecidableEq (stlcGrammar.entry e).Op
 /-! ## Surface terms, and the truncation into them -/
 
 /-- Binder names: any token the grammar has not reserved. Being a `FreeName`, this is a
-`NameAlphabet` with no proof obligation here — `Language/FreeName.lean` discharges it once for
+`Atoms` with no proof obligation here — `Language/FreeName.lean` discharges it once for
 every language. -/
 abbrev VName := FreeName sReserved
 
@@ -309,7 +309,7 @@ theorem stlcUnambiguous : Unambiguous stlcGrammar := unambiguous stlcGrammar
 `TypeSystem.Named.PrincipalElaborate (Var stlcLanguage) stlcLanguage.Tm stlcLanguage.Ty`, and instance search
 runs at reduced transparency: without this it cannot unfold the definition to discover that those
 are `VName`, `Term VName` and `Ty`, and the generic instance in `TypeSystem.lean` never matches.
-The alternative — restating the instance at the projected types — needs its `NameAlphabet`
+The alternative — restating the instance at the projected types — needs its `Atoms` instance
 argument to be the one `Var` supplies rather than the one `VName` does, and the two are equal only
 after the same unfolding. -/
 @[reducible] def stlcLanguage : Language where
@@ -327,7 +327,7 @@ after the same unfolding. -/
         exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl)
 
   isVarName := isVarTok
-  varAlphabet := inferInstance
+  varAtoms := inferInstance
   keywords_excluded := by decide
 
   pTm :=

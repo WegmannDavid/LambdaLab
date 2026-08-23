@@ -15,11 +15,11 @@ proved here, which is the point — the interface asks for what the development 
 ## Every instance is generic in `N`
 
 * `HasType` is **generic in `N`**. The typing judgement never inspects a name beyond equality and
-  context lookup, so `Term N` is typeable for any name alphabet.
+  context lookup, so `Term N` is typeable for any atoms.
 * `Step` is generic too — and this was not always so. It was declared at `Term String`, and that
   pinned `TypeSystem`, `LawfulTypeSystem`, `MVars` and `LawfulMVars` at `String` with it. The pin
   was never necessary: the β-rule's capture-avoiding substitution draws fresh names from
-  `NameAlphabet.freshFor`, which every name alphabet has, and the de Bruijn translation carrying
+  `Atoms.freshFor`, which every `Atoms` instance has, and the de Bruijn translation carrying
   subject reduction only ever compares names. Generalising `Step`, `MStep`, `Translation` and
   `HasType.preservation` changed signatures and **not one proof**.
   That matters practically, not just aesthetically: `Pipeline.lean` names terms by `VName`, so
@@ -54,17 +54,17 @@ unconditionally (`elabSolution` is proved and still exported), and claims princi
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 
-/-! ## The judgement — any name alphabet
+/-! ## The judgement — any atoms
 
 `instHasType` is not here: it lives beside the inductive in `Typing/Basic.lean`, so that the `⊢`
 notation the class owns is available from the judgement's own file onwards. -/
 
-/-! ## Reduction and above — every name alphabet too
+/-! ## Reduction and above — every atoms instance too
 
 `Step` was declared at `Term String` and everything above it inherited the pin. It did not have
-to be: `Term.subst` is capture-avoiding via `NameAlphabet.freshFor`, which every name alphabet
+to be: `Term.subst` is capture-avoiding via `Atoms.freshFor`, which every `Atoms` instance
 supplies, and the de Bruijn translation that carries subject reduction only ever compares names.
 Generalising `Step`, `MStep`, `Translation` and `HasType.preservation` to an arbitrary `N` cost no
 proof changes at all — only signatures — and it is what lets `Pipeline.lean` reach these instances
@@ -74,7 +74,7 @@ at its own name type `VName` instead of calling the elaborator directly.
 `HasType.freeVars_in_ctx`), and the substitution the classes above it talk about is defined by it.
 -/
 
-variable {N : Type} [NameAlphabet N] [HasVars N]
+variable {N : Type} [Atoms N] [HasVars N]
 
 instance instTypeSystem : TypeSystem.Named.TypeSystem N (Term N) Ty := {}
 

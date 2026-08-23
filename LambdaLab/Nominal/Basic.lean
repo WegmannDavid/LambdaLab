@@ -1,7 +1,7 @@
 import Std.Data.HashMap
 
 /-!
-# `NameAlphabet` — what an object language needs of a variable name
+# `Atoms` — what an object language needs of a variable name
 
 A named object language should be parametric in its type of variable names. Everything a
 named presentation does — renaming, capture-avoiding substitution, typing, reduction,
@@ -21,16 +21,17 @@ already known to be well-formed surface tokens (`Stlc.Named.VName`), instead of 
 put proofs inside the data and force `Subtype.ext` into every lemma; a parameter costs nothing at
 use sites.
 
-It lives in `Nominal/` because a name alphabet is the bottom of the nominal development: atoms
-are names plus sorts, so `AtomAlphabet` extends this class rather than restating it, and the
+It lives in `Nominal/` because a supply of names is the bottom of the nominal development: atoms
+are names plus sorts, so the sorted class extends this one rather than restating it, and the
 nominal theory of freshness and swapping is built on the supply of names this class guarantees.
 Nothing here mentions sorts or permutations, so the STLC tower can — and does — import it
 without importing any of that; it still imports nothing but `Std.HashMap`, and `TypeSystem/`
 and `Pipeline/` depend on it rather than the other way round.
 
-The declaration is `NameAlphabet`, not `Name`: `Pipeline.Name` is already the vernacular's
-declaration-name type. The module is `Nominal.Basic` and not `Nominal.NameAlphabet` because
-sorted atoms belong beside it, in the same file, not one import above.
+The class is `Atoms`, not `Name` and no longer `NameAlphabet`: `Pipeline.Name` is already the
+vernacular's declaration-name type, and what this describes is a supply of atoms — the nominal
+reading is the primary one now that the file sits here. The module is `Nominal.Basic` and not
+`Nominal.Atoms` because sorted atoms belong beside it, in the same file, not one import above.
 
 ## Status: in use
 
@@ -52,20 +53,20 @@ class tower is now parametric, which is what lets the vernacular — whose names
 namespace LambdaLab.Nominal
 
 /-- A type usable as variable names: decidable equality, hashable, and an inexhaustible supply. -/
-class NameAlphabet (N : Type) extends Hashable N where
+class Atoms (N : Type) extends Hashable N where
   decEq : DecidableEq N
   /-- A name outside `used`. -/
   freshFor : List N → N
   freshFor_not_in : ∀ used : List N, freshFor used ∉ used
 
 /-! `reducible` is required of instance-valued projections, and harmless here: `decEq` is the
-only `DecidableEq N` a `NameAlphabet` offers, so there is no canonical instance for it to
+only `DecidableEq N` an `Atoms` instance offers, so there is no canonical instance for it to
 displace. -/
-attribute [reducible, instance] NameAlphabet.decEq
+attribute [reducible, instance] Atoms.decEq
 
-export NameAlphabet (freshFor freshFor_not_in)
+export Atoms (freshFor freshFor_not_in)
 
-/-! ## `String` is a name alphabet
+/-! ## `String` is a supply of atoms
 
 The generator returns a string strictly longer than every string in `used`, hence absent from it.
 -/
@@ -98,7 +99,7 @@ theorem stringFreshFor_not_in (used : List String) : stringFreshFor used ∉ use
     exact List.length_replicate
   omega
 
-instance : NameAlphabet String where
+instance : Atoms String where
   decEq := inferInstance
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in

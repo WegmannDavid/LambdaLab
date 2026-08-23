@@ -68,9 +68,9 @@ left to a side effect, so a rule may *name* the variable it draws:
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 
-variable {N : Type} [NameAlphabet N] [HasVars N]
+variable {N : Type} [Atoms N] [HasVars N]
 
 /-! ## The judgement
 

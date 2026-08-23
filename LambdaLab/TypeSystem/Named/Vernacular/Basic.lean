@@ -5,7 +5,7 @@ namespace LambdaLab.TypeSystem.Named.Vernacular
 
 /-- A single declaration: `def x : τ := t`.
 
-The name is drawn from whatever alphabet the surrounding layer uses for *term* variables, not
+The name is drawn from whatever atoms the surrounding layer uses for *term* variables, not
 from a vernacular notion of its own. So `def f : T := e` puts `f` in scope for what follows with
 no injection between two kinds of name — and a front end whose name type excludes its keywords
 (`Pipeline.Var`) gets, for free, that a command spelling a keyword is unrepresentable. -/

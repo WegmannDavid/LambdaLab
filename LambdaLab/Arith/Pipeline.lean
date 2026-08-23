@@ -292,7 +292,7 @@ def arithLanguage : Language where
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   isVarName := isFree aReserved
-  varAlphabet := inferInstance
+  varAtoms := inferInstance
   keywords_excluded := by decide
 
   pTm :=

@@ -19,9 +19,9 @@ translation lemmas in `LambdaLab.Stlc.Named.Translation`:
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 
-variable {N : Type} [NameAlphabet N] [HasVars N]
+variable {N : Type} [Atoms N] [HasVars N]
 
 omit [HasVars N] in
 /-- **Subject reduction**: typing is preserved under a single β-step.

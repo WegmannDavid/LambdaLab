@@ -32,7 +32,7 @@ find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
   AnnTm := fun _ => Unit
   -- Variables are any non-keyword lexeme — the same `Name` the terms themselves are.
   isVarName := isName
-  varAlphabet := inferInstance
+  varAtoms := inferInstance
   keywords_excluded := by decide
 
   pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst

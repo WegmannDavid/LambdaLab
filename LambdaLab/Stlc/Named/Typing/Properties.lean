@@ -10,9 +10,9 @@ translation. They mirror similar facts on the de Bruijn side.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 
-variable {N : Type} [NameAlphabet N] [HasVars N]
+variable {N : Type} [Atoms N] [HasVars N]
 
 omit [HasVars N] in
 /-- Two named contexts that agree on every key induce the same typing

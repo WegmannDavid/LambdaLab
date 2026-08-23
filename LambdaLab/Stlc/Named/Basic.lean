@@ -3,7 +3,7 @@ import LambdaLab.Nominal.Basic
 /-!
 # Simply Typed Lambda Calculus (STLC), named-variable presentation
 
-Variables are drawn from any `NameAlphabet N`: the development only decides equality of names and
+Variables are drawn from any `Atoms N`: the development only decides equality of names and
 generates fresh ones (`Term.subst`'s α-renaming branch). `String` is the usual instance, but
 reduction, typing, subject reduction and elaboration are all stated at `Term N`; only the
 de Bruijn-mediated results that traffic in binder *lists* — confluence, normalization, `eval` —
@@ -22,9 +22,9 @@ the α-renaming branch, we recurse on `body.rename y z` whose size equals
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet freshFor freshFor_not_in)
+open LambdaLab.Nominal (Atoms freshFor freshFor_not_in)
 
-variable {N : Type} [NameAlphabet N]
+variable {N : Type} [Atoms N]
 
 /-! ## Types -/
 

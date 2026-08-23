@@ -2,11 +2,11 @@ import LambdaLab.Pipeline.Basic
 import LambdaLab.Nominal.Basic
 
 /-!
-# `FreeName` — the name alphabet a language gets from its reserved list
+# `FreeName` — the atoms a language gets from its reserved list
 
 Every language in this vernacular fixes a finite list of *reserved* tokens: its grammar's name
 parts plus the vernacular keywords. Whatever is left over is exactly what may be used as a
-variable name. That leftover type is a `NameAlphabet`, and the proof is the same for every
+variable name. That leftover type has an `Atoms` instance, and the proof is the same for every
 language — so it is discharged once, here, rather than per language.
 
 ```lean
@@ -20,17 +20,18 @@ Working with lengths avoids having to reason about the reserved tokens' spelling
 
 ## A note on where this file sits
 
-It is filed under `TypeSystem/` with `NameAlphabet` and `Context`, because a `NameAlphabet`
-instance is what it produces. But unlike those two it depends *upwards*, on `Pipeline/Basic.lean`:
-the alphabet it builds is carved out of the grammar's reserved `Token`s, and `Token` is concrete
-syntax. So this is the one module whose folder does not match its layer. Moving it to `Pipeline/`
-would restore the layering at the cost of separating it from the class it instantiates.
+It is filed under `TypeSystem/` with `Context`, because an `Atoms` instance is what it produces.
+It is no longer filed with the *class* it instantiates: `Atoms` moved down to `Nominal/Basic.lean`.
+And unlike `Context` it depends *upwards*, on `Pipeline/Basic.lean`: the atoms it builds are
+carved out of the grammar's reserved `Token`s, and `Token` is concrete syntax. So this is the one
+module whose folder does not match its layer. Moving it to `Pipeline/` would restore the layering,
+and now that the class has moved away, nothing argues against it but the churn.
 -/
 
 namespace LambdaLab.TypeSystem.Named
 
 open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
-open LambdaLab.Nominal (NameAlphabet freshFor freshFor_not_in le_foldr_max)
+open LambdaLab.Nominal (Atoms freshFor freshFor_not_in le_foldr_max)
 
 -- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Name` and
 -- `Pipeline.Language.isVarName` can be phrased with them; this file adds the instance.
@@ -66,7 +67,7 @@ private theorem aRun_maxLen_not_mem {l : List Token} : aRun (maxLen l) ∉ l := 
 
 /-! ## The instance -/
 
-instance instNameAlphabetFreeName (reserved : List Token) : NameAlphabet (FreeName reserved) where
+instance instAtomsFreeName (reserved : List Token) : Atoms (FreeName reserved) where
   hash v := hash v.val.val
   decEq := inferInstance
   freshFor used :=

@@ -8,7 +8,7 @@ import LambdaLab.TypeSystem.Named.Basic
 The context is `TypeSystem.Named.Context N Ty` — a `Std.HashMap N Ty`. Shadowing is `insert`
 (overrides). Lookup is `get?`.
 
-## Parametric in the name alphabet
+## Parametric in the atoms
 
 `Term` is parametric in its names (`Stlc/Named/Basic.lean`), so the judgement typing it has to be
 too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed context
@@ -26,13 +26,13 @@ than generalized because pinning is free and generalizing costs a sweep through 
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 open LambdaLab.TypeSystem.Named (Context)
 
-variable {N : Type} [NameAlphabet N]
+variable {N : Type} [Atoms N]
 
 /-- A typing context: variable names to types. -/
-abbrev Ctx (N : Type) [NameAlphabet N] : Type := Context N Ty
+abbrev Ctx (N : Type) [Atoms N] : Type := Context N Ty
 
 abbrev Ctx.empty : Ctx N := Context.empty
 
@@ -53,14 +53,14 @@ One rule per constructor of `Term`, and no rule mentioning `Ty.mvar`. Metavariab
 assign one — they are simply never introduced or solved by typing, which is what makes inference
 a separate concern (`Typing/W.lean`) and groundness a separate condition (`Ctx.Ground`,
 `Term.AnnotsGround`, and `HasType.ground_result` relating the three). -/
-inductive HasType {N : Type} [NameAlphabet N] : Ctx N → Term N → Ty → Prop where
+inductive HasType {N : Type} [Atoms N] : Ctx N → Term N → Ty → Prop where
   | var : Γ.get? x = some τ → HasType Γ (.var x) τ
   | lam : HasType (Γ.cons x τ₁) body τ₂ →
           HasType Γ (.lam x τ₁ body) (τ₁ ⇒ τ₂)
   | app : HasType Γ e₁ (τ₁ ⇒ τ₂) → HasType Γ e₂ τ₁ →
           HasType Γ (.app e₁ e₂) τ₂
 
-/-- Typing is parametric in the name alphabet: nothing in the judgement inspects a name. Declared
+/-- Typing is parametric in the atoms: nothing in the judgement inspects a name. Declared
 here rather than in `Named/TypeSystem.lean` so that `Γ ⊢ e : τ` — the class notation, and now the
 only one — reads at the judgement itself, exactly as `instStep` sits beside `Step`. -/
 instance instHasType : TypeSystem.Named.HasType N (Term N) Ty where

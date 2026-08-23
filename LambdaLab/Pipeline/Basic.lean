@@ -6,7 +6,7 @@ import LambdaLab.TypeSystem.Named.Vernacular.Basic
 namespace LambdaLab.Pipeline
 
 open LambdaLab.Parser.IsoParser
-open LambdaLab.Nominal (NameAlphabet)
+open LambdaLab.Nominal (Atoms)
 open LambdaLab.Parser.LossyParser (LossyParser)
 
 /-! ## Lexemes
@@ -51,13 +51,13 @@ def isVernacularKeyword (t : Token) : Bool :=
 what keeps `Language.keywords_excluded` decidable. -/
 def vernacularReserved : List Token := [kwDef, kwColon, kwAssign]
 
-/-- Tokens available as names: everything the given list has not reserved. The `NameAlphabet`
+/-- Tokens available as names: everything the given list has not reserved. The `Atoms`
 instance for the resulting subtype lives in `FreeName.lean` (it needs a fresh-name generator);
 the definitions live here so that `Name` below, and `Language.isVarName`, can be stated in terms
 of them. -/
 def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
 
-/-- The name alphabet determined by a reserved list. -/
+/-- The atoms determined by a reserved list. -/
 abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
 
 /-- A name is any non-keyword lexeme. The subtype is load-bearing: a `Command` holding the name
@@ -128,12 +128,12 @@ structure Language where
   The vernacular uses this *same* notion for a declaration's name, so `def f : T := e` puts `f`
   in scope as an ordinary term variable, with no injection between two kinds of name. -/
   isVarName : Token → Bool
-  /-- Names must form a `NameAlphabet`: decidable, hashable, and inexhaustible (capture-avoiding
+  /-- Names must carry an `Atoms` instance: decidable, hashable, and inexhaustible (capture-avoiding
   substitution has to invent names). A language that simply excludes a finite reserved list gets
   this from `FreeName`'s instance — `isVarName := isFree myReserved` and `inferInstance`. One
   with a genuine lexical class ("identifiers start with a letter") supplies its own, which is
   why this is a field rather than being derived from a reserved list. -/
-  varAlphabet : NameAlphabet { t : Token // isVarName t = true }
+  varAtoms : Atoms { t : Token // isVarName t = true }
   /-- Variable names may not collide with the vernacular's keywords: a declaration named `def`
   would make the file parser mis-split commands.
 
@@ -146,7 +146,7 @@ structure Language where
 /-- A language's variable names — and its declaration names, which are the same thing. -/
 abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
 
-instance (L : Language) : NameAlphabet (Var L) := L.varAlphabet
+instance (L : Language) : Atoms (Var L) := L.varAtoms
 
 /-! ## Commands and programs
 
