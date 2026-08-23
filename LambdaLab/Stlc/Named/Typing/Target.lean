@@ -19,9 +19,9 @@ most-generality as `TypeSystem.Named.PrincipalElaborate`'s field.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 /-! ## Deciding groundness
 
@@ -35,7 +35,7 @@ def Term.annotsGround : Term N → Bool
   | .lam _ τ body => τ.isGround && body.annotsGround
   | .app e₁ e₂    => e₁.annotsGround && e₂.annotsGround
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 @[simp] theorem Term.annotsGround_iff : ∀ {e : Term N}, e.annotsGround = true ↔ e.AnnotsGround := by
   intro e
   induction e with

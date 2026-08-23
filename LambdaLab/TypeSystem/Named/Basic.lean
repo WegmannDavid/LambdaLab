@@ -6,7 +6,7 @@ import LambdaLab.Substitution.Unification.MGU
 /-!
 # `TypeSystem` — a named object language and its metatheory, one obligation per class
 
-Where `Atoms` fixes what a *name* is and `Context` what a *context* is, this fixes what a
+Where `Atom` fixes what a *name* is and `Context` what a *context* is, this fixes what a
 *type system over them* is: a typing judgement, a reduction relation, and the theorems tying the
 two together.
 
@@ -27,7 +27,7 @@ instances from existing.
 
 ## `N`, `Tm` and `Ty` are parameters
 
-All three are class parameters, with `Atoms N` as an instance binder alongside, so a
+All three are class parameters, with `Atom N` as an instance binder alongside, so a
 consumer names the three types it works over and leaves the rest to instance search. The classes
 compose by `extends`, which is what makes the diamonds flatten to exactly one `HasType` and one
 `Step` — spelled out at `LawfulMVars`, where it is load-bearing, and again at `LawfulHasEval`.
@@ -51,7 +51,7 @@ so that `Γ ⊢ t : τ → P` splits at the arrow.
 
 namespace LambdaLab.TypeSystem.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
 /-- **Reduction.** One relation and no law; `LawfulTypeSystem` is where it acquires one. -/
 class Step (Tm : Type) where
@@ -77,7 +77,7 @@ def NormalForm {Tm : Type} [Step Tm] (t : Tm) : Prop := ∀ t', ¬ t ⟶ t'
 /-- **The typing judgement, and nothing else.** One field, no laws, so a language may supply it
 long before it can prove anything about it — `LawfulTypeSystem` below is where the properties
 live. -/
-class HasType (N Tm Ty : Type) [atoms : Atoms N] where
+class HasType (N Tm Ty : Type) [atom : Atom N] where
   /-- The typing judgement, over contexts keyed by `N`. -/
   HasType : Context N Ty → Tm → Ty → Prop
 
@@ -96,7 +96,7 @@ notation:40 Γ:41 " ⊢ " t:41 " : " τ:41 => HasType.HasType Γ t τ
 
 /-- **Judgement and reduction together**, and still no law. It exists so that everything above has
 one class to extend, and therefore one `HasType` and one `Step` to talk about. -/
-class TypeSystem (N Tm Ty : Type) [atoms : Atoms N] extends HasType N Tm Ty, Step Tm where
+class TypeSystem (N Tm Ty : Type) [atom : Atom N] extends HasType N Tm Ty, Step Tm where
 
 /-- **A judgement that is well-behaved**: reduction preserves it, and it reads a context only
 through lookup.
@@ -104,7 +104,7 @@ through lookup.
 Both are properties of the *judgement alone* — neither mentions substitution, elaboration or any
 consumer — which is why they sit together here and not further down the tower. `TypeSystem` says
 what the pieces are; this says they behave. -/
-class LawfulTypeSystem (N Tm Ty : Type) [atoms : Atoms N] extends TypeSystem N Tm Ty where
+class LawfulTypeSystem (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty where
   /-- Reduction preserves types. -/
   Preservation : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} {t' : Tm}, Γ ⊢ t : τ → t ⟶ t' → Γ ⊢ t' : τ
   /-- **Typing sees a context only through lookup**: two contexts agreeing at every name type the
@@ -136,7 +136,7 @@ Naming the parents (`extends tmSubst : HasSubst Tm Ty, …`) makes no difference
 definitions. Then the bundled copies are *definitionally* the canonical ones and lemmas proved
 about either apply to both. Two independent `pSubst`s for the same type would typecheck and then
 fail to talk to each other somewhere far away. -/
-class MVars (N Tm Ty : Type) [atoms : Atoms N] extends TypeSystem N Tm Ty where
+class MVars (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty where
   /-- Substitution of types into a term's annotations. Fill with `inferInstance` where possible. -/
   tmSubst : HasSubst Tm Ty
   /-- Substitution of types into types. Fill with `inferInstance` where possible. -/
@@ -175,7 +175,7 @@ elaborate-then-preserve example that failed before now compiles.
 
 The consequence for callers is that the joint class is the one to ask for. Requesting
 `LawfulTypeSystem` and `MVars` as separate parameters reintroduces the split. -/
-class LawfulMVars (N Tm Ty : Type) [atoms : Atoms N] extends MVars N Tm Ty, LawfulTypeSystem N Tm Ty where
+class LawfulMVars (N Tm Ty : Type) [atom : Atom N] extends MVars N Tm Ty, LawfulTypeSystem N Tm Ty where
   /-- Applying a substitution to context, term and type at once preserves the typing derivation.
   For a system whose types carry metavariables this is the workhorse: it is what lets a solved
   constraint set be *applied* and still describe a typing. -/
@@ -248,7 +248,7 @@ has two `HasVars` instances — the generic `HashMap` one, which counts keys, an
 which does not — and a threshold computed in this file would be read against the first while a
 language's own lemmas are stated against the second. A field sidesteps the question: the language
 says what its source threshold is, and proves its principality against that. -/
-class PrincipalElaborate (N Tm Ty : Type) [atoms : Atoms N] extends LawfulMVars N Tm Ty where
+class PrincipalElaborate (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
   /-- The index above which metavariables belong to the *elaborator* rather than to the source
   triple — the threshold `elaborate`'s principality is stated below. A language that draws no
   metavariables of its own can say `0`, and then the claim is unrestricted. -/
@@ -285,7 +285,7 @@ attribute [reducible, instance low] PrincipalElaborate.tyGroundDec PrincipalElab
 `LawfulTypeSystem`, because it fails for any system with general recursion. STLC proves it at
 `String` (`Stlc.Named.sn_of_hasType`, from `HasType.sn`) and records it beside its instances; no
 instance of this class exists yet. -/
-class StronglyNormalizing (N Tm Ty : Type) [atoms : Atoms N] extends LawfulMVars N Tm Ty where
+class StronglyNormalizing (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
   /-- **The term at hand admits no infinite reduction sequence.**
 
   `SN` is `Relation/Normalization.lean`'s, so the direction question is settled there rather than
@@ -304,7 +304,7 @@ class StronglyNormalizing (N Tm Ty : Type) [atoms : Atoms N] extends LawfulMVars
 `eval` takes the typing derivation rather than the bare term, so it is total on exactly the terms
 the judgement accepts, with no error case to invent for input it cannot reduce, and an
 implementation may recurse on the derivation. -/
-class HasEval (N Tm Ty : Type) [atoms : Atoms N] extends LawfulMVars N Tm Ty where
+class HasEval (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
   eval (Γ : Context N Ty) (t : Tm) (τ : Ty) : Γ ⊢ t : τ → Tm
 
 /-- **Reduction is confluent on well-typed terms**: whatever a term reduces to can be brought back
@@ -320,7 +320,7 @@ the hypothesis.
 What it buys, together with `LawfulHasEval`'s two fields: `eval`'s answer is not merely *a* normal
 form of its input but *the* one, since a reachable normal form is unique once reduction is
 confluent. -/
-class Confluent (N Tm Ty : Type) [atoms : Atoms N] extends TypeSystem N Tm Ty where
+class Confluent (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty where
   /-- **Confluence of reduction**: if a term reduces to two others, they have a common reduct. -/
   Confluent : ∀ {Γ : Context N Ty} {t t₁ t₂ : Tm} {τ : Ty},
     Γ ⊢ t : τ → t ⟶* t₁ → t ⟶* t₂ → ∃ t', t₁ ⟶* t' ∧ t₂ ⟶* t'
@@ -333,7 +333,7 @@ Three parents, and the diamond flattens as it must. `HasEval` and `StronglyNorma
 constructor taking `[toHasEval]` plus proofs, with the other two parents derived rather than
 stored, and `toHasEval.toLawfulMVars.toTypeSystem = toConfluent.toTypeSystem` holds by `rfl`. See
 `LawfulMVars` for what goes wrong when it does not. -/
-class LawfulHasEval (N Tm Ty : Type) [atoms : Atoms N] extends
+class LawfulHasEval (N Tm Ty : Type) [atom : Atom N] extends
     HasEval N Tm Ty,
     StronglyNormalizing N Tm Ty,
     Confluent N Tm Ty where

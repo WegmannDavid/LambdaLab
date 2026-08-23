@@ -23,9 +23,9 @@ using agreement to put `τ` back under the new substitution.
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 /-! ## Freshness of `Ty`, computed
 
@@ -122,7 +122,7 @@ theorem AgreeBelow.ctx {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
   | none => rfl
   | some τ => exact congrArg _ (h τ (hΓ x τ hx))
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 theorem AgreeBelow.term {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
     (e : Term N) (he : HasVars.fresh e ≤ n) :
     HasSubst.pSubst e σ = HasSubst.pSubst e σ' := by

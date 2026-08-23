@@ -12,10 +12,10 @@ the shared `RTC` rather than a bespoke inductive. See
 
 namespace LambdaLab.Stlc.Named
 
-variable {N : Type} [LambdaLab.Nominal.Atoms N]
+variable {N : Type} [LambdaLab.Nominal.Atom N]
 
 /-- Multi-step (full-beta) reduction: the reflexive-transitive closure of `Step`. -/
-abbrev MStep {N : Type} [LambdaLab.Nominal.Atoms N] : Term N → Term N → Prop :=
+abbrev MStep {N : Type} [LambdaLab.Nominal.Atom N] : Term N → Term N → Prop :=
   RTC Step
 
 theorem MStep.lift {e e' : Term N} : e ⟶ e' → e ⟶* e' := RTC.single

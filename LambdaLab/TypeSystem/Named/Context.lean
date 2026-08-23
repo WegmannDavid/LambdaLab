@@ -1,4 +1,4 @@
-import LambdaLab.Nominal.Basic
+import LambdaLab.Nominal.Atom
 import LambdaLab.Substitution.Basic
 
 /-!
@@ -6,14 +6,14 @@ import LambdaLab.Substitution.Basic
 
 A context maps variable names to types. Copied here from `Pipeline/Basic.lean` — the reference
 interface, whose `Context Ty` is hard-wired to `Std.HashMap String Ty` — and generalized: the key
-type is now any `Atoms N`.
+type is now any `Atom N`.
 
 That generality is the point. A parsed term is named by the *tokens* the grammar admits
 (`Term VName`), not by arbitrary strings, so the context it is typed under has to be keyed by the
 same `N`. A `String`-keyed context cannot receive one without a conversion at the boundary, which
 is exactly the impedance mismatch the name parameter exists to remove.
 
-This is also the first place the `Hashable` field of `Atoms` earns its keep: it is required
+This is also the first place the `Hashable` field of `Atom` earns its keep: it is required
 by `Std.HashMap`, and by nothing else in the interface. If contexts ever stop being hashmaps, that
 field can go.
 
@@ -23,12 +23,12 @@ The lemmas are the two from `Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized 
 
 namespace LambdaLab.TypeSystem.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] {Ty : Type}
+variable {N : Type} [Atom N] {Ty : Type}
 
 /-- A typing context: a hashmap from variable names to types. -/
-abbrev Context (N : Type) [Atoms N] (Ty : Type) : Type := Std.HashMap N Ty
+abbrev Context (N : Type) [Atom N] (Ty : Type) : Type := Std.HashMap N Ty
 
 /-- The empty context. -/
 def Context.empty : Context N Ty := ∅
@@ -69,7 +69,7 @@ So this instance drops the key clause: support is "free in some value", and `fre
 over values only.
 
 **It overlaps the generic instance, so it is declared `low`.** `Context N Ty` *is*
-`Std.HashMap N Ty`, so both instances apply whenever the key type has an `Atoms` instance, and they
+`Std.HashMap N Ty`, so both instances apply whenever the key type has an `Atom` instance, and they
 are not interchangeable: the generic `isFree` is `isFree key n ∨ isFree val n`, this one is
 `isFree val n`, and `False ∨ P` is not *definitionally* `P`. A lemma proved about one will not
 fire against the other.
@@ -84,12 +84,12 @@ every existing proof keeps the instance it was written against. This one fires o
 generic cannot apply — which is the whole point, since not needing `[HasVars N]` is what it is
 for.
 
-`Subst 𝕊 = Std.HashMap Nat 𝕊` is untouched either way, because `Nat` has no `Atoms`
+`Subst 𝕊 = Std.HashMap Nat 𝕊` is untouched either way, because `Nat` has no `Atom`
 instance. That matters: substitution-into-substitution must keep the key-aware support semantics
 that unification depends on. -/
 
 /-- Substitution into a context: map over the values, leave the keys alone. -/
-instance (priority := low) {N Ty β : Type} [Atoms N] [HasSubst Ty β] :
+instance (priority := low) {N Ty β : Type} [Atom N] [HasSubst Ty β] :
     HasSubst (Context N Ty) β where
   pSubst Γ σ := Γ.map (fun _ v => HasSubst.pSubst v σ)
   isFree Γ n := ∃ p ∈ Γ.toList, HasVars.isFree p.2 n
@@ -105,7 +105,7 @@ instance (priority := low) {N Ty β : Type} [Atoms N] [HasSubst Ty β] :
 Two instances now apply to `Std.HashMap`, so *which* one elaborates is a real property of the
 environment rather than a local fact. Both directions are pinned below, by `rfl` on the instance
 itself. They cost nothing and they fail loudly the day the balance shifts — in particular the day
-someone gives `Nat` an `Atoms` instance, which would silently hand every *substitution* the
+someone gives `Nat` an `Atom` instance, which would silently hand every *substitution* the
 value-only support semantics and quietly change what unification means. -/
 
 /-- Substitutions keep the key-aware instance: for `Subst 𝕊 = HashMap Nat 𝕊` the keys *are* the
@@ -114,7 +114,7 @@ example {S : Type} [HasSubst S S] :
     (inferInstance : HasSubst (Subst S) S) = instHasSubstHashMapOfHasVars := rfl
 
 /-- Contexts get the value-only instance: their keys are binder names, never metavariables. -/
-example {N Ty : Type} [Atoms N] [HasSubst Ty Ty] :
+example {N Ty : Type} [Atom N] [HasSubst Ty Ty] :
     (inferInstance : HasSubst (Context N Ty) Ty) = instHasSubstContext := rfl
 
 /-! ## Reading a substituted context
@@ -124,7 +124,7 @@ gets on a substituted context: `Std.HashMap` has no `getElem?` extensionality he
 that agree at every key cannot be proved equal — a client must reason through `get?` and a typing
 judgement that respects it (`TypeSystem.Named.LawfulTypeSystem.cong`). -/
 
-theorem Context.pSubst_get? {N Ty : Type} [Atoms N] [HasSubst Ty Ty]
+theorem Context.pSubst_get? {N Ty : Type} [Atom N] [HasSubst Ty Ty]
     (Γ : Context N Ty) (σ : Subst Ty) (x : N) :
     (HasSubst.pSubst Γ σ).get? x = (Γ.get? x).map (fun τ => HasSubst.pSubst τ σ) := by
   show (Γ.map (fun _ v => HasSubst.pSubst v σ)).get? x = _
@@ -133,7 +133,7 @@ theorem Context.pSubst_get? {N Ty : Type} [Atoms N] [HasSubst Ty Ty]
 
 /-- **A ground context is unchanged by substitution**, keywise. The equation on contexts is not
 available (no extensionality), which is why this is stated at `get?`. -/
-theorem Context.pSubst_get?_of_ground {N Ty : Type} [Atoms N] [HasSubst Ty Ty]
+theorem Context.pSubst_get?_of_ground {N Ty : Type} [Atom N] [HasSubst Ty Ty]
     [GroundStable Ty Ty] (Γ : Context N Ty) (σ : Subst Ty)
     (hΓ : ∀ (x : N) (τ : Ty), Γ.get? x = some τ → HasVars.Ground τ) (x : N) :
     (HasSubst.pSubst Γ σ).get? x = Γ.get? x := by

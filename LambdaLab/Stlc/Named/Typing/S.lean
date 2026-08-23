@@ -42,9 +42,9 @@ Completeness (`D ⟹ S`, weakened) is *not* here; see the end of the file for wh
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 /-- **The syntactical system.** Judgements carry monotypes; instantiation happens at `[Var]`. -/
 inductive HasTypeS : SCtx N → Term N → Ty → Prop where

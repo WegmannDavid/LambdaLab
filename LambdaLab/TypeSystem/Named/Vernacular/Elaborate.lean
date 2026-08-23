@@ -75,7 +75,7 @@ instance; a language supplies it from its own structural check (STLC: `Ty.ground
 namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
 /-! ## What the fold asks for: `PrincipalElaborate`, and nothing else
 
@@ -88,7 +88,7 @@ to `PrincipalElaborate` itself. Each is justified there without reference to a v
 `TypeSystem/Named/Basic.lean` still does not know this file exists.
 -/
 
-variable {N Tm Ty : Type} [Atoms N] [PrincipalElaborate N Tm Ty]
+variable {N Tm Ty : Type} [Atom N] [PrincipalElaborate N Tm Ty]
 
 /-- The typing `elaborate` returns, re-read under the context the vernacular maintains rather than
 under the substituted one. This is the single step the two extra laws exist for. -/

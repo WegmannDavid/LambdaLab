@@ -42,9 +42,9 @@ Metavariables (`Ty.mvar`) serve as the type variables `α`. In `D` they are genu
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 /-! ## Polytypes
 
@@ -64,7 +64,7 @@ def Scheme.IsFree : Scheme → Nat → Prop
   | .all α σ, n => n ≠ α ∧ Scheme.IsFree σ n
 
 /-- A context assigning *schemes* — what `D` needs and `HasType` does not have. -/
-abbrev SCtx (N : Type) [Atoms N] : Type := TypeSystem.Named.Context N Scheme
+abbrev SCtx (N : Type) [Atom N] : Type := TypeSystem.Named.Context N Scheme
 
 /-- `free(Γ) = ⋃_{x:σ ∈ Γ} free(σ)`. -/
 def SCtx.IsFree (Γ : SCtx N) (n : Nat) : Prop :=

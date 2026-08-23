@@ -9,9 +9,9 @@ discharged by `unify` from the unification module. -/
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 inductive TyConstructor : Type where
   | base
@@ -104,7 +104,7 @@ def tyFresh : (Term N) → Nat
   | .lam _ τ body => max (HasVars.fresh τ) (tyFresh body)
   | .app e₁ e₂    => max (tyFresh e₁) (tyFresh e₂)
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 theorem tyFresh_gt_tyIsFree : ∀ (e : (Term N)) (n : Nat),
     tyIsFree e n → n < tyFresh e := by
   intro e
@@ -128,7 +128,7 @@ def tyPSubst : (Term N) → Subst Ty → (Term N)
   | .lam x τ body, σ => .lam x (HasSubst.pSubst τ σ) (tyPSubst body σ)
   | .app e₁ e₂,    σ => .app (tyPSubst e₁ σ) (tyPSubst e₂ σ)
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 /-- `tyPSubst` preserves `Term.size`, since it only modifies type
 annotations, not term structure. Needed for the well-founded recursion
 in `W`'s app case, whose second recursive call is on `pSubst e₂ σ₁`. -/
@@ -212,7 +212,7 @@ theorem Ty.ground_iff {τ : Ty} : τ.Ground ↔ HasVars.Ground τ := by
         show (a ⇒ b).isGround = true
         simp [Ty.isGround, iha.mpr ha, ihb.mpr hb]
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 /-- **The term-level bridge**: `AnnotsGround` — no metavariable in any annotation — is exactly
 the generic condition, since `HasVars (Term N)`'s `isFree` is `Term.tyIsFree`. -/
 theorem Term.annotsGround_iff_ground {e : Term N} :
@@ -246,7 +246,7 @@ client accumulate substitutions across a program and know what each one left alo
 
 `GroundStable` is immediate; `LawfulComp` waits until `Term.pSubst_comp` further down. -/
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 theorem Term.pSubst_ground {e : Term N} (σ : Subst Ty) (h : HasVars.Ground e) :
     HasSubst.pSubst e σ = e := by
   show Term.tyPSubst e σ = e
@@ -272,7 +272,7 @@ For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
 doesn't hold, but every `get?` agrees, which is enough for typing
 proofs (via `HasType.cong`). -/
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 @[simp] theorem Term.tyPSubst_empty (e : (Term N)) :
     Term.tyPSubst e (∅ : Subst Ty) = e := by
   induction e with
@@ -379,7 +379,7 @@ theorem Ty.pSubst_comp (σ τ : Subst Ty) (t : Ty) :
   | arrow a b iha ihb =>
       simp only [Ty.pSubst_arrow, iha, ihb]
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 /-- **Soundness of `Subst.comp` for `Term`.** Same composition law, on
 the term substitution `tyPSubst` (which applies σ to annotations). -/
 theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
@@ -392,7 +392,7 @@ theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
   | app e₁ e₂ ih₁ ih₂ =>
       simp only [Term.tyPSubst, ih₁, ih₂]
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 /-- `HasSubst.pSubst`-flavored corollary of `tyPSubst_comp`, for use in
 proofs that prefer the class API. -/
 theorem Term.pSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
@@ -421,7 +421,7 @@ Specializations of `Signature.pSubst_insert_fresh`: extending σ with a
 fresh-from-target binding is action-preserving on terms and (key-by-key)
 on contexts. -/
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 theorem Term.tyPSubst_insert_fresh (e : (Term N)) (σ : Subst Ty)
     (k : Nat) (v : Ty) (h_fresh : ¬ HasVars.isFree e k) :
     Term.tyPSubst e (σ.insert k v) = Term.tyPSubst e σ := by
@@ -465,7 +465,7 @@ elaboration boundary needs: one for terms (whose mvars live in type annotations)
 contexts (`get?`-wise, since hashmap equality is not up to layout).
 -/
 
-omit [Atoms N] [HasVars N] in
+omit [Atom N] [HasVars N] in
 theorem Term.tyPSubst_restrictBelow (e : Term N) (σ : Subst Ty) (n : Nat)
     (h : HasVars.fresh e ≤ n) :
     HasSubst.pSubst e (Subst.restrictBelow σ n) = HasSubst.pSubst e σ := by

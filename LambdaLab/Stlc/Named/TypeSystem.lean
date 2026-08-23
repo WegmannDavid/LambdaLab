@@ -19,7 +19,7 @@ proved here, which is the point — the interface asks for what the development 
 * `Step` is generic too — and this was not always so. It was declared at `Term String`, and that
   pinned `TypeSystem`, `LawfulTypeSystem`, `MVars` and `LawfulMVars` at `String` with it. The pin
   was never necessary: the β-rule's capture-avoiding substitution draws fresh names from
-  `Atoms.freshFor`, which every `Atoms` instance has, and the de Bruijn translation carrying
+  `Atom.freshFor`, which every `Atom` instance has, and the de Bruijn translation carrying
   subject reduction only ever compares names. Generalising `Step`, `MStep`, `Translation` and
   `HasType.preservation` changed signatures and **not one proof**.
   That matters practically, not just aesthetically: `Pipeline.lean` names terms by `VName`, so
@@ -54,7 +54,7 @@ unconditionally (`elabSolution` is proved and still exported), and claims princi
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
 /-! ## The judgement — any atoms
 
@@ -64,7 +64,7 @@ notation the class owns is available from the judgement's own file onwards. -/
 /-! ## Reduction and above — every atoms instance too
 
 `Step` was declared at `Term String` and everything above it inherited the pin. It did not have
-to be: `Term.subst` is capture-avoiding via `Atoms.freshFor`, which every `Atoms` instance
+to be: `Term.subst` is capture-avoiding via `Atom.freshFor`, which every `Atom` instance
 supplies, and the de Bruijn translation that carries subject reduction only ever compares names.
 Generalising `Step`, `MStep`, `Translation` and `HasType.preservation` to an arbitrary `N` cost no
 proof changes at all — only signatures — and it is what lets `Pipeline.lean` reach these instances
@@ -74,7 +74,7 @@ at its own name type `VName` instead of calling the elaborator directly.
 `HasType.freeVars_in_ctx`), and the substitution the classes above it talk about is defined by it.
 -/
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 instance instTypeSystem : TypeSystem.Named.TypeSystem N (Term N) Ty := {}
 

@@ -26,13 +26,13 @@ than generalized because pinning is free and generalizing costs a sweep through 
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 open LambdaLab.TypeSystem.Named (Context)
 
-variable {N : Type} [Atoms N]
+variable {N : Type} [Atom N]
 
 /-- A typing context: variable names to types. -/
-abbrev Ctx (N : Type) [Atoms N] : Type := Context N Ty
+abbrev Ctx (N : Type) [Atom N] : Type := Context N Ty
 
 abbrev Ctx.empty : Ctx N := Context.empty
 
@@ -53,7 +53,7 @@ One rule per constructor of `Term`, and no rule mentioning `Ty.mvar`. Metavariab
 assign one — they are simply never introduced or solved by typing, which is what makes inference
 a separate concern (`Typing/W.lean`) and groundness a separate condition (`Ctx.Ground`,
 `Term.AnnotsGround`, and `HasType.ground_result` relating the three). -/
-inductive HasType {N : Type} [Atoms N] : Ctx N → Term N → Ty → Prop where
+inductive HasType {N : Type} [Atom N] : Ctx N → Term N → Ty → Prop where
   | var : Γ.get? x = some τ → HasType Γ (.var x) τ
   | lam : HasType (Γ.cons x τ₁) body τ₂ →
           HasType Γ (.lam x τ₁ body) (τ₁ ⇒ τ₂)

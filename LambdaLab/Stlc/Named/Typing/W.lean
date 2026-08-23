@@ -6,9 +6,9 @@ import LambdaLab.Substitution.Unification.MGU
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atoms N] [HasVars N]
+variable {N : Type} [Atom N] [HasVars N]
 
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `body`, `α`, and `τ`. Used by `W` and by `HasTypeW` to name the

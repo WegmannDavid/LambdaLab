@@ -57,14 +57,14 @@ by making well-typedness fail.
 namespace LambdaLab.TypeSystem.Named.Vernacular
 
 open HasVars (Ground)
-open LambdaLab.Nominal (Atoms)
+open LambdaLab.Nominal (Atom)
 
 /-! `HasType` below is the *program*-level judgement, and it shares its name with the object
 language's class in the parent namespace. Both are wanted under those names, so every reference to
 the class is qualified: an unqualified one in a statement written after the `abbrev` resolves to
 the program-level judgement and fails with an arity mismatch. -/
 
-variable {N Tm Ty : Type} [Atoms N] [_root_.LambdaLab.TypeSystem.Named.HasType N Tm Ty]
+variable {N Tm Ty : Type} [Atom N] [_root_.LambdaLab.TypeSystem.Named.HasType N Tm Ty]
   [HasVars Tm] [HasVars Ty]
 
 /-- Every type bound in `Γ` is ground.

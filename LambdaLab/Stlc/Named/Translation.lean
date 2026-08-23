@@ -38,9 +38,9 @@ that are quotient-friendly (e.g. confluence, preservation up to α).
 
 namespace LambdaLab.Stlc.Named
 
-open LambdaLab.Nominal (Atoms freshFor freshFor_not_in)
+open LambdaLab.Nominal (Atom freshFor freshFor_not_in)
 
-variable {N : Type} [Atoms N]
+variable {N : Type} [Atom N]
 
 /-! ## Type translation -/
 
