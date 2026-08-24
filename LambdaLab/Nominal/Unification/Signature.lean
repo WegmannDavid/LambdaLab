@@ -328,7 +328,7 @@ end Signature
 /-! ## Unifier API
 
 `MoreGeneral` (the parallel-`Subst` version) lives in
-`Substitution/Basic.lean` since it only needs `HasSubst`. The `Unifier`
+`Subst.lean` since it only needs `HasSubst`. The `Unifier`
 namespace below adds the list-form companion. -/
 
 /-- A unifier as an iterated single-binding sequence. The MGU computed

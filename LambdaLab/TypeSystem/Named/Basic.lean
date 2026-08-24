@@ -202,7 +202,7 @@ projections above and for the same reason: a free-standing instance must keep wi
 always does apply for a concrete language, and it is *definitionally* the field, since the field
 was filled from it.
 
-They cannot replace the free-standing instances, and are not meant to. `Substitution/Basic.lean`
+They cannot replace the free-standing instances, and are not meant to. `Nominal/Unification/Subst.lean`
 derives `GroundStable`/`LawfulComp` for pairs and lists from their components, and `Bridge.lean`
 for any `Signature` — derivations that resolve by ordinary search, and which are what make a whole
 `Vernacular.Program` substitutable. What the fields buy is that a *generic* consumer, working at an
@@ -229,7 +229,7 @@ the two back into the `MGUProp` they should have been. The split bought instance
 before their hard law is proved, and cost a three-way spread of one idea — with the reassembly
 written out by hand, and its converse only asserted in prose.
 
-`PrincipalProp` was already the right type; `Substitution/Unification/MGU.lean` defines it, so
+`PrincipalProp` was already the right type; `Nominal/Unification/MGU.lean` defines it, so
 nothing new is introduced here. A caller that does not want most-generality does not need a weaker
 class either — `PrincipalProp.toSolution` forgets it, and everything proved about `SolutionProp`
 applies.
@@ -269,11 +269,12 @@ class PrincipalElaborate (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N 
   that its types carry metavariables and that it solves them principally may as well promise that
   you can tell when they are gone.
 
-  It should eventually not be a field at all. `HasVars.fresh_gt_free` makes groundness a *bounded*
-  quantifier — `Ground x ↔ ∀ n < fresh x, ¬ isFree x n` — so `DecidablePred Ground` follows
-  generically from `Decidable (isFree x n)`, and belongs in `Substitution/Basic.lean` beside
-  `Ground` itself. That change touches every `HasVars` instance, so it is deliberately not made
-  here. -/
+  It should eventually not be a field at all, and the case is now stronger than it was. The old
+  argument went through `fresh_gt_free`, which made groundness a *bounded* quantifier
+  (`Ground x ↔ ∀ n < fresh x, ¬ isFree x n`). Since the port, `supp` is exact and
+  `HasVars.ground_iff_supp_nil` says `Ground x ↔ supp x = []` — decidable outright, with no
+  quantifier to bound and no `Decidable (isFree x n)` needed. Removing the field still touches
+  every consumer, so it is deliberately not done here. -/
   tyGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Ty → Prop)
   /-- The same for terms. -/
   tmGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Tm → Prop)

@@ -1,18 +1,23 @@
 import LambdaLab.Nominal.Basic
 
 /-!
-# Substitution, nominally — a proposal
+# Substitution, nominally — the specification
 
-This is the interface `Substitution/Basic.lean` is meant to grow into: the same operations and
-the same laws, but with the variable type a parameter and the support structure taken from
-`Nominal/Basic.lean` instead of hand-rolled at `Nat`.
+The nominal statement of the substitution interface: the same operations and laws the repo runs
+on, but with the support structure taken from `Nominal/Basic.lean` — `Perm`, `Supports`,
+equivariance — instead of hand-rolled.
 
-Nothing here is instantiated. Like the file it replaces, it defines classes, the operations they
+**What runs is `Nominal/Unification/Subst.lean`**, the Mathlib-free realization of this, carrying
+support as a `List A`. The whole repo migrated onto it and the old `Substitution/` was deleted.
+This file is what that one is to be checked against: the bridge proving its `pSubst` equivariant
+and its carriers nominal is the piece still owed. The table below records what changed on the way.
+
+Nothing here is instantiated. Like the file it specifies, it defines classes, the operations they
 carry, and the laws that constrain them; the object languages supply the instances.
 
 ## Correspondence
 
-| `Substitution/Basic.lean` | here | why it changed |
+| the old `Substitution/Basic.lean` | here | why it changed |
 |---|---|---|
 | `HasVars.isFree : 𝕋 → Nat → Prop` | `Supports` (from `Nominal/Basic.lean`) | support is already defined nominally |
 | `HasVars.fresh : 𝕋 → Nat` | `HasSupp.supp : 𝕋 → Finset A` | a bound in an order is not available for atoms |
@@ -26,7 +31,7 @@ carry, and the laws that constrain them; the object languages supply the instanc
 
 ## Three decisions worth arguing with
 
-**The substitution type is a parameter, not a definition.** `Substitution/Basic.lean` fixes
+**The substitution type is a parameter, not a definition.** The old `Substitution/Basic.lean` fixed
 `Subst 𝕊 = Std.HashMap Nat 𝕊` in the interface, so every law is a law about hashmaps. Here `Θ` is
 any nominal type, and `pSubst : 𝕋 → Θ → 𝕋`. That is what lets one interface carry both the
 executable representation (a hashmap, which is what should stay in the cone the executables build)
@@ -63,11 +68,11 @@ this must become an explicit parameter and every use site gains an `(A := ·)`.
 ## What this file does not do
 
 It imports `Nominal/Basic.lean`, so it takes Mathlib, so **it must not enter the `stlc`/`arith`
-import cone** — measured at 129 MB the last time Mathlib was in there. The rewrite of
-`Substitution/` proper stays Mathlib-free and depends on `Nominal/Atom.lean` alone, carrying
-support as a `List A`; this file is the specification it is checked against and the bridge where
-the `NominalType` instances are proved. Keeping the two apart is deliberate, not an accident of
-layering.
+import cone** — measured at 129 MB the last time Mathlib was in there. That is exactly why
+`Nominal/Unification/Subst.lean` exists as a separate, Mathlib-free module depending on
+`Nominal/Atom.lean` alone: the executables carry that one, and this one states what it means.
+Keeping the two apart is deliberate, not an accident of layering — and it is why the equivariance
+law below appears here and not there.
 -/
 
 namespace LambdaLab.Nominal
@@ -158,7 +163,7 @@ theorem ground_pSubst [HasSubst A 𝕋 Θ] {x : 𝕋} {σ : Θ}
 
 Equivariance says how substitution interacts with *renaming*. It says nothing about what a
 substitution does or leaves alone, so these three do not follow from it and remain assumptions,
-one per instance — exactly as in `Substitution/Basic.lean`. -/
+one per instance — exactly as in `Nominal/Unification/Subst.lean`. -/
 
 /-- **Substitution does nothing to a ground object.** A mixin over `[HasSubst]`, not an `extends`,
 for the reason the old file gives: a class extending `HasSubst` carries its own copy of `pSubst`,
@@ -219,9 +224,9 @@ is the point of the interface, and a representation shipped alongside tends to b
 representation by gravity. The executable one is a hashmap and lives on the other side of the
 Mathlib boundary.
 
-**The pointwise lifts.** `Substitution/Basic.lean` lifts `HasSubst` over pairs, lists and
-hashmaps. Those port across unchanged in shape — support becomes a union instead of a `max`, and
-equivariance is proved componentwise — so they are migration, not design.
+**The pointwise lifts.** `Nominal/Unification/Subst.lean` lifts `HasSubst` over pairs, lists and
+hashmaps; they carried across unchanged in shape, with support a concatenation instead of a `max`.
+Their equivariance is componentwise and belongs to the bridge, not here.
 
 **Fresh-atom generation.** `Atom.freshFor` produces one atom against an avoid-list, at the cost of
 a pass over it. An elaborator drawing metavariables wants a counter: O(1), monotone, no list. That

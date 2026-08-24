@@ -37,7 +37,7 @@ def Equations.size {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) 
 
 /-! ## Counting distinct elements
 
-`List.dedup` is Mathlib's, and `Substitution/` imports nothing but `Std`. Three short definitions
+`List.dedup` is Mathlib's, and this module imports nothing but `Std`. Three short definitions
 and a pigeonhole lemma are cheaper than the dependency — and this is the whole of what replaces
 the order. -/
 

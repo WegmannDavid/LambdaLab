@@ -10,7 +10,7 @@ When `unifyList` succeeds, the returned unifier is at least as general as any ot
 the same equation set — where "unifier" means *any* substitution making the equations hold, as in
 the standard definition, not merely one in the algorithm's own list format.
 
-Generality is measured by `MoreGeneral` on `Subst A α` (`Substitution/Basic.lean`). A list-form
+Generality is measured by `MoreGeneral` on `Subst A α` (`Subst.lean`). A list-form
 counterpart was dropped: the algorithm's output converts to a `Subst` via `toSubst`, and the
 hypothetical unifier is a `Subst` to begin with, so nothing needs the list-level notion. -/
 

@@ -796,7 +796,7 @@ instance instLawfulComp {A α : Type} [Atom A] [Signature A α] : LawfulComp A �
 
 /-! ## `MoreGeneral` algebra (generic for `Signature α`).
 
-`MoreGeneral` from `Substitution/Basic.lean` is generic in `HasSubst A α α`,
+`MoreGeneral` from `Subst.lean` is generic in `HasSubst A α α`,
 but its useful algebraic laws need `Signature.pSubst_empty` (for `refl`)
 and `Signature.pSubst_comp` (for `trans`). -/
 

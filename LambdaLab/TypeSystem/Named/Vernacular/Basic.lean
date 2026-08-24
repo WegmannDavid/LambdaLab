@@ -33,7 +33,7 @@ end Command
 /-! ## Substituting through a program
 
 One instance, for `Command`. `Program` is `NEList (Command …)`, which is `Command × List Command`,
-and `Substitution/Basic.lean` already has the pair and list instances — so applying a substitution
+and `Nominal/Unification/Subst.lean` already has the pair and list instances — so applying a substitution
 to a whole program, and the laws about doing so, come for free the moment a single declaration
 knows how.
 

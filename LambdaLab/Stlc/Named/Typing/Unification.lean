@@ -346,7 +346,7 @@ theorem HashMap.pSubst_get? (Γ : Std.HashMap N Ty) (σ : Subst Nat Ty)
 
 /-! ## Soundness of `Subst.comp` for `Ty`, `Term`, and `Ctx`.
 
-The generic `Subst.comp` from `Substitution.Basic` is just a function on
+The generic `Subst.comp` from `Nominal.Unification.Subst` is just a function on
 hash maps; its action only matches "apply τ, then σ" once we discharge
 the per-instance correctness law `pSubst t (comp σ τ) = pSubst (pSubst t
 τ) σ`. The three theorems below close it for the three substitution

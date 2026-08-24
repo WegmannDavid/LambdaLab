@@ -20,7 +20,7 @@ certificate is about the program that was actually written — `p`, not some val
 built and the caller must then relate back to its source. The elaborated form is `pSubst p σ`,
 available whenever anyone wants it (`elabProgram?`), and `Vernacular/Basic.lean`'s `Command`
 instance is what makes that one application well-defined: `Program` is `Command × List Command`,
-and the pair and list instances in `Substitution/Basic.lean` do the rest.
+and the pair and list instances in `Nominal/Unification/Subst.lean` do the rest.
 
 The second conjunct says σ binds nothing at or above `p`'s own threshold — no redundant bindings.
 It is a condition on σ's *domain*; see `Minimal` below for why that is the honest strengthening

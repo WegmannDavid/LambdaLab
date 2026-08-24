@@ -4,7 +4,8 @@ import LambdaLab.Nominal.Atom
 /-!
 # Substitution over an arbitrary atom supply
 
-The atom-generic port of `Substitution/Basic.lean`. Same operations, same laws; the variable type
+The atom-generic replacement for the old `Substitution/Basic.lean`. Same operations, same laws;
+the variable type
 is `[Atom A]` rather than `Nat`, and the support structure is a **list of atoms** rather than a
 bound in `Nat`'s order.
 
