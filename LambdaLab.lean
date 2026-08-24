@@ -59,6 +59,14 @@ import LambdaLab.Nominal.Atom
 import LambdaLab.Nominal.Basic
 import LambdaLab.Nominal.Instances
 import LambdaLab.Nominal.Substitution
+import LambdaLab.Nominal.Unification.Subst
+import LambdaLab.Nominal.Unification.Signature
+import LambdaLab.Nominal.Unification.Bridge
+import LambdaLab.Nominal.Unification.Measure
+import LambdaLab.Nominal.Unification.Basic
+import LambdaLab.Nominal.Unification.Soundness
+import LambdaLab.Nominal.Unification.Completeness
+import LambdaLab.Nominal.Unification.MGU
 import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.TypeSystem.Intrinsic.Basic
