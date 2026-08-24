@@ -12,42 +12,6 @@ well-founded `Signature.size` measure. -/
 namespace Signature
 variable {α : Type} [Signature α]
 
-/-! ## Structural induction on terms.
-
-Any property that holds for variables and is preserved by constructor
-application (assuming it holds for all children) holds for every term.
-The "subterms have strictly smaller size" fact (`size_lt_of_get`) makes
-this well-founded. -/
-
-theorem term_ind {motive : α → Prop}
-    (var_case : ∀ n, motive (var n))
-    (construct_case : ∀ (c : Constructor α) (args : Vector α (arity c)),
-       (∀ i : Fin (arity c), motive (args.get i)) →
-       motive (construct (Sum.inr ⟨c, args⟩))) :
-    ∀ t : α, motive t := by
-  intro t
-  induction hk : size t using Nat.strongRecOn generalizing t with
-  | _ k ih =>
-    match hd : deconstruct t with
-    | Sum.inl m =>
-        have ht : t = var m := by
-          have := deconstruct_construct (α := α) t
-          rw [hd] at this
-          exact this.symm
-        rw [ht]
-        exact var_case m
-    | Sum.inr ⟨c, args⟩ =>
-        have ht : t = construct (Sum.inr ⟨c, args⟩) := by
-          have := deconstruct_construct (α := α) t
-          rw [hd] at this
-          exact this.symm
-        rw [ht]
-        apply construct_case
-        intro i
-        have hsz : size (args.get i) < size t := size_lt_of_get hd i
-        have hsz' : size (args.get i) < k := hk ▸ hsz
-        exact ih _ hsz' _ rfl
-
 /-! ## Vector helper: when a function agrees with `Vector.get`,
     `ofFn` returns the original vector. -/
 

@@ -109,6 +109,23 @@ def fresh (t : α) : Nat :=
     apply size_lt_of_get <;> assumption
 
 set_option linter.unusedVariables false in
+/-- The variables occurring in `t`, with multiplicity.
+
+The order-free counterpart of `fresh`: where `fresh` bounds the variables in `Nat`'s order, this
+lists them. Everything the termination measure actually needs is *how many distinct variables
+there are*, which is a fact about the list and not about the order — see
+`Unification/Measure.lean`. -/
+def vars (t : α) : List Nat :=
+  match h : Signature.deconstruct t with
+  | Sum.inl n => [n]
+  | Sum.inr ⟨c, args⟩ =>
+      (List.finRange (Signature.arity c)).flatMap (fun (i : Fin (Signature.arity c)) =>
+        vars (args.get i))
+  termination_by Signature.size t
+  decreasing_by
+    apply size_lt_of_get <;> assumption
+
+set_option linter.unusedVariables false in
 /-- Apply a parallel substitution. Variables look themselves up in the
     substitution (default: keep the variable); constructors recurse
     structurally. -/
@@ -175,6 +192,80 @@ theorem fresh_construct (c : Constructor α) (args : Vector α (Signature.arity 
   · rename_i c' args' h
     rw [Signature.construct_deconstruct] at h
     cases h; rfl
+
+/-! ## Structural induction on terms.
+
+Any property that holds for variables and is preserved by constructor
+application (assuming it holds for all children) holds for every term.
+The "subterms have strictly smaller size" fact (`size_lt_of_get`) makes
+this well-founded. -/
+
+theorem term_ind {motive : α → Prop}
+    (var_case : ∀ n, motive (var n))
+    (construct_case : ∀ (c : Constructor α) (args : Vector α (arity c)),
+       (∀ i : Fin (arity c), motive (args.get i)) →
+       motive (construct (Sum.inr ⟨c, args⟩))) :
+    ∀ t : α, motive t := by
+  intro t
+  induction hk : size t using Nat.strongRecOn generalizing t with
+  | _ k ih =>
+    match hd : deconstruct t with
+    | Sum.inl m =>
+        have ht : t = var m := by
+          have := deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        rw [ht]
+        exact var_case m
+    | Sum.inr ⟨c, args⟩ =>
+        have ht : t = construct (Sum.inr ⟨c, args⟩) := by
+          have := deconstruct_construct (α := α) t
+          rw [hd] at this
+          exact this.symm
+        rw [ht]
+        apply construct_case
+        intro i
+        have hsz : size (args.get i) < size t := size_lt_of_get hd i
+        have hsz' : size (args.get i) < k := hk ▸ hsz
+        exact ih _ hsz' _ rfl
+
+theorem vars_var (n : Nat) : vars (var n : α) = [n] := by
+  unfold vars var
+  split
+  · rename_i m h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+  · rename_i c args h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+
+theorem vars_construct (c : Constructor α) (args : Vector α (Signature.arity c)) :
+    vars (Signature.construct (Sum.inr ⟨c, args⟩)) =
+      (List.finRange (Signature.arity c)).flatMap (fun i => vars (args.get i)) := by
+  rw [vars.eq_def]
+  split
+  · rename_i n h
+    rw [Signature.construct_deconstruct] at h
+    nomatch h
+  · rename_i c' args' h
+    rw [Signature.construct_deconstruct] at h
+    cases h; rfl
+
+/-- **`vars` and `occurs` agree.** The bridge that lets a measure count list membership instead of
+searching an initial segment of `Nat`. -/
+theorem mem_vars_iff_occurs (n : Nat) (t : α) : n ∈ vars t ↔ occurs n t = true := by
+  induction t using term_ind with
+  | var_case m =>
+      rw [vars_var, occurs_var]
+      simp [eq_comm]
+  | construct_case c args ih =>
+      rw [vars_construct, occurs_construct]
+      simp only [List.mem_flatMap, List.any_eq_true]
+      constructor
+      · rintro ⟨i, hi, hmem⟩
+        exact ⟨i, hi, (ih i).mp hmem⟩
+      · rintro ⟨i, hi, hocc⟩
+        exact ⟨i, hi, (ih i).mpr hocc⟩
 
 theorem pSubst_var (n : Nat) (σ : Subst α) :
     pSubst (var n) σ = σ.getD n (var n) := by
