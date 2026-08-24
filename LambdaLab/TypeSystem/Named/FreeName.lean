@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Basic
-import LambdaLab.Nominal.Atom
+import LambdaLab.Nominal.Instances
 
 /-!
 # `FreeName` — the atoms a language gets from its reserved list

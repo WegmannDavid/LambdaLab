@@ -1,3 +1,4 @@
+import LambdaLab.Nominal.Instances
 import LambdaLab.Stlc.Named.Translation
 import LambdaLab.Stlc.DeBruijn.Confluence
 

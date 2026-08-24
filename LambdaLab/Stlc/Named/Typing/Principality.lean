@@ -1,3 +1,4 @@
+import LambdaLab.Nominal.Instances
 import LambdaLab.Stlc.Named.Typing.JComplete
 
 /-!

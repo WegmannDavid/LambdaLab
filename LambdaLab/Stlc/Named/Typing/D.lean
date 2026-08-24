@@ -1,3 +1,4 @@
+import LambdaLab.Nominal.Instances
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Properties
