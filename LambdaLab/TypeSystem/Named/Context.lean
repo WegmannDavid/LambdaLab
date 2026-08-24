@@ -1,5 +1,6 @@
 import LambdaLab.Nominal.Atom
 import LambdaLab.Substitution.Basic
+import LambdaLab.Nominal.Unification.Subst
 
 /-!
 # Typing contexts, parametric in the atoms
@@ -125,6 +126,44 @@ example {S : Type} [HasSubst S S] :
 /-- Contexts get the value-only instance: their keys are binder names, never metavariables. -/
 example {N Ty : Type} [Atom N] [HasSubst Ty Ty] :
     (inferInstance : HasSubst (Context N Ty) Ty) = instHasSubstContext := rfl
+
+/-! ## The same instance, for the atom-generic classes
+
+The port's `HasSubst A (Context N Ty) β`. Everything argued above carries over unchanged, because
+the overlap is structural rather than a fact about `Nat`: `Context N Ty` is still
+`Std.HashMap N Ty`, `Nominal.Unification.instHasSubstHashMap` still lets keys contribute, and this
+one still must not. So it is `low` for the same reason and guarded the same way.
+
+One thing did get better. The old pair of instances was separated by whether the *key* type had a
+`HasVars`, which `Atom Nat` made delicate. Here the separation is by which *atom* type is being
+substituted: a substitution binds atoms of `A` and its keys are `A`, so
+`Nominal.Unification.HasVars A A` applies and the key-aware instance wins; a context's keys are
+names of some unrelated `N`, no `HasVars A N` exists, and only this instance can fire. The guards
+below pin both, exactly as above. -/
+
+instance (priority := low) instHasSubstContextAtom {A N Ty β : Type}
+    [LambdaLab.Nominal.Atom A] [Atom N]
+    [LambdaLab.Nominal.Unification.HasSubst A Ty β] :
+    LambdaLab.Nominal.Unification.HasSubst A (Context N Ty) β where
+  isFree Γ a := ∃ p ∈ Γ.toList, LambdaLab.Nominal.Unification.HasVars.isFree p.2 a
+  supp Γ := Γ.toList.flatMap
+    (fun p => LambdaLab.Nominal.Unification.HasVars.supp (A := A) p.2)
+  mem_supp_iff_isFree Γ a := by
+    simp only [List.mem_flatMap, LambdaLab.Nominal.Unification.HasVars.mem_supp_iff_isFree]
+  pSubst Γ σ := Γ.map (fun _ v => LambdaLab.Nominal.Unification.HasSubst.pSubst v σ)
+
+/-- Substitutions keep the key-aware instance, in the ported classes too. -/
+example {A S : Type} [LambdaLab.Nominal.Atom A]
+    [LambdaLab.Nominal.Unification.HasSubst A S S] :
+    (inferInstance : LambdaLab.Nominal.Unification.HasSubst A
+        (LambdaLab.Nominal.Unification.Subst A S) S)
+      = LambdaLab.Nominal.Unification.instHasSubstHashMap := rfl
+
+/-- Contexts get the value-only instance, in the ported classes too. -/
+example {A N Ty : Type} [LambdaLab.Nominal.Atom A] [Atom N]
+    [LambdaLab.Nominal.Unification.HasSubst A Ty Ty] :
+    (inferInstance : LambdaLab.Nominal.Unification.HasSubst A (Context N Ty) Ty)
+      = instHasSubstContextAtom := rfl
 
 /-! ## Reading a substituted context
 
