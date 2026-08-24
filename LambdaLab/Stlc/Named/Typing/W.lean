@@ -1,14 +1,14 @@
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Substitution.Unification.Soundness
-import LambdaLab.Substitution.Unification.MGU
+import LambdaLab.Nominal.Unification.Soundness
+import LambdaLab.Nominal.Unification.MGU
 
 namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `body`, `α`, and `τ`. Used by `W` and by `HasTypeW` to name the
@@ -16,15 +16,15 @@ yet-to-be-inferred body type in the lam case so that the resulting
 substitution is determined (and, together with the unifier being an MGU,
 is itself an MGU). -/
 def freshIdxLam (Γ : Ctx N) (body : (Term N)) (α τ : Ty) : Nat :=
-  max (HasVars.fresh Γ) (max (HasVars.fresh body)
-    (max (HasVars.fresh α) (HasVars.fresh τ)))
+  max (freshIdx Γ) (max (freshIdx body)
+    (max (freshIdx α) (freshIdx τ)))
 
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `e₁`, `e₂`, and `τ`. Used by `W` and by `HasTypeW` to name the
 yet-to-be-inferred argument type in the app case. -/
 def freshIdxApp (Γ : Ctx N) (e₁ e₂ : (Term N)) (τ : Ty) : Nat :=
-  max (HasVars.fresh Γ) (max (HasVars.fresh e₁)
-    (max (HasVars.fresh e₂) (HasVars.fresh τ)))
+  max (freshIdx Γ) (max (freshIdx e₁)
+    (max (freshIdx e₂) (freshIdx τ)))
 
 /-- A relational, bidirectional "algorithm-W"-style typing judgment.
 `HasTypeW Γ e τ σ` says: when we ran algorithm W on `e` in `Γ` checking
@@ -51,7 +51,7 @@ The constructors mirror standard W:
   the σ₁-refined argument type, on the σ₁-substituted term*. Refining
   the second premise via σ₁ is what makes soundness composable —
   otherwise σ₁ and σ₂ might disagree on shared metavariables. -/
-inductive HasTypeW : Ctx N → (Term N) → Ty → Subst Ty → Prop where
+inductive HasTypeW : Ctx N → (Term N) → Ty → Subst Nat Ty → Prop where
   | var {Γ : Ctx N} {x : N} {τ τ' σ} :
       Γ.get? x = some τ' →
       unify [(τ, τ')] = some σ →
@@ -84,7 +84,7 @@ derivation. The three constructor cases use, in order:
   substitutions agree at `comp σ₂ σ₁`, then combine via `HasType.app`
   and `HasType.cong` (for the context, which is only `get?`-extensional
   under the composition law). -/
-theorem HasTypeW.toHasType : ∀ {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ : Subst Ty},
+theorem HasTypeW.toHasType : ∀ {Γ : Ctx N} {e : (Term N)} {τ : Ty} {σ : Subst Nat Ty},
     HasTypeW Γ e τ σ →
     HasType (HasSubst.pSubst Γ σ)
             (HasSubst.pSubst e σ)
@@ -146,7 +146,7 @@ succeeds). Three cases mirror the `HasTypeW` constructors:
   `τ[σ_body]` with `(α ⇒ β)[σ_body]`.
 * `e₁ e₂`: pick a fresh `α`, recurse on `e₁` at `α ⇒ τ` to get `σ₁`, then
   recurse on `e₂[σ₁]` in `Γ[σ₁]` at `α[σ₁]`. -/
-def W : (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → Option (Subst Ty)
+def W : (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → Option (Subst Nat Ty)
   | Γ, .var x, τ =>
       match Γ.get? x with
       | none    => none
@@ -184,7 +184,7 @@ def W : (Γ : Ctx N) → (e : (Term N)) → (τ : Ty) → Option (Subst Ty)
 /-- **Correctness of `W`.** If `W` succeeds with σ, then `HasTypeW`
 holds at the same triple. Recursive proof, descending on `Term.size`
 along the same well-founded relation `W` itself uses. -/
-theorem W_correct : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ : Subst Ty),
+theorem W_correct : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ : Subst Nat Ty),
     W Γ e τ = some σ → HasTypeW Γ e τ σ
   | Γ, .var x, τ, σ, h_W => by
       simp only [W] at h_W
@@ -226,24 +226,24 @@ theorem W_correct : ∀ (Γ : Ctx N) (e : (Term N)) (τ : Ty) (σ : Subst Ty),
 
 /-- Source-fresh threshold: any `k ≥ srcFresh Γ e τ` is not free in
 any of `Γ`, `e`, `τ`. It bounds the quantifier in the source-restricted principality statement
-below, and is the same threshold `Typing/Target.lean`'s `sourceFresh` recomputes for the
+below, and is the same threshold `Typing/Target.lean`'s `sourceSupp` recomputes for the
 constraint-based elaborator. -/
 def srcFresh (Γ : Ctx N) (e : (Term N)) (τ : Ty) : Nat :=
-  max (HasVars.fresh Γ) (max (HasVars.fresh e) (HasVars.fresh τ))
+  max (freshIdx Γ) (max (freshIdx e) (freshIdx τ))
 
 /-- W's internal fresh index for a lambda *is* the source threshold of the whole lambda: both are
 the max over `Γ`, `α`, `body`, `τ`. So the recursive call's threshold is exactly one higher. -/
 theorem freshIdxLam_eq_srcFresh (Γ : Ctx N) (x : N) (α τ : Ty) (body : Term N) :
     freshIdxLam Γ body α τ = srcFresh Γ (Term.lam x α body) τ := by
   simp only [freshIdxLam, srcFresh]
-  have h : HasVars.fresh (Term.lam x α body) = max (HasVars.fresh α) (HasVars.fresh body) := rfl
+  have h : freshIdx (Term.lam x α body) = max (freshIdx α) (freshIdx body) := freshIdx_lam _ _ _
   rw [h]; omega
 
 /-- Same for application. -/
 theorem freshIdxApp_eq_srcFresh (Γ : Ctx N) (e₁ e₂ : Term N) (τ : Ty) :
     freshIdxApp Γ e₁ e₂ τ = srcFresh Γ (Term.app e₁ e₂) τ := by
   simp only [freshIdxApp, srcFresh]
-  have h : HasVars.fresh (Term.app e₁ e₂) = max (HasVars.fresh e₁) (HasVars.fresh e₂) := rfl
+  have h : freshIdx (Term.app e₁ e₂) = max (freshIdx e₁) (freshIdx e₂) := freshIdx_app _ _
   rw [h]; omega
 
 /-! ## Towards principality: the cases, in source-restricted form
@@ -264,7 +264,7 @@ after them records why it is not merely more of the same.
 /-- **Principality at a variable.** No threshold is needed here: `W` on a variable is a single
 `unify`, so the answer is most general against *every* substitution, not just on the source
 fragment. This is the base case. -/
-theorem W_principal_var (Γ : Ctx N) (x : N) (τ : Ty) (σ' : Subst Ty)
+theorem W_principal_var (Γ : Ctx N) (x : N) (τ : Ty) (σ' : Subst Nat Ty)
     (h : HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst (Term.var x) σ')
                  (HasSubst.pSubst τ σ')) :
     ∃ σ, W Γ (Term.var x) τ = some σ ∧ MoreGeneral σ σ' := by
@@ -285,29 +285,29 @@ theorem W_principal_var (Γ : Ctx N) (x : N) (τ : Ty) (σ' : Subst Ty)
   exact hσ
 
 /-- `fresh t ≤ k` says `k` itself is not free in `t`. -/
-theorem not_isFree_of_fresh_le' {t : Ty} {k : Nat} (h : HasVars.fresh t ≤ k) :
-    ¬ HasVars.isFree t k := fun hf => absurd (HasVars.fresh_gt_free t k hf) (by omega)
+theorem not_isFree_of_fresh_le' {t : Ty} {k : Nat} (h : freshIdx t ≤ k) :
+    ¬ HasVars.isFree t k := fun hf => absurd (lt_freshIdx hf) (by omega)
 
 /-- **Principality at a lambda**, given the recursive result for the body. `k` is W's internal
 fresh index, which `freshIdxLam_eq_srcFresh` identifies with the *outer* threshold. -/
-theorem W_principal_lam_step (Γ : Ctx N) (x : N) (α τ : Ty) (body : Term N) (σ' : Subst Ty)
+theorem W_principal_lam_step (Γ : Ctx N) (x : N) (α τ : Ty) (body : Term N) (σ' : Subst Nat Ty)
     (β : Ty) (k : Nat) (hk : freshIdxLam Γ body α τ = k)
     (hτβ : HasSubst.pSubst τ σ' = Ty.arrow (HasSubst.pSubst α σ') β)
-    (σ_body ρ₁ : Subst Ty)
+    (σ_body ρ₁ : Subst Nat Ty)
     (hW : W (Γ.cons x α) body (Ty.mvar k) = some σ_body)
-    (hρ₁ : ∀ t : Ty, HasVars.fresh t ≤ srcFresh (Γ.cons x α) body (Ty.mvar k) →
+    (hρ₁ : ∀ t : Ty, freshIdx t ≤ srcFresh (Γ.cons x α) body (Ty.mvar k) →
         HasSubst.pSubst t (σ'.insert k β) = HasSubst.pSubst (HasSubst.pSubst t σ_body) ρ₁) :
     ∃ σ, W Γ (Term.lam x α body) τ = some σ ∧
-      ∃ ρ, ∀ t : Ty, HasVars.fresh t ≤ srcFresh Γ (Term.lam x α body) τ →
+      ∃ ρ, ∀ t : Ty, freshIdx t ≤ srcFresh Γ (Term.lam x α body) τ →
         HasSubst.pSubst t σ' = HasSubst.pSubst (HasSubst.pSubst t σ) ρ := by
-  have hfv : HasVars.fresh (Ty.mvar k) = k + 1 := Signature.fresh_var k
+  have hfv : freshIdx (Ty.mvar k) = k + 1 := freshIdx_var k
   -- the outer threshold *is* k; the inner one is at least k+1
   have hkout : srcFresh Γ (Term.lam x α body) τ = k := by
     rw [← freshIdxLam_eq_srcFresh Γ x α τ body]; exact hk
   have hk1 : k + 1 ≤ srcFresh (Γ.cons x α) body (Ty.mvar k) := by
     simp only [srcFresh, hfv]; omega
-  have hτk : HasVars.fresh τ ≤ k := by simp only [freshIdxLam] at hk; omega
-  have hαk : HasVars.fresh α ≤ k := by simp only [freshIdxLam] at hk; omega
+  have hτk : freshIdx τ ≤ k := by simp only [freshIdxLam] at hk; omega
+  have hαk : freshIdx α ≤ k := by simp only [freshIdxLam] at hk; omega
   have hmvk : HasSubst.pSubst (Ty.mvar k) (σ'.insert k β) = β := by
     rw [Ty.pSubst_mvar, Std.HashMap.getD_insert]; simp
   -- ρ₁ unifies exactly the equation W poses at this step
@@ -370,7 +370,7 @@ It used to be, as `W_principal`, in the `MoreGeneral` ∀-types form with W's σ
 source-fresh threshold (option D):
 
 ```
-∃ σ, W Γ e τ = some σ ∧ MoreGeneral (Subst.restrictBelow σ (srcFresh Γ e τ)) σ'
+∃ σ, W Γ e τ = some σ ∧ MoreGeneral (Subst.restrictTo σ (srcFresh Γ e τ)) σ'
 ```
 
 That statement is **false**, and `Typing/Principality.lean` proves it so for the constraint-based

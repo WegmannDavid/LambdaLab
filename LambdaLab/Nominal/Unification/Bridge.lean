@@ -1,7 +1,5 @@
 import LambdaLab.Nominal.Unification.Signature
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # Bridge lemmas: structural results about substitution and decomposition.
@@ -932,4 +930,3 @@ theorem Signature.pSubst_insert_fresh {A α : Type} [Atom A] [Signature A α]
       exact h_fresh
         ((Signature.isFree_construct c args k).mpr ⟨⟨i, hi⟩, h_arg_free⟩)
 
-end LambdaLab.Nominal.Unification

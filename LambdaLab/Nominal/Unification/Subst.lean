@@ -33,8 +33,6 @@ instance search must determine it from the carrier. Same fragility, and the same
 to revisit first if that stops holding.
 -/
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-- A type whose values mention finitely many atoms of `A`.
@@ -331,4 +329,3 @@ theorem HashMap.isFree_of_get? {A K V β : Type} [Atom A] [BEq K] [Hashable K] [
   rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
   exact h
 
-end LambdaLab.Nominal.Unification

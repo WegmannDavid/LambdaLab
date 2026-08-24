@@ -57,8 +57,8 @@ def ceCtx : Ctx String :=
 def ceTm : Term String := .app (.var "f") (.app (.var "g") (.var "b"))
 
 /-- A competing typing: read every unknown as `⋆ ⇒ ⋆`. -/
-def ceSol : Subst Ty :=
-  ((∅ : Subst Ty).insert 0 (Ty.base ⇒ Ty.base)).insert 1 (Ty.base ⇒ Ty.base)
+def ceSol : Subst Nat Ty :=
+  ((∅ : Subst Nat Ty).insert 0 (Ty.base ⇒ Ty.base)).insert 1 (Ty.base ⇒ Ty.base)
 
 /-! ## What the elaborator answers -/
 
@@ -120,8 +120,8 @@ Exactly the statement `JComplete.lean` used to carry as a `sorry`, refuted at `N
 witness is the triple above; the two instances of `MoreGeneral`'s `∀ t` that collide are `?0` and
 the drawn `?2`. -/
 theorem elabSubst_not_principal :
-    ¬ (∀ {N : Type} [LambdaLab.Nominal.Atom N] [HasVars N]
-        {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty},
+    ¬ (∀ {N : Type} [LambdaLab.Nominal.Atom N]
+        {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Nat Ty},
         elabSubst Γ t τ = some σ →
         ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
           MoreGeneral σ σ') := by

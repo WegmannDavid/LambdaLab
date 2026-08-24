@@ -47,7 +47,7 @@ file.
 **substituted** context. The vernacular needs it under `Γ`, the context it actually maintains.
 Those agree when `Γ` is ground, but proving it needs:
 
-* `GroundStable Ty Ty` — substitution fixes a ground type. Then a ground context is unchanged
+* `GroundStable Nat Ty Ty` — substitution fixes a ground type. Then a ground context is unchanged
   keywise (`Context.pSubst_get?_of_ground`).
 * `LawfulTypeSystem.cong` — typing transports along keywise agreement. Needed because the
   *equation* `pSubst Γ σ = Γ` is unavailable: `Std.HashMap` has no `getElem?` extensionality, so
@@ -55,8 +55,8 @@ Those agree when `Γ` is ground, but proving it needs:
 
 And composing the per-declaration answers needs:
 
-* `GroundStable Tm Ty` — the same, for a term whose annotations are all solved.
-* `LawfulComp Ty Ty`, `LawfulComp Tm Ty` — substituting twice is substituting once through the
+* `GroundStable Nat Tm Ty` — the same, for a term whose annotations are all solved.
+* `LawfulComp Nat Ty Ty`, `LawfulComp Nat Tm Ty` — substituting twice is substituting once through the
   composite. Without it the fold could never describe its answers by a single `Subst`.
 
 All four are mixins over instances already in scope, so none reopens the `HasType` diamond, and
@@ -92,7 +92,7 @@ variable {N Tm Ty : Type} [Atom N] [PrincipalElaborate N Tm Ty]
 
 /-- The typing `elaborate` returns, re-read under the context the vernacular maintains rather than
 under the substituted one. This is the single step the two extra laws exist for. -/
-theorem hasType_of_solution {Γ : Context N Ty} {t : Tm} {τ : Ty} {σ : Subst Ty}
+theorem hasType_of_solution {Γ : Context N Ty} {t : Tm} {τ : Ty} {σ : Subst Nat Ty}
     (hΓ : CtxGround Γ)
     (hσ : _root_.LambdaLab.TypeSystem.Named.HasType.HasType
             (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :
@@ -116,7 +116,7 @@ groundness rather than merely checking it at the end.
 Recursion is on the tail's *length*, not its structure: the recursive call is on
 `pSubst cs σ`, which is not a subterm. `List.length_pSubst` is what makes it terminate. -/
 def elabCommands : (Γ : Context N Ty) → CtxGround Γ → (cs : List (Command N Tm Ty)) →
-    Option { σ : Subst Ty // HasTypeGround Γ (HasSubst.pSubst cs σ) }
+    Option { σ : Subst Nat Ty // HasTypeGround Γ (HasSubst.pSubst cs σ) }
   | Γ, hΓ, [] => some ⟨∅, .nil hΓ⟩
   | Γ, hΓ, Command.decl x τ t :: cs =>
       match PrincipalElaborate.elaborate Γ t τ with
@@ -145,7 +145,7 @@ def elabCommands : (Γ : Context N Ty) → CtxGround Γ → (cs : List (Command 
 
 The fold's composite binds more than the program mentions. Each step's `elaborate` draws its own
 fresh metavariables, and although a language is expected to prune its *own* scaffolding (STLC's
-`elabSubst` restricts below `sourceFresh`), the fold then elaborates the tail against
+`elabSubst` restricts below `sourceSupp`), the fold then elaborates the tail against
 `pSubst cs σ` — a term whose metavariables may sit above anything in the source, because a solved
 binding's *range* can reach up even when its domain does not. Those bindings are algorithm
 exhaust. They are invisible to `p`, they are not part of the answer, and handing them to a caller
@@ -161,23 +161,24 @@ This is a condition on σ's *domain*, and it is deliberately not phrased through
 which constrains a substitution's action and says nothing about what it binds. It is also the
 weaker, numeric reading of "no redundant bindings" rather than the support condition
 `dom σ ⊆ mvars x`: proving the latter would need `elaborate` to promise something about its own
-domain, a field the interface does not have. Note too that `HasVars.fresh` is only required to be
-an *upper* bound, so a language that over-approximates it gets a correspondingly weaker guarantee.
+domain, a field the interface does not have. Note too that `freshIdx` is only required to be
+exact, so this is now the sharp statement — the old one only bounded the indices.
 
-Stated get?-wise rather than as `σ = Subst.restrictBelow σ (fresh x)`: `Std.HashMap` has no
+Stated get?-wise rather than as `σ = Subst.restrictTo σ (supp x)`: `Std.HashMap` has no
 `getElem?` extensionality here, so the equation is not available even when it is true. -/
-def Minimal {𝕋 𝕊 : Type} [HasVars 𝕋] (x : 𝕋) (σ : Subst 𝕊) : Prop :=
-  ∀ n, σ.get? n ≠ none → n < HasVars.fresh x
+def Minimal {𝕋 𝕊 : Type} [HasVars Nat 𝕋] (x : 𝕋) (σ : Subst Nat 𝕊) : Prop :=
+  ∀ a, σ.get? a ≠ none → HasVars.isFree x a
 
 /-- Pruning at exactly the threshold is what makes minimality true by construction, rather than
 something to be recovered afterwards from facts the interface does not supply. -/
-theorem minimal_restrictBelow {𝕋 𝕊 : Type} [HasVars 𝕋] (x : 𝕋) (σ : Subst 𝕊) :
-    Minimal x (Subst.restrictBelow σ (HasVars.fresh x)) := by
-  intro n hn
-  rw [Subst.restrictBelow_get?] at hn
-  cases h : Nat.decLt n (HasVars.fresh x) with
-  | isTrue hlt => exact hlt
-  | isFalse hge => rw [if_neg hge] at hn; exact absurd rfl hn
+theorem minimal_restrictTo {𝕋 𝕊 : Type} [HasVars Nat 𝕋] (x : 𝕋) (σ : Subst Nat 𝕊) :
+    Minimal x (Subst.restrictTo σ (HasVars.supp (A := Nat) x)) := by
+  intro a ha
+  rw [Subst.restrictTo_get?] at ha
+  by_cases h : a ∈ HasVars.supp (A := Nat) x
+  · exact (HasVars.mem_supp_iff_isFree x a).mp h
+  · rw [if_neg h] at ha
+    exact absurd rfl ha
 
 /-- **Elaborate a whole program**: a substitution under which the *source* program is well-typed
 and fully resolved, binding nothing the source does not reach.
@@ -189,13 +190,14 @@ rather than being handed a value it must then relate back to what was written.
 The empty context is ground, so `nil`'s condition is discharged by construction and never surfaces
 as an obligation on the caller. -/
 def elabProgram (p : Program N Tm Ty) :
-    Option { σ : Subst Ty // HasType (HasSubst.pSubst p σ) ∧ Minimal p σ } :=
+    Option { σ : Subst Nat Ty // HasType (HasSubst.pSubst p σ) ∧ Minimal p σ } :=
   match elabCommands (Context.empty : Context N Ty) CtxGround.empty p.toList with
   | none => none
   | some ⟨σ, h⟩ =>
-      some ⟨Subst.restrictBelow σ (HasVars.fresh p), by
-        refine ⟨?_, minimal_restrictBelow p σ⟩
-        rw [LawfulRestrict.pSubst_restrictBelow p σ _ (Nat.le_refl _)]
+      some ⟨Subst.restrictTo σ (HasVars.supp (A := Nat) p), by
+        refine ⟨?_, minimal_restrictTo p σ⟩
+        rw [LawfulRestrict.pSubst_restrictTo p σ _
+          (fun a ha => (HasVars.mem_supp_iff_isFree p a).mpr ha)]
         exact h⟩
 
 /-- The elaborated program itself, for a caller that wants the value rather than the solution. -/
@@ -274,8 +276,8 @@ theorem elabCommands_isSome_of_hasTypeGround :
       split
       · rename_i hno _
         refine absurd ?_ (hno ∅)
-        rw [GroundStable.pSubst_ground (∅ : Subst Ty) ht,
-            GroundStable.pSubst_ground (∅ : Subst Ty) hτ]
+        rw [GroundStable.pSubst_ground (∅ : Subst Nat Ty) ht,
+            GroundStable.pSubst_ground (∅ : Subst Nat Ty) hτ]
         exact LawfulTypeSystem.cong (fun y => (Context.pSubst_get?_of_ground Γ ∅ hΓ y).symm) hty
       · rename_i σ _ _ _
         have hgτ : Ground (HasSubst.pSubst τ σ) := by

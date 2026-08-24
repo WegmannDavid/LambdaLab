@@ -1,8 +1,6 @@
 import LambdaLab.Nominal.Unification.Bridge
 import LambdaLab.Nominal.Unification.Measure
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # The unification algorithm
@@ -152,4 +150,3 @@ if no unifier exists. Wraps `unifyList` with `Unifier.toSubst`; see
 def unify {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) : Option (Subst A α) :=
   (unifyList eqs).map Unifier.toSubst
 
-end LambdaLab.Nominal.Unification

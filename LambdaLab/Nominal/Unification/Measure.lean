@@ -1,7 +1,5 @@
 import LambdaLab.Nominal.Unification.Signature
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # Termination measure for `unify`
@@ -44,36 +42,36 @@ and a pigeonhole lemma are cheaper than the dependency — and this is the whole
 the order. -/
 
 /-- The distinct elements of a list. -/
-def distinct {β : Type} [DecidableEq β] : List β → List β
+def List.distinct {β : Type} [DecidableEq β] : List β → List β
   | [] => []
-  | x :: xs => if x ∈ xs then distinct xs else x :: distinct xs
+  | x :: xs => if x ∈ xs then List.distinct xs else x :: List.distinct xs
 
-theorem mem_distinct {β : Type} [DecidableEq β] {l : List β} {a : β} :
-    a ∈ distinct l ↔ a ∈ l := by
+theorem List.mem_distinct {β : Type} [DecidableEq β] {l : List β} {a : β} :
+    a ∈ List.distinct l ↔ a ∈ l := by
   induction l with
   | nil => exact Iff.rfl
   | cons x xs ih =>
-      show a ∈ (if x ∈ xs then distinct xs else x :: distinct xs) ↔ a ∈ x :: xs
+      show a ∈ (if x ∈ xs then List.distinct xs else x :: List.distinct xs) ↔ a ∈ x :: xs
       by_cases hx : x ∈ xs
       · rw [if_pos hx, List.mem_cons]
         exact ⟨fun h => Or.inr (ih.mp h), fun h => ih.mpr (h.elim (fun he => he ▸ hx) id)⟩
       · rw [if_neg hx, List.mem_cons, List.mem_cons]
         exact or_congr Iff.rfl ih
 
-theorem nodup_distinct {β : Type} [DecidableEq β] (l : List β) : (distinct l).Nodup := by
+theorem List.nodup_distinct {β : Type} [DecidableEq β] (l : List β) : (List.distinct l).Nodup := by
   induction l with
   | nil => exact List.nodup_nil
   | cons x xs ih =>
-      show (if x ∈ xs then distinct xs else x :: distinct xs).Nodup
+      show (if x ∈ xs then List.distinct xs else x :: List.distinct xs).Nodup
       by_cases hx : x ∈ xs
       · rw [if_pos hx]; exact ih
       · rw [if_neg hx]
-        exact List.nodup_cons.mpr ⟨fun h => hx (mem_distinct.mp h), ih⟩
+        exact List.nodup_cons.mpr ⟨fun h => hx (List.mem_distinct.mp h), ih⟩
 
 /-- **Pigeonhole.** A duplicate-free list contained in another is no longer than it. This is what
 `countP_range_eq_of_false_above` used to buy by splitting a range, and unlike that argument it
 says nothing about where the elements sit. -/
-theorem Nodup.length_le_of_subset {β : Type} [DecidableEq β] :
+theorem List.Nodup.length_le_of_subset {β : Type} [DecidableEq β] :
     ∀ {l₁ l₂ : List β}, l₁.Nodup → l₁ ⊆ l₂ → l₁.length ≤ l₂.length := by
   intro l₁
   induction l₁ with
@@ -93,14 +91,14 @@ theorem Nodup.length_le_of_subset {β : Type} [DecidableEq β] :
       omega
 
 /-- Strict pigeonhole: one element of the larger list missing from the smaller forces a gap. -/
-theorem Nodup.length_lt_of_subset_of_mem {β : Type} [DecidableEq β] {l₁ l₂ : List β} {a : β}
+theorem List.Nodup.length_lt_of_subset_of_mem {β : Type} [DecidableEq β] {l₁ l₂ : List β} {a : β}
     (hnd : l₁.Nodup) (hsub : l₁ ⊆ l₂) (ha₂ : a ∈ l₂) (ha₁ : a ∉ l₁) :
     l₁.length < l₂.length := by
   have hsub' : l₁ ⊆ l₂.erase a := by
     intro b hb
     have hne : b ≠ a := by intro h; subst h; exact ha₁ hb
     exact (List.mem_erase_of_ne hne).mpr (hsub hb)
-  have hle := Nodup.length_le_of_subset hnd hsub'
+  have hle := List.Nodup.length_le_of_subset hnd hsub'
   rw [List.length_erase_of_mem ha₂] at hle
   have hpos : 0 < l₂.length := List.length_pos_of_mem ha₂
   omega
@@ -109,9 +107,9 @@ theorem Nodup.length_lt_of_subset_of_mem {β : Type} [DecidableEq β] {l₁ l₂
 def Equations.vars {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) : List A :=
   eqs.flatMap (fun p => Signature.vars p.1 ++ Signature.vars p.2)
 
-/-- Number of distinct metavariables appearing in an equation set. -/
+/-- Number of List.distinct metavariables appearing in an equation set. -/
 def Equations.mvarCount {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) : Nat :=
-  (distinct eqs.vars).length
+  (List.distinct eqs.vars).length
 
 namespace Equations
 variable {A α : Type} [Atom A] [Signature A α]
@@ -142,17 +140,17 @@ theorem mem_vars_iff_isFree (eqs : Equations α) (n : A) :
     · exact ⟨p, hp, List.mem_append.mpr (Or.inr ((Signature.mem_vars_iff_occurs n p.2).mpr h))⟩
 
 /-- Membership in the counted list, stated the way the measure lemmas want it. -/
-theorem mem_distinct_vars_iff_isFree (eqs : Equations α) (n : A) :
-    n ∈ distinct eqs.vars ↔ HasVars.isFree eqs n :=
-  Iff.trans mem_distinct (mem_vars_iff_isFree eqs n)
+theorem List.mem_distinct_vars_iff_isFree (eqs : Equations α) (n : A) :
+    n ∈ List.distinct eqs.vars ↔ HasVars.isFree eqs n :=
+  Iff.trans List.mem_distinct (mem_vars_iff_isFree eqs n)
 
 /-- Containment of free-variable sets gives `mvarCount ≤`. -/
 theorem mvarCount_le_of_isFree_subset {eqs₁ eqs₂ : Equations α}
     (hvars : ∀ n, HasVars.isFree eqs₁ n → HasVars.isFree eqs₂ n) :
     eqs₁.mvarCount ≤ eqs₂.mvarCount :=
-  Nodup.length_le_of_subset (nodup_distinct _) (fun n hn =>
-    (mem_distinct_vars_iff_isFree eqs₂ n).mpr
-      (hvars n ((mem_distinct_vars_iff_isFree eqs₁ n).mp hn)))
+  List.Nodup.length_le_of_subset (List.nodup_distinct _) (fun n hn =>
+    (List.mem_distinct_vars_iff_isFree eqs₂ n).mpr
+      (hvars n ((List.mem_distinct_vars_iff_isFree eqs₁ n).mp hn)))
 
 /-- Cons-monotonicity of `mvarCount`. -/
 theorem mvarCount_cons_le (p : Equation α) (eqs : Equations α) :
@@ -168,11 +166,11 @@ theorem mvarCount_lt_of_isFree_subset_strict {eqs₁ eqs₂ : Equations α} (n :
     (hn₁ : ¬ HasVars.isFree eqs₁ n)
     (hn₂ : HasVars.isFree eqs₂ n) :
     eqs₁.mvarCount < eqs₂.mvarCount :=
-  Nodup.length_lt_of_subset_of_mem (a := n) (nodup_distinct _)
-    (fun m hm => (mem_distinct_vars_iff_isFree eqs₂ m).mpr
-      (hvars m ((mem_distinct_vars_iff_isFree eqs₁ m).mp hm)))
-    ((mem_distinct_vars_iff_isFree eqs₂ n).mpr hn₂)
-    (fun h => hn₁ ((mem_distinct_vars_iff_isFree eqs₁ n).mp h))
+  List.Nodup.length_lt_of_subset_of_mem (a := n) (List.nodup_distinct _)
+    (fun m hm => (List.mem_distinct_vars_iff_isFree eqs₂ m).mpr
+      (hvars m ((List.mem_distinct_vars_iff_isFree eqs₁ m).mp hm)))
+    ((List.mem_distinct_vars_iff_isFree eqs₂ n).mpr hn₂)
+    (fun h => hn₁ ((List.mem_distinct_vars_iff_isFree eqs₁ n).mp h))
 
 /-- `size` of a cons. -/
 theorem size_cons (p : Equation α) (eqs : Equations α) :
@@ -203,4 +201,3 @@ theorem _root_.Prod.Lex.ofNat_le_lt {a₁ a₂ b₁ b₂ : Nat}
 
 end Equations
 
-end LambdaLab.Nominal.Unification

@@ -2,8 +2,6 @@ import LambdaLab.Nominal.Unification.Basic
 import LambdaLab.Nominal.Unification.Soundness
 import LambdaLab.Nominal.Unification.Completeness
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # Most-generality of `unifyList`
@@ -246,4 +244,3 @@ def unifyMGU {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) :
   | some σ => .mgu σ (unify_unifies eqs σ h) (fun σ' hσ' => unify_mgu eqs σ h σ' hσ')
   | none => .impossible (fun σ hσ => unify_complete eqs σ hσ h)
 
-end LambdaLab.Nominal.Unification

@@ -1,7 +1,5 @@
 import LambdaLab.Nominal.Unification.Basic
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # Soundness of `unifyList`
@@ -103,4 +101,3 @@ theorem unify_unifies {A α : Type} [Atom A] [Signature A α] :
       ← Unifier.apply_eq_pSubst_toSubst]
   exact unifyList_unifies eqs u hul p hp
 
-end LambdaLab.Nominal.Unification

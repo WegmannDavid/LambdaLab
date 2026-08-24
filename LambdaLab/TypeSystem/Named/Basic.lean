@@ -1,7 +1,8 @@
 import LambdaLab.Relation.Closure
 import LambdaLab.Relation.Normalization
 import LambdaLab.TypeSystem.Named.Context
-import LambdaLab.Substitution.Unification.MGU
+import LambdaLab.Nominal.Unification.MGU
+import LambdaLab.Nominal.Instances
 
 /-!
 # `TypeSystem` — a named object language and its metatheory, one obligation per class
@@ -122,29 +123,29 @@ class LawfulTypeSystem (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm 
     (∀ x, Γ.get? x = Γ'.get? x) → Γ ⊢ t : τ → Γ' ⊢ t : τ
 
 /-- A type system whose types carry metavariables, so substitution acts on both levels:
-`pSubst : Tm → Subst Ty → Tm` for the type annotations inside a term, and
-`pSubst : Ty → Subst Ty → Ty` for types themselves.
+`pSubst : Tm → Subst Nat Ty → Tm` for the type annotations inside a term, and
+`pSubst : Ty → Subst Nat Ty → Ty` for types themselves.
 
-**Fields, not parents.** `extends … HasSubst Tm Ty, HasSubst Ty Ty` does not work: Lean
+**Fields, not parents.** `extends … HasSubst Nat Tm Ty, HasSubst Nat Ty Ty` does not work: Lean
 deduplicates parent structures by class *head*, so the second is dropped with only a
 `Duplicate parent structure` warning, leaving the class with no type-level substitution at all.
-Naming the parents (`extends tmSubst : HasSubst Tm Ty, …`) makes no difference. Fields plus the
+Naming the parents (`extends tmSubst : HasSubst Nat Tm Ty, …`) makes no difference. Fields plus the
 `attribute` line below are the way to carry two instances of one class.
 
-**On filling them in.** Both instances usually exist already — `HasSubst (Term N) Ty`, and
-`HasSubst Ty Ty` via `Signature` — so fill the fields with `inferInstance` rather than fresh
+**On filling them in.** Both instances usually exist already — `HasSubst Nat (Term N) Ty`, and
+`HasSubst Nat Ty Ty` via `Signature` — so fill the fields with `inferInstance` rather than fresh
 definitions. Then the bundled copies are *definitionally* the canonical ones and lemmas proved
 about either apply to both. Two independent `pSubst`s for the same type would typecheck and then
 fail to talk to each other somewhere far away. -/
 class MVars (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty where
   /-- Substitution of types into a term's annotations. Fill with `inferInstance` where possible. -/
-  tmSubst : HasSubst Tm Ty
+  tmSubst : HasSubst Nat Tm Ty
   /-- Substitution of types into types. Fill with `inferInstance` where possible. -/
-  tySubst : HasSubst Ty Ty
+  tySubst : HasSubst Nat Ty Ty
 
 /-! `reducible` is required of instance-valued projections; `low` is not cosmetic. At default
 priority `MVars.tySubst` *displaces* the canonical `Signature.instHasSubst` as the instance found
-for `HasSubst Ty Ty` — it wins by being declared later, and it resolves the undetermined `N` and
+for `HasSubst Nat Ty Ty` — it wins by being declared later, and it resolves the undetermined `N` and
 `Tm` by picking whatever single `MVars` instance is in scope. `low` puts the real instance back in
 front and leaves the projections as the fallback they should be. -/
 attribute [reducible, instance low] MVars.tmSubst MVars.tySubst
@@ -179,21 +180,21 @@ class LawfulMVars (N Tm Ty : Type) [atom : Atom N] extends MVars N Tm Ty, Lawful
   /-- Applying a substitution to context, term and type at once preserves the typing derivation.
   For a system whose types carry metavariables this is the workhorse: it is what lets a solved
   constraint set be *applied* and still describe a typing. -/
-  Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Ty),
+  Stability : ∀ {Γ : Context N Ty} {t : Tm} {τ : Ty} (σ : Subst Nat Ty),
     Γ ⊢ t : τ → HasSubst.pSubst Γ σ ⊢ HasSubst.pSubst t σ : HasSubst.pSubst τ σ
   /-- Substitution fixes a ground type. -/
-  tyGroundStable : GroundStable Ty Ty
+  tyGroundStable : GroundStable Nat Ty Ty
   /-- …and a term whose annotations are all solved. -/
-  tmGroundStable : GroundStable Tm Ty
+  tmGroundStable : GroundStable Nat Tm Ty
   /-- Substituting twice is substituting once, through the composite — at the type level… -/
-  tyLawfulComp : LawfulComp Ty Ty
+  tyLawfulComp : LawfulComp Nat Ty Ty
   /-- …and at the term level. -/
-  tmLawfulComp : LawfulComp Tm Ty
+  tmLawfulComp : LawfulComp Nat Tm Ty
   /-- Bindings above a type's threshold do not act on it… -/
-  tyLawfulRestrict : LawfulRestrict Ty Ty
+  tyLawfulRestrict : LawfulRestrict Nat Ty Ty
   /-- …nor on a term's. Together these are what let the vernacular hand back a solution pruned to
   the source's own metavariables instead of the elaborator's internal scaffolding. -/
-  tmLawfulRestrict : LawfulRestrict Tm Ty
+  tmLawfulRestrict : LawfulRestrict Nat Tm Ty
 
 /-! The six laws above are `Prop` mixins over the `HasSubst` instances `MVars` carries, so
 gathering them here mints no new operation and reopens no diamond. `low`, like the `MVars`
@@ -235,7 +236,7 @@ applies.
 
 ## Which most-generality, and why not the obvious one
 
-`elaborate` is compared at `MoreGeneralBelow`, not `MoreGeneral`. That is forced, not chosen:
+`elaborate` is compared at `MoreGeneralOn`, not `MoreGeneral`. That is forced, not chosen:
 an elaborator draws metavariables the source never mentioned, and its answer may legitimately
 mention them — `f (g b)` with `f, g` unknown elaborates to `?0 ↦ ?2 ⇒ ⋆`, `?1 ↦ ⋆ ⇒ ?2`, where
 `?2` names the intermediate type. A competing solution says nothing about `?2`, so no witness can
@@ -243,21 +244,21 @@ factor it through the answer *at the type `?2` itself*, which is what `MoreGener
 `Stlc/Named/Typing/Principality.lean` proves that statement false for the STLC elaborator; the
 restricted one is `JComplete.elabSubst_principal_below`, and it is a theorem.
 
-`sourceFresh` is the threshold, supplied by the language rather than computed here. `Context N Ty`
+`sourceSupp` is the threshold, supplied by the language rather than computed here. `Context N Ty`
 has two `HasVars` instances — the generic `HashMap` one, which counts keys, and the `Context` one,
 which does not — and a threshold computed in this file would be read against the first while a
 language's own lemmas are stated against the second. A field sidesteps the question: the language
 says what its source threshold is, and proves its principality against that. -/
 class PrincipalElaborate (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
-  /-- The index above which metavariables belong to the *elaborator* rather than to the source
-  triple — the threshold `elaborate`'s principality is stated below. A language that draws no
-  metavariables of its own can say `0`, and then the claim is unrestricted. -/
-  sourceFresh : Context N Ty → Tm → Ty → Nat
+  /-- The metavariables that belong to the *source* triple rather than to the elaborator — the
+  atom set `elaborate`'s principality is stated on below. A language that draws no metavariables
+  of its own can say `[]`, and then the claim is unrestricted. -/
+  sourceSupp : Context N Ty → Tm → Ty → List Nat
   /-- Decidable typing judgement, with a principal witness — principal on the source, in the sense
-  of `MoreGeneralBelow` and for the reason set out above. -/
+  of `MoreGeneralOn` and for the reason set out above. -/
   elaborate : (Γ : Context N Ty) → (t : Tm) → (τ : Ty) →
-      PrincipalProp (MoreGeneralBelow (sourceFresh Γ t τ))
-        (fun σ : Subst Ty =>
+      PrincipalProp (MoreGeneralOn (sourceSupp Γ t τ))
+        (fun σ : Subst Nat Ty =>
           HasSubst.pSubst Γ σ ⊢ HasSubst.pSubst t σ : HasSubst.pSubst τ σ)
   /-- **Groundness of a type is decidable.** `HasVars.Ground` is `∀ n, ¬ isFree x n`, which no
   instance decides by unfolding, so a language routes it to its own structural check.
@@ -273,9 +274,9 @@ class PrincipalElaborate (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N 
   generically from `Decidable (isFree x n)`, and belongs in `Substitution/Basic.lean` beside
   `Ground` itself. That change touches every `HasVars` instance, so it is deliberately not made
   here. -/
-  tyGroundDec : DecidablePred (HasVars.Ground : Ty → Prop)
+  tyGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Ty → Prop)
   /-- The same for terms. -/
-  tmGroundDec : DecidablePred (HasVars.Ground : Tm → Prop)
+  tmGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Tm → Prop)
 
 /-! `reducible` besides `low`, so that a `Ground` check written against these is definitionally the
 language's own structural check rather than something merely propositionally equal to it. -/

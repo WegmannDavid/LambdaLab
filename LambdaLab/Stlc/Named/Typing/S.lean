@@ -44,7 +44,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-- **The syntactical system.** Judgements carry monotypes; instantiation happens at `[Var]`. -/
 inductive HasTypeS : SCtx N → Term N → Ty → Prop where
@@ -60,7 +60,6 @@ inductive HasTypeS : SCtx N → Term N → Ty → Prop where
       HasTypeS (Γ.cons x (.mono τ)) e τ' →
       HasTypeS Γ (.lam x τ e) (τ ⇒ τ')
 
-omit [HasVars N] in
 /-- `S` reads the context only through `get?`. Unlike `D` this needs no side condition, there
 being no `[Gen]` to constrain. -/
 theorem HasTypeS.cong {Γ Γ' : SCtx N} {e : Term N} {τ : Ty}
@@ -74,7 +73,6 @@ theorem HasTypeS.cong {Γ Γ' : SCtx N} {e : Term N} {τ : Ty}
 
 /-! ## Consistency: `S ⟹ D` -/
 
-omit [HasVars N] in
 /-- A monotype is an instance of `.mono` of itself and nothing else. -/
 theorem Scheme.instantiates_mono_iff {τ ρ : Ty} :
     Scheme.Instantiates (.mono τ) ρ ↔ ρ = τ := by
@@ -82,7 +80,6 @@ theorem Scheme.instantiates_mono_iff {τ ρ : Ty} :
   · intro h; cases h; rfl
   · rintro rfl; exact Scheme.Instantiates.mono
 
-omit [HasVars N] in
 /-- **Consistency.** Every `S` derivation is a `D` derivation — `[Var]`'s built-in instantiation
 becomes a `[Var]` followed by `[Inst]`, and the other rules are unchanged. -/
 theorem HasTypeS.toD {Γ : SCtx N} {e : Term N} {τ : Ty} (h : HasTypeS Γ e τ) :
@@ -103,7 +100,6 @@ trivial. Both directions are short; together they say the syntactical system add
 kernel judgement in this language.
 -/
 
-omit [HasVars N] in
 /-- The kernel judgement embeds. -/
 theorem HasType.toS {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
     HasTypeS (SCtx.ofMono Γ) e τ := by
@@ -113,7 +109,6 @@ theorem HasType.toS {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
   | lam _ ih => exact HasTypeS.abs (HasTypeS.cong (SCtx.ofMono_cons_get? _ _ _) ih)
   | app _ _ ih₁ ih₂ => exact HasTypeS.app ih₁ ih₂
 
-omit [HasVars N] in
 /-- …and nothing more is derivable: over a monotype context `S` gives exactly `HasType`. -/
 theorem HasTypeS.toHasType : ∀ {Γ : Ctx N} {e : Term N} {τ : Ty},
     HasTypeS (SCtx.ofMono Γ) e τ → HasType Γ e τ := by
@@ -137,7 +132,6 @@ theorem HasTypeS.toHasType : ∀ {Γ : Ctx N} {e : Term N} {τ : Ty},
       cases h with
       | app h₀ h₁ => exact HasType.app (ih₁ h₀) (ih₂ h₁)
 
-omit [HasVars N] in
 /-- The equivalence, packaged. -/
 theorem HasTypeS.iff_hasType {Γ : Ctx N} {e : Term N} {τ : Ty} :
     HasTypeS (SCtx.ofMono Γ) e τ ↔ HasType Γ e τ :=

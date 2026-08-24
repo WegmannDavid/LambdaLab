@@ -12,9 +12,8 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
-omit [HasVars N] in
 /-- Two named contexts that agree on every key induce the same typing
 judgements. -/
 theorem HasType.cong : ∀ {Γ Γ' : Ctx N} {e τ},
@@ -32,7 +31,6 @@ theorem HasType.cong : ∀ {Γ Γ' : Ctx N} {e τ},
       · exact hcong _
   | app _ _ ih₁ ih₂ => exact HasType.app (ih₁ hcong) (ih₂ hcong)
 
-omit [HasVars N] in
 /-- Every free variable of a typed term is bound in the context. -/
 theorem HasType.freeVars_in_ctx : ∀ (e : (Term N)) {Γ τ},
     HasType Γ e τ → ∀ x, x ∈ e.freeVars → ∃ σ, Γ.get? x = some σ := by
@@ -62,7 +60,6 @@ theorem HasType.freeVars_in_ctx : ∀ (e : (Term N)) {Γ τ},
           | inl hh => exact ih₁ h₁ x hh
           | inr hh => exact ih₂ h₂ x hh
 
-omit [HasVars N] in
 /-- A closed term has no free variables. -/
 theorem HasType.closed_no_free {e : Term N} {τ} (h : HasType Ctx.empty e τ) :
     ∀ x, x ∉ e.freeVars := by
@@ -71,7 +68,6 @@ theorem HasType.closed_no_free {e : Term N} {τ} (h : HasType Ctx.empty e τ) :
   rw [Ctx.get?_empty] at heq
   cases heq
 
-omit [HasVars N] in
 /-- Typing only depends on `Γ`'s value at the term's free variables. -/
 theorem HasType.relevant : ∀ (e : (Term N)) {Γ Γ' : Ctx N} {τ},
     HasType Γ e τ → (∀ x ∈ e.freeVars, Γ.get? x = Γ'.get? x) → HasType Γ' e τ := by
@@ -108,7 +104,6 @@ theorem HasType.relevant : ∀ (e : (Term N)) {Γ Γ' : Ctx N} {τ},
           · exact ih₁ h₁ (fun z hz => hag z (by simp [Term.freeVars]; exact Or.inl hz))
           · exact ih₂ h₂ (fun z hz => hag z (by simp [Term.freeVars]; exact Or.inr hz))
 
-omit [HasVars N] in
 /-- A closed term is typed under any context. -/
 theorem HasType.weaken_closed {v τ} (Γ : Ctx N) (hv : HasType Ctx.empty v τ) :
     HasType Γ v τ :=
@@ -120,7 +115,7 @@ theorem HasType.weaken_closed {v τ} (Γ : Ctx N) (hv : HasType Ctx.empty v τ) 
 context agrees, key-by-key, with extending a substituted context. Used
 via `HasType.cong` to bridge `pSubst (Γ.cons x τ) σ` and
 `(pSubst Γ σ).cons x (pSubst τ σ)`. -/
-theorem Ctx.pSubst_cons_get? (Γ : Ctx N) (σ : Subst Ty)
+theorem Ctx.pSubst_cons_get? (Γ : Ctx N) (σ : Subst Nat Ty)
     (x : N) (τ : Ty) (y : N) :
     (HasSubst.pSubst (Γ.cons x τ) σ).get? y =
       ((HasSubst.pSubst Γ σ).cons x (HasSubst.pSubst τ σ)).get? y := by
@@ -134,7 +129,7 @@ theorem Ctx.pSubst_cons_get? (Γ : Ctx N) (σ : Subst Ty)
 substitution to all three of context, term, and type preserves the
 typing derivation. Proved by structural induction on the derivation. -/
 theorem HasType.subst {Γ : Ctx N} {e : (Term N)} {τ : Ty}
-    (h : HasType Γ e τ) (ρ : Subst Ty) :
+    (h : HasType Γ e τ) (ρ : Subst Nat Ty) :
     HasType (HasSubst.pSubst Γ ρ)
             (HasSubst.pSubst e ρ)
             (HasSubst.pSubst τ ρ) := by
@@ -159,24 +154,20 @@ These let a `HasType` derivation be peeled apart by syntactic case
 analysis on the term: each constructor of `Term` admits exactly one
 shape of derivation. -/
 
-omit [HasVars N] in
 theorem HasType.var_inv {Γ : Ctx N} {x : N} {τ : Ty}
     (h : HasType Γ (.var x) τ) : Γ.get? x = some τ := by
   cases h with | var h_get => exact h_get
 
-omit [HasVars N] in
 theorem HasType.lam_inv {Γ : Ctx N} {x : N} {α : Ty} {body : (Term N)} {τ : Ty}
     (h : HasType Γ (.lam x α body) τ) :
     ∃ β : Ty, τ = (α ⇒ β) ∧ HasType (Γ.cons x α) body β := by
   cases h with | lam h_body => exact ⟨_, rfl, h_body⟩
 
-omit [HasVars N] in
 theorem HasType.app_inv {Γ : Ctx N} {e₁ e₂ : (Term N)} {τ : Ty}
     (h : HasType Γ (.app e₁ e₂) τ) :
     ∃ α : Ty, HasType Γ e₁ (α ⇒ τ) ∧ HasType Γ e₂ α := by
   cases h with | app h₁ h₂ => exact ⟨_, h₁, h₂⟩
 
-omit [HasVars N] in
 /-- **Types are unique.** One term has at most one type in a given context — the three rules are
 syntax-directed and the binder carries its own annotation, so nothing is ever chosen. -/
 theorem HasType.det {Γ : Ctx N} {e : Term N} {τ₁ τ₂ : Ty}

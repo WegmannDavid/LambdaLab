@@ -1,5 +1,5 @@
 import LambdaLab.Stlc.Named.Typing.Target
-import LambdaLab.Substitution.Unification.MGU
+import LambdaLab.Nominal.Unification.MGU
 
 /-!
 # Completeness of constraint generation
@@ -25,7 +25,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-! ## Freshness of `Ty`, computed
 
@@ -33,41 +33,44 @@ variable {N : Type} [Atom N] [HasVars N]
 does not reduce on `Ty`'s constructors. These two put it back in closed form. -/
 
 theorem Ty.fresh_arrow (a b : Ty) :
-    HasVars.fresh (a ⇒ b) = max (HasVars.fresh a) (HasVars.fresh b) := by
+    freshIdx (a ⇒ b) = max (freshIdx a) (freshIdx b) := by
   have h : Ty.arrow a b = Signature.construct (Sum.inr ⟨TyConstructor.arrow,
       Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)⟩) := rfl
-  show Signature.fresh (Ty.arrow a b) = _
-  rw [h, Signature.fresh_construct]
   have e0 : (Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)).get 0 = a := rfl
   have e1 : (Vector.ofFn (fun i : Fin 2 => match i with | 0 => a | 1 => b)).get 1 = b := rfl
-  have hb : ∀ t : Ty, HasVars.fresh t = Signature.fresh t := fun _ => rfl
-  simp [List.finRange, e0, e1, hb]
-  omega
+  have hv : Signature.vars (Ty.arrow a b) = Signature.vars a ++ Signature.vars b := by
+    rw [h, Signature.vars_construct]
+    show (List.finRange 2).flatMap _ = _
+    simp [List.finRange, e0, e1]
+  show counterAbove (Signature.vars (Ty.arrow a b)) = _
+  rw [hv, counterAbove_append]
+  rfl
 
-theorem Ty.fresh_mvar (k : Nat) : HasVars.fresh (Ty.mvar k) = k + 1 := Signature.fresh_var k
+theorem Ty.fresh_mvar (k : Nat) : freshIdx (Ty.mvar k) = k + 1 := freshIdx_var k
 
 /-! ## Context freshness, pointwise
 
-`HasVars.fresh Γ` is a fold over `Γ.toList`, and `Ctx.cons` is `insert`, which may *replace* an
+`freshIdx Γ` is a fold over `Γ.toList`, and `Ctx.cons` is `insert`, which may *replace* an
 entry — so bounding `fresh (Γ.cons x α)` means reasoning about `toList` of an insert. The
 pointwise form avoids that entirely and is all the argument ever uses. -/
 
 /-- Every type in `Γ` has its metavariables below `n`. -/
 def CtxFreshBelow (n : Nat) (Γ : Ctx N) : Prop :=
-  ∀ (x : N) (τ : Ty), Γ.get? x = some τ → HasVars.fresh τ ≤ n
+  ∀ (x : N) (τ : Ty), Γ.get? x = some τ → freshIdx τ ≤ n
 
-theorem CtxFreshBelow.of_fresh {n : Nat} {Γ : Ctx N} (h : HasVars.fresh Γ ≤ n) :
+theorem CtxFreshBelow.of_fresh {n : Nat} {Γ : Ctx N} (h : freshIdx Γ ≤ n) :
     CtxFreshBelow n Γ :=
-  fun x τ hx => Nat.le_trans (HashMap.fresh_ge_get? Γ x τ hx) h
+  fun x τ hx => Nat.le_trans (freshIdx_le_of_isFree_subset (fun a ha => by
+    refine ⟨(x, τ), ?_, ha⟩
+    rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+    exact hx)) h
 
-omit [HasVars N] in
 theorem CtxFreshBelow.mono {m n : Nat} {Γ : Ctx N} (hmn : m ≤ n) (h : CtxFreshBelow m Γ) :
     CtxFreshBelow n Γ :=
   fun x τ hx => Nat.le_trans (h x τ hx) hmn
 
-omit [HasVars N] in
 theorem CtxFreshBelow.cons {n : Nat} {Γ : Ctx N} {x : N} {α : Ty}
-    (h : CtxFreshBelow n Γ) (hα : HasVars.fresh α ≤ n) : CtxFreshBelow n (Γ.cons x α) := by
+    (h : CtxFreshBelow n Γ) (hα : freshIdx α ≤ n) : CtxFreshBelow n (Γ.cons x α) := by
   intro y τ hy
   rw [Ctx.get?_cons] at hy
   by_cases hxy : x = y
@@ -84,28 +87,28 @@ The whole argument is about substitutions that differ only on variables the gene
 — which is exactly the source material: the context, the term, and the declared type. -/
 
 /-- σ and σ' act alike on every type whose metavariables are below `n`. -/
-def AgreeBelow (n : Nat) (σ σ' : Subst Ty) : Prop :=
-  ∀ u : Ty, HasVars.fresh u ≤ n → HasSubst.pSubst u σ = HasSubst.pSubst u σ'
+def AgreeBelow (n : Nat) (σ σ' : Subst Nat Ty) : Prop :=
+  ∀ u : Ty, freshIdx u ≤ n → HasSubst.pSubst u σ = HasSubst.pSubst u σ'
 
-theorem AgreeBelow.refl (n : Nat) (σ : Subst Ty) : AgreeBelow n σ σ := fun _ _ => rfl
+theorem AgreeBelow.refl (n : Nat) (σ : Subst Nat Ty) : AgreeBelow n σ σ := fun _ _ => rfl
 
-theorem AgreeBelow.trans {n : Nat} {σ₁ σ₂ σ₃ : Subst Ty}
+theorem AgreeBelow.trans {n : Nat} {σ₁ σ₂ σ₃ : Subst Nat Ty}
     (h₁ : AgreeBelow n σ₁ σ₂) (h₂ : AgreeBelow n σ₂ σ₃) : AgreeBelow n σ₁ σ₃ :=
   fun u hu => (h₁ u hu).trans (h₂ u hu)
 
 /-- Agreement on a wider range implies agreement on a narrower one. -/
-theorem AgreeBelow.mono {m n : Nat} {σ σ' : Subst Ty} (hmn : m ≤ n)
+theorem AgreeBelow.mono {m n : Nat} {σ σ' : Subst Nat Ty} (hmn : m ≤ n)
     (h : AgreeBelow n σ σ') : AgreeBelow m σ σ' :=
   fun u hu => h u (Nat.le_trans hu hmn)
 
 /-- A variable at or above the threshold is not free in anything below it. -/
-theorem not_isFree_of_fresh_le {u : Ty} {n k : Nat} (hu : HasVars.fresh u ≤ n) (hk : n ≤ k) :
+theorem not_isFree_of_fresh_le {u : Ty} {n k : Nat} (hu : freshIdx u ≤ n) (hk : n ≤ k) :
     ¬ HasVars.isFree u k := fun hfree =>
-  Nat.lt_irrefl k (Nat.lt_of_lt_of_le (HasVars.fresh_gt_free u k hfree) (Nat.le_trans hu hk))
+  Nat.lt_irrefl k (Nat.lt_of_lt_of_le (lt_freshIdx hfree) (Nat.le_trans hu hk))
 
 /-- **Extending at a fresh index changes nothing below it.** This is what lets the `app` case bind
 the drawn result variable without disturbing anything already solved. -/
-theorem AgreeBelow.insert {n m : Nat} (σ : Subst Ty) (ρ : Ty) (hnm : n ≤ m) :
+theorem AgreeBelow.insert {n m : Nat} (σ : Subst Nat Ty) (ρ : Ty) (hnm : n ≤ m) :
     AgreeBelow n (σ.insert m ρ) σ :=
   fun u hu => Signature.pSubst_insert_fresh σ m ρ u (not_isFree_of_fresh_le hu hnm)
 
@@ -114,7 +117,7 @@ theorem AgreeBelow.insert {n m : Nat} (σ : Subst Ty) (ρ : Ty) (hnm : n ≤ m) 
 Agreement is stated on types because that is where the induction needs it; the typing judgement it
 feeds is stated on contexts and terms. These two lift it. -/
 
-theorem AgreeBelow.ctx {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
+theorem AgreeBelow.ctx {n : Nat} {σ σ' : Subst Nat Ty} (h : AgreeBelow n σ σ')
     {Γ : Ctx N} (hΓ : CtxFreshBelow n Γ) (x : N) :
     (HasSubst.pSubst Γ σ).get? x = (HasSubst.pSubst Γ σ').get? x := by
   rw [HashMap.pSubst_get?, HashMap.pSubst_get?]
@@ -122,25 +125,27 @@ theorem AgreeBelow.ctx {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
   | none => rfl
   | some τ => exact congrArg _ (h τ (hΓ x τ hx))
 
-omit [Atom N] [HasVars N] in
-theorem AgreeBelow.term {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
-    (e : Term N) (he : HasVars.fresh e ≤ n) :
+omit [Atom N] in
+theorem AgreeBelow.term {n : Nat} {σ σ' : Subst Nat Ty} (h : AgreeBelow n σ σ')
+    (e : Term N) (he : freshIdx e ≤ n) :
     HasSubst.pSubst e σ = HasSubst.pSubst e σ' := by
   show Term.tyPSubst e σ = Term.tyPSubst e σ'
   induction e with
   | var x => rfl
   | lam x α body ih =>
-      have hα : HasVars.fresh α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have hb : HasVars.fresh body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_lam] at he
+      have hα : freshIdx α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have hb : freshIdx body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       simp only [Term.tyPSubst, h α hα, ih hb]
   | app e₁ e₂ ih₁ ih₂ =>
-      have h₁ : HasVars.fresh e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have h₂ : HasVars.fresh e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_app] at he
+      have h₁ : freshIdx e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have h₂ : freshIdx e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       simp only [Term.tyPSubst, ih₁ h₁, ih₂ h₂]
 
 /-- Agreement transports a whole typing derivation. -/
-theorem AgreeBelow.hasType {n : Nat} {σ σ' : Subst Ty} (h : AgreeBelow n σ σ')
-    {Γ : Ctx N} {e : Term N} {ρ : Ty} (hΓ : CtxFreshBelow n Γ) (he : HasVars.fresh e ≤ n)
+theorem AgreeBelow.hasType {n : Nat} {σ σ' : Subst Nat Ty} (h : AgreeBelow n σ σ')
+    {Γ : Ctx N} {e : Term N} {ρ : Ty} (hΓ : CtxFreshBelow n Γ) (he : freshIdx e ≤ n)
     (hty : HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst e σ') ρ) :
     HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst e σ) ρ := by
   rw [h.term e he]
@@ -154,33 +159,34 @@ substitutions agree there. -/
 
 /-- Every metavariable in an equation set is below `n`. -/
 def EqsFreshBelow (n : Nat) (C : Equations Ty) : Prop :=
-  ∀ p ∈ C, HasVars.fresh p.1 ≤ n ∧ HasVars.fresh p.2 ≤ n
+  ∀ p ∈ C, freshIdx p.1 ≤ n ∧ freshIdx p.2 ≤ n
 
 theorem EqsFreshBelow.mono {m n : Nat} {C : Equations Ty} (hmn : m ≤ n) (h : EqsFreshBelow m C) :
     EqsFreshBelow n C :=
   fun p hp => ⟨Nat.le_trans (h p hp).1 hmn, Nat.le_trans (h p hp).2 hmn⟩
 
-omit [HasVars N] in
 theorem HasTypeJ.fresh_bound {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty}
     {n' : Nat} (h : HasTypeJ n Γ e τ C n') :
-    CtxFreshBelow n Γ → HasVars.fresh e ≤ n →
-    HasVars.fresh τ ≤ n' ∧ EqsFreshBelow n' C := by
+    CtxFreshBelow n Γ → freshIdx e ≤ n →
+    freshIdx τ ≤ n' ∧ EqsFreshBelow n' C := by
   induction h with
   | @var n Γ x τ hget =>
       intro hΓ _
       exact ⟨hΓ x τ hget, fun p hp => absurd hp (List.not_mem_nil)⟩
   | @lam n Γ x α body τb C n' hj ih =>
       intro hΓ he
-      have hα : HasVars.fresh α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have hb : HasVars.fresh body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_lam] at he
+      have hα : freshIdx α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have hb : freshIdx body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       obtain ⟨hτb, hC⟩ := ih (hΓ.cons hα) hb
       refine ⟨?_, hC⟩
       rw [Ty.fresh_arrow]
       exact Nat.max_le.mpr ⟨Nat.le_trans hα hj.supply_le, hτb⟩
   | @app n Γ e₁ e₂ τ₁ τ₂ C₁ C₂ n₁ n₂ hj₁ hj₂ ih₁ ih₂ =>
       intro hΓ he
-      have h₁ : HasVars.fresh e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have h₂ : HasVars.fresh e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_app] at he
+      have h₁ : freshIdx e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have h₂ : freshIdx e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       obtain ⟨hτ₁, hC₁⟩ := ih₁ hΓ h₁
       obtain ⟨hτ₂, hC₂⟩ := ih₂ (hΓ.mono hj₁.supply_le) (Nat.le_trans h₂ hj₁.supply_le)
       have hn₁₂ : n₁ ≤ n₂ := hj₂.supply_le
@@ -205,7 +211,7 @@ a solution `σ''` sending the generated type to `ρ`, and agreeing with `σ'` on
 generator did not draw. -/
 theorem HasTypeJ.complete_aux {n : Nat} {Γ : Ctx N} {e : Term N} {τg : Ty} {C : Equations Ty}
     {n' : Nat} (h : HasTypeJ n Γ e τg C n') :
-    ∀ (σ' : Subst Ty) (ρ : Ty), CtxFreshBelow n Γ → HasVars.fresh e ≤ n →
+    ∀ (σ' : Subst Nat Ty) (ρ : Ty), CtxFreshBelow n Γ → freshIdx e ≤ n →
       HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst e σ') ρ →
       ∃ σ'', Subst.Unifies σ'' C ∧ HasSubst.pSubst τg σ'' = ρ ∧ AgreeBelow n σ'' σ' := by
   induction h with
@@ -219,8 +225,9 @@ theorem HasTypeJ.complete_aux {n : Nat} {Γ : Ctx N} {e : Term N} {τg : Ty} {C 
           exact (Option.some.inj hlook)
   | @lam n Γ x α body τb C n' hj ih =>
       intro σ' ρ hΓ he hty
-      have hα : HasVars.fresh α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have hb : HasVars.fresh body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_lam] at he
+      have hα : freshIdx α ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have hb : freshIdx body ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       cases hty with
       | lam hbody =>
           rename_i ρb
@@ -233,8 +240,9 @@ theorem HasTypeJ.complete_aux {n : Nat} {Γ : Ctx N} {e : Term N} {τg : Ty} {C 
           rw [Ty.pSubst_arrow, hτb, hag α hα]
   | @app n Γ e₁ e₂ τ₁ τ₂ C₁ C₂ n₁ n₂ hj₁ hj₂ ih₁ ih₂ =>
       intro σ' ρ hΓ he hty
-      have h₁ : HasVars.fresh e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
-      have h₂ : HasVars.fresh e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
+      rw [freshIdx_app] at he
+      have h₁ : freshIdx e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) he
+      have h₂ : freshIdx e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) he
       have hnn₁ : n ≤ n₁ := hj₁.supply_le
       have hn₁₂ : n₁ ≤ n₂ := hj₂.supply_le
       obtain ⟨hτ₁b, hC₁b⟩ := hj₁.fresh_bound hΓ h₁
@@ -305,7 +313,7 @@ merely that nothing was found. -/
 
 /-- **Generation fails only on an unbound variable**, and an unbound variable is untypeable under
 every substitution — substitution rewrites a context's values, never its keys. -/
-theorem no_typing_of_gen_none : ∀ (t : Term N) (Γ : Ctx N) (n : Nat) (σ : Subst Ty) (ρ : Ty),
+theorem no_typing_of_gen_none : ∀ (t : Term N) (Γ : Ctx N) (n : Nat) (σ : Subst Nat Ty) (ρ : Ty),
     gen Γ t n = none → ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) ρ := by
   intro t
   induction t with
@@ -349,17 +357,18 @@ theorem no_typing_of_gen_none : ∀ (t : Term N) (Γ : Ctx N) (n : Nat) (σ : Su
 `generationComplete`: a typing yields a unifier of the generated constraints, and `unify_complete`
 then forbids `unify` from having failed. -/
 theorem no_typing_of_unify_none {Γ : Ctx N} {t : Term N} {τ : Ty}
-    {r : Ty × Equations Ty × Nat} (hg : gen Γ t (sourceFresh Γ t τ) = some r)
+    {r : Ty × Equations Ty × Nat} (hg : gen Γ t (srcCounter Γ t τ) = some r)
     (hu : unify ((r.1, τ) :: r.2.1) = none) :
     ∀ σ, ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
   intro σ hty
-  have hΓ : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
-  have ht : HasVars.fresh t ≤ sourceFresh Γ t τ :=
-    Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-  have hτ : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
-    Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+  have hΓ : freshIdx Γ ≤ srcCounter Γ t τ :=
+    freshIdx_le_counterAbove (fun _ => mem_sourceSupp_ctx)
+  have ht : freshIdx t ≤ srcCounter Γ t τ :=
+    freshIdx_le_counterAbove (fun _ => mem_sourceSupp_tm)
+  have hτ : freshIdx τ ≤ srcCounter Γ t τ :=
+    freshIdx_le_counterAbove (fun _ => mem_sourceSupp_ty)
   obtain ⟨σ'', hunif, _⟩ :=
-    generationComplete Γ t τ r.1 (sourceFresh Γ t τ) r.2.2 r.2.1 σ hΓ ht hτ
+    generationComplete Γ t τ r.1 (srcCounter Γ t τ) r.2.2 r.2.1 σ hΓ ht hτ
       (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg) hty
   exact unify_complete _ σ'' hunif hu
 
@@ -369,7 +378,7 @@ theorem no_typing_of_elabSubst_none {Γ : Ctx N} {t : Term N} {τ : Ty}
     (h : elabSubst Γ t τ = none) :
     ∀ σ, ¬ HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
   rw [elabSubst] at h
-  cases hg : gen Γ t (sourceFresh Γ t τ) with
+  cases hg : gen Γ t (srcCounter Γ t τ) with
   | none => exact fun σ => no_typing_of_gen_none t Γ _ σ _ hg
   | some r =>
       rw [hg] at h
@@ -402,7 +411,7 @@ needs `no_typing_of_elabSubst_none`, proved above. -/
 typing, or a proof that no substitution makes it one. Fills
 the sorry-free half of `TypeSystem.Named.PrincipalElaborate.elaborate`; see `elabMGU` below. -/
 def elabSolution (Γ : Ctx N) (t : Term N) (τ : Ty) :
-    SolutionProp (fun σ : Subst Ty =>
+    SolutionProp (fun σ : Subst Nat Ty =>
       HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
   match h : elabSubst Γ t τ with
   | some σ => .solution σ (elabSubst_sound h)
@@ -429,16 +438,16 @@ means once the principal answer has metavariables of its own.
 
 The proof is three steps and no new machinery: `generationComplete` produces a unifier `σ''` that
 agrees with the competing `σ'` below the source threshold, `unify_mgu` factors that unifier through
-`unify`'s answer, and `pSubst_restrictBelow` says the pruning did not disturb any source type.
+`unify`'s answer, and `pSubst_restrictTo` says the pruning did not disturb any source type.
 
 The threshold is exactly where the restriction bites, and it has to: `unify` draws metavariables of
 its own, and for a term like `f (g b)` the *principal* answer binds a source variable to a type
 mentioning one of them (`?0 ↦ ?2 ⇒ ⋆`). A competing σ' says nothing about `?2`, so no ρ can factor
 σ' through σ at the type `?2` itself. `Principality.lean` turns that observation into a proof. -/
-theorem elabSubst_principal_below {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
+theorem elabSubst_principal_below {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Nat Ty}
     (h : elabSubst Γ t τ = some σ) :
     ∀ σ', HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
-      ∃ ρ : Subst Ty, ∀ u : Ty, HasVars.fresh u ≤ sourceFresh Γ t τ →
+      ∃ ρ : Subst Nat Ty, ∀ u : Ty, (∀ a, HasVars.isFree u a → a ∈ sourceSupp Γ t τ) →
         HasSubst.pSubst u σ' = HasSubst.pSubst (HasSubst.pSubst u σ) ρ := by
   intro σ' hty
   rw [elabSubst] at h
@@ -447,25 +456,27 @@ theorem elabSubst_principal_below {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subs
   · rename_i r hg
     rw [Option.map_eq_some_iff] at h
     obtain ⟨σ₀, hu, rfl⟩ := h
-    have hΓf : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
-    have htf : HasVars.fresh t ≤ sourceFresh Γ t τ :=
-      Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-    have hτf : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
-      Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
+    have hΓf : freshIdx Γ ≤ srcCounter Γ t τ :=
+      freshIdx_le_counterAbove (fun _ => mem_sourceSupp_ctx)
+    have htf : freshIdx t ≤ srcCounter Γ t τ :=
+      freshIdx_le_counterAbove (fun _ => mem_sourceSupp_tm)
+    have hτf : freshIdx τ ≤ srcCounter Γ t τ :=
+      freshIdx_le_counterAbove (fun _ => mem_sourceSupp_ty)
     obtain ⟨σ'', hUni, hag⟩ :=
-      generationComplete Γ t τ r.1 (sourceFresh Γ t τ) r.2.2 r.2.1 σ' hΓf htf hτf
+      generationComplete Γ t τ r.1 (srcCounter Γ t τ) r.2.2 r.2.1 σ' hΓf htf hτf
         (gen_correct t Γ _ r.1 r.2.1 r.2.2 hg) hty
     obtain ⟨ρ, hρ⟩ := unify_mgu _ σ₀ hu σ'' hUni
     refine ⟨ρ, fun u hu' => ?_⟩
-    rw [← hag u hu', hρ u, Signature.pSubst_restrictBelow σ₀ _ u hu']
+    rw [← hag u (freshIdx_le_counterAbove hu'), hρ u,
+      Signature.pSubst_restrictTo σ₀ _ u hu']
 
 /-- **The elaborator, decided and principal.** `elabSolution` with most-generality attached; fills
 `TypeSystem.Named.PrincipalElaborate.elaborate`. Both branches are theorems, so this is sorry-free: the
 `impossible` branch is `no_typing_of_elabSubst_none` and the positive one is
 `elabSubst_principal_below`, at the threshold `elabSubst` itself prunes to. -/
 def elabMGU (Γ : Ctx N) (t : Term N) (τ : Ty) :
-    PrincipalProp (MoreGeneralBelow (sourceFresh Γ t τ))
-      (fun σ : Subst Ty =>
+    PrincipalProp (MoreGeneralOn (sourceSupp Γ t τ))
+      (fun σ : Subst Nat Ty =>
         HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ)) :=
   match h : elabSubst Γ t τ with
   | some σ => .mgu σ (elabSubst_sound h) (elabSubst_principal_below h)

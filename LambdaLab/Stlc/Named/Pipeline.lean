@@ -371,10 +371,7 @@ of elaboration are theorems.
 -/
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
-instance : HasVars VName where
-  isFree _ _ := False
-  fresh _ := 0
-  fresh_gt_free := by intro _ _ h; cases h
+instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
 
 /-- Parse a source file and elaborate it, rendering the result. -/
 def elaborateSource (src : String) : Option String :=

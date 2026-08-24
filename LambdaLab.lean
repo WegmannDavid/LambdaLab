@@ -30,14 +30,6 @@ import LambdaLab.Stlc.Named.Typing.J
 import LambdaLab.Stlc.Named.Typing.D
 import LambdaLab.Stlc.Named.Typing.S
 import LambdaLab.Stlc.Named.Typing.Target
-import LambdaLab.Substitution.Basic
-import LambdaLab.Substitution.Unification.Signature
-import LambdaLab.Substitution.Unification.Bridge
-import LambdaLab.Substitution.Unification.Measure
-import LambdaLab.Substitution.Unification.Basic
-import LambdaLab.Substitution.Unification.Soundness
-import LambdaLab.Substitution.Unification.Completeness
-import LambdaLab.Substitution.Unification.MGU
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.

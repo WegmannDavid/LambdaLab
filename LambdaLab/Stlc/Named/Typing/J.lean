@@ -1,7 +1,7 @@
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Properties
 import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Substitution.Unification.MGU
+import LambdaLab.Nominal.Unification.MGU
 
 /-!
 # Constraint generation — the `J`-style route to principal types
@@ -70,7 +70,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-! ## The judgement
 
@@ -93,7 +93,6 @@ inductive HasTypeJ : Nat → Ctx N → Term N → Ty → Equations Ty → Nat �
       HasTypeJ n Γ (.app e₁ e₂) (Ty.mvar n₂)
         ((τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂)) (n₂ + 1)
 
-omit [HasVars N] in
 /-- The supply only ever moves forward. This is the invariant that makes the drawn names actually
 fresh — and the one W's argument-derived indices fail to provide. -/
 theorem HasTypeJ.supply_le {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
@@ -113,7 +112,7 @@ substitution.
 
 /-- **Soundness of generation.** Every solution of the constraints is a typing. -/
 theorem HasTypeJ.sound {n : Nat} {Γ : Ctx N} {e : Term N} {τ : Ty} {C : Equations Ty} {n' : Nat}
-    (h : HasTypeJ n Γ e τ C n') {σ : Subst Ty} (hσ : Subst.Unifies σ C) :
+    (h : HasTypeJ n Γ e τ C n') {σ : Subst Nat Ty} (hσ : Subst.Unifies σ C) :
     HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst e σ) (HasSubst.pSubst τ σ) := by
   induction h with
   | @var n Γ x τ hget =>
@@ -160,7 +159,6 @@ def gen : Ctx N → Term N → Nat → Option (Ty × Equations Ty × Nat)
           | some (τ₂, C₂, n₂) =>
               some (Ty.mvar n₂, (τ₁, τ₂ ⇒ Ty.mvar n₂) :: (C₁ ++ C₂), n₂ + 1)
 
-omit [HasVars N] in
 /-- **`gen` computes `HasTypeJ`.** The counterpart of `W_correct`; with it, every property proved
 about the judgement transfers to the function. -/
 theorem gen_correct : ∀ (e : Term N) (Γ : Ctx N) (n : Nat) (τ : Ty) (C : Equations Ty) (n' : Nat),

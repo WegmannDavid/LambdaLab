@@ -25,7 +25,7 @@ proved here, which is the point — the interface asks for what the development 
   That matters practically, not just aesthetically: `Pipeline.lean` names terms by `VName`, so
   with the instances pinned at `String` it could not use this interface at all and had to call
   `Target.elabSubst` directly. Now it goes through `PrincipalElaborate`.
-* `MVars` needs no new work at all: `HasSubst (Term N) Ty` and `HasSubst Ty Ty` already exist, so
+* `MVars` needs no new work at all: `HasSubst Nat (Term N) Ty` and `HasSubst Nat Ty Ty` already exist, so
   both fields are `inferInstance` and the bundled copies are definitionally the canonical ones,
   which is what `MVars`' own docstring asks for.
 * `LawfulMVars` is discharged by `HasType.subst`, which was proved generic in `N` long before the
@@ -43,7 +43,7 @@ proved here, which is the point — the interface asks for what the development 
 decision. It is discharged by `Typing/JComplete.lean`'s **`elabSubst_principal_below`, a theorem** —
 principality *on the source*, which is what the claim can be: the elaborator draws metavariables of
 its own, and `Typing/Principality.lean` proves the unrestricted `MoreGeneral` form false for this
-very elaborator. The threshold is `sourceFresh`, the same one `elabSubst` prunes to, handed to the
+very elaborator. The threshold is `sourceSupp`, the same one `elabSubst` prunes to, handed to the
 class through its own field.
 
 Nothing in this file is claimed on credit any more, and nothing downstream reports `sorryAx`.
@@ -70,11 +70,11 @@ Generalising `Step`, `MStep`, `Translation` and `HasType.preservation` to an arb
 proof changes at all — only signatures — and it is what lets `Pipeline.lean` reach these instances
 at its own name type `VName` instead of calling the elaborator directly.
 
-`[HasVars N]` appears from `LawfulTypeSystem` on: preservation needs it (through
+`[HasVars Nat N]` appears from `LawfulTypeSystem` on: preservation needs it (through
 `HasType.freeVars_in_ctx`), and the substitution the classes above it talk about is defined by it.
 -/
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 instance instTypeSystem : TypeSystem.Named.TypeSystem N (Term N) Ty := {}
 
@@ -122,11 +122,11 @@ instance : DecidablePred (HasVars.Ground : Term N → Prop) :=
 triple, not a report that nothing was found — and its positive branch is `elabSubst_sound` paired
 with `elabSubst_principal_below`. Both are theorems, so this instance is discharged in full.
 
-`sourceFresh` is `Target.sourceFresh`, the threshold `elabSubst` prunes its answer to; the
+`sourceSupp` is `Target.sourceSupp`, the threshold `elabSubst` prunes its answer to; the
 principality the class asks for is stated below it, which is the only place it can hold
 (`Typing/Principality.lean`). The plain decision remains available on its own as `elabSolution`. -/
 instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N) Ty where
-  sourceFresh := sourceFresh
+  sourceSupp := sourceSupp
   elaborate := elabMGU
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
@@ -161,11 +161,9 @@ Each is `rfl`. They are stated so that a later change to the interface — reord
 wrapping a component, adding a parameter — fails here, at the plug-in, rather than silently
 rebinding one of STLC's notions to something else. -/
 
-omit [HasVars N] in
 @[simp] theorem hasType_eq :
     TypeSystem.Named.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
-omit [HasVars N] in
 @[simp] theorem step_eq : TypeSystem.Named.Step.Step (Tm := Term N) = Step := rfl
 
 @[simp] theorem elaborate_eq :

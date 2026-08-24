@@ -12,8 +12,6 @@ the bottom of the file): all of `isFree`, `fresh`, and `pSubst` are
 forced by structural recursion on `deconstruct`, so the substitution
 semantics cannot disagree with the term structure. -/
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 class Signature (A : outParam Type) (α : Type) [Atom A] where
@@ -405,4 +403,3 @@ theorem Equations.single_eq {A α : Type} [Atom A] [Signature A α]
       eqs.map (fun p => (HasSubst.single p.1 n s, HasSubst.single p.2 n s)) :=
   rfl
 
-end LambdaLab.Nominal.Unification

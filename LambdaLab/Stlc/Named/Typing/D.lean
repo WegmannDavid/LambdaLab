@@ -45,7 +45,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-! ## Polytypes
 
@@ -144,7 +144,7 @@ context does not already pin down. It is what `[Let]` uses in the syntactical sy
 weakened `D`-to-`S` bridge applies at the end to recover a scheme.
 
 Computing it needs both `IsFree` predicates decidably, and needs `free(τ)` *enumerated* rather than
-merely decided. The bound is `HasVars.fresh τ`, which the unifier already provides.
+merely decided. The bound is `freshIdx τ`, which the unifier already provides.
 -/
 
 def Scheme.freeB : Scheme → Nat → Bool
@@ -162,7 +162,6 @@ def Scheme.freeB : Scheme → Nat → Bool
 def SCtx.freeB (Γ : SCtx N) (n : Nat) : Bool :=
   Γ.toList.any fun p => Scheme.freeB p.2 n
 
-omit [HasVars N] in
 theorem SCtx.freeB_iff (Γ : SCtx N) (n : Nat) :
     SCtx.freeB Γ n = true ↔ SCtx.IsFree Γ n := by
   constructor
@@ -180,13 +179,12 @@ theorem SCtx.freeB_iff (Γ : SCtx N) (n : Nat) :
 
 /-- The variables to quantify: `free(τ) − free(Γ)`, enumerated below `fresh τ`. -/
 def SCtx.quantified (Γ : SCtx N) (τ : Ty) : List Nat :=
-  (List.range (HasVars.fresh τ)).filter fun n => Signature.occurs n τ && !SCtx.freeB Γ n
+  (List.range (freshIdx τ)).filter fun n => Signature.occurs n τ && !SCtx.freeB Γ n
 
 /-- **`Γ̄(τ) = ∀ α̂ . τ`, `α̂ = free(τ) − free(Γ)`** — the closure operator. -/
 def SCtx.close (Γ : SCtx N) (τ : Ty) : Scheme :=
   (SCtx.quantified Γ τ).foldr Scheme.all (.mono τ)
 
-omit [HasVars N] in
 /-- One `[Gen]` per quantified variable. -/
 theorem HasTypeD.gen_foldr (Γ : SCtx N) (e : Term N) (τ : Ty) :
     ∀ (l : List Nat), (∀ α ∈ l, ¬ SCtx.IsFree Γ α) →
@@ -197,7 +195,6 @@ theorem HasTypeD.gen_foldr (Γ : SCtx N) (e : Term N) (τ : Ty) :
         (HasTypeD.gen_foldr Γ e τ as (fun α hα => hl α (List.mem_cons_of_mem _ hα)) h)
         (hl a List.mem_cons_self)
 
-omit [HasVars N] in
 /-- **The closure is derivable.** `Γ̄(τ)` is reachable from `τ` by iterated `[Gen]`, which is what
 lets the weakened `D`-to-`S` bridge recover a scheme by one final generalisation. -/
 theorem HasTypeD.close (Γ : SCtx N) (e : Term N) (τ : Ty) (h : HasTypeD Γ e (.mono τ)) :
@@ -217,20 +214,17 @@ theorem HasTypeD.close (Γ : SCtx N) (e : Term N) (τ : Ty) (h : HasTypeD Γ e (
 /-- Every monotype context is a scheme context. -/
 def SCtx.ofMono (Γ : Ctx N) : SCtx N := Γ.map fun _ τ => Scheme.mono τ
 
-omit [HasVars N] in
 @[simp] theorem SCtx.ofMono_get? (Γ : Ctx N) (x : N) :
     (SCtx.ofMono Γ).get? x = (Γ.get? x).map Scheme.mono := by
   show (Γ.map _).get? x = _
   rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
       ← Std.HashMap.get?_eq_getElem?]
 
-omit [HasVars N] in
 theorem SCtx.ofMono_cons_get? (Γ : Ctx N) (x : N) (τ : Ty) (y : N) :
     (SCtx.ofMono (Γ.cons x τ)).get? y = ((SCtx.ofMono Γ).cons x (Scheme.mono τ)).get? y := by
   rw [SCtx.ofMono_get?, Ctx.get?_cons, TypeSystem.Named.Context.get?_cons, SCtx.ofMono_get?]
   by_cases h : x = y <;> simp [h]
 
-omit [HasVars N] in
 /-- `free(Γ)` is read off `get?`, so contexts that agree pointwise have the same free variables.
 This is why `HasTypeD.cong` needs no side condition for `[Gen]`. -/
 theorem SCtx.IsFree.congr {Γ Γ' : SCtx N} (hΓ : ∀ y, Γ.get? y = Γ'.get? y) (n : Nat) :
@@ -239,7 +233,6 @@ theorem SCtx.IsFree.congr {Γ Γ' : SCtx N} (hΓ : ∀ y, Γ.get? y = Γ'.get? y
   · rintro ⟨x, σ, hx, hf⟩; exact ⟨x, σ, (hΓ x) ▸ hx, hf⟩
   · rintro ⟨x, σ, hx, hf⟩; exact ⟨x, σ, (hΓ x).symm ▸ hx, hf⟩
 
-omit [HasVars N] in
 /-- `HasTypeD` only looks at the context through `get?`, so it transports along agreement. -/
 theorem HasTypeD.cong {Γ Γ' : SCtx N} {e : Term N} {σ : Scheme}
     (hΓ : ∀ y, Γ.get? y = Γ'.get? y) (h : HasTypeD Γ e σ) : HasTypeD Γ' e σ := by
@@ -252,7 +245,6 @@ theorem HasTypeD.cong {Γ Γ' : SCtx N} {e : Term N} {σ : Scheme}
   | inst _ hs ih => exact HasTypeD.inst (ih hΓ) hs
   | gen _ hα ih => exact HasTypeD.gen (ih hΓ) (fun hc => hα ((SCtx.IsFree.congr hΓ _).mpr hc))
 
-omit [HasVars N] in
 /-- **`HasType` embeds into `D`.** The kernel judgement is the fragment with no schemes in play. -/
 theorem HasType.toD {Γ : Ctx N} {e : Term N} {τ : Ty} (h : HasType Γ e τ) :
     HasTypeD (SCtx.ofMono Γ) e (.mono τ) := by
@@ -297,7 +289,7 @@ theorem polyIdScheme_inst : Scheme.Instantiates polyIdScheme (Ty.base ⇒ Ty.bas
   have hsub : Scheme.instAt (.mono (Ty.mvar 0 ⇒ Ty.mvar 0)) 0 Ty.base
             = .mono (Ty.base ⇒ Ty.base) := by
     show Scheme.mono (HasSubst.pSubst (Ty.mvar 0 ⇒ Ty.mvar 0)
-          ((∅ : Subst Ty).insert 0 Ty.base)) = _
+          ((∅ : Subst Nat Ty).insert 0 Ty.base)) = _
     rw [Ty.pSubst_arrow, Ty.pSubst_mvar, Std.HashMap.getD_insert]
     simp
   rw [hsub]

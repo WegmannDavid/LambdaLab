@@ -1,8 +1,6 @@
 import LambdaLab.Nominal.Unification.Basic
 import LambdaLab.Nominal.Unification.Soundness
 
-namespace LambdaLab.Nominal.Unification
-
 open LambdaLab.Nominal
 
 /-! # Completeness of `unifyList`
@@ -416,4 +414,3 @@ theorem SupportedIn.pSubst_supp {A α : Type} [Atom A] [Signature A α] {s : Lis
       rw [he] at hkm
       exact (hσ k v h).2 m hkm
 
-end LambdaLab.Nominal.Unification

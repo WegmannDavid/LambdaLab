@@ -36,7 +36,7 @@ smallest class that can say it. Deliberately *not* over `MVars` or the rest of t
 tower: nothing here substitutes, so nothing here should demand a substitution operation, let alone
 a reduction relation.
 
-For STLC this is exactly the condition the pipeline already enforces. `HasVars (Term N)`'s
+For STLC this is exactly the condition the pipeline already enforces. `HasVars Nat (Term N)`'s
 `isFree` is `Term.tyIsFree`, so `Ground t` says no annotation inside `t` mentions a metavariable —
 the `AnnotsGround` conjunct of `Stlc/Named/Pipeline.lean`'s `solve` — and `Ground τ` is its
 `Ground` conjunct. The vernacular's rule and the elaborator's refusal to let a metavariable
@@ -65,7 +65,7 @@ the class is qualified: an unqualified one in a statement written after the `abb
 the program-level judgement and fails with an arity mismatch. -/
 
 variable {N Tm Ty : Type} [Atom N] [_root_.LambdaLab.TypeSystem.Named.HasType N Tm Ty]
-  [HasVars Tm] [HasVars Ty]
+  [HasVars Nat Tm] [HasVars Nat Ty]
 
 /-- Every type bound in `Γ` is ground.
 

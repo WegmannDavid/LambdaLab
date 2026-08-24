@@ -1,7 +1,7 @@
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Substitution.Unification.Soundness
+import LambdaLab.Nominal.Unification.Soundness
 import LambdaLab.Stlc.Named.Typing.J
 
 /-!
@@ -21,7 +21,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 /-! ## Deciding groundness
 
@@ -35,7 +35,7 @@ def Term.annotsGround : Term N → Bool
   | .lam _ τ body => τ.isGround && body.annotsGround
   | .app e₁ e₂    => e₁.annotsGround && e₂.annotsGround
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 @[simp] theorem Term.annotsGround_iff : ∀ {e : Term N}, e.annotsGround = true ↔ e.AnnotsGround := by
   intro e
   induction e with
@@ -48,10 +48,29 @@ instance (e : Term N) : Decidable e.AnnotsGround :=
 
 /-! ## The formalization target -/
 
-/-- The threshold above which every index belongs to the algorithm rather than the source.
-Same definition as `W.srcFresh`, repeated so this file depends on no particular algorithm. -/
-def sourceFresh (Γ : Ctx N) (t : Term N) (τ : Ty) : Nat :=
-  max (HasVars.fresh Γ) (max (HasVars.fresh t) (HasVars.fresh τ))
+/-- The source triple's own metavariables — what `elabSubst` prunes its answer to, and the atom
+set its principality is stated on. -/
+def sourceSupp (Γ : Ctx N) (t : Term N) (τ : Ty) : List Nat :=
+  HasVars.supp (A := Nat) Γ ++ HasVars.supp (A := Nat) t ++ HasVars.supp (A := Nat) τ
+
+theorem mem_sourceSupp_ctx {Γ : Ctx N} {t : Term N} {τ : Ty} {a : Nat}
+    (h : HasVars.isFree Γ a) : a ∈ sourceSupp Γ t τ :=
+  List.mem_append.mpr (Or.inl (List.mem_append.mpr
+    (Or.inl ((HasVars.mem_supp_iff_isFree Γ a).mpr h))))
+
+theorem mem_sourceSupp_tm {Γ : Ctx N} {t : Term N} {τ : Ty} {a : Nat}
+    (h : HasVars.isFree t a) : a ∈ sourceSupp Γ t τ :=
+  List.mem_append.mpr (Or.inl (List.mem_append.mpr
+    (Or.inr ((HasVars.mem_supp_iff_isFree t a).mpr h))))
+
+theorem mem_sourceSupp_ty {Γ : Ctx N} {t : Term N} {τ : Ty} {a : Nat}
+    (h : HasVars.isFree τ a) : a ∈ sourceSupp Γ t τ :=
+  List.mem_append.mpr (Or.inr ((HasVars.mem_supp_iff_isFree τ a).mpr h))
+
+/-- The counter `gen` allocates from: above every metavariable the source mentions. Same role as
+the old `sourceFresh`, but now derived from the support rather than being the support's only
+description. -/
+def srcCounter (Γ : Ctx N) (t : Term N) (τ : Ty) : Nat := counterAbove (sourceSupp Γ t τ)
 
 /-! ## The algorithm, and its soundness
 
@@ -79,15 +98,15 @@ nothing to a competing σ' and would defeat most-generality outright.
 Built from `J`, not `W`. W's answer is a composition of substitutions accumulated during the
 traversal, so its most-generality is entangled with the freshness discipline. J's answer is
 *literally* `unify`'s output. -/
-def elabSubst (Γ : Ctx N) (t : Term N) (τ : Ty) : Option (Subst Ty) :=
-  match gen Γ t (sourceFresh Γ t τ) with
+def elabSubst (Γ : Ctx N) (t : Term N) (τ : Ty) : Option (Subst Nat Ty) :=
+  match gen Γ t (srcCounter Γ t τ) with
   | none => none
-  | some r => (unify ((r.1, τ) :: r.2.1)).map (Subst.restrictBelow · (sourceFresh Γ t τ))
+  | some r => (unify ((r.1, τ) :: r.2.1)).map (Subst.restrictTo · (sourceSupp Γ t τ))
 
 /-- **Soundness of the computation**, and it is short: `gen_correct` moves to the judgement,
 `HasTypeJ.sound` does the work, the head equation rewrites the synthesised type into the declared
 one, and pruning above the source threshold disturbs none of `Γ`, `t`, `τ`. -/
-theorem elabSubst_sound {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
+theorem elabSubst_sound {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Nat Ty}
     (h : elabSubst Γ t τ = some σ) :
     HasType (HasSubst.pSubst Γ σ) (HasSubst.pSubst t σ) (HasSubst.pSubst τ σ) := by
   rw [elabSubst] at h
@@ -101,13 +120,11 @@ theorem elabSubst_sound {Γ : Ctx N} {t : Term N} {τ : Ty} {σ : Subst Ty}
       (fun q hq => hall q (List.mem_cons_of_mem _ hq))
     have hhead : HasSubst.pSubst r.1 σ₀ = HasSubst.pSubst τ σ₀ := hall _ List.mem_cons_self
     rw [hhead] at hsound
-    have hΓf : HasVars.fresh Γ ≤ sourceFresh Γ t τ := Nat.le_max_left _ _
-    have htf : HasVars.fresh t ≤ sourceFresh Γ t τ :=
-      Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-    have hτf : HasVars.fresh τ ≤ sourceFresh Γ t τ :=
-      Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
-    rw [Term.tyPSubst_restrictBelow t σ₀ _ htf, Signature.pSubst_restrictBelow σ₀ _ τ hτf]
-    exact HasType.cong (fun y => (Ctx.pSubst_restrictBelow_get? Γ σ₀ _ hΓf y).symm) hsound
+    have hΓf : ∀ a, HasVars.isFree Γ a → a ∈ sourceSupp Γ t τ := fun _ => mem_sourceSupp_ctx
+    have htf : ∀ a, HasVars.isFree t a → a ∈ sourceSupp Γ t τ := fun _ => mem_sourceSupp_tm
+    have hτf : ∀ a, HasVars.isFree τ a → a ∈ sourceSupp Γ t τ := fun _ => mem_sourceSupp_ty
+    rw [Term.tyPSubst_restrictTo t σ₀ _ htf, Signature.pSubst_restrictTo σ₀ _ τ hτf]
+    exact HasType.cong (fun y => (Ctx.pSubst_restrictTo_get? Γ σ₀ _ hΓf y).symm) hsound
 
 /-- **Proved**, in `Typing/JComplete.lean` — see `generationComplete`. It was long described here
 as "the one missing lemma"; it was missing, but it was never the whole of what stands between the
@@ -133,11 +150,11 @@ transfer. That is not a gap in the argument but a fact about the problem:
 `Typing/Principality.lean` proves the unrestricted claim false. The restricted one is
 `JComplete.elabSubst_principal_below`, and it is what `TypeSystem.Named.PrincipalElaborate` asks for. -/
 def GenerationComplete : Prop :=
-  ∀ (Γ : Ctx N) (t : Term N) (τ τg : Ty) (n n' : Nat) (C : Equations Ty) (σ' : Subst Ty),
-    HasVars.fresh Γ ≤ n → HasVars.fresh t ≤ n → HasVars.fresh τ ≤ n →
+  ∀ (Γ : Ctx N) (t : Term N) (τ τg : Ty) (n n' : Nat) (C : Equations Ty) (σ' : Subst Nat Ty),
+    freshIdx Γ ≤ n → freshIdx t ≤ n → freshIdx τ ≤ n →
     HasTypeJ n Γ t τg C n' →
     HasType (HasSubst.pSubst Γ σ') (HasSubst.pSubst t σ') (HasSubst.pSubst τ σ') →
     ∃ σ'', Subst.Unifies σ'' ((τg, τ) :: C) ∧
-      ∀ u : Ty, HasVars.fresh u ≤ n → HasSubst.pSubst u σ'' = HasSubst.pSubst u σ'
+      ∀ u : Ty, freshIdx u ≤ n → HasSubst.pSubst u σ'' = HasSubst.pSubst u σ'
 
 end LambdaLab.Stlc.Named

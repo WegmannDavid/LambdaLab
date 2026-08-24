@@ -99,23 +99,23 @@ degenerate case the interface has to admit if the general one is to mean anythin
 /-! Terms and types are the same type here, so `Name` must have `HasVars` — and that makes the
 *key-aware* `HashMap` substitution instance apply to `Context Name Name` and outrank the
 context-specific one, which is deliberately `low`. The generic vernacular code was elaborated
-where no `HasVars N` was in scope, so its goals carry the context instance; raising its priority
+where no `HasVars Nat N` was in scope, so its goals carry the context instance; raising its priority
 here makes the concrete lemmas below talk about the same `pSubst` those goals do. -/
 
 attribute [local instance 2000] LambdaLab.TypeSystem.Named.instHasSubstContext
 
-instance : HasSubst Name Name where
-  pSubst t _ := t
-  isFree _ _ := False
-  fresh _ := 0
-  fresh_gt_free := by intro _ _ h; cases h
+instance : HasVars Nat Name := HasVars.ofNoAtoms Nat Name
 
-instance : GroundStable Name Name where pSubst_ground _ _ := rfl
-instance : LawfulComp Name Name where pSubst_comp _ _ _ := rfl
-instance : LawfulRestrict Name Name where pSubst_restrictBelow _ _ _ _ := rfl
+instance : HasSubst Nat Name Name where
+  pSubst t _ := t
+
+instance : GroundStable Nat Name Name where pSubst_ground _ _ := rfl
+instance : LawfulComp Nat Name Name where pSubst_comp _ _ _ := rfl
+instance : LawfulRestrict Nat Name Name where pSubst_restrictTo _ _ _ _ := rfl
 
 /-- Nothing is ever free, so everything is ground — decidably. -/
-instance : DecidablePred (HasVars.Ground : Name → Prop) := fun _ => isTrue (fun _ h => h)
+instance : DecidablePred (HasVars.Ground (A := Nat) : Name → Prop) :=
+  fun _ => isTrue (fun _ h => h)
 
 /-- `t` may be used at `τ`: either it is unbound, or it was declared at `τ`. -/
 def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
@@ -126,7 +126,7 @@ def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
 /-- Substituting a context cannot change what it says, since substitution fixes every value.
 Stated at `declaredAt` rather than as `pSubst Γ σ = Γ`, which `Std.HashMap` does not let anyone
 prove — the same reason `LawfulTypeSystem.cong` exists. -/
-theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Name) (t τ : Name) :
+theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Nat Name) (t τ : Name) :
     declaredAt (HasSubst.pSubst Γ σ) t τ = declaredAt Γ t τ := by
   rw [declaredAt, declaredAt, Context.pSubst_get?]
   cases Γ.get? t <;> rfl
@@ -171,14 +171,14 @@ Worth noting against STLC, where the same field costs a `sorry`. Most-generality
 there is inference to be most general *about*. -/
 instance : TypeSystem.Named.PrincipalElaborate Name Name Name where
   -- this language draws no metavariables of its own, so the principality claim is unrestricted
-  sourceFresh _ _ _ := 0
+  sourceSupp _ _ _ := []
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
   elaborate Γ t τ :=
     if h : declaredAt Γ t τ = true then
       .mgu ∅
         (by
-          show declaredAt (HasSubst.pSubst Γ (∅ : Subst Name)) t τ = true
+          show declaredAt (HasSubst.pSubst Γ (∅ : Subst Nat Name)) t τ = true
           rw [declaredAt_pSubst]; exact h)
         (fun _ _ => ⟨∅, fun _ _ => rfl⟩)
     else

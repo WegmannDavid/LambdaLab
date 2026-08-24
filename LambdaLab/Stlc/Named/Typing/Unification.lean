@@ -1,5 +1,6 @@
 import LambdaLab.Stlc.Named.Basic
-import LambdaLab.Substitution.Unification.Basic
+import LambdaLab.Nominal.Instances
+import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.Nominal.Unification.Basic
 import LambdaLab.Nominal.Instances
 
@@ -13,7 +14,7 @@ namespace LambdaLab.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N] [HasVars N]
+variable {N : Type} [Atom N]
 
 inductive TyConstructor : Type where
   | base
@@ -42,7 +43,7 @@ private def deconstruct :
   | .arrow a b => .inr ⟨.arrow, Vector.ofFn (fun i =>
       match i with | 0 => a | 1 => b)⟩
 
-instance : Signature Ty where
+instance : Signature Nat Ty where
   Constructor      := TyConstructor
   arity            := TyConstructor.arity
   decEqConstructor := inferInstance
@@ -88,66 +89,9 @@ instance : Signature Ty where
       simp [List.finRange, List.foldr]
       omega
 
-/-! ## The same instance, for the atom-generic `Signature`
+/-! ## `HasSubst Nat Term Ty` — substitute `Ty.mvar`s in annotations.
 
-`LambdaLab.Nominal.Unification.Signature Nat Ty` is the port's version of the class above. The two
-are different classes in different namespaces, so they coexist without ambiguity, and the
-`construct`/`deconstruct`/`size` definitions and every proof are shared verbatim — at `A := Nat`
-the field types are literally the same. That is the concrete evidence that the port changed the
-*parameter* and nothing else.
-
-Interim: it exists so the ported development has a user on a real type rather than only a toy.
-When the migration finishes, the instance above goes and this one stays. -/
-
-instance : LambdaLab.Nominal.Unification.Signature Nat Ty where
-  Constructor      := TyConstructor
-  arity            := TyConstructor.arity
-  decEqConstructor := inferInstance
-  construct        := construct
-  deconstruct      := deconstruct
-  size             := Ty.size
-  construct_deconstruct := by
-    intro a
-    rcases a with n | ⟨c, args⟩
-    · rfl
-    cases c
-    · show deconstruct .base = _
-      simp only [deconstruct]
-      congr
-      apply Vector.ext
-      intro i hi
-      exact absurd hi (Nat.not_lt_zero _)
-    · show deconstruct (.arrow (args.get 0) (args.get 1)) = _
-      simp only [deconstruct]
-      congr
-      apply Vector.ext
-      intro i hi
-      show ((Vector.ofFn _)[i]'hi) = args[i]'hi
-      simp only [Vector.getElem_ofFn]
-      match i, hi with
-      | 0, _ => rfl
-      | 1, _ => rfl
-  deconstruct_construct := by
-    intro a
-    cases a with
-    | mvar n    => rfl
-    | base      => rfl
-    | arrow x y => rfl
-  size_construct_var := by intro _; rfl
-  size_construct := by
-    intro c args
-    cases c
-    · show (1 : Nat) = 1 + (List.finRange 0).foldr _ 0
-      rfl
-    · show 1 + Ty.size (args.get 0) + Ty.size (args.get 1) =
-            1 + (List.finRange 2).foldr
-              (fun i acc => acc + Ty.size (args.get i)) 0
-      simp [List.finRange, List.foldr]
-      omega
-
-/-! ## `HasSubst Term Ty` — substitute `Ty.mvar`s in annotations.
-
-The "variables" of a `Term` (for the purpose of a `Subst Ty`) are the
+The "variables" of a `Term` (for the purpose of a `Subst Nat Ty`) are the
 `Ty.mvar` indices that appear in its type annotations. `pSubst e σ`
 walks `e`, applying `σ` to each annotation. -/
 
@@ -158,40 +102,36 @@ def tyIsFree : (Term N) → Nat → Prop
   | .lam _ τ body, n => HasVars.isFree τ n ∨ tyIsFree body n
   | .app e₁ e₂,    n => tyIsFree e₁ n ∨ tyIsFree e₂ n
 
-def tyFresh : (Term N) → Nat
-  | .var _        => 0
-  | .lam _ τ body => max (HasVars.fresh τ) (tyFresh body)
-  | .app e₁ e₂    => max (tyFresh e₁) (tyFresh e₂)
+/-- The type metavariables occurring in `e`'s annotations. Replaces `tyFresh`, which was a
+`max`-fold: with no order there is nothing to fold, so the atoms are simply concatenated. -/
+def tySupp : (Term N) → List Nat
+  | .var _        => []
+  | .lam _ τ body => HasVars.supp (A := Nat) τ ++ tySupp body
+  | .app e₁ e₂    => tySupp e₁ ++ tySupp e₂
 
-omit [Atom N] [HasVars N] in
-theorem tyFresh_gt_tyIsFree : ∀ (e : (Term N)) (n : Nat),
-    tyIsFree e n → n < tyFresh e := by
+omit [Atom N] in
+theorem mem_tySupp_iff_tyIsFree : ∀ (e : (Term N)) (n : Nat),
+    n ∈ tySupp e ↔ tyIsFree e n := by
   intro e
   induction e with
-  | var _ => intro _ h; cases h
+  | var _ => intro n; simp only [tySupp, tyIsFree, List.not_mem_nil]
   | lam x τ body ih =>
-      intro n h
-      simp only [tyFresh]
-      rcases h with hτ | hb
-      · exact Nat.lt_of_lt_of_le (HasVars.fresh_gt_free _ _ hτ) (Nat.le_max_left _ _)
-      · exact Nat.lt_of_lt_of_le (ih _ hb) (Nat.le_max_right _ _)
+      intro n
+      simp only [tySupp, tyIsFree, List.mem_append, HasVars.mem_supp_iff_isFree, ih]
   | app e₁ e₂ ih₁ ih₂ =>
-      intro n h
-      simp only [tyFresh]
-      rcases h with h₁ | h₂
-      · exact Nat.lt_of_lt_of_le (ih₁ _ h₁) (Nat.le_max_left _ _)
-      · exact Nat.lt_of_lt_of_le (ih₂ _ h₂) (Nat.le_max_right _ _)
+      intro n
+      simp only [tySupp, tyIsFree, List.mem_append, ih₁, ih₂]
 
-def tyPSubst : (Term N) → Subst Ty → (Term N)
+def tyPSubst : (Term N) → Subst Nat Ty → (Term N)
   | .var x,        _ => .var x
   | .lam x τ body, σ => .lam x (HasSubst.pSubst τ σ) (tyPSubst body σ)
   | .app e₁ e₂,    σ => .app (tyPSubst e₁ σ) (tyPSubst e₂ σ)
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 /-- `tyPSubst` preserves `Term.size`, since it only modifies type
 annotations, not term structure. Needed for the well-founded recursion
 in `W`'s app case, whose second recursive call is on `pSubst e₂ σ₁`. -/
-theorem tyPSubst_size (e : (Term N)) (σ : Subst Ty) :
+theorem tyPSubst_size (e : (Term N)) (σ : Subst Nat Ty) :
     (Term.tyPSubst e σ).size = e.size := by
   induction e with
   | var _ => rfl
@@ -200,12 +140,12 @@ theorem tyPSubst_size (e : (Term N)) (σ : Subst Ty) :
 
 end Term
 
-instance : HasVars (Term N) where
+instance : HasVars Nat (Term N) where
   isFree := Term.tyIsFree
-  fresh  := Term.tyFresh
-  fresh_gt_free := Term.tyFresh_gt_tyIsFree
+  supp := Term.tySupp
+  mem_supp_iff_isFree := Term.mem_tySupp_iff_tyIsFree
 
-instance : HasSubst (Term N) Ty where
+instance : HasSubst Nat (Term N) Ty where
   pSubst := Term.tyPSubst
 
 /-! ## Groundness, structurally and generically
@@ -271,9 +211,9 @@ theorem Ty.ground_iff {τ : Ty} : τ.Ground ↔ HasVars.Ground τ := by
         show (a ⇒ b).isGround = true
         simp [Ty.isGround, iha.mpr ha, ihb.mpr hb]
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 /-- **The term-level bridge**: `AnnotsGround` — no metavariable in any annotation — is exactly
-the generic condition, since `HasVars (Term N)`'s `isFree` is `Term.tyIsFree`. -/
+the generic condition, since `HasVars Nat (Term N)`'s `isFree` is `Term.tyIsFree`. -/
 theorem Term.annotsGround_iff_ground {e : Term N} :
     e.AnnotsGround ↔ HasVars.Ground e := by
   induction e with
@@ -305,8 +245,8 @@ client accumulate substitutions across a program and know what each one left alo
 
 `GroundStable` is immediate; `LawfulComp` waits until `Term.pSubst_comp` further down. -/
 
-omit [Atom N] [HasVars N] in
-theorem Term.pSubst_ground {e : Term N} (σ : Subst Ty) (h : HasVars.Ground e) :
+omit [Atom N] in
+theorem Term.pSubst_ground {e : Term N} (σ : Subst Nat Ty) (h : HasVars.Ground e) :
     HasSubst.pSubst e σ = e := by
   show Term.tyPSubst e σ = e
   induction e with
@@ -322,7 +262,7 @@ theorem Term.pSubst_ground {e : Term N} (σ : Subst Ty) (h : HasVars.Ground e) :
       show Term.app (Term.tyPSubst e₁ σ) (Term.tyPSubst e₂ σ) = _
       rw [ih₁ h₁, ih₂ h₂]
 
-instance : GroundStable (Term N) Ty where
+instance : GroundStable Nat (Term N) Ty where
   pSubst_ground σ h := Term.pSubst_ground σ h
 
 /-! ## `pSubst ∅` is the identity on `Term` and on `Ctx` (up to lookup).
@@ -331,9 +271,9 @@ For `Term`: structural. For `Ctx` (a `HashMap`): equality up to layout
 doesn't hold, but every `get?` agrees, which is enough for typing
 proofs (via `HasType.cong`). -/
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 @[simp] theorem Term.tyPSubst_empty (e : (Term N)) :
-    Term.tyPSubst e (∅ : Subst Ty) = e := by
+    Term.tyPSubst e (∅ : Subst Nat Ty) = e := by
   induction e with
   | var _ => rfl
   | lam _ τ body ih =>
@@ -344,8 +284,8 @@ omit [Atom N] [HasVars N] in
       simp only [Term.tyPSubst, ih₁, ih₂]
 
 theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap N Ty) (x : N) :
-    (HasSubst.pSubst Γ (∅ : Subst Ty)).get? x = Γ.get? x := by
-  show (Γ.map (fun _ v => HasSubst.pSubst v (∅ : Subst Ty))).get? x = Γ.get? x
+    (HasSubst.pSubst Γ (∅ : Subst Nat Ty)).get? x = Γ.get? x := by
+  show (Γ.map (fun _ v => HasSubst.pSubst v (∅ : Subst Nat Ty))).get? x = Γ.get? x
   rw [Std.HashMap.get?_eq_getElem?, Std.HashMap.getElem?_map,
       ← Std.HashMap.get?_eq_getElem?]
   cases h : Γ.get? x with
@@ -354,7 +294,7 @@ theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap N Ty) (x : N) :
 
 /-! ## `pSubst` unfolding lemmas for each `Ty` constructor. -/
 
-@[simp] theorem Ty.pSubst_base (σ : Subst Ty) :
+@[simp] theorem Ty.pSubst_base (σ : Subst Nat Ty) :
     HasSubst.pSubst Ty.base σ = Ty.base := by
   show Signature.pSubst Ty.base σ = _
   show Signature.pSubst (Signature.construct (Sum.inr
@@ -362,12 +302,12 @@ theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap N Ty) (x : N) :
   rw [Signature.pSubst_construct]
   rfl
 
-@[simp] theorem Ty.pSubst_mvar (n : Nat) (σ : Subst Ty) :
+@[simp] theorem Ty.pSubst_mvar (n : Nat) (σ : Subst Nat Ty) :
     HasSubst.pSubst (Ty.mvar n) σ = σ.getD n (Ty.mvar n) := by
   show Signature.pSubst (Signature.var n : Ty) σ = _
   exact Signature.pSubst_var n σ
 
-@[simp] theorem Ty.pSubst_arrow (a b : Ty) (σ : Subst Ty) :
+@[simp] theorem Ty.pSubst_arrow (a b : Ty) (σ : Subst Nat Ty) :
     HasSubst.pSubst (Ty.arrow a b) σ =
       Ty.arrow (HasSubst.pSubst a σ) (HasSubst.pSubst b σ) := by
   show Signature.pSubst (Signature.construct (Sum.inr ⟨TyConstructor.arrow,
@@ -396,7 +336,7 @@ theorem HashMap.pSubst_empty_get? (Γ : Std.HashMap N Ty) (x : N) :
 
 /-- Looking up a key in a `σ`-substituted context returns the
 `σ`-substituted value. -/
-theorem HashMap.pSubst_get? (Γ : Std.HashMap N Ty) (σ : Subst Ty)
+theorem HashMap.pSubst_get? (Γ : Std.HashMap N Ty) (σ : Subst Nat Ty)
     (x : N) :
     (HasSubst.pSubst Γ σ).get? x =
       (Γ.get? x).map (fun τ => HasSubst.pSubst τ σ) := by
@@ -415,7 +355,7 @@ targets the named-STLC needs. -/
 /-- **Soundness of `Subst.comp` for `Ty`.** Substituting through the
 composed substitution is the same as substituting through τ first and
 then through σ. Structural induction on the type. -/
-theorem Ty.pSubst_comp (σ τ : Subst Ty) (t : Ty) :
+theorem Ty.pSubst_comp (σ τ : Subst Nat Ty) (t : Ty) :
     HasSubst.pSubst t (Subst.comp σ τ) =
       HasSubst.pSubst (HasSubst.pSubst t τ) σ := by
   induction t with
@@ -438,10 +378,10 @@ theorem Ty.pSubst_comp (σ τ : Subst Ty) (t : Ty) :
   | arrow a b iha ihb =>
       simp only [Ty.pSubst_arrow, iha, ihb]
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 /-- **Soundness of `Subst.comp` for `Term`.** Same composition law, on
 the term substitution `tyPSubst` (which applies σ to annotations). -/
-theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
+theorem Term.tyPSubst_comp (σ τ : Subst Nat Ty) (e : (Term N)) :
     Term.tyPSubst e (Subst.comp σ τ) =
       Term.tyPSubst (Term.tyPSubst e τ) σ := by
   induction e with
@@ -451,21 +391,21 @@ theorem Term.tyPSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
   | app e₁ e₂ ih₁ ih₂ =>
       simp only [Term.tyPSubst, ih₁, ih₂]
 
-omit [Atom N] [HasVars N] in
+omit [Atom N] in
 /-- `HasSubst.pSubst`-flavored corollary of `tyPSubst_comp`, for use in
 proofs that prefer the class API. -/
-theorem Term.pSubst_comp (σ τ : Subst Ty) (e : (Term N)) :
+theorem Term.pSubst_comp (σ τ : Subst Nat Ty) (e : (Term N)) :
     HasSubst.pSubst e (Subst.comp σ τ) =
       HasSubst.pSubst (HasSubst.pSubst e τ) σ :=
   Term.tyPSubst_comp σ τ e
 
-instance : LawfulComp (Term N) Ty where
+instance : LawfulComp Nat (Term N) Ty where
   pSubst_comp e σ τ := Term.pSubst_comp σ τ e
 
 /-- **Soundness of `Subst.comp` for `Ctx`.** Substituting the context
 through `comp σ τ` is `get?`-extensional to substituting through τ then
 σ — which is the form `HasType.cong` consumes. -/
-theorem Ctx.pSubst_comp_get? (Γ : Std.HashMap N Ty) (σ τ : Subst Ty)
+theorem Ctx.pSubst_comp_get? (Γ : Std.HashMap N Ty) (σ τ : Subst Nat Ty)
     (x : N) :
     (HasSubst.pSubst Γ (Subst.comp σ τ)).get? x =
       (HasSubst.pSubst (HasSubst.pSubst Γ τ) σ).get? x := by
@@ -480,8 +420,8 @@ Specializations of `Signature.pSubst_insert_fresh`: extending σ with a
 fresh-from-target binding is action-preserving on terms and (key-by-key)
 on contexts. -/
 
-omit [Atom N] [HasVars N] in
-theorem Term.tyPSubst_insert_fresh (e : (Term N)) (σ : Subst Ty)
+omit [Atom N] in
+theorem Term.tyPSubst_insert_fresh (e : (Term N)) (σ : Subst Nat Ty)
     (k : Nat) (v : Ty) (h_fresh : ¬ HasVars.isFree e k) :
     Term.tyPSubst e (σ.insert k v) = Term.tyPSubst e σ := by
   induction e with
@@ -499,7 +439,7 @@ theorem Term.tyPSubst_insert_fresh (e : (Term N)) (σ : Subst Ty)
 
 /-- `get?`-extensional version of the fresh extension for contexts. -/
 theorem Ctx.pSubst_insert_fresh_get? (Γ : Std.HashMap N Ty)
-    (σ : Subst Ty) (k : Nat) (v : Ty)
+    (σ : Subst Nat Ty) (k : Nat) (v : Ty)
     (h_fresh : ¬ HasVars.isFree Γ k) (x : N) :
     (HasSubst.pSubst Γ (σ.insert k v)).get? x = (HasSubst.pSubst Γ σ).get? x := by
   rw [HashMap.pSubst_get?, HashMap.pSubst_get?]
@@ -511,55 +451,144 @@ theorem Ctx.pSubst_insert_fresh_get? (Γ : Std.HashMap N Ty)
       apply Signature.pSubst_insert_fresh
       intro h_τ_free
       apply h_fresh
-      refine ⟨(x, τ'), ?_, Or.inr h_τ_free⟩
+      refine ⟨(x, τ'), ?_, h_τ_free⟩
       rw [Std.HashMap.mem_toList_iff_getElem?_eq_some,
           ← Std.HashMap.get?_eq_getElem?]
       exact hx
 
-/-! ## Pruning a substitution below a freshness threshold
+/-! ## Pruning a substitution to an atom set
 
-`Signature.pSubst_restrictBelow` says dropping σ's bindings at or above `n` doesn't change its
-action on anything whose free mvars are all below `n`. These are the two specializations the
-elaboration boundary needs: one for terms (whose mvars live in type annotations), one for
-contexts (`get?`-wise, since hashmap equality is not up to layout).
+`Signature.pSubst_restrictTo` says dropping σ's bindings outside `s` doesn't change its action on
+anything whose atoms all lie in `s`. These are the two specializations the elaboration boundary
+needs: one for terms (whose metavariables live in type annotations), one for contexts (`get?`-wise,
+since hashmap equality is not up to layout).
 -/
 
-omit [Atom N] [HasVars N] in
-theorem Term.tyPSubst_restrictBelow (e : Term N) (σ : Subst Ty) (n : Nat)
-    (h : HasVars.fresh e ≤ n) :
-    HasSubst.pSubst e (Subst.restrictBelow σ n) = HasSubst.pSubst e σ := by
+omit [Atom N] in
+theorem Term.tyPSubst_restrictTo (e : Term N) (σ : Subst Nat Ty) (s : List Nat)
+    (h : ∀ a, HasVars.isFree e a → a ∈ s) :
+    HasSubst.pSubst e (Subst.restrictTo σ s) = HasSubst.pSubst e σ := by
   induction e with
   | var x => rfl
   | lam x τ body ih =>
-      have hτ : HasVars.fresh τ ≤ n := Nat.le_trans (Nat.le_max_left _ _) h
-      have hb : HasVars.fresh body ≤ n := Nat.le_trans (Nat.le_max_right _ _) h
+      have hτ : ∀ a, HasVars.isFree τ a → a ∈ s := fun a ha => h a (Or.inl ha)
+      have hb : ∀ a, HasVars.isFree body a → a ∈ s := fun a ha => h a (Or.inr ha)
       -- the IH is stated via `HasSubst.pSubst`; restate it in `tyPSubst` form (defeq) so `rw`
       -- can see it under the constructor
-      have ihb : Term.tyPSubst body (Subst.restrictBelow σ n) = Term.tyPSubst body σ := ih hb
+      have ihb : Term.tyPSubst body (Subst.restrictTo σ s) = Term.tyPSubst body σ := ih hb
       show Term.lam x _ _ = Term.lam x _ _
-      rw [Signature.pSubst_restrictBelow σ n τ hτ, ihb]
+      rw [Signature.pSubst_restrictTo σ s τ hτ, ihb]
   | app e₁ e₂ ih₁ ih₂ =>
-      have h₁ : HasVars.fresh e₁ ≤ n := Nat.le_trans (Nat.le_max_left _ _) h
-      have h₂ : HasVars.fresh e₂ ≤ n := Nat.le_trans (Nat.le_max_right _ _) h
-      have ih₁' : Term.tyPSubst e₁ (Subst.restrictBelow σ n) = Term.tyPSubst e₁ σ := ih₁ h₁
-      have ih₂' : Term.tyPSubst e₂ (Subst.restrictBelow σ n) = Term.tyPSubst e₂ σ := ih₂ h₂
+      have h₁ : ∀ a, HasVars.isFree e₁ a → a ∈ s := fun a ha => h a (Or.inl ha)
+      have h₂ : ∀ a, HasVars.isFree e₂ a → a ∈ s := fun a ha => h a (Or.inr ha)
+      have ih₁' : Term.tyPSubst e₁ (Subst.restrictTo σ s) = Term.tyPSubst e₁ σ := ih₁ h₁
+      have ih₂' : Term.tyPSubst e₂ (Subst.restrictTo σ s) = Term.tyPSubst e₂ σ := ih₂ h₂
       show Term.app _ _ = Term.app _ _
       rw [ih₁', ih₂']
 
 /-- The term specialization, packaged as the class — the form a generic consumer asks for. `Ty`
 gets its instance from `Signature` in `Bridge.lean`; a term is not a signature's own type (its
 metavariables live in annotations), so this one is proved here. -/
-instance : LawfulRestrict (Term N) Ty where
-  pSubst_restrictBelow := Term.tyPSubst_restrictBelow
+instance : LawfulRestrict Nat (Term N) Ty where
+  pSubst_restrictTo := Term.tyPSubst_restrictTo
 
-theorem Ctx.pSubst_restrictBelow_get? (Γ : Std.HashMap N Ty) (σ : Subst Ty) (n : Nat)
-    (h : HasVars.fresh Γ ≤ n) (x : N) :
-    (HasSubst.pSubst Γ (Subst.restrictBelow σ n)).get? x = (HasSubst.pSubst Γ σ).get? x := by
+theorem Ctx.pSubst_restrictTo_get? (Γ : Std.HashMap N Ty) (σ : Subst Nat Ty) (s : List Nat)
+    (h : ∀ a, HasVars.isFree Γ a → a ∈ s) (x : N) :
+    (HasSubst.pSubst Γ (Subst.restrictTo σ s)).get? x = (HasSubst.pSubst Γ σ).get? x := by
   rw [HashMap.pSubst_get?, HashMap.pSubst_get?]
   cases hx : Γ.get? x with
   | none => rfl
   | some τ =>
       simp only [Option.map_some]
-      exact congrArg some (Signature.pSubst_restrictBelow σ n τ
-        (Nat.le_trans (HashMap.fresh_ge_get? Γ x τ hx) h))
+      have hmem : (x, τ) ∈ Γ.toList := by
+        rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+        exact hx
+      exact congrArg some (Signature.pSubst_restrictTo σ s τ
+        (fun a ha => h a ⟨(x, τ), hmem, ha⟩))
+
+/-! ## The generation-side counter
+
+Pruning is stated over an atom *set* (`Subst.restrictTo`), which is what made the port order-free.
+Generation is different: `gen` allocates metavariables by counting up from a threshold, so its
+side conditions really are about `Nat`'s order. That is a fact about a counter, not a support
+bound, and it is the one place the order legitimately survives — so the counter is *derived* from
+the support here rather than being a field of the substitution interface. -/
+
+/-- A counter above every metavariable in `l` — what `gen` allocates from. -/
+def counterAbove (l : List Nat) : Nat := l.foldr max 0 + 1
+
+theorem foldr_max_append (l₁ l₂ : List Nat) :
+    (l₁ ++ l₂).foldr max 0 = max (l₁.foldr max 0) (l₂.foldr max 0) := by
+  induction l₁ with
+  | nil => simp
+  | cons x xs ih => simp only [List.cons_append, List.foldr_cons, ih]; omega
+
+theorem counterAbove_append (l₁ l₂ : List Nat) :
+    counterAbove (l₁ ++ l₂) = max (counterAbove l₁) (counterAbove l₂) := by
+  simp only [counterAbove, foldr_max_append]; omega
+
+theorem lt_counterAbove {l : List Nat} {a : Nat} (h : a ∈ l) : a < counterAbove l :=
+  Nat.lt_succ_of_le (LambdaLab.Nominal.le_foldr_max l a h)
+
+/-- A counter above every metavariable of `x` — what `HasVars.fresh` used to be, now *derived*
+from `supp` instead of being a class field with a law. Only the algorithms that allocate
+metavariables need it, which is the point: the substitution interface no longer mentions it. -/
+def freshIdx {α : Type} [HasVars Nat α] (x : α) : Nat :=
+  counterAbove (HasVars.supp (A := Nat) x)
+
+theorem lt_freshIdx {α : Type} [HasVars Nat α] {x : α} {a : Nat}
+    (h : HasVars.isFree x a) : a < freshIdx x :=
+  lt_counterAbove ((HasVars.mem_supp_iff_isFree x a).mpr h)
+
+theorem not_isFree_of_freshIdx_le {α : Type} [HasVars Nat α] {x : α} {a : Nat}
+    (h : freshIdx x ≤ a) : ¬ HasVars.isFree x a :=
+  fun hf => absurd (lt_freshIdx hf) (by omega)
+
+theorem foldr_max_le_of_subset {l₁ l₂ : List Nat} (h : l₁ ⊆ l₂) :
+    l₁.foldr max 0 ≤ l₂.foldr max 0 := by
+  induction l₁ with
+  | nil => exact Nat.zero_le _
+  | cons x xs ih =>
+      simp only [List.foldr_cons]
+      exact Nat.max_le.mpr
+        ⟨LambdaLab.Nominal.le_foldr_max _ _ (h List.mem_cons_self),
+         ih (fun a ha => h (List.mem_cons_of_mem _ ha))⟩
+
+theorem freshIdx_le_counterAbove {α : Type} [HasVars Nat α] {x : α} {l : List Nat}
+    (h : ∀ a, HasVars.isFree x a → a ∈ l) : freshIdx x ≤ counterAbove l := by
+  simp only [freshIdx, counterAbove]
+  exact Nat.add_le_add_right (foldr_max_le_of_subset (fun a ha =>
+    h a ((HasVars.mem_supp_iff_isFree x a).mp ha))) 1
+
+/-! The structural equations `HasVars.fresh` used to satisfy by `rfl`. They are one-liners off
+`counterAbove_append`, because `tySupp` concatenates where `tyFresh` took a `max`. -/
+
+/-- A carrier whose metavariables are all among another's has no larger counter. Replaces
+`HashMap.fresh_ge_get?` and friends, which were `max`-fold facts; this is one subset argument. -/
+theorem freshIdx_le_of_isFree_subset {α β : Type} [HasVars Nat α] [HasVars Nat β]
+    {x : α} {y : β} (h : ∀ a, HasVars.isFree x a → HasVars.isFree y a) :
+    freshIdx x ≤ freshIdx y := by
+  simp only [freshIdx, counterAbove]
+  exact Nat.add_le_add_right (foldr_max_le_of_subset (fun a ha =>
+    (HasVars.mem_supp_iff_isFree y a).mpr (h a ((HasVars.mem_supp_iff_isFree x a).mp ha)))) 1
+
+@[simp] theorem freshIdx_var (n : Nat) : freshIdx (Signature.var n : Ty) = n + 1 := by
+  show counterAbove (Signature.vars (Signature.var n : Ty)) = _
+  rw [Signature.vars_var]
+  simp [counterAbove]
+
+omit [Atom N] in
+@[simp] theorem freshIdx_lam (x : N) (α : Ty) (body : Term N) :
+    freshIdx (Term.lam x α body) = max (freshIdx α) (freshIdx body) := by
+  show counterAbove (Term.tySupp (Term.lam x α body)) = _
+  rw [Term.tySupp, counterAbove_append]
+  rfl
+
+omit [Atom N] in
+@[simp] theorem freshIdx_app (e₁ e₂ : Term N) :
+    freshIdx (Term.app e₁ e₂) = max (freshIdx e₁) (freshIdx e₂) := by
+  show counterAbove (Term.tySupp (Term.app e₁ e₂)) = _
+  rw [Term.tySupp, counterAbove_append]
+  rfl
+
 end LambdaLab.Stlc.Named
