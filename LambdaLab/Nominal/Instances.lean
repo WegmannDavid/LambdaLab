@@ -18,6 +18,15 @@ so it depends on `Pipeline/`, and `Nominal/` must never import back into `Pipeli
 has no such dependency, so it does live here, and `le_foldr_max` — the list lemma both proofs
 turn on — comes with it.
 
+## `Nat` is a supply of atoms
+
+The same argument with the length step deleted: `used.foldr max 0 + 1` is bigger than everything
+in `used`, so it is not in `used`, and `le_foldr_max` proves it directly rather than through a
+`String.length`. It is here for the nominal development rather than for the object languages —
+`Perm`, support and α-equivalence want a concrete atom type to test against, and one whose
+freshness is arithmetic keeps `decide` and `omega` usable in those proofs. Nothing in `Stlc/`
+uses it.
+
 Like `Atom.lean`, and unlike the rest of `Nominal/`, this file must stay Mathlib-free: the `stlc`
 and `arith` executables run at `String`, so their import cone runs through here.
 -/
@@ -56,5 +65,21 @@ instance : Atom String where
   decEq := inferInstance
   freshFor := stringFreshFor
   freshFor_not_in := stringFreshFor_not_in
+
+/-! ## `Nat` is a supply of atoms -/
+
+/-- One more than every element of `used`. -/
+def natFreshFor (used : List Nat) : Nat := used.foldr max 0 + 1
+
+theorem natFreshFor_not_in (used : List Nat) : natFreshFor used ∉ used := by
+  intro h_in
+  have h_le : natFreshFor used ≤ used.foldr max 0 := le_foldr_max _ _ h_in
+  simp only [natFreshFor] at h_le
+  omega
+
+instance : Atom Nat where
+  decEq := inferInstance
+  freshFor := natFreshFor
+  freshFor_not_in := natFreshFor_not_in
 
 end LambdaLab.Nominal
