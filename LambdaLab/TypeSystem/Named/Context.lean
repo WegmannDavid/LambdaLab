@@ -84,9 +84,16 @@ every existing proof keeps the instance it was written against. This one fires o
 generic cannot apply — which is the whole point, since not needing `[HasVars N]` is what it is
 for.
 
-`Subst 𝕊 = Std.HashMap Nat 𝕊` is untouched either way, because `Nat` has no `Atom`
-instance. That matters: substitution-into-substitution must keep the key-aware support semantics
-that unification depends on. -/
+`Subst 𝕊 = Std.HashMap Nat 𝕊` is untouched either way, and it matters that it is:
+substitution-into-substitution must keep the key-aware support semantics that unification depends
+on.
+
+⚠ **The reason it is untouched changed on 2026-08-24.** It used to be that `Nat` had no `Atom`
+instance, so this instance could not even apply to a `Subst`. `Nominal/Instances.lean` now gives
+`Nat` one, so both instances apply and the *only* thing keeping the key-aware one is `low` here
+plus `HasVars Nat` being available at default priority. The guards below stopped being a formality
+and started being the proof. The remaining hazard is the mirror image of the old one: **delete or
+demote `HasVars Nat` and every substitution silently acquires value-only support.** -/
 
 /-- Substitution into a context: map over the values, leave the keys alone. -/
 instance (priority := low) {N Ty β : Type} [Atom N] [HasSubst Ty β] :
@@ -104,9 +111,11 @@ instance (priority := low) {N Ty β : Type} [Atom N] [HasSubst Ty β] :
 
 Two instances now apply to `Std.HashMap`, so *which* one elaborates is a real property of the
 environment rather than a local fact. Both directions are pinned below, by `rfl` on the instance
-itself. They cost nothing and they fail loudly the day the balance shifts — in particular the day
-someone gives `Nat` an `Atom` instance, which would silently hand every *substitution* the
-value-only support semantics and quietly change what unification means. -/
+itself. They cost nothing and they fail loudly the day the balance shifts.
+
+They were written anticipating "the day someone gives `Nat` an `Atom` instance". That day came
+(`835e83c`) and they held, because `low` had already covered it — but they are now the load-bearing
+check rather than a precaution, so do not delete them. -/
 
 /-- Substitutions keep the key-aware instance: for `Subst 𝕊 = HashMap Nat 𝕊` the keys *are* the
 metavariables, so they must count towards support. -/

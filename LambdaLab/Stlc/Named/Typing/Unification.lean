@@ -1,5 +1,7 @@
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Substitution.Unification.Basic
+import LambdaLab.Nominal.Unification.Basic
+import LambdaLab.Nominal.Instances
 
 /-! # `Signature` instance for the named-STLC type language `Ty`
 
@@ -41,6 +43,63 @@ private def deconstruct :
       match i with | 0 => a | 1 => b)⟩
 
 instance : Signature Ty where
+  Constructor      := TyConstructor
+  arity            := TyConstructor.arity
+  decEqConstructor := inferInstance
+  construct        := construct
+  deconstruct      := deconstruct
+  size             := Ty.size
+  construct_deconstruct := by
+    intro a
+    rcases a with n | ⟨c, args⟩
+    · rfl
+    cases c
+    · show deconstruct .base = _
+      simp only [deconstruct]
+      congr
+      apply Vector.ext
+      intro i hi
+      exact absurd hi (Nat.not_lt_zero _)
+    · show deconstruct (.arrow (args.get 0) (args.get 1)) = _
+      simp only [deconstruct]
+      congr
+      apply Vector.ext
+      intro i hi
+      show ((Vector.ofFn _)[i]'hi) = args[i]'hi
+      simp only [Vector.getElem_ofFn]
+      match i, hi with
+      | 0, _ => rfl
+      | 1, _ => rfl
+  deconstruct_construct := by
+    intro a
+    cases a with
+    | mvar n    => rfl
+    | base      => rfl
+    | arrow x y => rfl
+  size_construct_var := by intro _; rfl
+  size_construct := by
+    intro c args
+    cases c
+    · show (1 : Nat) = 1 + (List.finRange 0).foldr _ 0
+      rfl
+    · show 1 + Ty.size (args.get 0) + Ty.size (args.get 1) =
+            1 + (List.finRange 2).foldr
+              (fun i acc => acc + Ty.size (args.get i)) 0
+      simp [List.finRange, List.foldr]
+      omega
+
+/-! ## The same instance, for the atom-generic `Signature`
+
+`LambdaLab.Nominal.Unification.Signature Nat Ty` is the port's version of the class above. The two
+are different classes in different namespaces, so they coexist without ambiguity, and the
+`construct`/`deconstruct`/`size` definitions and every proof are shared verbatim — at `A := Nat`
+the field types are literally the same. That is the concrete evidence that the port changed the
+*parameter* and nothing else.
+
+Interim: it exists so the ported development has a user on a real type rather than only a toy.
+When the migration finishes, the instance above goes and this one stays. -/
+
+instance : LambdaLab.Nominal.Unification.Signature Nat Ty where
   Constructor      := TyConstructor
   arity            := TyConstructor.arity
   decEqConstructor := inferInstance

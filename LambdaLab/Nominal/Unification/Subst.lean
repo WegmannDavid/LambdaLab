@@ -224,10 +224,111 @@ instance {A α β : Type} [Atom A] [HasSubst A α β] : HasSubst A (List α) β 
       fun ⟨x, hx, h⟩ => ⟨x, hx, (HasVars.mem_supp_iff_isFree x a).mpr h⟩⟩
   pSubst xs σ := xs.map (fun x => HasSubst.pSubst x σ)
 
+instance {A α α' β : Type} [Atom A] [HasSubst A α β] [HasSubst A α' β] [HasSubst A β β]
+    [LawfulComp A α β] [LawfulComp A α' β] : LawfulComp A (α × α') β where
+  pSubst_comp p σ τ := by
+    show (HasSubst.pSubst p.1 (Subst.comp σ τ), HasSubst.pSubst p.2 (Subst.comp σ τ))
+        = (HasSubst.pSubst (HasSubst.pSubst p.1 τ) σ, HasSubst.pSubst (HasSubst.pSubst p.2 τ) σ)
+    rw [LawfulComp.pSubst_comp p.1 σ τ, LawfulComp.pSubst_comp p.2 σ τ]
+
+/-- A pair is ground exactly when both components are, so `GroundStable` lifts componentwise —
+and eta makes the reassembled pair the original one. -/
+instance {A α α' β : Type} [Atom A] [HasSubst A α β] [HasSubst A α' β]
+    [GroundStable A α β] [GroundStable A α' β] : GroundStable A (α × α') β where
+  pSubst_ground {p} σ h := by
+    show (HasSubst.pSubst p.1 σ, HasSubst.pSubst p.2 σ) = p
+    rw [GroundStable.pSubst_ground σ (fun n hn => h n (Or.inl hn)),
+        GroundStable.pSubst_ground σ (fun n hn => h n (Or.inr hn))]
+
+/-- A pair's atoms are the two components' together, so an atom set the pair sits inside is one
+both components sit inside. -/
+instance {A α α' β : Type} [Atom A] [HasSubst A α β] [HasSubst A α' β]
+    [LawfulRestrict A α β] [LawfulRestrict A α' β] : LawfulRestrict A (α × α') β where
+  pSubst_restrictTo p σ s h := by
+    show (HasSubst.pSubst p.1 _, HasSubst.pSubst p.2 _)
+        = (HasSubst.pSubst p.1 σ, HasSubst.pSubst p.2 σ)
+    rw [LawfulRestrict.pSubst_restrictTo p.1 σ s (fun a ha => h a (Or.inl ha)),
+        LawfulRestrict.pSubst_restrictTo p.2 σ s (fun a ha => h a (Or.inr ha))]
+
+instance {A α β : Type} [Atom A] [HasSubst A α β] [HasSubst A β β] [LawfulComp A α β] :
+    LawfulComp A (List α) β where
+  pSubst_comp xs σ τ := by
+    show xs.map _ = (xs.map _).map _
+    rw [List.map_map]
+    exact List.map_congr_left (fun x _ => LawfulComp.pSubst_comp x σ τ)
+
+/-- A ground list is one all of whose elements are ground, so the pointwise map is the identity.
+
+This is what makes an already-elaborated *program* a fixed point of elaboration: `Program` is a
+`Command` paired with a `List Command`, and the two instances above and here are what carry
+groundness of every declaration up to groundness of the file. -/
+instance {A α β : Type} [Atom A] [HasSubst A α β] [GroundStable A α β] :
+    GroundStable A (List α) β where
+  pSubst_ground {xs} σ h := by
+    show xs.map _ = xs
+    rw [List.map_congr_left
+      (fun x hx => GroundStable.pSubst_ground σ (fun n hn => h n ⟨x, hx, hn⟩))]
+    exact List.map_id xs
+
+/-- A list's atoms include every element's, so pruning invisible to the list is pruning invisible
+to each element, and the pointwise maps agree. -/
+instance {A α β : Type} [Atom A] [HasSubst A α β] [LawfulRestrict A α β] :
+    LawfulRestrict A (List α) β where
+  pSubst_restrictTo xs σ s h := by
+    show xs.map _ = xs.map _
+    refine List.map_congr_left (fun x hx => ?_)
+    exact LawfulRestrict.pSubst_restrictTo x σ s (fun a ha => h a ⟨x, hx, ha⟩)
+
 @[simp] theorem List.length_pSubst {A α β : Type} [Atom A] [HasSubst A α β]
     (xs : List α) (σ : Subst A β) :
     (HasSubst.pSubst xs σ : List α).length = xs.length := by
   show (xs.map (fun x => HasSubst.pSubst x σ)).length = xs.length
   exact List.length_map _
+
+/-! ## An atom is its own variable
+
+The old file had this at `Nat` only ("for a bare `Nat`, the only free variable is the number
+itself"). Over an atom supply it is generic, and it is what gives `Subst A 𝕊 = HashMap A 𝕊` its
+key-aware support: the keys of a substitution *are* the atoms it binds. -/
+
+instance instHasVarsAtom {A : Type} [Atom A] : HasVars A A where
+  isFree a b := a = b
+  supp a := [a]
+  mem_supp_iff_isFree a b := by simp [eq_comm]
+
+/-- The instance for a carrier that mentions no atoms of `A` at all — the generic form of the old
+`HasVars String` ("keys are binder names, not metavariables, so they contribute no support").
+
+Deliberately **not** an instance: as a blanket one it would overlap `instHasVarsAtom` at `K = A`,
+and the two disagree (`a = b` versus `False`). Object languages opt in per name type. -/
+@[reducible] def HasVars.ofNoAtoms (A K : Type) : HasVars A K where
+  isFree _ _ := False
+  supp _ := []
+  mem_supp_iff_isFree _ _ := by simp
+
+/-! ## Substitution into a hashmap
+
+Generalises substitution-into-substitution: any `HashMap K V` with atom-bearing keys and
+substitutable values is itself substitutable. Support is a concatenation where the old instance
+took a `max` over a private `pairFresh`; with no order there is nothing to fold. -/
+
+instance instHasSubstHashMap {A K V β : Type} [Atom A] [BEq K] [Hashable K] [HasVars A K]
+    [HasSubst A V β] : HasSubst A (Std.HashMap K V) β where
+  isFree m a := ∃ p ∈ m.toList, HasVars.isFree p.1 a ∨ HasVars.isFree p.2 a
+  supp m := m.toList.flatMap
+    (fun p => HasVars.supp (A := A) p.1 ++ HasVars.supp (A := A) p.2)
+  mem_supp_iff_isFree m a := by
+    simp only [List.mem_flatMap, List.mem_append, HasVars.mem_supp_iff_isFree]
+  pSubst m s := m.map (fun _ v => HasSubst.pSubst v s)
+
+/-- Every atom of a stored value is an atom of the map. The order-free `HashMap.fresh_ge_get?`:
+where that bounded `fresh v` by `fresh m`, this says `supp v ⊆ supp m` one atom at a time. -/
+theorem HashMap.isFree_of_get? {A K V β : Type} [Atom A] [BEq K] [Hashable K] [LawfulBEq K]
+    [HasVars A K] [HasSubst A V β] (m : Std.HashMap K V) (k : K) (v : V)
+    (h : m.get? k = some v) (a : A) (ha : HasVars.isFree v a) :
+    HasVars.isFree (A := A) m a := by
+  refine ⟨(k, v), ?_, Or.inr ha⟩
+  rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+  exact h
 
 end LambdaLab.Nominal.Unification
