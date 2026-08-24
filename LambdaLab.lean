@@ -58,6 +58,7 @@ import LambdaLab.Inductive.Example
 import LambdaLab.Nominal.Atom
 import LambdaLab.Nominal.Basic
 import LambdaLab.Nominal.Instances
+import LambdaLab.Nominal.Substitution
 import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.TypeSystem.Intrinsic.Basic
