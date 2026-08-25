@@ -22,7 +22,13 @@ world: their translations multi-step to a common de Bruijn term.
 
 We do not claim joint convergence on named terms — that would require
 α-equivalence, since freshness choices in `Term.subst` make β
-nondeterministic on syntactic terms. -/
+nondeterministic on syntactic terms.
+
+That claim *is* made downstream, now that α-equivalence exists:
+`Stlc/Named/TypeSystem.lean`'s `instConfluent` joins the named reducts up
+to `≈α`, using this theorem plus the lifting lemmas in
+`Stlc/Named/Alpha.lean`. This file stays the de Bruijn statement it always
+was — the honest one at this layer, since `≈α` is not in scope here. -/
 theorem MStep.confluent : ∀ {e e₁ e₂ : (Term String)} (Γ : List String),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶* e₁ → e ⟶* e₂ →

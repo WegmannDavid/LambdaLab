@@ -210,12 +210,13 @@ parameters do not include a `Ty` to be typed at.
 
 ## The law that is deliberately *not* here
 
-The companion is compatibility with reduction — `t ≈α u → t ⟶ t' → ∃ u', u ⟶ u' ∧ t' ≈α u'`. It
-belongs in this family and it is not a field, because no instance in this repository could
-discharge it today: `Stlc/Named/` translates named steps *to* de Bruijn (`Step.toDB_step`) and has
-no converse, so the reduct `u'` cannot be produced. Adding it would be the mistake this file warns
-about at the top — a field no instance can discharge is a field that keeps instances from existing.
-It is recorded here so the gap is visible rather than merely absent. -/
+The companion is compatibility with reduction — `t ≈α u → t ⟶ t' → ∃ u', u ⟶* u' ∧ t' ≈α u'`. It
+belongs in this family, and it was left out because no instance could discharge it: `Stlc/Named/`
+translated named steps *to* de Bruijn with no converse, so the reduct `u'` could not be produced.
+That converse now exists (`Term.step_reflect`), which is what let `Confluent` be discharged, so the
+original objection is gone and the law could be added. It has not been, because nothing yet asks
+for it — the reduct it produces is multi-step, so a caller wanting the single-step form would be
+disappointed anyway. Recorded here so the choice stays visible. -/
 class LawfulAlphaEq (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty, HasAlphaEq Tm where
   /-- **Typing does not see the difference**: α-equal terms have the same types, in the same
   context. -/

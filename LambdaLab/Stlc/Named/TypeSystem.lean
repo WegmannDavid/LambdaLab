@@ -1,3 +1,4 @@
+import LambdaLab.Stlc.Named.Step.Confluence
 import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.Stlc.Named.Alpha
 import LambdaLab.Stlc.Named.Typing.Preservation
@@ -154,19 +155,18 @@ instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N)
 `StronglyNormalizing` is discharged; `Confluent` and `HasEval`/`LawfulHasEval` are not, and the
 reasons differ:
 
-* **`Confluent` is stateable now, and still not proved.** It used to be unstateable: the class
-  asked for a common reduct in `Tm` itself, and `Named.MStep.confluent` cannot give one — two
-  reduction paths pick different fresh binder names, so they converge only up to α-equivalence,
-  which is why that theorem states convergence *after* translation to de Bruijn. The class now
-  joins its reducts up to `≈α`, and `Stlc/Named/Alpha.lean` supplies the `HasAlphaEq` instance, so
-  the field finally says something this language could satisfy.
+* **`Confluent` is discharged**, up to `≈α`. It used to be unstateable: the class asked for a
+  common reduct in `Tm` itself, and `Named.MStep.confluent` cannot give one — two reduction paths
+  pick different fresh binder names, so they converge only up to α-equivalence, which is why that
+  theorem states convergence *after* translation to de Bruijn. On-the-nose joining was not merely
+  unproved here, it was false.
 
-  What is missing is the proof, and it is a specific gap: `MStep.confluent` hands back a common
-  *de Bruijn* term `d`, and filling the field needs named reducts `u₁ u₂` with `u₁ ≈α u₂`. That
-  means lifting `e₁.toDB Γ ⟶* d` back to a named reduction, and this development only goes the
-  other way — `Step.toDB_step` translates named steps to de Bruijn ones, with no converse. De
-  Bruijn itself has confluence on the nose (`Stlc.DeBruijn.MStep.confluent`) but cannot instantiate
-  anything here: its context is a `List Ty`, not a `Context N Ty`.
+  What closed it, once the class joined its reducts up to `≈α`, was the direction `Translation.lean`
+  never needed: `Term.step_reflect` lifts a de Bruijn step back to a named one (the erasure is
+  shape-preserving, and the β case is `Term.toDB_subst` read right to left), `Term.mstep_reflect`
+  iterates it, and `Term.alphaEq_of_toDB` turns the resulting agreement of erasures into `≈α`. All
+  three are in `Stlc/Named/Alpha.lean`.
+
 * **`HasEval` is open by choice** — the evaluator exists (`Step/Eval.lean`, on `SNTerm`) but what
   it should be at the interface has not been settled. -/
 
@@ -178,6 +178,31 @@ The field could not ask for well-foundedness of `⟶`: `omega_not_sn` refutes th
 instance instStronglyNormalizing :
     TypeSystem.Named.StronglyNormalizing String (Term String) Ty where
   StronglyNormalizing h := HasType.sn h
+
+/-- **Confluence**, pinned at `String` like everything that detours through de Bruijn binder lists.
+
+The reducts are joined **up to `≈α`**, and they have to be: the β-rule renames binders out of the
+way through `Atom.freshFor`, so two reduction paths from one term reach results that differ in
+their bound names. Joining them on the nose is not merely unproved for this language, it is false.
+
+The proof is `MStep.confluent` — which converges only after translation to de Bruijn — plus the two
+halves that were missing until now, both in `Stlc/Named/Alpha.lean`: `Term.mstep_reflect` lifts each
+de Bruijn reduction back to a named one, and `Term.alphaEq_of_toDB` turns the resulting agreement of
+erasures into `≈α`. The context is `t.freeVars`, the smallest one `MStep.confluent` accepts, and
+reduction never introduces a free variable (`MStep.preserves_freeVars`), so it stays adequate all
+the way down. -/
+instance instConfluent : TypeSystem.Named.Confluent String (Term String) Ty where
+  Confluent {_Γ} {t t₁ t₂} {_τ} _ht h₁ h₂ := by
+    obtain ⟨d, hd₁, hd₂⟩ := MStep.confluent t.freeVars (fun _ hw => hw) h₁ h₂
+    have hfv1 : ∀ w ∈ t₁.freeVars, w ∈ t.freeVars := MStep.preserves_freeVars h₁
+    have hfv2 : ∀ w ∈ t₂.freeVars, w ∈ t.freeVars := MStep.preserves_freeVars h₂
+    obtain ⟨u₁, hs₁, he₁⟩ := Term.mstep_reflect hd₁ t₁ rfl hfv1
+    obtain ⟨u₂, hs₂, he₂⟩ := Term.mstep_reflect hd₂ t₂ rfl hfv2
+    refine ⟨u₁, u₂, hs₁, hs₂, ?_⟩
+    exact Term.alphaEq_of_toDB
+      (fun w hw => hfv1 w (MStep.preserves_freeVars hs₁ w hw))
+      (fun w hw => hfv2 w (MStep.preserves_freeVars hs₂ w hw))
+      (he₁.trans he₂.symm)
 
 /-! ## The fields are definitionally what they came from
 

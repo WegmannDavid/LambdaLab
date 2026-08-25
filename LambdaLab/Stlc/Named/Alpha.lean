@@ -45,9 +45,13 @@ the body gives an α-equal term. Without it "this is an equivalence relation" wo
 little — `fun _ _ => True` is an equivalence relation too. It is proved from `toDB_rename`, which
 `Translation.lean` already had for the substitution proof.
 
-Not here: that `≈α` is a congruence for `HasType` and for `⟶`. Both are real theorems rather than
-bookkeeping, and the second needs a translation *back* from de Bruijn steps to named ones, which
-this development does not have — `Step.toDB_step` goes one way only.
+That `≈α` is a congruence for `HasType` is here (`Term.AlphaEq.hasType`), and so is the machinery
+for reduction: `Term.step_reflect` supplies the direction `Translation.lean` never needed, lifting a
+de Bruijn step back to a named one. With it, `Stlc/Named/TypeSystem.lean` discharges `Confluent`.
+
+Not here: the congruence itself, `t ≈α u → t ⟶ t' → ∃ u', u ⟶* u' ∧ t' ≈α u'`. It is now within
+reach rather than blocked — `step_reflect` is the piece it was waiting on — but it is not a field of
+`LawfulAlphaEq` and nothing yet asks for it.
 -/
 
 namespace LambdaLab.Stlc.Named
@@ -477,6 +481,93 @@ theorem Term.alphaEq_of_toDB {t u : Term N} {Γ : List N}
     (heq : t.toDB Γ = u.toDB Γ) : t.AlphaEq u :=
   ⟨Term.freeVars_eq_of_toDB' ht hu heq,
    fun Γ' _ => Term.toDB_transport t u [] [] Γ Γ' rfl ht hu heq⟩
+
+/-! ## Lifting a de Bruijn reduction back to a named one
+
+The direction `Translation.lean` never needed: `Step.toDB_step` carries a named step down to de
+Bruijn, and this carries a de Bruijn step back up. It is what confluence needs, because
+`MStep.confluent` produces a common reduct on the *de Bruijn* side and `Confluent` asks for named
+ones.
+
+It goes through because `toDB` is shape-preserving — `var` to `var`, `lam` to `lam`, `app` to
+`app` — so a redex downstairs sits exactly where one sits upstairs, and the β case is
+`Term.toDB_subst` read right to left. -/
+
+/-- **A de Bruijn step lifts.** Whatever `e`'s erasure steps to, `e` itself steps to something that
+erases to it. -/
+theorem Term.step_reflect :
+    ∀ (e : Term N) (Γ : List N) (d : Stlc.DeBruijn.Term),
+      (∀ w ∈ e.freeVars, w ∈ Γ) →
+      Stlc.DeBruijn.Step (e.toDB Γ) d →
+      ∃ u : Term N, Step e u ∧ u.toDB Γ = d := by
+  intro e
+  induction e with
+  | var w => intro Γ d _ hs; simp only [Term.toDB] at hs; cases hs
+  | lam x τ b ih =>
+      intro Γ d hfv hs
+      simp only [Term.toDB] at hs
+      cases hs with
+      | lam hb =>
+          obtain ⟨u, hstep, herase⟩ := ih (x :: Γ) _
+            (fun w hw => by
+              by_cases hwx : w = x
+              · simp [hwx]
+              · exact List.mem_cons_of_mem _
+                  (hfv w (by simp [Term.freeVars, List.mem_filter, hw, hwx])))
+            hb
+          exact ⟨Term.lam x τ u, Step.lam hstep, by simp [Term.toDB, herase]⟩
+  | app f a ihf iha =>
+      intro Γ d hfv hs
+      have hff : ∀ w ∈ f.freeVars, w ∈ Γ :=
+        fun w hw => hfv w (by simp [Term.freeVars, hw])
+      have hfa : ∀ w ∈ a.freeVars, w ∈ Γ :=
+        fun w hw => hfv w (by simp [Term.freeVars, hw])
+      cases f with
+      | var w =>
+          simp only [Term.toDB] at hs
+          cases hs with
+          | appL hl => cases hl
+          | appR hr =>
+              obtain ⟨u, hstep, herase⟩ := iha Γ _ hfa hr
+              exact ⟨Term.app (Term.var w) u, Step.appR hstep, by simp [Term.toDB, herase]⟩
+      | app g h =>
+          simp only [Term.toDB] at hs
+          cases hs with
+          | appL hl =>
+              obtain ⟨u, hstep, herase⟩ := ihf Γ _ hff (by simpa [Term.toDB] using hl)
+              exact ⟨Term.app u a, Step.appL hstep, by simp [Term.toDB, herase]⟩
+          | appR hr =>
+              obtain ⟨u, hstep, herase⟩ := iha Γ _ hfa hr
+              exact ⟨Term.app (Term.app g h) u, Step.appR hstep, by simp [Term.toDB, herase]⟩
+      | lam x σ fb =>
+          simp only [Term.toDB] at hs
+          cases hs with
+          | beta =>
+              refine ⟨fb.subst x a, Step.beta, ?_⟩
+              have := Term.toDB_subst fb [] Γ x a (fun w hw => hfa w hw) (by simp) (by simp)
+              simpa [Term.toDB, iterShift0] using this
+          | appL hl =>
+              obtain ⟨u, hstep, herase⟩ := ihf Γ _ hff (by simpa [Term.toDB] using hl)
+              exact ⟨Term.app u a, Step.appL hstep, by simp [Term.toDB, herase]⟩
+          | appR hr =>
+              obtain ⟨u, hstep, herase⟩ := iha Γ _ hfa hr
+              exact ⟨Term.app (Term.lam x σ fb) u, Step.appR hstep, by simp [Term.toDB, herase]⟩
+
+/-- **A de Bruijn reduction lifts.** The multi-step form, by induction from the *front* of the
+chain — `RTC.head_induction_on`, since each lifted step has to be taken before the rest can be. -/
+theorem Term.mstep_reflect {Γ : List N} :
+    ∀ {c d : Stlc.DeBruijn.Term}, RTC Stlc.DeBruijn.Step c d →
+      ∀ e : Term N, e.toDB Γ = c → (∀ w ∈ e.freeVars, w ∈ Γ) →
+        ∃ u : Term N, RTC Step e u ∧ u.toDB Γ = d := by
+  intro c d h
+  induction h using RTC.head_induction_on with
+  | refl => intro e he _; exact ⟨e, RTC.refl, he⟩
+  | head hstep _ ih =>
+      intro e he hfv
+      obtain ⟨u₁, hs1, he1⟩ := Term.step_reflect e Γ _ hfv (he ▸ hstep)
+      obtain ⟨u, hus, hue⟩ := ih u₁ he1
+        (fun w hw => hfv w (Step.preserves_freeVars hs1 w hw))
+      exact ⟨u, RTC.head hs1 hus, hue⟩
 
 /-! ## The cases that matter
 
