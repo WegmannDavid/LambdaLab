@@ -75,6 +75,72 @@ the input; `LawfulHasEval` demands it of `eval`, and it is the only place the fr
 "done reducing" means. -/
 def NormalForm {Tm : Type} [Step Tm] (t : Tm) : Prop := ∀ t', ¬ t ⟶ t'
 
+/-- **When two terms are the same term.** An equivalence on `Tm` that the *language* chooses, and
+the only place this framework ever looks at two terms and calls them equal without them being
+`Eq`.
+
+## Why the language supplies it, rather than the framework deriving it
+
+Nothing else in this tower looks inside a term: `HasType`, `Step`, `pSubst` and `elaborate` all
+treat `Tm` as opaque, and a language plugs in by pointing each field at a declaration it already
+has. Deriving α-equality instead would mean asking every language to *describe its syntax* — which
+positions bind, which are variables — and that is the one thing the interface has so far never
+needed to know. `Pipeline.Example`'s `trivialLanguage`, whose `Tm` is a bare identifier with no
+binders anywhere, would have to answer a question it has no answer to.
+
+So it is data plus its laws, exactly as `Nominal/Unification/Subst.lean`'s `LawfulComp` carries
+`comp` alongside `pSubst_comp`: the operation cannot be written without knowing the representation,
+so the class carries it and constrains it.
+
+## Which laws are here, and which are not
+
+Being an *equivalence* is here: `Confluent` has to compose and reverse `≈α`, so a bare relation
+would be no use to it at all, and the three obligations are one-liners for both realistic instances
+(`Eq`, and a kernel `f t = f u`) — no risk of a field that keeps instances from existing.
+
+Being *compatible with the rest of the language* is not here, and cannot be: it needs a `Ty` to
+type at, which this class has no parameter for. That is `LawfulAlphaEq` below, and it is what stops
+`≈α` from being satisfiable by `fun _ _ => True`. The split is the tower's usual one — `Step` and
+`LawfulTypeSystem` stand in the same relation — and it earns its keep the same way: the quotient,
+the `Setoid` and deciding `≈α` all want this class alone.
+
+## It is not only α
+
+The name says α because that is what a named object language fills it with — and `Stlc/Named/`
+does, since its reduction picks fresh binder names and two reduction paths from one term reach
+syntactically different results. But nothing below constrains it beyond being an equivalence: a
+syntactically rigid language passes `Eq` (`ofEq`) and every statement over it recovers its
+on-the-nose form, and a system with η or definitional unfolding may pass that instead. -/
+class HasAlphaEq (Tm : Type) where
+  /-- The equivalence itself. -/
+  AlphaEq : Tm → Tm → Prop
+  refl : ∀ t, AlphaEq t t
+  symm : ∀ {t u}, AlphaEq t u → AlphaEq u t
+  trans : ∀ {t u v}, AlphaEq t u → AlphaEq u v → AlphaEq t v
+
+@[inherit_doc] infix:50 " ≈α " => HasAlphaEq.AlphaEq
+
+/-- **A syntactically rigid language**: α-equality is `Eq`, and every statement made up to `≈α`
+recovers its on-the-nose form.
+
+Deliberately **not** an instance, for the reason `HasVars.ofNoAtoms` is not: as a blanket instance
+it would match every `Tm` at once and displace the language's own. A language opts in by naming
+it. -/
+@[reducible] def HasAlphaEq.ofEq (Tm : Type) : HasAlphaEq Tm where
+  AlphaEq := Eq
+  refl _ := rfl
+  symm h := h.symm
+  trans h₁ h₂ := h₁.trans h₂
+
+/-- α-equality as a `Setoid`, for a client that wants the quotient `Tm ⧸ ≈α`.
+
+A `def`, not an instance, for the reason `Inductive.wfRel` is one: `Setoid Tm` keys on a bare type,
+so a global instance would shadow whatever setoid a carrier already has. Take it by name at the
+point the quotient is formed. -/
+def HasAlphaEq.setoid (Tm : Type) [HasAlphaEq Tm] : Setoid Tm where
+  r := HasAlphaEq.AlphaEq
+  iseqv := ⟨HasAlphaEq.refl, HasAlphaEq.symm, HasAlphaEq.trans⟩
+
 /-- **The typing judgement, and nothing else.** One field, no laws, so a language may supply it
 long before it can prove anything about it — `LawfulTypeSystem` below is where the properties
 live. -/
@@ -121,6 +187,45 @@ class LawfulTypeSystem (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm 
   typing. -/
   cong : ∀ {Γ Γ' : Context N Ty} {t : Tm} {τ : Ty},
     (∀ x, Γ.get? x = Γ'.get? x) → Γ ⊢ t : τ → Γ' ⊢ t : τ
+
+/-- **α-equality is compatible with the judgement**: α-equal terms type alike.
+
+## Why this is a law and not an afterthought
+
+Without it `HasAlphaEq` constrains almost nothing, and the damage is concrete: `Confluent` below
+asks for reducts joined up to `≈α`, and a language that supplies `AlphaEq := fun _ _ => True`
+satisfies that field by handing back the two reducts it already has. The class would be vacuous.
+`typing_respects` is what rules that out — under it, a relation that identifies two terms of
+different types is not a legal `≈α` at all.
+
+So the split is the tower's usual one, for the tower's usual reason: `HasAlphaEq` is stateable and
+useful on its own (`Setoid`, a quotient, deciding `≈α`), and this is where it acquires the law that
+makes it mean something. `LawfulTypeSystem` stands in the same relation to `Step`.
+
+## The parents
+
+`TypeSystem`, because the law mentions the judgement, and `HasAlphaEq`, because it mentions `≈α`.
+Neither alone can state it — which is exactly why the law cannot live on `HasAlphaEq Tm`, whose
+parameters do not include a `Ty` to be typed at.
+
+## The law that is deliberately *not* here
+
+The companion is compatibility with reduction — `t ≈α u → t ⟶ t' → ∃ u', u ⟶ u' ∧ t' ≈α u'`. It
+belongs in this family and it is not a field, because no instance in this repository could
+discharge it today: `Stlc/Named/` translates named steps *to* de Bruijn (`Step.toDB_step`) and has
+no converse, so the reduct `u'` cannot be produced. Adding it would be the mistake this file warns
+about at the top — a field no instance can discharge is a field that keeps instances from existing.
+It is recorded here so the gap is visible rather than merely absent. -/
+class LawfulAlphaEq (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty, HasAlphaEq Tm where
+  /-- **Typing does not see the difference**: α-equal terms have the same types, in the same
+  context. -/
+  typing_respects : ∀ {Γ : Context N Ty} {t u : Tm} {τ : Ty}, t ≈α u → Γ ⊢ t : τ → Γ ⊢ u : τ
+
+/-- The `↔` form, which is what a caller usually wants — `≈α` is symmetric, so the law runs both
+ways. -/
+theorem LawfulAlphaEq.typing_iff {N Tm Ty : Type} [Atom N] [LawfulAlphaEq N Tm Ty]
+    {Γ : Context N Ty} {t u : Tm} {τ : Ty} (h : t ≈α u) : (Γ ⊢ t : τ) ↔ (Γ ⊢ u : τ) :=
+  ⟨LawfulAlphaEq.typing_respects h, LawfulAlphaEq.typing_respects (HasAlphaEq.symm h)⟩
 
 /-- A type system whose types carry metavariables, so substitution acts on both levels:
 `pSubst : Tm → Subst Nat Ty → Tm` for the type annotations inside a term, and
@@ -312,20 +417,38 @@ class HasEval (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
 /-- **Reduction is confluent on well-typed terms**: whatever a term reduces to can be brought back
 together.
 
-Opt-in, for the reason `StronglyNormalizing` is. `TypeSystem` is the parent because that is all the
-statement mentions — the judgement and the relation — and the substitution laws are irrelevant to
-it. The typing hypothesis makes the field *weaker* than the fact STLC proves
-(`Stlc.DeBruijn.MStep.confluent` needs no typing at all), which is deliberate: a system whose
-confluence does depend on typing can still instantiate this, and one whose does not just ignores
-the hypothesis.
+Opt-in, for the reason `StronglyNormalizing` is. The parent is `LawfulAlphaEq`, which carries all
+three things the statement mentions — the judgement, the relation, and when two terms count as the
+same one — and the substitution laws are irrelevant to it. `LawfulAlphaEq` rather than a bare
+`HasAlphaEq` because otherwise this field is **vacuous**: joining "up to `≈α`" asks nothing at all
+of a language that supplies `fun _ _ => True`, which is a perfectly good equivalence. Its
+`typing_respects` law is what makes the joining mean something. The typing hypothesis makes the
+field *weaker* than the fact STLC proves (`Stlc.DeBruijn.MStep.confluent` needs no typing at all),
+which is deliberate: a system whose confluence does depend on typing can still instantiate this,
+and one whose does not just ignores the hypothesis.
+
+## Why the reducts are joined up to `≈α` and not on the nose
+
+Because otherwise a whole class of languages cannot instantiate it at all, and they are exactly the
+named ones this folder is about. `Stlc/Named/`'s β-rule renames binders out of the way through
+`Atom.freshFor`, so two reduction paths from one term reach results that differ in their bound
+names; `Stlc.Named.MStep.confluent` says so outright, and states its convergence *after*
+translation to de Bruijn. On-the-nose joining is not merely unproved for that language, it is
+false, so the old shape of this field could never have been filled by it.
+
+Nothing is lost at the rigid end. A language whose reduction is deterministic in its names passes
+`HasAlphaEq.ofEq`, `≈α` becomes `Eq`, and the field reads as the textbook diamond again —
+`Stlc.DeBruijn` is that case. So one class covers both, in the same way the typing hypothesis
+above already lets a system ignore what it does not need.
 
 What it buys, together with `LawfulHasEval`'s two fields: `eval`'s answer is not merely *a* normal
-form of its input but *the* one, since a reachable normal form is unique once reduction is
-confluent. -/
-class Confluent (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty where
-  /-- **Confluence of reduction**: if a term reduces to two others, they have a common reduct. -/
+form of its input but *the* one **up to `≈α`**, since a reachable normal form is unique to that
+extent once reduction is confluent — and on the nose exactly when the language's `≈α` is `Eq`. -/
+class Confluent (N Tm Ty : Type) [atom : Atom N] extends LawfulAlphaEq N Tm Ty where
+  /-- **Confluence of reduction**: if a term reduces to two others, they have reducts that are the
+  same term up to `≈α`. -/
   Confluent : ∀ {Γ : Context N Ty} {t t₁ t₂ : Tm} {τ : Ty},
-    Γ ⊢ t : τ → t ⟶* t₁ → t ⟶* t₂ → ∃ t', t₁ ⟶* t' ∧ t₂ ⟶* t'
+    Γ ⊢ t : τ → t ⟶* t₁ → t ⟶* t₂ → ∃ u₁ u₂, t₁ ⟶* u₁ ∧ t₂ ⟶* u₂ ∧ u₁ ≈α u₂
 
 /-- **`eval` is a normalizer for real**: its answer admits no further reduction, and it is a normal
 form *of the input*.
@@ -334,7 +457,10 @@ Three parents, and the diamond flattens as it must. `HasEval` and `StronglyNorma
 `TypeSystem` through `LawfulMVars` while `Confluent` extends it directly; `#print` shows the
 constructor taking `[toHasEval]` plus proofs, with the other two parents derived rather than
 stored, and `toHasEval.toLawfulMVars.toTypeSystem = toConfluent.toTypeSystem` holds by `rfl`. See
-`LawfulMVars` for what goes wrong when it does not. -/
+`LawfulMVars` for what goes wrong when it does not.
+
+`HasAlphaEq` arrives through `Confluent` and through nothing else, so it opens no second diamond —
+there is one `≈α` here, and it is the one `Confluent` joins its reducts with. -/
 class LawfulHasEval (N Tm Ty : Type) [atom : Atom N] extends
     HasEval N Tm Ty,
     StronglyNormalizing N Tm Ty,
@@ -344,8 +470,32 @@ class LawfulHasEval (N Tm Ty : Type) [atom : Atom N] extends
     NormalForm (eval Γ t τ h)
   /-- **`eval` answers the question asked**: its result is reachable from the input, so it is a
   normal form *of `t`* and not merely some normal form. Neither field implies the other —
-  the first alone is satisfied by any constant normal term, the second by `eval = id`. -/
+  the first alone is satisfied by any constant normal term, the second by `eval = id`.
+
+  Reachability is on the nose, not up to `≈α`, and that is the right demand even for a language
+  whose confluence is only up to `≈α`: `eval` is handed the term, so it can return something the
+  term actually reduces to. What `≈α` buys is the *uniqueness* of that answer, which is
+  `Confluent`'s business, not this field's. -/
   evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     t ⟶* eval Γ t τ h
+
+/-! ## The diamonds, pinned
+
+The docstrings above claim these hold by `rfl`. Stated so the claim cannot rot: they cost nothing,
+and they fail loudly the day a parent is added or reordered and a class quietly starts carrying two
+of something it should carry one of. The same guards `TypeSystem/Named/Context.lean` keeps over
+instance selection, and for the same reason. Do not delete them. -/
+
+/-- One `TypeSystem` in `LawfulMVars` — see its docstring for what goes wrong otherwise. -/
+example {N Tm Ty : Type} [Atom N] (L : LawfulMVars N Tm Ty) :
+    L.toMVars.toTypeSystem = L.toLawfulTypeSystem.toTypeSystem := rfl
+
+/-- One `TypeSystem` in `LawfulHasEval`, reached by two different routes. -/
+example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :
+    L.toHasEval.toLawfulMVars.toTypeSystem = L.toConfluent.toTypeSystem := rfl
+
+/-- …and one `HasAlphaEq`, which arrives only through `Confluent`. -/
+example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :
+    L.toConfluent.toHasAlphaEq = L.toHasAlphaEq := rfl
 
 end LambdaLab.TypeSystem.Named

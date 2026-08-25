@@ -25,11 +25,14 @@ infixr:25 " ⇒ " => Ty.arrow
 Variables are de Bruijn indices: `var 0` is the nearest enclosing binder.
 Lambdas carry the type annotation of their argument. -/
 
+/-- `DecidableEq` because the *named* variant's α-equality is equality of de Bruijn erasures
+(`Stlc/Named/Alpha.lean`), and deciding that is what makes `≈α` decidable there. Free here: `Ty`
+already has it and every field is a `Nat`, a `Ty` or a subterm. -/
 inductive Term where
   | var : Nat → Term
   | lam : Ty → Term → Term
   | app : Term → Term → Term
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-! ## Shifting and substitution
 

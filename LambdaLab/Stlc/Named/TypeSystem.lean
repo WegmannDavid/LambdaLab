@@ -1,4 +1,5 @@
 import LambdaLab.TypeSystem.Named.Basic
+import LambdaLab.Stlc.Named.Alpha
 import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
 import LambdaLab.Stlc.Named.Typing.Unification
@@ -31,6 +32,12 @@ proved here, which is the point — the interface asks for what the development 
 * `LawfulMVars` is discharged by `HasType.subst`, which was proved generic in `N` long before the
   interface asked for it. Both laws the interface demands — subject reduction and stability under
   substitution — were already theorems here; neither needed a line of new proof.
+
+* `HasAlphaEq` is **not** here, for the reason `instHasType` is not: it sits beside the relation
+  it names, in `Stlc/Named/Alpha.lean`, so `≈α` reads from that file onwards. α-equality is
+  equality of de Bruijn erasures, so the instance is `Translation.lean`'s work under a new name —
+  once again the interface asking for what the development already had. `LawfulAlphaEq` *is* here,
+  since its law mentions the judgement: α-equal terms type alike, by the same round trip.
 
 * `PrincipalElaborate` is discharged by `elabMGU`. Its negative branch is
   `no_typing_of_elabSubst_none`, the one that took work: `none` has to mean *there is no typing*,
@@ -104,6 +111,16 @@ instance instLawfulMVars : TypeSystem.Named.LawfulMVars N (Term N) Ty where
   tyLawfulRestrict := inferInstance
   tmLawfulRestrict := inferInstance
 
+/-- **The fourth instance with content**: α-equal terms type alike, discharged by
+`Term.AlphaEq.hasType`. Like `Preservation` and `Stability` this is a field that cannot be skipped,
+and like them the proof is the translation's, not new work — α-equality *is* equality of de Bruijn
+erasures, so the law is `HasType.toDB` out and `HasType.fromDB` back.
+
+`HasAlphaEq` itself is supplied in `Stlc/Named/Alpha.lean`, beside the relation; this is only the
+law that ties it to the judgement. -/
+instance instLawfulAlphaEq : TypeSystem.Named.LawfulAlphaEq N (Term N) Ty where
+  typing_respects h ht := Term.AlphaEq.hasType h ht
+
 /-! ## Groundness, decided
 
 `PrincipalElaborate` asks for these, and they are the reason it does: `HasVars.Ground` quantifies
@@ -137,13 +154,19 @@ instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N)
 `StronglyNormalizing` is discharged; `Confluent` and `HasEval`/`LawfulHasEval` are not, and the
 reasons differ:
 
-* **`Confluent` is not available for this variant at all.** `Named.MStep.confluent` does not claim
-  joint convergence on named terms and says so: two reduction paths pick different fresh binder
-  names, so they converge only up to α-equivalence, and the theorem states convergence *after*
-  translation to de Bruijn. The class asks for a common reduct in `Tm` itself. De Bruijn has that
-  unconditionally (`Stlc.DeBruijn.MStep.confluent`) but cannot instantiate anything here — its
-  context is a `List Ty`, not a `Context N Ty`. An instance needs α-equivalence on named terms, or
-  a class stated up to a congruence.
+* **`Confluent` is stateable now, and still not proved.** It used to be unstateable: the class
+  asked for a common reduct in `Tm` itself, and `Named.MStep.confluent` cannot give one — two
+  reduction paths pick different fresh binder names, so they converge only up to α-equivalence,
+  which is why that theorem states convergence *after* translation to de Bruijn. The class now
+  joins its reducts up to `≈α`, and `Stlc/Named/Alpha.lean` supplies the `HasAlphaEq` instance, so
+  the field finally says something this language could satisfy.
+
+  What is missing is the proof, and it is a specific gap: `MStep.confluent` hands back a common
+  *de Bruijn* term `d`, and filling the field needs named reducts `u₁ u₂` with `u₁ ≈α u₂`. That
+  means lifting `e₁.toDB Γ ⟶* d` back to a named reduction, and this development only goes the
+  other way — `Step.toDB_step` translates named steps to de Bruijn ones, with no converse. De
+  Bruijn itself has confluence on the nose (`Stlc.DeBruijn.MStep.confluent`) but cannot instantiate
+  anything here: its context is a `List Ty`, not a `Context N Ty`.
 * **`HasEval` is open by choice** — the evaluator exists (`Step/Eval.lean`, on `SNTerm`) but what
   it should be at the interface has not been settled. -/
 

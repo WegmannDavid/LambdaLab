@@ -16,6 +16,7 @@ import LambdaLab.Stlc.DeBruijn.Confluence
 import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Step.Basic
 import LambdaLab.Stlc.Named.Step.MStep
+import LambdaLab.Stlc.Named.Alpha
 import LambdaLab.Stlc.Named.Typing.Basic
 import LambdaLab.Stlc.Named.Typing.Principality
 import LambdaLab.Stlc.Named.Typing.Properties
