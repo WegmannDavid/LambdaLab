@@ -58,32 +58,36 @@ variable {N : Type} [Atom N]
 
 /-! ## The relation -/
 
-/-- **α-equality**: the same free variables, and the same de Bruijn erasure over them. -/
+/-- **α-equality**: the same free variables, and the same de Bruijn erasure under every context
+that covers them. -/
 def Term.AlphaEq (t u : Term N) : Prop :=
-  t.freeVars = u.freeVars ∧ t.toDB t.freeVars = u.toDB u.freeVars
+  t.freeVars = u.freeVars ∧
+  ∀ Γ : List N, (∀ x ∈ t.freeVars, x ∈ Γ) → t.toDB Γ = u.toDB Γ
 
 /-! ### The equivalence laws
 
 Each is a pair of `Eq` moves on the two conjuncts — the payoff of defining `≈α` as agreement of two
 functions rather than as an inductive relation, where transitivity is the hard case. -/
 
-theorem Term.AlphaEq.refl (t : Term N) : t.AlphaEq t := ⟨rfl, rfl⟩
+theorem Term.AlphaEq.refl (t : Term N) : t.AlphaEq t := ⟨rfl, fun _ _ => rfl⟩
 
 theorem Term.AlphaEq.symm {t u : Term N} (h : t.AlphaEq u) : u.AlphaEq t :=
-  ⟨h.1.symm, h.2.symm⟩
+  ⟨h.1.symm, fun Γ hΓ => (h.2 Γ (fun x hx => hΓ x (h.1 ▸ hx))).symm⟩
 
 theorem Term.AlphaEq.trans {t u v : Term N} (h₁ : t.AlphaEq u) (h₂ : u.AlphaEq v) : t.AlphaEq v :=
-  ⟨h₁.1.trans h₂.1, h₁.2.trans h₂.2⟩
+  ⟨h₁.1.trans h₂.1,
+   fun Γ hΓ => (h₁.2 Γ hΓ).trans (h₂.2 Γ (fun x hx => hΓ x (h₁.1 ▸ hx)))⟩
 
 /-- **The first congruence, for free**: α-equal terms have the same free variables, on the nose.
 It is a conjunct of the definition rather than a theorem about it — see the header for why that
 costs nothing. -/
 theorem Term.AlphaEq.freeVars_eq {t u : Term N} (h : t.AlphaEq u) : t.freeVars = u.freeVars := h.1
 
-/-- Both erasures may be read at either term's free variables, the two lists being equal. -/
+/-- The erasures agree at the terms' own free variables — the smallest adequate context, and the
+one `typing_respects` runs at. -/
 theorem Term.AlphaEq.toDB_eq {t u : Term N} (h : t.AlphaEq u) :
-    t.toDB t.freeVars = u.toDB t.freeVars := by
-  rw [h.2, h.1]
+    t.toDB t.freeVars = u.toDB t.freeVars :=
+  h.2 t.freeVars (fun _ hx => hx)
 
 /-! ## The instance
 
@@ -100,14 +104,6 @@ instance instHasAlphaEq : TypeSystem.Named.HasAlphaEq (Term N) where
 to both, and a `≈α` goal may be attacked with `Term.AlphaEq`'s own lemmas. -/
 @[simp] theorem alphaEq_eq :
     (TypeSystem.Named.HasAlphaEq.AlphaEq : Term N → Term N → Prop) = Term.AlphaEq := rfl
-
-/-! ## Decidability
-
-Two equations, one on `List N` and one on `Stlc.DeBruijn.Term`. `Atom` supplies the first through
-`decEq`; the second is why `DeBruijn.Term` derives `DecidableEq`. -/
-
-instance (t u : Term N) : Decidable (t.AlphaEq u) := by
-  unfold Term.AlphaEq; infer_instance
 
 /-! ## The characterisation: renaming a binder
 
@@ -211,10 +207,9 @@ theorem Term.alphaEq_lam_rename (x z : N) (τ : Ty) (body : Term N)
   have hfv : (Term.lam x τ body).freeVars = (Term.lam z τ (body.rename x z)).freeVars := by
     simp only [Term.freeVars]
     exact (Term.freeVars_filter_rename body x z hz).symm
-  refine ⟨hfv, ?_⟩
+  refine ⟨hfv, fun Γ _ => ?_⟩
   simp only [Term.toDB]
-  rw [← hfv]
-  exact congrArg _ (Term.toDB_rename body [] _ x z hz hzx (by simp) (by simp))
+  exact congrArg _ (Term.toDB_rename body [] Γ x z hz hzx (by simp) (by simp))
 
 /-! ## α-equality is compatible with the judgement
 
@@ -238,11 +233,257 @@ theorem Term.AlphaEq.hasType_iff {Γ : Ctx N} {t u : Term N} {τ : Ty} (h : t.Al
     HasType Γ t τ ↔ HasType Γ u τ :=
   ⟨h.hasType, h.symm.hasType⟩
 
-/-! ## It computes
+/-! ## Faithfulness: the erasure determines the free variables
 
-`≈α` is decidable, so the cases that matter can simply be run. These are the evidence that the
-definition relates what it should and separates what it should — cheap to write, and they fail
-loudly if the definition ever drifts. -/
+The brick everything below needs. Confluence hands back a common *de Bruijn* term, so recovering
+`≈α` from it means recovering both conjuncts, and the free-variable one is not obvious: two named
+terms with equal erasures could a priori have different free variables.
+
+They cannot, and the proof is the standard two-stack induction. It has to be: the `lam` case
+compares `b` under `x :: Γ` with `b'` under `y :: Γ`, so a statement fixed at *one* context cannot
+carry it. `Δ₁`/`Δ₂` are the binders passed so far on each side — equal in length, arbitrary in
+content — and the conclusion is about the variables that escape them. -/
+
+/-- `lookupVar` is injective on names the context actually contains: an index names one binder. -/
+theorem lookupVar_inj {x y : N} : ∀ {Γ : List N},
+    x ∈ Γ → y ∈ Γ → lookupVar x Γ = lookupVar y Γ → x = y := by
+  intro Γ
+  induction Γ with
+  | nil => intro h; exact absurd h List.not_mem_nil
+  | cons a as ih =>
+      intro hx hy heq
+      simp only [lookupVar] at heq
+      by_cases hax : a = x <;> by_cases hay : a = y
+      · exact hax ▸ hay ▸ rfl
+      · subst hax; simp [hay] at heq
+      · subst hay; simp [hax] at heq
+      · simp only [hax, hay, if_false, Nat.add_right_cancel_iff] at heq
+        refine ih ?_ ?_ heq
+        · rcases List.mem_cons.mp hx with h | h
+          · exact absurd h.symm hax
+          · exact h
+        · rcases List.mem_cons.mp hy with h | h
+          · exact absurd h.symm hay
+          · exact h
+
+/-- A name in the near stack indexes inside it; a name outside indexes past it. Together these are
+what let the induction tell "bound on both sides" from "free on both sides". -/
+theorem lookupVar_lt_of_mem {x : N} {Δ Γ : List N} (h : x ∈ Δ) :
+    lookupVar x (Δ ++ Γ) < Δ.length := by
+  rw [lookupVar_append_left x Δ Γ h]; exact lookupVar_lt_length x Δ h
+
+theorem lookupVar_ge_of_not_mem {x : N} {Δ Γ : List N} (h : x ∉ Δ) :
+    Δ.length ≤ lookupVar x (Δ ++ Γ) := by
+  rw [lookupVar_append_right x Δ Γ h]; omega
+
+private theorem filter_all {α : Type} : ∀ (l : List α), l.filter (fun _ => true) = l := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons a as ih => simp [ih]
+
+/-- Peeling one binder off the stack: filtering out `a :: Δ` is filtering out `a`, then `Δ`. The
+step the `lam` case takes, kept separate so that case stays two lines. -/
+private theorem filter_notMem_cons {α : Type} [DecidableEq α] (a : α) (Δ : List α) :
+    ∀ (l : List α), l.filter (fun w => decide (w ∉ a :: Δ))
+      = (l.filter (fun w => decide ¬ (w = a))).filter (fun w => decide (w ∉ Δ)) := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons c cs ih =>
+      by_cases h1 : c = a
+      · simp [List.mem_cons, h1, Bool.and_comm]
+      · by_cases h2 : c ∈ Δ
+        · simp [List.mem_cons, h1, h2, Bool.and_comm]
+        · simp [List.mem_cons, h1, h2, Bool.and_comm]
+
+/-- **The erasure determines the free variables**, relative to the binders passed so far. -/
+theorem Term.freeVars_eq_of_toDB :
+    ∀ (t u : Term N) (Δ₁ Δ₂ Γ : List N),
+      Δ₁.length = Δ₂.length →
+      (∀ w ∈ t.freeVars, w ∈ Δ₁ ++ Γ) →
+      (∀ w ∈ u.freeVars, w ∈ Δ₂ ++ Γ) →
+      t.toDB (Δ₁ ++ Γ) = u.toDB (Δ₂ ++ Γ) →
+      t.freeVars.filter (fun w => decide (w ∉ Δ₁))
+        = u.freeVars.filter (fun w => decide (w ∉ Δ₂)) := by
+  intro t
+  induction t with
+  | var w =>
+      intro u Δ₁ Δ₂ Γ hlen ht hu heq
+      cases u with
+      | var v =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.var.injEq] at heq
+          have hw : w ∈ Δ₁ ++ Γ := ht w (by simp [Term.freeVars])
+          have hv : v ∈ Δ₂ ++ Γ := hu v (by simp [Term.freeVars])
+          by_cases hwΔ : w ∈ Δ₁
+          · by_cases hvΔ : v ∈ Δ₂
+            · simp [Term.freeVars, hwΔ, hvΔ]
+            · exact absurd heq (by
+                have h1 := lookupVar_lt_of_mem (Δ := Δ₁) (Γ := Γ) hwΔ
+                have h2 := lookupVar_ge_of_not_mem (Δ := Δ₂) (Γ := Γ) hvΔ
+                omega)
+          · by_cases hvΔ' : v ∈ Δ₂
+            · exact absurd heq (by
+                have h1 := lookupVar_ge_of_not_mem (Δ := Δ₁) (Γ := Γ) hwΔ
+                have h2 := lookupVar_lt_of_mem (Δ := Δ₂) (Γ := Γ) hvΔ'
+                omega)
+            · rw [lookupVar_append_right w Δ₁ Γ hwΔ,
+                  lookupVar_append_right v Δ₂ Γ hvΔ'] at heq
+              have hwΓ : w ∈ Γ := by
+                rcases List.mem_append.mp hw with h | h
+                · exact absurd h hwΔ
+                · exact h
+              have hvΓ : v ∈ Γ := by
+                rcases List.mem_append.mp hv with h | h
+                · exact absurd h hvΔ'
+                · exact h
+              have hwv : w = v := lookupVar_inj hwΓ hvΓ (by omega)
+              subst hwv
+              simp [Term.freeVars, hwΔ, hvΔ']
+      | lam _ _ _ => simp [Term.toDB] at heq
+      | app _ _ => simp [Term.toDB] at heq
+  | lam x τ b ih =>
+      intro u Δ₁ Δ₂ Γ hlen ht hu heq
+      cases u with
+      | var _ => simp [Term.toDB] at heq
+      | app _ _ => simp [Term.toDB] at heq
+      | lam y τ' b' =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.lam.injEq] at heq
+          have hb := ih b' (x :: Δ₁) (y :: Δ₂) Γ (by simpa using hlen)
+            (fun w hw => by
+              by_cases hwx : w = x
+              · simp [hwx]
+              · exact List.mem_cons_of_mem _
+                  (ht w (by simp [Term.freeVars, List.mem_filter, hw, hwx])))
+            (fun w hw => by
+              by_cases hwy : w = y
+              · simp [hwy]
+              · exact List.mem_cons_of_mem _
+                  (hu w (by simp [Term.freeVars, List.mem_filter, hw, hwy])))
+            heq.2
+          simp only [Term.freeVars]
+          rw [← filter_notMem_cons x Δ₁, ← filter_notMem_cons y Δ₂]
+          exact hb
+  | app e₁ e₂ ih₁ ih₂ =>
+      intro u Δ₁ Δ₂ Γ hlen ht hu heq
+      cases u with
+      | var _ => simp [Term.toDB] at heq
+      | lam _ _ _ => simp [Term.toDB] at heq
+      | app f₁ f₂ =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.app.injEq] at heq
+          simp only [Term.freeVars, List.filter_append]
+          rw [ih₁ f₁ Δ₁ Δ₂ Γ hlen
+                (fun w hw => ht w (by simp [Term.freeVars, hw]))
+                (fun w hw => hu w (by simp [Term.freeVars, hw])) heq.1,
+              ih₂ f₂ Δ₁ Δ₂ Γ hlen
+                (fun w hw => ht w (by simp [Term.freeVars, hw]))
+                (fun w hw => hu w (by simp [Term.freeVars, hw])) heq.2]
+
+/-- The top-level reading: equal erasures under a covering context force equal free variables. -/
+theorem Term.freeVars_eq_of_toDB' {t u : Term N} {Γ : List N}
+    (ht : ∀ w ∈ t.freeVars, w ∈ Γ) (hu : ∀ w ∈ u.freeVars, w ∈ Γ)
+    (heq : t.toDB Γ = u.toDB Γ) : t.freeVars = u.freeVars := by
+  have h := Term.freeVars_eq_of_toDB t u [] [] Γ rfl ht hu heq
+  simpa [filter_all] using h
+
+/-- **The erasure equality transports to any other context.** Faithfulness says the escaping
+positions hold the *same name* on both sides; this says that is all the erasure depends on, so
+swapping the outer context for another leaves the two sides still equal. No adequacy is needed of
+`Γ'` — an escaping name indexes past both stacks whether or not `Γ'` contains it. -/
+theorem Term.toDB_transport :
+    ∀ (t u : Term N) (Δ₁ Δ₂ Γ Γ' : List N),
+      Δ₁.length = Δ₂.length →
+      (∀ w ∈ t.freeVars, w ∈ Δ₁ ++ Γ) →
+      (∀ w ∈ u.freeVars, w ∈ Δ₂ ++ Γ) →
+      t.toDB (Δ₁ ++ Γ) = u.toDB (Δ₂ ++ Γ) →
+      t.toDB (Δ₁ ++ Γ') = u.toDB (Δ₂ ++ Γ') := by
+  intro t
+  induction t with
+  | var w =>
+      intro u Δ₁ Δ₂ Γ Γ' hlen ht hu heq
+      cases u with
+      | lam _ _ _ => simp [Term.toDB] at heq
+      | app _ _ => simp [Term.toDB] at heq
+      | var v =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.var.injEq] at heq ⊢
+          have hw : w ∈ Δ₁ ++ Γ := ht w (by simp [Term.freeVars])
+          have hv : v ∈ Δ₂ ++ Γ := hu v (by simp [Term.freeVars])
+          by_cases hwΔ : w ∈ Δ₁
+          · by_cases hvΔ : v ∈ Δ₂
+            · rw [lookupVar_append_left w Δ₁ Γ hwΔ, lookupVar_append_left v Δ₂ Γ hvΔ] at heq
+              rw [lookupVar_append_left w Δ₁ Γ' hwΔ, lookupVar_append_left v Δ₂ Γ' hvΔ]
+              exact heq
+            · exact absurd heq (by
+                have h1 := lookupVar_lt_of_mem (Δ := Δ₁) (Γ := Γ) hwΔ
+                have h2 := lookupVar_ge_of_not_mem (Δ := Δ₂) (Γ := Γ) hvΔ
+                omega)
+          · by_cases hvΔ : v ∈ Δ₂
+            · exact absurd heq (by
+                have h1 := lookupVar_ge_of_not_mem (Δ := Δ₁) (Γ := Γ) hwΔ
+                have h2 := lookupVar_lt_of_mem (Δ := Δ₂) (Γ := Γ) hvΔ
+                omega)
+            · rw [lookupVar_append_right w Δ₁ Γ hwΔ, lookupVar_append_right v Δ₂ Γ hvΔ] at heq
+              have hwΓ : w ∈ Γ := by
+                rcases List.mem_append.mp hw with h | h
+                · exact absurd h hwΔ
+                · exact h
+              have hvΓ : v ∈ Γ := by
+                rcases List.mem_append.mp hv with h | h
+                · exact absurd h hvΔ
+                · exact h
+              have hwv : w = v := lookupVar_inj hwΓ hvΓ (by omega)
+              subst hwv
+              rw [lookupVar_append_right w Δ₁ Γ' hwΔ, lookupVar_append_right w Δ₂ Γ' hvΔ]
+              omega
+  | lam x τ b ih =>
+      intro u Δ₁ Δ₂ Γ Γ' hlen ht hu heq
+      cases u with
+      | var _ => simp [Term.toDB] at heq
+      | app _ _ => simp [Term.toDB] at heq
+      | lam y τ' b' =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.lam.injEq] at heq ⊢
+          refine ⟨heq.1, ?_⟩
+          exact ih b' (x :: Δ₁) (y :: Δ₂) Γ Γ' (by simpa using hlen)
+            (fun w hw => by
+              by_cases hwx : w = x
+              · simp [hwx]
+              · exact List.mem_cons_of_mem _
+                  (ht w (by simp [Term.freeVars, List.mem_filter, hw, hwx])))
+            (fun w hw => by
+              by_cases hwy : w = y
+              · simp [hwy]
+              · exact List.mem_cons_of_mem _
+                  (hu w (by simp [Term.freeVars, List.mem_filter, hw, hwy])))
+            heq.2
+  | app e₁ e₂ ih₁ ih₂ =>
+      intro u Δ₁ Δ₂ Γ Γ' hlen ht hu heq
+      cases u with
+      | var _ => simp [Term.toDB] at heq
+      | lam _ _ _ => simp [Term.toDB] at heq
+      | app f₁ f₂ =>
+          simp only [Term.toDB, Stlc.DeBruijn.Term.app.injEq] at heq ⊢
+          exact ⟨ih₁ f₁ Δ₁ Δ₂ Γ Γ' hlen
+                   (fun w hw => ht w (by simp [Term.freeVars, hw]))
+                   (fun w hw => hu w (by simp [Term.freeVars, hw])) heq.1,
+                 ih₂ f₂ Δ₁ Δ₂ Γ Γ' hlen
+                   (fun w hw => ht w (by simp [Term.freeVars, hw]))
+                   (fun w hw => hu w (by simp [Term.freeVars, hw])) heq.2⟩
+
+/-- **Equal erasures under one covering context give α-equality.** The two halves above, packaged:
+this is the intro rule everything that produces a de Bruijn fact needs, and it is exactly what
+turns the confluence theorem's common de Bruijn reduct into a `≈α` claim about named terms. -/
+theorem Term.alphaEq_of_toDB {t u : Term N} {Γ : List N}
+    (ht : ∀ w ∈ t.freeVars, w ∈ Γ) (hu : ∀ w ∈ u.freeVars, w ∈ Γ)
+    (heq : t.toDB Γ = u.toDB Γ) : t.AlphaEq u :=
+  ⟨Term.freeVars_eq_of_toDB' ht hu heq,
+   fun Γ' _ => Term.toDB_transport t u [] [] Γ Γ' rfl ht hu heq⟩
+
+/-! ## The cases that matter
+
+`≈α` is no longer decidable — its second conjunct quantifies over contexts — so these are proofs
+rather than `decide` calls. They cost a line each and they are the evidence that the definition
+relates what it should and separates what it should: a negative case refutes one conjunct, a
+positive case computes the erasure. -/
 
 namespace AlphaExamples
 
@@ -253,34 +494,49 @@ private def y : String := "y"
 private def z : String := "z"
 
 /-- Bound names do not matter: `λx:⋆. x  ≈α  λy:⋆. y`. -/
-example : (Term.lam x .base (.var x)).AlphaEq (Term.lam y .base (.var y)) := by decide
+example : (Term.lam x .base (.var x)).AlphaEq (Term.lam y .base (.var y)) :=
+  ⟨by decide, fun _ _ => by simp [Term.toDB]⟩
 
-/-- Free names do: `x ≉α y`. -/
-example : ¬ (Term.var x : Term String).AlphaEq (Term.var y) := by decide
+/-- Free names do: `x ≉α y` — they do not even have the same free variables. -/
+example : ¬ (Term.var x : Term String).AlphaEq (Term.var y) :=
+  fun h => absurd h.1 (by decide)
 
-/-- A free occurrence is not captured by renaming the binder:
-`λx:⋆. z  ≈α  λy:⋆. z`, both leaving `z` free. -/
-example : (Term.lam x .base (.var z)).AlphaEq (Term.lam y .base (.var z)) := by decide
+/-- A free occurrence is not captured by renaming the binder: `λx:⋆. z ≈α λy:⋆. z`. -/
+example : (Term.lam x .base (.var z)).AlphaEq (Term.lam y .base (.var z)) :=
+  ⟨by decide, fun _ _ => by simp [Term.toDB, lookupVar, x, y, z]⟩
 
 /-- …but binding the free one is a different term: `λx:⋆. z ≉α λz:⋆. z`. -/
-example : ¬ (Term.lam x .base (.var z)).AlphaEq (Term.lam z .base (.var z)) := by decide
+example : ¬ (Term.lam x .base (.var z)).AlphaEq (Term.lam z .base (.var z)) :=
+  fun h => absurd h.1 (by decide)
 
-/-- The annotation is part of the term, not something α forgets. -/
-example : ¬ (Term.lam x .base (.var x)).AlphaEq (Term.lam y (.base ⇒ .base) (.var y)) := by decide
+/-- The annotation is part of the term, not something α forgets. Both sides are closed, so the
+free-variable conjunct cannot separate them — the erasure does. -/
+example : ¬ (Term.lam x .base (.var x)).AlphaEq (Term.lam y (.base ⇒ .base) (.var y)) := by
+  intro h
+  have := h.2 [] (by decide)
+  simp [Term.toDB, Ty.toDB] at this
 
-/-- Nesting, with shadowing: `λx.λy. x y  ≈α  λy.λx. y x`. -/
+/-- Nesting, with the two binders swapped: `λx.λy. x y  ≈α  λy.λx. y x`. -/
 example :
     (Term.lam x .base (.lam y .base (.app (.var x) (.var y)))).AlphaEq
-      (Term.lam y .base (.lam x .base (.app (.var y) (.var x)))) := by decide
+      (Term.lam y .base (.lam x .base (.app (.var y) (.var x)))) :=
+  ⟨by decide, fun _ _ => by simp [Term.toDB, lookupVar, x, y]⟩
 
-/-- The inner binder shadows: `λx.λx. x  ≈α  λy.λz. z`, and *not* `λy.λz. y`. -/
+/-- The inner binder shadows: `λx.λx. x  ≈α  λy.λz. z`. -/
 example :
     (Term.lam x .base (.lam x .base (.var x))).AlphaEq
-      (Term.lam y .base (.lam z .base (.var z))) := by decide
+      (Term.lam y .base (.lam z .base (.var z))) :=
+  ⟨by decide, fun _ _ => by simp [Term.toDB, lookupVar, x, z]⟩
 
+/-- …and *not* `λy.λz. y`, which reaches past the shadowing binder. This is the case a definition
+that mishandled shadowing would get wrong. -/
 example :
     ¬ (Term.lam x .base (.lam x .base (.var x))).AlphaEq
-        (Term.lam y .base (.lam z .base (.var y))) := by decide
+        (Term.lam y .base (.lam z .base (.var y))) := by
+  intro h
+  have := h.2 [] (by decide)
+  simp only [Term.toDB, lookupVar, x, y, z] at this
+  exact absurd this (by decide)
 
 /-- The general characterisation, at a concrete instance. -/
 example : (Term.lam x .base (.var x)).AlphaEq (Term.lam y .base ((Term.var x).rename x y)) :=
