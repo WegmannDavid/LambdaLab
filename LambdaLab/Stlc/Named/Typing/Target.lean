@@ -77,9 +77,10 @@ def srcCounter (Γ : Ctx N) (t : Term N) (τ : Ty) : Nat := counterAbove (source
 The *computation* is separated from the proofs about it, so that consumers which only need a
 working, certified-sound elaborator inherit nothing else. Both declarations below are sorry-free,
 and so is everything downstream of them: completeness is `JComplete.elabSubst_complete`, and the
-two together are packaged as `JComplete.elabSolution`. Note it is `JComplete.elabMGU` that fills
-`TypeSystem.Named.PrincipalElaborate` — `elabSolution` plus the still-open `elabSubst_principal` — so the
-sorry-free path stops here, and `elabSolution` is what to use when most-generality is not wanted.
+two together are packaged as `JComplete.elabSolution`. What fills
+`TypeSystem.Named.PrincipalElaborate` is `JComplete.elabMGU` — `elabSolution` plus
+`elabSubst_principal_below`, which is a theorem, so that path is sorry-free too. `elabSolution` is
+still what to use when most-generality is not wanted; it is a weaker type with no extra cost.
 
 This file used to also carry `elaborate`, returning a subtype that demanded most-generality
 alongside the typing, and `Complete`, the corresponding `none`-case obligation. Nothing ever

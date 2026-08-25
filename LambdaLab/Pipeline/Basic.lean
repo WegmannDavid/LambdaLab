@@ -52,7 +52,8 @@ what keeps `Language.keywords_excluded` decidable. -/
 def vernacularReserved : List Token := [kwDef, kwColon, kwAssign]
 
 /-- Tokens available as names: everything the given list has not reserved. The `Atom`
-instance for the resulting subtype lives in `FreeName.lean` (it needs a fresh-name generator);
+instance for the resulting subtype lives in `TypeSystem/Named/FreeName.lean` (it needs a
+fresh-name generator);
 the definitions live here so that `Name` below, and `Language.isVarName`, can be stated in terms
 of them. -/
 def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
@@ -163,8 +164,8 @@ unrepresentable, hence cannot print something the parser reads back as a keyword
 /-- A single declaration of `L`: `def NAME : TYPE := BODY`, named by `L`'s own variables. -/
 abbrev Command (L : Language) : Type := TypeSystem.Named.Vernacular.Command (Var L) L.Tm L.Ty
 
-/-- A **non-empty** run of `L`'s declarations — the shape `iMany1` consumes, so the vernacular
-parser lines up with it with no adapter. -/
+/-- A **non-empty** run of `L`'s declarations — the shape `many1` consumes (its source is an
+`NEList`), so the vernacular parser lines up with it with no adapter. -/
 abbrev Program (L : Language) : Type := TypeSystem.Named.Vernacular.Program (Var L) L.Tm L.Ty
 
 /-- The constructor at the instantiated arity. `match_pattern` so it reads as a constructor on

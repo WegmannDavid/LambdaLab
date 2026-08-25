@@ -30,17 +30,19 @@ little grammar — atoms `N`, `Z`, `R`, a right-associative arrow `_ → _`, par
 the self-contained `IsoParser.Mixfix` stack (abstract token alphabet, explicit `rank`), with no
 `CBiparser` dependency.
 
-A language author supplies exactly a `Grammar` (operators, precedence with explicit `rank`) plus the
-two boundary adapters. The grammar is *lighter* than the CBiparser one: no `tighter_wf`,
-`juxtUnique`, `headsDistinct`, or `interiorTerminates` — the parser needs only the precedence rank.
+A language author supplies exactly a `Grammar` (operators, precedence with explicit `rank`, and the
+lexical conditions) plus the two boundary adapters. Precedence is *lighter* than the CBiparser
+version's: an explicit `rank` with `rank_tighter`/`rank_lt_topRank`, in place of a well-foundedness
+proof about `tighter`. The lexical conditions are not lighter, they moved — `headsDistinct`,
+`juxtUnique` and `varDisjoint` are `Entry` fields and `interiorTerminates` is a `Grammar` field, all
+discharged inline below by `decide`/`simp_all`. That is what buys the unconditional law next.
 
 ### The round-trip law here is unconditional
 
 `Mixfix.mixfix` takes no hypothesis: the greedy left-associative round-trip is `parseExpr_exact`
-(`Mixfix/Exact.lean`), a theorem, so `arithLanguage`'s round-trip laws are sorry-free.
-
-Note the contrast with `Recursive` above: that section proves exactly this shape of greedy
-left-associative reconstruction by hand, for a fixed grammar.
+(`Mixfix/Exact.lean`), a theorem, so `arithLanguage`'s round-trip laws are sorry-free. Before those
+fields existed the same shape had to be proved by hand against a fixed grammar; that development is
+one of the historical layers noted above, and lives in git history.
 -/
 
 open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Pipeline

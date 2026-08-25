@@ -4,8 +4,10 @@ import LambdaLab.Nominal.Unification.MGU
 /-!
 # Completeness of constraint generation
 
-`Target.GenerationComplete`, proved. Its docstring there calls it "the one missing lemma"; this
-file supplies it, along with the bookkeeping it turns out to need.
+`Target.GenerationComplete`, proved — it was long described there as "the one missing lemma"; this
+file supplies it, along with the bookkeeping it turns out to need. It is also not the whole of what
+stood between the elaborator and principality: see the second half of `GenerationComplete`'s
+docstring, and `elabSubst_principal_below` at the bottom of this file.
 
 ## Shape of the argument
 
@@ -29,8 +31,9 @@ variable {N : Type} [Atom N]
 
 /-! ## Freshness of `Ty`, computed
 
-`Signature.fresh` is defined by well-founded recursion through `construct`/`deconstruct`, so it
-does not reduce on `Ty`'s constructors. These two put it back in closed form. -/
+`freshIdx` is `counterAbove` of `Signature.vars`, and `vars` recurses through
+`construct`/`deconstruct`, so it does not reduce on `Ty`'s constructors. These two put it back in
+closed form. -/
 
 theorem Ty.fresh_arrow (a b : Ty) :
     freshIdx (a ⇒ b) = max (freshIdx a) (freshIdx b) := by

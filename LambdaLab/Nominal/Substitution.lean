@@ -218,7 +218,8 @@ theorem MoreGeneral.on [HasSubst A 𝕋 Θ] {σ σ' : Θ}
 
 **A canonical substitution type.** The obvious one is a finitely supported map — `A → 𝕊` differing
 from `var` at finitely many atoms — with `π • σ := fun a => π • σ (π⁻¹ • a)`. It is the natural
-next file: it needs `HasVar`, the `MulAction` laws, and a `NominalType` instance whose support is
+next file: it needs a `var` operation (`Signature.var`, on the executable side), the `MulAction`
+laws, and a `NominalType` instance whose support is
 the domain together with the supports of the values. It is not here because `Θ` being a parameter
 is the point of the interface, and a representation shipped alongside tends to become *the*
 representation by gravity. The executable one is a hashmap and lives on the other side of the

@@ -7,7 +7,7 @@ open LambdaLab.Nominal
 The Martelli–Montanari algorithm terminates by a lexicographic
 `(mvarCount, size)` decrease. This module defines the measure and the
 monotonicity lemmas needed to discharge the four `decreasing_by` goals
-in `Unification.Basic`.
+in `Nominal/Unification/Basic.lean`.
 
 In the slim-typeclass approach, `Signature.occurs n t = true ↔
 HasVars.isFree t n` is *definitional* (the derived `HasSubst A α α`
@@ -24,12 +24,13 @@ variable *index*, not as long as the number of variables.
 
 It now counts the distinct elements of `Equations.vars`, which asks only for `DecidableEq`. The
 lemma statements below are unchanged — they were always phrased in terms of `HasVars.isFree`, and
-only their proofs knew about the order — so `Unification.Basic` is untouched. The measure is still
-`Nat`-valued and the lexicographic argument is still `Nat × Nat`; nothing about termination moved.
+only their proofs knew about the order — so `Nominal/Unification/Basic.lean` is untouched. The
+measure is still `Nat`-valued and the lexicographic argument is still `Nat × Nat`; nothing about
+termination moved.
 
-What survives here referring to `fresh` is `not_isFree_of_fresh_le`, which the elaborator's
-pruning arguments use (`Typing/W.lean`, `Typing/JComplete.lean`) and which is not part of the
-measure. -/
+Nothing in this file mentions a counter any more. The elaborator still wants one, but it is
+`freshIdx` — *derived* from `supp` rather than assumed — and it lives with the algorithms that
+allocate metavariables (`Stlc/Named/Typing/Unification.lean`), not with the measure. -/
 
 /-- Total syntactic size of an equation set. -/
 def Equations.size {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) : Nat :=

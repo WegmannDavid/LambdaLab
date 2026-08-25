@@ -49,7 +49,8 @@ class through its own field.
 Nothing in this file is claimed on credit any more, and nothing downstream reports `sorryAx`.
 
 So the honest report is: STLC satisfies the metatheory unconditionally, decides elaboration
-unconditionally (`elabSolution` is proved and still exported), and claims principality on credit.
+unconditionally (`elabSolution` is proved and still exported), and proves principality *on the
+source* — the strongest form the unrestricted statement leaves available.
 -/
 
 namespace LambdaLab.Stlc.Named

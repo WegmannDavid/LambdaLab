@@ -30,8 +30,10 @@ Faithful: polytypes, free type variables, the specialisation order, and all of `
 Two deliberate departures, both because this is STLC and not Mini-ML:
 
 * **No `[Let]`.** `Term` has no `let`, so the rule has nothing to fire on. It is the only rule that
-  puts a scheme into the context, which is why let-polymorphism is the whole point of HM — and why
-  its absence makes `D` collapse (see the end of the file).
+  puts a scheme into the context, which is why let-polymorphism is the whole point of HM. It does
+  **not** follow that `D` collapses onto the kernel judgement without it — an earlier version of
+  this note claimed exactly that, and the end of the file records why it is wrong: `[Inst]` consumes
+  a `∀` on the *conclusion*, needing no context entry at all.
 * **`[Abs]` takes the binder type as given.** The article's `λx.e` leaves the parameter type to the
   rule; ours is written in the term. So `abs` below is the article's, restricted to the annotation
   the source supplies — which is exactly why `J` draws no fresh variable there.
@@ -310,9 +312,11 @@ theorem polyId_hasTypeD :
 /-- **The naive converse of `HasType.toD` is false.** Instantiating a `D`-derivable scheme does not
 give a `HasType` derivation, so `D` is strictly stronger than the kernel judgement even here.
 
-The usable statement is the *weakened* one the literature uses — `Γ ⊢_D e:σ ⟹ Γ ⊢_S e:τ ∧
-Γ̄(τ) ⊑ σ`, recovering the scheme by one final generalisation. `Γ̄` is `SCtx.close` above, and
-`HasTypeD.close` supplies the generalisation half; what is still missing is the `S` side. -/
+The literature's *weakened* statement — `Γ ⊢_D e:σ ⟹ Γ ⊢_S e:τ ∧ Γ̄(τ) ⊑ σ`, recovering the scheme
+by one final generalisation — does not rescue it here either: `Typing/S.lean` refutes that too
+(`HasTypeD.stronger_than_hasType`), because our `[Abs]` cannot re-choose an annotation the way the
+article's can. `Γ̄` is `SCtx.close` above and `HasTypeD.close` supplies the generalisation half; the
+`S` side is not merely unproved, it is false. -/
 theorem HasTypeD.instance_not_sound :
     ¬ ∀ (Γ : Ctx String) (e : Term String) (σ : Scheme) (τ : Ty),
         HasTypeD (SCtx.ofMono Γ) e σ → Scheme.Instantiates σ τ → HasType Γ e τ := fun h =>

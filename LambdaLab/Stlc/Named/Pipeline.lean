@@ -31,7 +31,7 @@ belongs in a lossy layer above, whose annotation records which binders were elid
 
 There is no surface AST. `Term` is parametric in its atoms (`Stlc/Named/Basic.lean`), so
 terms parse into `Term VName`, named by the non-reserved tokens — and `VName` is `FreeName
-sReserved`, whose `Atom` instance `Language/FreeName.lean` proves once for every
+sReserved`, whose `Atom` instance `TypeSystem/Named/FreeName.lean` proves once for every
 language.
 
 That closes the last gap. `Term String` would *not* work: `Term.var "def"` and `Term.var ""`
@@ -205,8 +205,8 @@ instance : ∀ e : stlcGrammar.Ent, DecidableEq (stlcGrammar.entry e).Op
 /-! ## Surface terms, and the truncation into them -/
 
 /-- Binder names: any token the grammar has not reserved. Being a `FreeName`, this carries an
-`Atom` instance with no proof obligation here — `Language/FreeName.lean` discharges it once for
-every language. -/
+`Atom` instance with no proof obligation here — `TypeSystem/Named/FreeName.lean` discharges it
+once for every language. -/
 abbrev VName := FreeName sReserved
 
 /-- So `Term VName` is `Repr`-able (the derived instance needs one for the name type). -/

@@ -9,7 +9,8 @@ Defines the Martelli–Montanari `unify` and its termination proof, on top
 of the slim `Signature` typeclass. The four rules are: delete (var ≐
 same var), variable elimination left/right (with occurs check), and
 decomposition. Termination is by lexicographic decrease in
-`(mvarCount, size)`, the same measure as `Unification/Basic.lean`. -/
+`(mvarCount, size)`, defined in `Measure.lean` beside the monotonicity
+lemmas that discharge the four `decreasing_by` goals below. -/
 
 set_option linter.unusedVariables false in
 /-- The standard Martelli–Montanari unification algorithm. -/

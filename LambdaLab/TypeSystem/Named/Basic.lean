@@ -285,8 +285,8 @@ attribute [reducible, instance low] PrincipalElaborate.tyGroundDec PrincipalElab
 
 /-- **Well-typed terms cannot reduce forever.** A class of its own rather than a field of
 `LawfulTypeSystem`, because it fails for any system with general recursion. STLC proves it at
-`String` (`Stlc.Named.sn_of_hasType`, from `HasType.sn`) and records it beside its instances; no
-instance of this class exists yet. -/
+`String` (`Stlc.Named.sn_of_hasType`, from `HasType.sn`) and instantiates the class there
+(`instStronglyNormalizing`), pinned at `String` like everything that detours through de Bruijn. -/
 class StronglyNormalizing (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
   /-- **The term at hand admits no infinite reduction sequence.**
 

@@ -14,11 +14,12 @@ none of which is open any more:
 ⇒ parseExpr_complete       ⇒  mixfix's `ok`
 ```
 
-`Unambiguous G` is genuinely necessary and not an artifact of the proof: `Ambiguity.lean` exhibits
-a grammar with two operators sharing a notation and *proves* the law false for it
-(`law_not_universal`). Any deterministic parser returns one tree for one token list, so the other
-cannot round-trip. It is no longer a *hypothesis* only because `Unambiguity.lean` derives it from
-the grammar's own lexical fields.
+`Unambiguous G` is genuinely necessary and not an artifact of the proof: a grammar with two
+operators sharing a notation makes the law false, and `Mixfix/Ambiguity.lean` exhibited one and
+proved it so (`law_not_universal`) at commit `ef5bd1b`, before `Entry.headsDistinct` made such a
+grammar unrepresentable. Any deterministic parser returns one tree for one token list, so the
+other cannot round-trip. It is no longer a *hypothesis* only because `Unambiguity.lean` derives
+it from the grammar's own lexical fields.
 
 This file supplies the FOLLOW machinery both halves need; `Exact.lean` finishes the law.
 
@@ -195,7 +196,7 @@ separate things, and separating them is the point:
 
 `seamed_body` below is the payoff and the design check: every non-left-recursive operator body is
 `Seamed`, with the two seam kinds discharged by their two different lemmas. These are the
-prerequisites for the open theorem, not yet its proof.
+prerequisites `parseExpr_exact` consumes; the proof itself is in `Exact.lean`.
 -/
 
 /-- Every hole with parts after it is stopped by the next name token, at the hole's own level. -/
@@ -722,8 +723,9 @@ theorem no_tree_at_followAt_juxt {e : G.Ent} {j : (G.entry e).Op}
 /-! ## Unambiguity -/
 
 /-- **Unambiguity**: `flatten` is injective on each level. Required by *any* deterministic
-parser — see `Ambiguity.law_not_universal` for the machine-checked proof that dropping it makes
-the round-trip law false. -/
+parser — `Mixfix/Ambiguity.lean`'s `law_not_universal` was the machine-checked proof that
+dropping it makes the round-trip law false (commit `ef5bd1b`; the grammar it needed is no longer
+representable, see `Entry.headsDistinct`). -/
 def Unambiguous (G : Grammar Tok) : Prop :=
   ∀ (e : G.Ent) (l : Level (G.entry e)) (t₁ t₂ : Expr G e l), t₁.flatten = t₂.flatten → t₁ = t₂
 

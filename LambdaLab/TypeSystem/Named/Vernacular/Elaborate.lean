@@ -262,7 +262,7 @@ theorem elabCommands_isSome_congr {Γ Γ' : Context N Ty} (hΓ : CtxGround Γ) (
 Both branches use groundness. A `.impossible` answer claims *no* substitution types the
 declaration; instantiating it at `∅` and using groundness to strip the substitutions off `t` and
 `τ` contradicts the derivation directly — the context is handled by `cong`, since
-`pSubst Γ ∅ = Γ` is only available keywise. A `.solution` answer passes both `Ground` checks for
+`pSubst Γ ∅ = Γ` is only available keywise. A `.mgu` answer passes both `Ground` checks for
 the same reason, and recurses on a list and a context that groundness shows are the originals. -/
 theorem elabCommands_isSome_of_hasTypeGround :
     ∀ {Γ : Context N Ty} {cs : List (Command N Tm Ty)}, HasTypeGround Γ cs →

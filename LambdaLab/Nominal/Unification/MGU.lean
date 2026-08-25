@@ -143,10 +143,11 @@ There are two such types, not one, and the split is the same one `TypeSystem` ma
 bare class and `LawfulTypeSystem`. `SolutionProp` answers *whether* there is a solution, with a
 witness or a proof of absence; `MGUProp` additionally claims the witness is **most general**.
 Most-generality is a strictly harder obligation than the other two put together — for the STLC
-elaborator it is the one remaining open problem — so demanding it in the same type makes a
-decision procedure uninhabitable long after the decision itself is proved. Weaker type, no side
-conditions: a caller that only needs "is this typeable, and by what" asks for `SolutionProp`, and
-`MGUProp.toSolution` hands it one from anything stronger. -/
+elaborator it took a file of its own and holds only *on the source* (`elabSubst_principal_below`;
+the unrestricted form is refuted in `Stlc/Named/Typing/Principality.lean`) — so demanding it in the
+same type would have made a decision procedure uninhabitable long after the decision itself was
+proved. Weaker type, no side conditions: a caller that only needs "is this typeable, and by what" asks for `SolutionProp`, and
+`PrincipalProp.toSolution` hands it one from anything stronger. -/
 
 /-- A decision about `P` over substitutions, carrying evidence either way: a σ satisfying it, or a
 proof that none does — but saying nothing about how that σ compares to other solutions.
@@ -204,7 +205,7 @@ of absence*, not a failure to find one; that distinction is the whole content of
 `Option`.
 
 Strictly stronger than `Decidable (∃ σ, P σ)`, which is why it is worth writing down: the map
-`MGUProp P → Decidable (∃ σ, P σ)` is definable, the converse is not, because `∃` lives in `Prop`
+`PrincipalProp R P → Decidable (∃ σ, P σ)` is definable, the converse is not, because `∃` lives in `Prop`
 and `isTrue` therefore carries no extractable σ. `𝕊` is implicit, being determined by `P`. -/
 inductive PrincipalProp {A 𝕊 : Type} [Atom A] (R : Subst A 𝕊 → Subst A 𝕊 → Prop) (P : Subst A 𝕊 → Prop) where
   /-- A σ satisfying `P` that every other solution factors through, in the sense of `R`. -/
@@ -219,7 +220,7 @@ those speak about every variable the equations mention.
 An elaborator cannot ask for this: it draws variables its caller never mentioned, and a competing
 solution says nothing about them (`Stlc/Named/Typing/Principality.lean` proves the resulting
 statement false). That is why the comparison is a parameter and not baked in — see
-`TypeSystem.Named.PrincipalElaborate`, which instantiates it at `MoreGeneralBelow`. -/
+`TypeSystem.Named.PrincipalElaborate`, which instantiates it at `MoreGeneralOn`. -/
 abbrev MGUProp {A 𝕊 : Type} [Atom A] [HasSubst A 𝕊 𝕊] (P : Subst A 𝕊 → Prop) : Type :=
   PrincipalProp MoreGeneral P
 
@@ -236,8 +237,10 @@ here: success gives `unify_unifies` and `unify_mgu`, and failure gives the contr
 `unify_complete` — if any σ unified, `unify` could not have returned `none`.
 
 This is the intended inhabitant, and the reason the type is stated over an arbitrary predicate
-rather than over `Subst.Unifies` directly: `Stlc/Named/Typing/Target.lean` wants the same shape
-for the typing predicate, where the `impossible` branch is still open. -/
+rather than over `Subst.Unifies` directly: the STLC elaborator wants the same shape for the *typing*
+predicate, and gets it — `JComplete.elabMGU`, whose `impossible` branch is
+`no_typing_of_elabSubst_none`. It is also why the comparison `R` is a parameter: that instance
+needs `MoreGeneralOn`, not `MoreGeneral`. -/
 def unifyMGU {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) :
     MGUProp (fun σ : Subst A α => Subst.Unifies σ eqs) :=
   match h : unify eqs with

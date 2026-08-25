@@ -20,7 +20,7 @@ substitution, and the fresh supply is a counter that only ever goes up.
 
 The payoff is that the three properties separate, and principality stops being an induction at all:
 
-* **soundness** — any solution of the generated constraints is a typing (`gen_sound`, below);
+* **soundness** — any solution of the generated constraints is a typing (`HasTypeJ.sound`, below);
 * **completeness** — any typing gives a solution of the constraints;
 * **principality** — the *most general* solution is `unify`'s, which is `unify_mgu`. No induction
   over the term is involved: the work was already done by constraint generation.
@@ -232,27 +232,33 @@ still-unconstrained `?1` (solving `?0 := ⋆ → ?1`), and accepts `(λx:⋆.x) 
 `⋆ → ⋆ = ?0 → ?1`. A genuine type error surfaces as an *unsatisfiable* constraint set, never as a
 failure of generation: `(λx:⋆.x) g` generates `⋆ = ⋆ → ⋆`, which `unify` then rejects.
 
-## What remains
+## What followed — both in `Typing/JComplete.lean`
 
-Two theorems complete the story, and both are now statements about `HasTypeJ`, so both are
-inductions over a derivation rather than over the term.
+Two theorems completed the story, and both are statements about `HasTypeJ`, so both are inductions
+over a derivation rather than over the term. This is where the J route paid for itself: neither has
+a counterpart for `W`, whose `app` case is still open.
 
-**Completeness.** If `pSubst Γ σ' ⊢ pSubst e σ' : τ'` and `HasTypeJ n Γ e τ C n'`, then some
-`σ` satisfies `C` with `pSubst τ σ = τ'`, agreeing with `σ'` on every variable in scope. The
-induction
+**Completeness** — `HasTypeJ.complete_aux`, packaged as `generationComplete` and lifted to the
+elaborator as `elabSubst_complete`. If `pSubst Γ σ' ⊢ pSubst e σ' : τ'` and `HasTypeJ n Γ e τ C n'`,
+some `σ` satisfies `C` with `pSubst τ σ = τ'` and agrees with `σ'` on the source. The induction
 extends `σ'` at the drawn names — legitimate precisely because `HasTypeJ.supply_le` makes them
-monotone, and because the hypothesis "everything in `Γ` and `e` is in scope" is preserved down the
-tree. `Signature.pSubst_insert_fresh` is the workhorse, as in `W_principal_lam_step`.
+monotone, with `HasTypeJ.fresh_bound` bounding which variables the constraints mention.
+`Signature.pSubst_insert_fresh` is the workhorse, as in `W_principal_lam_step`.
 
-The agreement must be phrased as **equality on a set of variables** — `∀ m ∈ V, σ m = σ' m` — and
-not as a numeric threshold. A threshold quantifies over types mentioning variables that occur
-nowhere in the problem, and the induction has nothing to say about those; that is exactly the
-counterexample which sank the `app` case of W's principality (see the note in `Typing/W.lean`).
+Note the shape agreement finally took: `AgreeBelow n σ σ'` is a **numeric threshold** after all —
+`∀ u, freshIdx u ≤ n → pSubst u σ = pSubst u σ'`. It works here and did not work for `W` because J
+threads a *monotone counter*, so `n` genuinely bounds everything drawn so far; W's argument-derived
+indices give no such `n`, which is the counterexample recorded in `Typing/W.lean`. The problem was
+never the threshold, it was having a supply that respects one. The checking form also does not
+induct — the `lam` case would have to split a declared `τ` that may be a bare metavariable — which
+is why `complete_aux` is the synthesising form.
 
-**Principality.** Immediate, given completeness: `unify C` is a most general solution by
-`unify_mgu`, and it exists whenever a solution does by `unify_complete`. The domain and range of
-that solution are confined to `C`'s own variables by `unify_supported`. There is no induction over
-the term at this step at all — which is the whole reason for splitting generation from solving.
+**Principality** — `elabSubst_principal_below`. Given completeness, `unify C` is a most general
+solution by `unify_mgu`, existing whenever a solution does by `unify_complete`, with domain and
+range confined to `C`'s own variables by `unify_supported`. No induction over the term at all, which
+is the whole reason for splitting generation from solving. It holds **on the source** and cannot
+hold unrestrictedly: `Typing/Principality.lean` refutes the `MoreGeneral` form for this very
+elaborator.
 -/
 
 end LambdaLab.Stlc.Named

@@ -167,8 +167,9 @@ three obligations are immediate — the negative one is a genuine proof that *no
 rather than a report of a failed search, and most-generality is free: substitution on `Name` is the
 identity, so the empty answer is at least as general as anything with the empty witness.
 
-Worth noting against STLC, where the same field costs a `sorry`. Most-generality is only hard when
-there is inference to be most general *about*. -/
+Worth noting against STLC, where the same field takes a whole file (`Typing/JComplete.lean`) and
+only holds *on the source* — the unrestricted form is refuted in `Typing/Principality.lean`.
+Most-generality is only hard when there is inference to be most general *about*. -/
 instance : TypeSystem.Named.PrincipalElaborate Name Name Name where
   -- this language draws no metavariables of its own, so the principality claim is unrestricted
   sourceSupp _ _ _ := []

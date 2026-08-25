@@ -1,11 +1,15 @@
 /-!
 # Strong normalization of a relation
 
-`SN r a` says every `r`-sequence starting at `a` is finite. Both STLC variants define exactly
-this inductive over their own `Step` (`Stlc/DeBruijn/Reducibility.lean`,
-`Stlc/Named/Typing/Normalization.lean`) and `TypeSystem.Named.StronglyNormalizing` asks for it of an
+`SN r a` says every `r`-sequence starting at `a` is finite. Both STLC variants wanted exactly
+this inductive over their own `Step`, and `TypeSystem.Named.StronglyNormalizing` asks for it of an
 abstract `Tm`, so it belongs beside `RTC` rather than in any one of them — the same reasoning
 that put the closures in `Closure.lean`.
+
+`Stlc/Named/Typing/Normalization.lean` is on it: its `SN` is an `abbrev` for `LambdaLab.SN Step`,
+which is what lets `HasType.sn` discharge the class field with no conversion.
+`Stlc/DeBruijn/Reducibility.lean` still carries a local copy — nothing depends on it through the
+interface, so the migration has not been forced.
 
 ## Why an inductive and not `Acc`
 

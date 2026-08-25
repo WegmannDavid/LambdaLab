@@ -4,9 +4,9 @@ import LambdaLab.Parser.IsoParser.Mixfix.Parse
 # Parser soundness (exactness): a parse flattens back to the consumed input
 
 `parseExpr e l tkns = some (t, s)` implies `t.flatten ++ s.list = tkns` — whatever the parser
-consumed, `flatten` reproduces exactly. This is the exactness half of the round-trip (the
-`print_parse` law of the eventual `IsoParser`), proved by functional induction over the mutual
-well-founded parser. It needs no grammar side-conditions — exactness is unconditional.
+consumed, `flatten` reproduces exactly. This is the "nothing stops short" half of the round-trip
+that `Exact.lean` assembles into `mixfix`'s `ok` field, proved by functional induction over the
+mutual well-founded parser. It needs no grammar side-conditions — this half is unconditional.
 
 Ported in shape from the `CBiparser` proof, adapted to the abstract token alphabet.
 -/

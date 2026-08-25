@@ -11,7 +11,7 @@ the result `Stlc.DeBruijn.HasType.sn` through the translation. The key
 fact is `Step.toDB_pos` (in `Translation.lean`): every named single-step
 contains at least one DB single-step. So an infinite named reduction
 sequence would translate to an infinite DB reduction, contradicting
-`DB.SN`.
+`Stlc.DeBruijn.SN`.
 
 The chain:
 

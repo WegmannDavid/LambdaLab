@@ -125,7 +125,7 @@ theorem unify_complete_unifier {A α : Type} [Atom A] [Signature A α] :
 /-! ## Domain of the computed unifier
 
 `unify` never invents variables: everything it binds occurred free in the equations. Needed
-wherever the result is pruned by a freshness threshold (`Subst.restrictBelow`) — the pruning is
+wherever the result is pruned down to an atom set (`Subst.restrictTo`) — the pruning is
 only harmless because the domain is bounded.
 -/
 
@@ -345,7 +345,7 @@ theorem unify_range {A α : Type} [Atom A] [Signature A α] (eqs : Equations α)
 /-! ## Support: a substitution confined to a range of variables
 
 `unify_keys` + `unify_range` say the computed substitution lives inside the equations' variables.
-`SupportedBelow` packages that as one predicate and closes it under the operations the
+`SupportedIn` packages that as one predicate and closes it under the operations the
 principal-types proof composes with.
 -/
 

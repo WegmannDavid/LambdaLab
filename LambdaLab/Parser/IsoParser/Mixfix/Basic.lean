@@ -167,10 +167,11 @@ structure Entry (Tok Ent : Type) where
   operators are representable, and being tokenless they are *indistinguishable in the token
   stream*: they give distinct trees with equal flattenings, i.e. an ambiguous grammar.
 
-  Nothing already proved is unsound without it (`mixfix` takes `Unambiguous` as a hypothesis, and
-  such a grammar simply cannot supply one), but unambiguity cannot be *derived* without it —
+  This field is what lets unambiguity be *derived* rather than assumed: `Unambiguity.lean`'s
   `not_continuesAt_tighter_juxt` needs exactly this to know that a juxt strictly tighter than `j`
-  must be `j`. Vacuous for a grammar with no juxtaposition, and `decide`-discharged otherwise. -/
+  must be `j`. `mixfix` therefore takes no `Unambiguous` hypothesis at all — back when it did, a
+  grammar with two juxtapositions was merely unable to supply one; now it is unrepresentable.
+  Vacuous for a grammar with no juxtaposition, and `decide`-discharged otherwise. -/
   juxtUnique : ∀ o₁ o₂ : Op, operator o₁ = Operator.juxt → operator o₂ = Operator.juxt → o₁ = o₂
   /-- **No operator name part is a variable token** — the variable half of the same lexical
   determinism, so a token cannot be read as both a leaf and (part of) an operator. Ranges over the

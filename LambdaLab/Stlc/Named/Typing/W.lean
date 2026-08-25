@@ -12,9 +12,9 @@ variable {N : Type} [Atom N]
 
 /-- Pick a `Nat` larger than the free metavariable indices of `Γ`,
 `body`, `α`, and `τ`. Used by `W` and by `HasTypeW` to name the
-yet-to-be-inferred body type in the lam case so that the resulting
-substitution is determined (and, together with the unifier being an MGU,
-is itself an MGU). -/
+yet-to-be-inferred body type in the lam case, so that the resulting
+substitution is determined. It does *not* follow that W's answer is an MGU — that is the claim
+this file does not make; see the closing section. -/
 def freshIdxLam (Γ : Ctx N) (body : (Term N)) (α τ : Ty) : Nat :=
   max (freshIdx Γ) (max (freshIdx body)
     (max (freshIdx α) (freshIdx τ)))
@@ -350,7 +350,7 @@ the σ₁-substituted arguments, and there is no reason for it to dominate `t[σ
 with `i < j` a variable occurring in neither `Γ`, `e₂` nor `σ₁ j`. Then `fresh (t[σ₁]) = i + 1`
 while the threshold can be far smaller, and the hypothesis says nothing there.
 
-This is not a gap in the bookkeeping — support bounds (`SupportedBelow`, `unify_keys`,
+This is not a gap in the bookkeeping — support bounds (`SupportedIn`, `unify_keys`,
 `unify_range`) do not help, because the offending variable is small, not large. It is a property of
 *this* `W`: `freshIdxLam`/`freshIdxApp` derive freshness from the arguments at hand, so an index
 consumed in one subcall can be re-consumed in a sibling whose arguments happen not to mention it.
@@ -374,7 +374,8 @@ source-fresh threshold (option D):
 ```
 
 That statement is **false**, and `Typing/Principality.lean` proves it so for the constraint-based
-elaborator, which carried the same shape as `elabSubst_principal`. Over
+elaborator, whose principality claim was once written in this same unrestricted shape (it is now
+`elabSubst_principal_below`, restricted to the source). Over
 
 ```
 Γ = f : ?0, g : ?1, b : ⋆   ⊢   f (g b) : ⋆

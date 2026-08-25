@@ -33,8 +33,9 @@ IsoParser  ─toLossyParser─▶  LossyParser  ─toAbstraction─▶  Abstract
   where the FOLLOW guard is vacuous). No side conditions.
 * `Exact` transfers to `Lossless` (`Exact.lossless`): a parser that consumes only printable
   material yields a reconstruction-complete abstraction. Like `Lossless`, `Exact` is a
-  *predicate*, not a field — proving it is the per-parser exactness induction (the `exact_all`
-  pattern), and elaborator-like stages won't have it.
+  *predicate*, not a field — proving it is a per-parser exactness induction, and elaborator-like
+  stages won't have it. No parser in the tree claims it yet; the mixfix stack proves the
+  corresponding fact at the `IsoParser` level instead (`Mixfix/Exact.lean`).
 
 FIRST/FOLLOW and progress-in-the-type are kept verbatim from `IsoParser`, so the free theorems
 (`run_nil`, `print_ne_nil`) and the combinator style port unchanged; a combinator layer over

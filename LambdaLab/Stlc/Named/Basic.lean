@@ -40,9 +40,14 @@ inductive Ty where
 
 infixr:25 " ⇒ " => Ty.arrow
 
-/-- A type is *ground* when it contains no `mvar`. The kernel typing
-relation `HasType` and the bridge to the de Bruijn variant only expect
-ground types. -/
+/-- A type is *ground* when it contains no `mvar`.
+
+Neither `HasType` nor the de Bruijn bridge requires this any more: the judgement never inspects a
+type beyond equality, and `Ty.toDB` carries `mvar` across injectively (`Translation.lean`), so the
+round trip no longer has to know it lost nothing. What wants groundness is the layer above —
+the elaborator, which must not leave a metavariable behind, and the vernacular, whose declarations
+are commitments. `Ty.ground_iff` (`Typing/Unification.lean`) is the bridge from this structural
+check to the interface's `HasVars.Ground`, and it is what decides that class field. -/
 def Ty.isGround : Ty → Bool
   | .base       => true
   | .arrow a b  => a.isGround && b.isGround

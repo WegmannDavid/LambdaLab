@@ -2,13 +2,13 @@ import LambdaLab.Nominal.Unification.Subst
 
 /-! # Slim first-order signature
 
-`Signature α` declares that `α` is the free term algebra over `Nat`-many
-variables for the operation set `Constructor` (with arities given by
-`arity`). Variables and constructor applications are unified into a
-single bijection `Nat ⊕ (Σ c, Vector α (arity c)) ≃ α`.
+`Signature A α` declares that `α` is the free term algebra over the atoms
+`A` for the operation set `Constructor` (with arities given by `arity`).
+Variables and constructor applications are unified into a single
+bijection `A ⊕ (Σ c, Vector α (arity c)) ≃ α`.
 
-`HasSubst α α` is **derived** from `Signature α` (see the instance at
-the bottom of the file): all of `isFree`, `fresh`, and `pSubst` are
+`HasSubst A α α` is **derived** from `Signature A α` (see the instances at
+the bottom of the file): all of `isFree`, `supp` and `pSubst` are
 forced by structural recursion on `deconstruct`, so the substitution
 semantics cannot disagree with the term structure. -/
 

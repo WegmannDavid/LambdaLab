@@ -3,8 +3,8 @@ import LambdaLab.Parser.IsoParser.Mixfix.Tree
 /-!
 # The general mixfix parser — a mutual well-founded recursion
 
-A deterministic precedence-climbing parser over an arbitrary `Grammar Tok`, written in the
-`ArithRec` style: a plain **mutual well-founded `def`** terminating on the lexicographic measure
+A deterministic precedence-climbing parser over an arbitrary `Grammar Tok`: a plain **mutual
+well-founded `def`** terminating on the lexicographic measure
 `(input.length, Level.measure l, phase)` — descending a precedence level keeps the input and drops
 the level component; consuming a token drops the length. No `fix` combinator; the round-trip laws
 (next file) are proved by induction on this same measure.

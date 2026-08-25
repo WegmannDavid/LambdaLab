@@ -38,7 +38,8 @@ import LambdaLab.Stlc.Named.Typing.Target
 -- could (and did) rot undetected. Everything live is imported here now.
 --
 -- Deliberately excluded:
---   * Playground.*, Parser.IsoParser.Playground -- the prototype trail, kept as history.
+--   * Parser.IsoParser.Playground -- the prototype trail, kept as history. It is the only
+--     unimported file in the tree; everything else here is built.
 import LambdaLab.Parser.Numeral
 import LambdaLab.Abstraction.Basic
 import LambdaLab.Abstraction.Bicat

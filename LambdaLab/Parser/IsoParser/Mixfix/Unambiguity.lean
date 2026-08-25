@@ -3,9 +3,9 @@ import LambdaLab.Parser.IsoParser.Mixfix.Complete
 /-!
 # Unambiguity is a THEOREM, not a hypothesis
 
-`Complete.lean` takes `Unambiguous G` (`flatten` injective) as a hypothesis, and it must: for
-*any* deterministic parser, two distinct trees that flatten alike make completeness-as-equality
-false. The question this file answers is whether a grammar has to *assert* it.
+The round-trip law needs `Unambiguous G` (`flatten` injective), and it must: for *any*
+deterministic parser, two distinct trees that flatten alike make completeness-as-equality false.
+The question this file answers is whether a grammar has to *assert* it.
 
 It does not. The three lexical conditions already forced on a grammar —
 
@@ -14,11 +14,12 @@ It does not. The three lexical conditions already forced on a grammar —
 * `interiorTerminates` — a token after an interior seam heads no operator of the hole's entry,
 
 — together with `juxtUnique` and the fact that hole levels are fixed by the **fixity** rather than
-by the grammar author (`Operator.body`), imply unambiguity outright. `unambiguity-hunt.py` (beside
-this file) models `Tree.lean` exactly and finds **no** ambiguous grammar among ~39k exhaustively
-enumerated and ~26k random ones; with `interiorTerminates` switched off it finds one within the
-first 139. That was the evidence. This file is the proof — `unambiguous`, at the bottom, is
-sorry-free, so no grammar in this development assumes unambiguity any more.
+by the grammar author (`Operator.body`), imply unambiguity outright. A search script
+(`unambiguity-hunt.py`, removed with the old parser stacks at commit `0ee6400`) modelled
+`Tree.lean` exactly and found **no** ambiguous grammar among ~39k exhaustively enumerated and ~26k
+random ones; with `interiorTerminates` switched off it found one within the first 139. That was the
+evidence. This file is the proof — `unambiguous`, at the bottom, is sorry-free, so no grammar in
+this development assumes unambiguity any more.
 
 ## The shape of the argument
 
@@ -31,8 +32,8 @@ This is the standard route (Danielsson–Norell §4) and the earlier stack got a
 `ParserOld/Mixfix/Unambiguity.lean`. Two things do not port:
 
 * that development assumed `NonAssoc` — **no juxtaposition and no associative infix**. Those are
-  exactly the fixities we now have, and exactly the ones where a naive `Stops` induction breaks
-  (see `stopsLeft` below);
+  exactly the fixities we now have, and exactly the ones where a naive `FollowAt` induction breaks
+  (see "Where the left-recursive fixities bite", below);
 * it keyed on `UniqueNameParts` (a token-counting certificate) rather than on the three conditions
   above, which are strictly more permissive (they allow the same interior token in two different
   operators, e.g. `A _ C` and `B _ C`).
@@ -181,12 +182,12 @@ theorem Expr.flatten_head {e : G.Ent} {l : Level (G.entry e)} (t : Expr G e l) :
         exact Or.inr ⟨o, (G.entry e).ops_complete o, by simp [hh, hhead]⟩
   termination_by t.size
 
-/-! ## `Stops` — the per-level FOLLOW, as the induction consumes it
+/-! ## The per-level FOLLOW, as the induction consumes it
 
-`FollowAt` (in `Biparser.lean`) is already the right predicate. What the induction needs on top of
+`FollowAt` (in `Complete.lean`) is already the right predicate. What the induction needs on top of
 it is that stopping a **looser** level stops every **tighter** one: an operand sitting at a tighter
 level is stopped by anything that stops the ambient level, because fewer operators are applicable
-down there. That is `Stops.tighten` below, and it rests on the up-closure of `Level.condition`. -/
+down there. That is `FollowAt.tighten` below, and it rests on the up-closure of `Level.condition`. -/
 
 /-- Reachability is transitive, so an operator valid at `l` makes everything *tighter* than it
 valid at `l` too. -/
@@ -311,8 +312,8 @@ at **the hole's entry**, which is where the sub-tree comparison actually happens
 /-! ## ⚠ Where the left-recursive fixities bite
 
 For a `closed`/`prefx`/`infx`/`postfx` operator every hole's continuation begins with either a
-name token of the operator (an interior seam — stopped by `follow_of_holeFollower`) or the ambient
-leftover (stopped by `Stops.tighten`). The induction walks the body front-to-back and every operand
+name token of the operator (an interior seam — stopped by `follow_of_interior`) or the ambient
+leftover (stopped by `FollowAt.tighten`). The induction walks the body front-to-back and every operand
 is bounded. That is the `NonAssoc` fragment the earlier stack proved.
 
 `infxl`, `infxr` and `juxt` are different, and the difference is not incidental — it *is*

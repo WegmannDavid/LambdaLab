@@ -19,9 +19,12 @@ the `TypeSystem` classes are all stated over a `TypeSystem.Named.Context`, so an
 definitional equality would put a bridge on the interface boundary, which is exactly what the name
 parameter exists to remove.
 
-Everything downstream of this file (`Properties`, `W`, `Translation`, …) stays stated at
-`Ctx String`, the usual instance. Nothing in them is `String`-specific; they are pinned rather
-than generalized because pinning is free and generalizing costs a sweep through every proof.
+Most of what is downstream is parametric too — `Properties`, `Translation`, `Preservation` and `W`
+all take `{N : Type} [Atom N]`, and generalizing them changed signatures and not one proof. What
+stays pinned at `String` is exactly what detours through de Bruijn *binder lists*: `Step/Eval.lean`,
+`Step/Confluence.lean` and `Typing/Normalization.lean`. That is a real dependency on the instance,
+not a convenience — see `Named/TypeSystem.lean`, where `instStronglyNormalizing` is the one
+instance declared at `String` rather than at an arbitrary `N`.
 -/
 
 namespace LambdaLab.Stlc.Named

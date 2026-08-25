@@ -18,12 +18,13 @@ chain from one to the other:
 
 `toLossyParserUnit` (in `LossyParser/Basic.lean`) is the degenerate case `f = g = id`.
 
-The worked instance is `Arith/Pipeline.lean`: `ATm` (parens-free terms), `truncTm` (the per-operator
-recursive map over the mixfix `Expr`), `injTm`/`atomize` (parenthesize compound operands),
-`truncTm_injTm` (the section law) — plugged into `arithLanguage` so `((((a))))` parses to `a`
-and re-renders as `a`. Practical notes for writing such instances (termination via `Expr.size`,
-`eq_def`-based proofs for dependent matches, explicit `(l := …)` on `Level.condition` witnesses)
-are in that file and its history.
+Nobody writes the three arguments by hand for a mixfix grammar any more. `Parser/Truncation/Mixfix.lean`
+generalizes them: a language states a `Rules` bundle — one clause per operator each way, plus which
+operator is the parenthesis — and the fold (`truncExpr`), the paren-inserting injection (`injC`) and
+the section law (`trunc_inj`) are all *derived*, packaged as `Rules.truncateParser`. The worked
+instance is `Arith/Pipeline.lean`'s `aRules` over `ATm` (parens-free terms), plugged into
+`arithLanguage` so `((((a))))` parses to `a` and re-renders as `a`; `Stlc/Named/Pipeline.lean` does
+the same for `Term VName`. This file stays the general chain the derived one is built on.
 -/
 
 -- `p.truncate` dot-notation forces the declaration under `LambdaLab.Parser.IsoParser.IsoParser`.
