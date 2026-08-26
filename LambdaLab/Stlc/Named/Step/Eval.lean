@@ -62,4 +62,46 @@ def HasType.eval {Γ : Ctx String} {e : (Term String)} {τ : Ty}
     (ht : HasType Γ e τ) : (Term String) :=
   Term.eval e (HasType.sn ht)
 
+/-! ## What `eval` returns
+
+Two facts, and neither implies the other: the answer admits no further reduction, and it is
+reachable from the input. Together they say `eval` computes a normal form *of `e`*.
+-/
+
+/-- **The redex picker is complete**: if a term steps at all, `findReductStep` finds something.
+
+Stated as the contrapositive of what is wanted, because that is the direction the induction goes:
+on `Step`, not on the term. Inducting on the term instead would have to reproduce the nested
+`.app (.lam ..) _` match by hand in every case. -/
+theorem Term.findReductStep_ne_none {e e' : Term String} (s : Step e e') :
+    e.findReductStep ≠ none := by
+  induction s with
+  | beta => simp [Term.findReductStep]
+  | lam _ ih =>
+      simp only [Term.findReductStep]
+      split <;> simp_all
+  | @appL e₁ _ _ _ ih =>
+      cases e₁ <;> simp only [Term.findReductStep] <;> (repeat' split) <;>
+        simp_all [Term.findReductStep]
+  | @appR _ _ e₁ _ ih =>
+      cases e₁ <;> simp only [Term.findReductStep] <;> (repeat' split) <;> simp_all
+
+/-- **`eval` finishes the job**: nothing reduces its answer. -/
+theorem Term.eval_normalForm (e : Term String) (h : SN e) :
+    ∀ e', ¬ Step (e.eval h) e' := by
+  rw [Term.eval]
+  split
+  · next hf => exact fun e' s => Term.findReductStep_ne_none s hf
+  · next e' s _ => exact Term.eval_normalForm e' (h.unfold s)
+termination_by (⟨e, h⟩ : SNTerm)
+
+/-- **`eval` answers the question asked**: its result is reachable from the input, so it is a
+normal form *of `e`* and not merely some normal term. -/
+theorem Term.mstep_eval (e : Term String) (h : SN e) : e ⟶* e.eval h := by
+  rw [Term.eval]
+  split
+  · exact RTC.refl
+  · next e' s _ => exact RTC.head s (Term.mstep_eval e' (h.unfold s))
+termination_by (⟨e, h⟩ : SNTerm)
+
 end LambdaLab.Stlc.Named

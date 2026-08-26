@@ -1,4 +1,5 @@
 import LambdaLab.Stlc.Named.Step.Confluence
+import LambdaLab.Stlc.Named.Step.Eval
 import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.Stlc.Named.Alpha
 import LambdaLab.Stlc.Named.Typing.Preservation
@@ -150,10 +151,10 @@ instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N)
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
 
-/-! ## Normalization — `String` only, and only this one of the reduction classes
+/-! ## Normalization — `String` only, and all of the reduction classes
 
-`StronglyNormalizing` is discharged; `Confluent` and `HasEval`/`LawfulHasEval` are not, and the
-reasons differ:
+All four are discharged, and all four are pinned at `String`, because each leans on a theorem that
+detours through de Bruijn binder lists. What each cost differs:
 
 * **`Confluent` is discharged**, up to `≈α`. It used to be unstateable: the class asked for a
   common reduct in `Tm` itself, and `Named.MStep.confluent` cannot give one — two reduction paths
@@ -167,8 +168,15 @@ reasons differ:
   iterates it, and `Term.alphaEq_of_toDB` turns the resulting agreement of erasures into `≈α`. All
   three are in `Stlc/Named/Alpha.lean`.
 
-* **`HasEval` is open by choice** — the evaluator exists (`Step/Eval.lean`, on `SNTerm`) but what
-  it should be at the interface has not been settled. -/
+* **`HasEval` is `Step/Eval.lean`'s evaluator**, which already had the shape the class asks for:
+  `HasType.eval` takes the derivation, not the bare term, so it is total with no error case to
+  invent. Nothing had to be written for the data field.
+
+* **`LawfulHasEval` is the one that needed new proofs**, and only two. `Term.eval_normalForm` and
+  `Term.mstep_eval` follow the evaluator's own well-founded recursion, and both rest on
+  `Term.findReductStep_ne_none` — the completeness of the redex picker, which is what makes "the
+  loop stopped" mean "there was no redex" rather than "the picker missed one". All three are in
+  `Step/Eval.lean`, beside the function they are about. -/
 
 /-- **Strong normalization**, pinned at `String` like everything that detours through de Bruijn
 binder lists. The field is `HasType.sn` outright — `Named.SN` *is* `LambdaLab.SN` at this `Step`,
@@ -204,6 +212,21 @@ instance instConfluent : TypeSystem.Named.Confluent String (Term String) Ty wher
       (fun w hw => hfv2 w (MStep.preserves_freeVars hs₂ w hw))
       (he₁.trans he₂.symm)
 
+/-- **The normalizer.** `HasType.eval` is already derivation-indexed, so the field is filled
+outright. Pinned at `String` because `HasType.sn`, which supplies its termination proof, is. -/
+instance instHasEval : TypeSystem.Named.HasEval String (Term String) Ty where
+  eval _Γ _e _τ ht := HasType.eval ht
+
+/-- **The normalizer is one for real**: its answer admits no further reduction, and the input
+reaches it. The two fields are `Term.eval_normalForm` and `Term.mstep_eval`, both proved beside
+`Term.eval` itself.
+
+The three parents are the instances above — `HasEval`, `StronglyNormalizing`, `Confluent` — so the
+diamond the class documents is closed here by the elaborator, not by hand. -/
+instance instLawfulHasEval : TypeSystem.Named.LawfulHasEval String (Term String) Ty where
+  evalNormal ht := Term.eval_normalForm _ (HasType.sn ht)
+  evalReachable ht := Term.mstep_eval _ (HasType.sn ht)
+
 /-! ## The fields are definitionally what they came from
 
 Each is `rfl`. They are stated so that a later change to the interface — reordering fields,
@@ -214,6 +237,9 @@ rebinding one of STLC's notions to something else. -/
     TypeSystem.Named.HasType.HasType (N := N) (Tm := Term N) (Ty := Ty) = HasType := rfl
 
 @[simp] theorem step_eq : TypeSystem.Named.Step.Step (Tm := Term N) = Step := rfl
+
+@[simp] theorem eval_eq {Γ : Ctx String} {e : Term String} {τ : Ty} (ht : Γ ⊢ e : τ) :
+    TypeSystem.Named.HasEval.eval Γ e τ ht = HasType.eval ht := rfl
 
 @[simp] theorem elaborate_eq :
     TypeSystem.Named.PrincipalElaborate.elaborate (N := N) (Tm := Term N) (Ty := Ty)
