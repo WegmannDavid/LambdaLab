@@ -176,6 +176,16 @@ def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser
     have hk := p.ok b rest h
     rwa [echo b] at hk
 
+/-- `toLossyParserUnit` preserves the reverse law. The annotation is `Unit`, so the only candidate
+is the trivial one, and `echo` says its print is the tree's — which `Exact` already placed on the
+input. -/
+theorem _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit_exact
+    {p : IsoParser α fst fol v v} (echo : ∀ a : v, (p.print a).1 = a) (hp : p.Exact) :
+    (p.toLossyParserUnit echo).Exact := by
+  intro cs x rest h
+  obtain ⟨a, ha, hcs⟩ := hp cs x rest h
+  exact ⟨(), by rw [← ha, echo a]; exact hcs⟩
+
 /-- An `IsoParser` as a `LossyParser`: the annotation family over `b` is the **fiber of `print`**
 — every source that prints to `b`. The split model stores no value→source section, so the
 canonical annotation is the one datum to supply: `canon` with `hcanon`. -/

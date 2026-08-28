@@ -220,4 +220,65 @@ def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A
 
 end Abstraction
 
+/-! ## The reverse law, bundled
+
+`Abstraction` has one law and it runs in one direction: realize an annotation, re-abstract, land
+back on its index. Nothing constrains the other direction. Abstract a concrete and the structure
+offers no way back to it — `default` hands you *a* concrete, but its only relation to the one you
+started from is that both abstract to the same value, so a morphism may accept your text and hand
+back something else entirely and still be well-formed.
+
+`Lossless` above is the statement that would fix it, and as a bare predicate it did not: it was
+proved five times over and consumed nowhere, because knowing a spelling exists is not the same as
+a morphism promising one does. `LosslessAbstraction` is that predicate as a **law** — a stage of
+this type has both directions, and a function taking one may use the reverse direction without
+asking.
+
+It is a wrapper rather than a field of `Abstraction`, for the reason this file's header gives at
+length: the law is not universal. A Hindley–Milner elaborator cannot satisfy it, and neither can
+the evaluation stage, since reduction is exactly forgetting. Putting it in the structure would
+leave those stages with no type to be. Same placement, and the same rule, as `RoundTrips` sitting
+beside `Biparser` rather than inside it.
+-/
+
+/-- An abstraction that forgets nothing: **both** round trips, as laws. -/
+structure LosslessAbstraction (Concrete Abstract : Type) (Ann : Abstract → Type) extends
+    Abstraction Concrete Abstract Ann where
+  /-- **The reverse law**: every concrete the morphism accepts is `realize` of some annotation, so
+  the source can be reconstructed rather than merely re-approximated. -/
+  lossless : Abstraction.Lossless toAbstraction
+
+namespace LosslessAbstraction
+
+variable {A B C : Type} {F : B → Type} {G : C → Type} {F' : B → Type}
+
+/-- The identity forgets nothing. -/
+def id (A : Type) : LosslessAbstraction A A (fun _ => Unit) :=
+  ⟨Abstraction.id A, Abstraction.id_lossless A⟩
+
+/-- **Lossless stages compose to a lossless pipeline** — `Abstraction.Lossless.comp`, now carried
+by the type rather than re-established at each use. -/
+def comp (f : LosslessAbstraction A B F) (g : LosslessAbstraction B C G) :
+    LosslessAbstraction A C (fun c => Σ β : G c, F (g.realize β)) :=
+  ⟨f.toAbstraction.comp g.toAbstraction, f.lossless.comp g.lossless⟩
+
+/-- Re-choosing the canonical annotation cannot break the reverse law: it mentions `realize`, and
+`withDefault` leaves `realize` alone. -/
+def withDefault (f : LosslessAbstraction A B F) (d : ∀ {b : B}, F b) :
+    LosslessAbstraction A B F :=
+  ⟨f.toAbstraction.withDefault d, Abstraction.withDefault_lossless d f.lossless⟩
+
+/-- Transport along a fibrewise bijection of annotation families. -/
+def reindex (f : LosslessAbstraction A B F) (e : ∀ b, Iso (F b) (F' b)) :
+    LosslessAbstraction A B F' :=
+  ⟨f.toAbstraction.reindex e, Abstraction.Lossless.reindex e f.lossless⟩
+
+/-- **What the law buys**, in the form a caller wants it: an accepted concrete has an annotation
+that prints it back. -/
+theorem exists_annotation (f : LosslessAbstraction A B F) {c : A} {b : B}
+    (h : f.abstract c = some b) : ∃ ann : F b, f.realize ann = c :=
+  f.lossless c b h
+
+end LosslessAbstraction
+
 end LambdaLab

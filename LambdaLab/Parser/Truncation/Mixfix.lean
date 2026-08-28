@@ -297,4 +297,14 @@ def Rules.truncateParser {α : Type} {fst fol : α → Prop} (R : Rules G C)
     LossyParser α fst fol (C e) (fun x => { t : Expr G e .loosest // truncExpr R t = x }) :=
   p.truncate echo (truncExpr R) (injC R) (fun x => trunc_inj R x)
 
+/-- **The rules preserve the reverse law**, so a language whose parser is `truncateParser` over
+`mixfix` gets `Exact` with nothing to prove: the tree the parser built is itself an annotation of
+the value it truncated to, and `parseExpr_sound` says that tree flattens back to the input. -/
+theorem Rules.truncateParser_exact {α : Type} {fst fol : α → Prop} (R : Rules G C)
+    [∀ e : G.Ent, DecidableEq (G.entry e).Op] {e : G.Ent}
+    {p : IsoParser α fst fol (Expr G e .loosest) (Expr G e .loosest)}
+    (echo : ∀ a, (p.print a).1 = a) (hp : p.Exact) :
+    (R.truncateParser p echo).Exact :=
+  IsoParser.IsoParser.truncate_exact echo (truncExpr R) (injC R) (fun x => trunc_inj R x) hp
+
 end LambdaLab.Parser.Truncation.Mixfix

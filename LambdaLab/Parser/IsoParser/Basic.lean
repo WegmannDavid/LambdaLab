@@ -62,6 +62,19 @@ structure IsoParser (α : Type) (fst fol : α → Prop) (w v : Type) where
 def IsoParser.run (p : IsoParser α fst fol w v) (input : List α) : Option (v × List α) :=
   (p.parse input).map (fun z => (z.1, z.2.val))
 
+/-- **The reverse law**: whatever the parser accepted, some source prints it back exactly.
+
+`ok` runs source-first — print, then parse, and you are back where you started. Nothing in the
+structure runs the other way: a parser may accept input that no source of its own could ever have
+produced, and the law does not notice. This is the property that says it cannot, and it is the
+parser-level counterpart of `Abstraction.Lossless`.
+
+A predicate rather than a field for the reason `Abstraction.Lossless` is one: a parser that
+deliberately accepts more than it prints (recovering from an error, say) is still a parser. -/
+def IsoParser.Exact (p : IsoParser α fst fol w v) : Prop :=
+  ∀ (cs : List α) (x : v) (rest : List α), p.run cs = some (x, rest) →
+    ∃ a : w, (p.print a).1 = x ∧ (p.print a).2 ++ rest = cs
+
 /-- Recover the raw parse result (with its progress witness) from an erased equation. -/
 theorem run_eq_some {p : IsoParser α fst fol w v} {input : List α} {b : v} {rest : List α}
     (h : p.run input = some (b, rest)) :

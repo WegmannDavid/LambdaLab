@@ -305,4 +305,21 @@ def arithLanguage : Language where
         subst h
         exact follow_def) |> aRules.truncateParser) (fun _ => rfl)
 
+/-! ## The reverse direction
+
+`arithLanguage`'s two parsers accept **only** what they can print, and by the same two lines as
+`Stlc`'s — the type parser through `toLossyParserUnit` (annotation `Unit`, so the only candidate
+annotation is the trivial one), the term parser through the truncation. Both rest on
+`mixfix_exact`, which is `parseExpr_sound` repackaged. -/
+
+/-- The type parser accepts only what it prints. -/
+theorem arithLanguage_pTy_exact : arithLanguage.pTy.Exact :=
+  LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit_exact (fun _ => rfl)
+    (LambdaLab.Parser.IsoParser.IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
+
+/-- The term parser accepts only what it prints. -/
+theorem arithLanguage_pTm_exact : arithLanguage.pTm.Exact :=
+  LambdaLab.Parser.Truncation.Mixfix.Rules.truncateParser_exact aRules (fun _ => rfl)
+    (LambdaLab.Parser.IsoParser.IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
+
 end LambdaLab.Arith

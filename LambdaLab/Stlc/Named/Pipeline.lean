@@ -377,4 +377,25 @@ instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
 def elaborateSource (src : String) : Option String :=
   (stlcLanguage.elaborateFile src).map stlcLanguage.renderElaborated
 
+/-! ## The reverse direction
+
+`stlcLanguage`'s two parsers accept **only** what they can print. Both proofs are one line, and
+neither is new work: `mixfix_exact` is `parseExpr_sound` repackaged, and the two transfers say that
+narrowing FOLLOW and truncating the tree cannot make a parser accept more than it prints.
+
+This is what a `LosslessAbstraction` needs of a language, and it is the half of the round trip the
+development never stated. What is still missing above it is exactness through the *vernacular*
+combinators — `tok`, `comap`, `gdo`, `many1`, `toLossyParserSigma` — which is what stands between
+this and `Language.parser.Exact`. -/
+
+/-- The type parser accepts only what it prints. -/
+theorem stlcLanguage_pTy_exact : stlcLanguage.pTy.Exact :=
+  Rules.truncateParser_exact sRules (fun _ => rfl)
+    (LambdaLab.Parser.IsoParser.IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
+
+/-- The term parser accepts only what it prints. -/
+theorem stlcLanguage_pTm_exact : stlcLanguage.pTm.Exact :=
+  Rules.truncateParser_exact sRules (fun _ => rfl)
+    (LambdaLab.Parser.IsoParser.IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
+
 end LambdaLab.Stlc.Named

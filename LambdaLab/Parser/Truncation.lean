@@ -60,4 +60,29 @@ def IsoParser.IsoParser.truncate
     simp only [Option.map_some]
     rw [hv, echo ann.1, ann.2]
 
+/-- **Truncation preserves the reverse law.** If the tree parser accepts only what its own trees
+print, so does the truncated one: the tree it produced *is* an annotation of the value it produced,
+by definition of the fiber, and `echo` is what identifies the source the underlying parser offers
+with that tree. -/
+theorem IsoParser.IsoParser.truncate_exact
+    {p : IsoParser α fst fol v v} (echo : ∀ a : v, (p.print a).1 = a)
+    (f : v → c') (g : c' → v) (sect : ∀ x, f (g x) = x) (hp : p.Exact) :
+    (p.truncate echo f g sect).Exact := by
+  intro cs x rest h
+  have h' : ((p.parse cs).map (fun z => (f z.1, z.2))).map (fun z => (z.1, z.2.val))
+      = some (x, rest) := h
+  cases hpc : p.parse cs with
+  | none => rw [hpc] at h'; simp at h'
+  | some z =>
+      rw [hpc] at h'
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h'
+      have hrun : p.run cs = some (z.1, rest) := by
+        show (p.parse cs).map (fun w => (w.1, w.2.val)) = some (z.1, rest)
+        rw [hpc]; simp [h'.2]
+      obtain ⟨a, ha, hcs⟩ := hp cs z.1 rest hrun
+      -- `echo` pins the source down: it *is* the tree, so its print is the tree's.
+      have haz : a = z.1 := by rw [← echo a, ha]
+      subst haz
+      exact ⟨⟨z.1, h'.1⟩, hcs⟩
+
 end LambdaLab.Parser

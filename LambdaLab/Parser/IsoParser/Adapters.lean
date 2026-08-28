@@ -24,6 +24,11 @@ def IsoParser.weakenFollow {fol' : α → Prop} (h : ∀ c, fol' c → fol c)
   firstOk := p.firstOk
   ok a rest hr := p.ok a rest (hr.mono h)
 
+/-- `Exact` mentions only `parse` and `print`, and `weakenFollow` changes neither — so the reverse
+law survives the boundary adapter for free, where `ok` needed the antitonicity argument. -/
+theorem IsoParser.weakenFollow_exact {fol' : α → Prop} (h : ∀ c, fol' c → fol c)
+    {p : IsoParser α fst fol w v} (hp : p.Exact) : (p.weakenFollow h).Exact := hp
+
 /-- **Widen the FIRST.** Sound because `firstOk` is a negative claim; widening to `⊤` makes it
 vacuous. -/
 def IsoParser.enlargeFirst {fst' : α → Prop} (h : ∀ c, ¬ fst' c → ¬ fst c)
