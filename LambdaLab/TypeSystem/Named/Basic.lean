@@ -479,6 +479,63 @@ class LawfulHasEval (N Tm Ty : Type) [atom : Atom N] extends
   `Confluent`'s business, not this field's. -/
   evalReachable {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     t ⟶* eval Γ t τ h
+  /-- **`eval` does not invent metavariables**: hand it a ground term and the normal form is
+  ground too.
+
+  Here rather than on `LawfulTypeSystem` beside `Preservation`, and the placement is the point.
+  `Preservation` is mandatory because every language's judgement must survive reduction; this one
+  is only ever *needed* by something that reduces, so it belongs on the class that supplies the
+  reducer. A language with no evaluator owes nothing.
+
+  Why it is needed at all: `Vernacular.HasTypeGround` demands `Ground` of every declaration body
+  it accepts, so a pipeline stage that replaces bodies by their normal forms produces a program
+  the vernacular would reject unless this holds. Nothing else in the tower implies it —
+  `Preservation` is about the judgement, and `LawfulMVars.tmGroundStable` is about `pSubst`;
+  neither says anything about `⟶`. -/
+  evalGround {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
+    HasVars.Ground (A := Nat) t → HasVars.Ground (A := Nat) (eval Γ t τ h)
+
+/-- **A language whose programs can be elaborated and then run.**
+
+Nothing but the conjunction of the two gates — and the conjunction is the content. `Elaborated`
+is `{ p // HasType p }` at `PrincipalElaborate`'s judgement, while `HasEval.eval` demands a
+derivation at `LawfulHasEval`'s; take both classes as separate hypotheses and those are two
+unrelated judgements, so the derivation the vernacular hands over is not the one `eval` accepts
+and every application is a type error. Extending both makes them share one `LawfulMVars`, which
+the diamond check below pins.
+
+Deliberately *not* an evaluation-only class. A stage that runs programs sits after the stage that
+elaborates them, so its source type is the elaborator's target; a language that evaluates but
+cannot elaborate has nothing for this to be a stage of. -/
+class Runnable (N Tm Ty : Type) [atom : Atom N] extends
+    PrincipalElaborate N Tm Ty,
+    LawfulHasEval N Tm Ty
+
+/-! ## Two consequences, used by anything that runs a program
+
+Both follow from fields already present, so they are theorems rather than obligations. They are
+here because they are facts about the *classes*, and a language instantiating the tower gets them
+without asking. -/
+
+/-- **Preservation, along a whole reduction sequence.** `LawfulTypeSystem.Preservation` folded over
+`⟶*` — which is the form `eval` needs, since `evalReachable` reaches its answer in many steps. -/
+theorem preservation_mstep {N Tm Ty : Type} [Atom N] [LawfulTypeSystem N Tm Ty]
+    {Γ : Context N Ty} {t t' : Tm} {τ : Ty} (h : Γ ⊢ t : τ) (hs : t ⟶* t') : Γ ⊢ t' : τ := by
+  induction hs with
+  | refl => exact h
+  | tail _ s ih => exact LawfulTypeSystem.Preservation ih s
+
+/-- **`eval` is the identity on normal forms.** Its answer is reachable from the input
+(`evalReachable`), and nothing is reachable from a term that does not step, so the two coincide.
+
+This is what makes an evaluation stage's canonical annotation legal: a value that is already a
+normal form is its own re-presentation, so `default` can be the value itself. -/
+theorem eval_of_normalForm {N Tm Ty : Type} [Atom N] [LawfulHasEval N Tm Ty]
+    {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) (hn : NormalForm t) :
+    HasEval.eval Γ t τ h = t := by
+  rcases RTC.cases_head (LawfulHasEval.evalReachable h) with heq | ⟨c, hc, _⟩
+  · exact heq.symm
+  · exact absurd hc (hn c)
 
 /-! ## The diamonds, pinned
 
@@ -494,6 +551,10 @@ example {N Tm Ty : Type} [Atom N] (L : LawfulMVars N Tm Ty) :
 /-- One `TypeSystem` in `LawfulHasEval`, reached by two different routes. -/
 example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :
     L.toHasEval.toLawfulMVars.toTypeSystem = L.toConfluent.toTypeSystem := rfl
+
+/-- One `LawfulMVars` in `Runnable` — the whole reason the class exists. -/
+example {N Tm Ty : Type} [Atom N] (R : Runnable N Tm Ty) :
+    R.toPrincipalElaborate.toLawfulMVars = R.toLawfulHasEval.toHasEval.toLawfulMVars := rfl
 
 /-- …and one `HasAlphaEq`, which arrives only through `Confluent`. -/
 example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :

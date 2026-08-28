@@ -32,14 +32,15 @@ and `TypeSystem.Named.StronglyNormalizing` asks for it in that form, so an insta
 `HasType.sn` and nothing else. `SN.intro`, `SN.unfold` and `induction h with | intro` all read as
 before, through the abbreviation. -/
 
-abbrev SN : (Term String) → Prop := LambdaLab.SN Step
+abbrev SN {N : Type} [LambdaLab.Nominal.Atom N] : (Term N) → Prop := LambdaLab.SN Step
 
 /-! ## Why `SN e` and not well-foundedness of `Step`
 
 `HasType.sn` claims termination for the term its derivation is about. The stronger reading — that
 `Step` is well-founded, i.e. *every* named term terminates — is false, and stays refuted here
-because `TypeSystem.Named.StronglyNormalizing`'s field shape depends on it: `Term String` contains the
-untypable divergent terms, `Ω` among them. -/
+because `TypeSystem.Named.StronglyNormalizing`'s field shape depends on it: `Term N` contains the
+untypable divergent terms, `Ω` among them. The counterexample below is written at `String` because
+a counterexample needs actual names; everything else in this file is generic in `[Atom N]`. -/
 
 /-- `λx:⋆. x x` — self-application: untypable, and the engine of `Ω`. -/
 def selfApp : Term String := .lam "x" .base (.app (.var "x") (.var "x"))
@@ -78,8 +79,9 @@ us `Named.SN e` whenever `e.toDB binders` `MStep`s to a strict reduct
 of `d`. This lets us advance through the (potentially multi-step) DB
 trace produced by a single named step. -/
 
-private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d →
-    ∀ (e : (Term String)) (binders : List String),
+private theorem SN.fromDB_aux {N : Type} [LambdaLab.Nominal.Atom N] :
+    ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d →
+    ∀ (e : (Term N)) (binders : List N),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     Stlc.DeBruijn.MStep d (e.toDB binders) →
     SN e := by
@@ -99,7 +101,7 @@ private theorem SN.fromDB_aux : ∀ {d : Stlc.DeBruijn.Term}, Stlc.DeBruijn.SN d
         exact ihStep d_mid h_step_db e' binders hfv' h_rest
       · exact ihStep d_mid_d h_step_d e' binders hfv' (rest_d.trans hsim)
 
-theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
+theorem SN.fromDB {N : Type} [LambdaLab.Nominal.Atom N] : ∀ (e : (Term N)) (binders : List N),
     (∀ x ∈ e.freeVars, x ∈ binders) →
     Stlc.DeBruijn.SN (e.toDB binders) → SN e :=
   fun e binders hfv hsn =>
@@ -110,7 +112,7 @@ theorem SN.fromDB : ∀ (e : (Term String)) (binders : List String),
 /-- **Every well-typed named term is strongly normalizing.** Unconditionally — the groundness
 preconditions this used to carry were paying for the de Bruijn detour, not for normalization, and
 went away when `Ty.toDB` became a bijection. -/
-theorem HasType.sn : ∀ {Γ : Ctx String} {e : (Term String)} {τ : Ty},
+theorem HasType.sn {N : Type} [LambdaLab.Nominal.Atom N] : ∀ {Γ : Ctx N} {e : (Term N)} {τ : Ty},
     HasType Γ e τ → SN e := by
   intro Γ e τ ht
   let binders := e.freeVars

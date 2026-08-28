@@ -1,5 +1,6 @@
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
+import LambdaLab.Pipeline.Stages.Evaluate
 import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Abstraction.Chain
 
@@ -59,7 +60,7 @@ open LambdaLab.Abstraction
 
 open LambdaLab.Parser.IsoParser (many1PrintOut)
 
-open LambdaLab.TypeSystem.Named.Vernacular (elabProgram?)
+open LambdaLab.TypeSystem.Named.Vernacular (elabProgram? evalProgram)
 
 /-! ## The canonical layout
 
@@ -179,6 +180,13 @@ Everything below is the same construction with one more stage on the end. The on
 requirement is the `PrincipalElaborate` instance; the moment a language's own types and terms
 satisfy it, the whole front end exists with nothing further to supply. -/
 
+section Elaborating
+
+/-! The instance binder is scoped. Leaking it past the section would put a bare
+`PrincipalElaborate` beside the `Runnable` of the next one, and a *local* instance outranks
+`Runnable.toPrincipalElaborate` — so `Elaborated` would be built from a different judgement than
+the one `eval` accepts, which is the very diamond `Runnable` exists to close. -/
+
 variable (L : Language) [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]
 
 /-- **Characters to an elaborated program**, in `Abs`. Parsing and elaboration are one morphism,
@@ -239,5 +247,77 @@ def Language.elabChain : Chain sourceStage L.elaboratedStage :=
 theorem Language.elabChain_run (s : String) :
     (L.elabChain.run s.toList).2.toOption = L.elaborateFile s :=
   (L.elabChain.run_eq_abstract _).trans (L.elabChain_abstract _)
+
+end Elaborating
+
+/-! ## ① ∘ ② ∘ ③ ∘ ④ — and running, when the language has an evaluator
+
+One more stage on the end, on the same terms as ③: it exists exactly when the language can supply
+it. `Runnable` is `PrincipalElaborate` and `LawfulHasEval` sharing one judgement — see its
+docstring for why the conjunction has to be a class rather than two hypotheses.
+
+`Arith` stops at ②, `Stlc` goes to ④. Neither is "the" pipeline; the chain a language supports is
+a fact about the language. -/
+
+section Running
+
+variable (L : Language) [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty]
+
+/-- **Characters to a normalized program**, in `Abs`. The round-trip law covers all four stages at
+once, for the reason it covered three: it is one morphism. -/
+def Language.evalPipeline :
+    Abstraction (List Char) L.Evaluated
+      (fun q => Σ ann : { p : L.Elaborated // evalProgram p.val p.property = q.val },
+        Σ e : { r : Program L // elabProgram? r = some ann.val.val },
+          Σ a : Program.Ann L e.val, Gaps isSep (L.parser.print a)) :=
+  L.elabPipeline.comp L.evalStage
+
+/-- Parse, elaborate *and* run a source file. -/
+def Language.evaluateFile (s : String) : Option L.Evaluated :=
+  L.evalPipeline.abstract s.toList
+
+/-- Render a normalized program canonically. -/
+def Language.renderEvaluated (q : L.Evaluated) : String :=
+  String.ofList (L.evalPipeline.realize (L.evalPipeline.default (a := q)))
+
+/-- **The whole front end round-trips, evaluation included.** Rendering a normalized program and
+reading it back re-tokenizes, re-parses, re-elaborates *and* re-runs to exactly what you started
+with — the last step because a normal form runs to itself. -/
+theorem Language.evaluateFile_renderEvaluated (q : L.Evaluated) :
+    L.evaluateFile (L.renderEvaluated q) = some q := by
+  show L.evalPipeline.abstract (String.ofList
+    (L.evalPipeline.realize (L.evalPipeline.default (a := q)))).toList = some q
+  rw [String.toList_ofList]
+  exact L.evalPipeline.abstract_realize q L.evalPipeline.default
+
+/-! ### The fourth stage, uncollapsed -/
+
+/-- ④ as a 1-cell. -/
+def Language.evalCell : OneCell L.Elaborated L.Evaluated :=
+  ⟨fun q => { p : L.Elaborated // evalProgram p.val p.property = q.val }, L.evalStage⟩
+
+/-- After ④: the program with every redex gone. -/
+def Language.evaluatedStage : Stage where
+  Carrier := L.Evaluated
+  name := "evaluated program"
+  render := L.renderEvaluated
+
+/-- **The whole front end, stage by stage.** `elabChain` with evaluation on the end. -/
+def Language.evalChain : Chain sourceStage L.evaluatedStage :=
+  L.elabChain.cons L.evalCell
+
+/-- Stepping through all four stages agrees with collapsing them. -/
+@[simp] theorem Language.evalChain_abstract (cs : List Char) :
+    L.evalChain.compose.hom.abstract cs = L.evalPipeline.abstract cs := by
+  rw [evalChain, Chain.compose_cons, OneCell.hcomp_abstract, L.elabChain_abstract]
+  simp only [evalPipeline, evalCell, Abstraction.comp]
+  rfl
+
+/-- What the driver relies on: running the chain over a file agrees with `evaluateFile`. -/
+theorem Language.evalChain_run (s : String) :
+    (L.evalChain.run s.toList).2.toOption = L.evaluateFile s :=
+  (L.evalChain.run_eq_abstract _).trans (L.evalChain_abstract _)
+
+end Running
 
 end LambdaLab.Pipeline

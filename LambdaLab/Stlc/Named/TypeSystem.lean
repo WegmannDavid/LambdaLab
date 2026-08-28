@@ -151,10 +151,16 @@ instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N)
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
 
-/-! ## Normalization — `String` only, and all of the reduction classes
+/-! ## Normalization, and the rest of the reduction classes
 
-All four are discharged, and all four are pinned at `String`, because each leans on a theorem that
-detours through de Bruijn binder lists. What each cost differs:
+All five are discharged, and — since the evaluation stage in `Pipeline/Stages/Evaluate.lean` needed
+them — all five are now generic in `[Atom N]` like everything else here. They used to be pinned at
+`String`, on the belief that the de Bruijn detour forced it. It did not: `Translation.lean` was
+already generic and `Alpha.lean` mentions `String` only in a private example, so the pin lived
+entirely in the four statements that carried it (`MStep.confluent`, `SN`, `HasType.sn`,
+`Term.eval`) and lifting it was a matter of widening those binders. It had to be lifted: the
+front end's name type is `Var stlcLanguage = VName`, not `String`, so a `String`-only evaluator is
+one the pipeline cannot call. What each class cost:
 
 * **`Confluent` is discharged**, up to `≈α`. It used to be unstateable: the class asked for a
   common reduct in `Tm` itself, and `Named.MStep.confluent` cannot give one — two reduction paths
@@ -178,16 +184,15 @@ detours through de Bruijn binder lists. What each cost differs:
   loop stopped" mean "there was no redex" rather than "the picker missed one". All three are in
   `Step/Eval.lean`, beside the function they are about. -/
 
-/-- **Strong normalization**, pinned at `String` like everything that detours through de Bruijn
-binder lists. The field is `HasType.sn` outright — `Named.SN` *is* `LambdaLab.SN` at this `Step`,
-so there is nothing to convert.
+/-- **Strong normalization.** The field is `HasType.sn` outright — `Named.SN` *is* `LambdaLab.SN`
+at this `Step`, so there is nothing to convert.
 
 The field could not ask for well-foundedness of `⟶`: `omega_not_sn` refutes that. -/
 instance instStronglyNormalizing :
-    TypeSystem.Named.StronglyNormalizing String (Term String) Ty where
+    TypeSystem.Named.StronglyNormalizing N (Term N) Ty where
   StronglyNormalizing h := HasType.sn h
 
-/-- **Confluence**, pinned at `String` like everything that detours through de Bruijn binder lists.
+/-- **Confluence.**
 
 The reducts are joined **up to `≈α`**, and they have to be: the β-rule renames binders out of the
 way through `Atom.freshFor`, so two reduction paths from one term reach results that differ in
@@ -199,7 +204,7 @@ de Bruijn reduction back to a named one, and `Term.alphaEq_of_toDB` turns the re
 erasures into `≈α`. The context is `t.freeVars`, the smallest one `MStep.confluent` accepts, and
 reduction never introduces a free variable (`MStep.preserves_freeVars`), so it stays adequate all
 the way down. -/
-instance instConfluent : TypeSystem.Named.Confluent String (Term String) Ty where
+instance instConfluent : TypeSystem.Named.Confluent N (Term N) Ty where
   Confluent {_Γ} {t t₁ t₂} {_τ} _ht h₁ h₂ := by
     obtain ⟨d, hd₁, hd₂⟩ := MStep.confluent t.freeVars (fun _ hw => hw) h₁ h₂
     have hfv1 : ∀ w ∈ t₁.freeVars, w ∈ t.freeVars := MStep.preserves_freeVars h₁
@@ -213,8 +218,8 @@ instance instConfluent : TypeSystem.Named.Confluent String (Term String) Ty wher
       (he₁.trans he₂.symm)
 
 /-- **The normalizer.** `HasType.eval` is already derivation-indexed, so the field is filled
-outright. Pinned at `String` because `HasType.sn`, which supplies its termination proof, is. -/
-instance instHasEval : TypeSystem.Named.HasEval String (Term String) Ty where
+outright. -/
+instance instHasEval : TypeSystem.Named.HasEval N (Term N) Ty where
   eval _Γ _e _τ ht := HasType.eval ht
 
 /-- **The normalizer is one for real**: its answer admits no further reduction, and the input
@@ -223,9 +228,18 @@ reaches it. The two fields are `Term.eval_normalForm` and `Term.mstep_eval`, bot
 
 The three parents are the instances above — `HasEval`, `StronglyNormalizing`, `Confluent` — so the
 diamond the class documents is closed here by the elaborator, not by hand. -/
-instance instLawfulHasEval : TypeSystem.Named.LawfulHasEval String (Term String) Ty where
+instance instLawfulHasEval : TypeSystem.Named.LawfulHasEval N (Term N) Ty where
   evalNormal ht := Term.eval_normalForm _ (HasType.sn ht)
   evalReachable ht := Term.mstep_eval _ (HasType.sn ht)
+  evalGround ht hg :=
+    Term.annotsGround_iff_ground.mp
+      (Term.eval_annotsGround _ (HasType.sn ht) (Term.annotsGround_iff_ground.mpr hg))
+
+/-- **STLC elaborates and runs.** Nothing new to discharge: the class is the conjunction of two
+instances already proved, and its only content is that they share a `LawfulMVars` — which they do,
+since both are built from the same `instLawfulMVars`. -/
+instance instRunnable : TypeSystem.Named.Runnable N (Term N) Ty :=
+  { instPrincipalElaborate, instLawfulHasEval with }
 
 /-! ## The fields are definitionally what they came from
 
@@ -238,7 +252,7 @@ rebinding one of STLC's notions to something else. -/
 
 @[simp] theorem step_eq : TypeSystem.Named.Step.Step (Tm := Term N) = Step := rfl
 
-@[simp] theorem eval_eq {Γ : Ctx String} {e : Term String} {τ : Ty} (ht : Γ ⊢ e : τ) :
+@[simp] theorem eval_eq {Γ : Ctx N} {e : Term N} {τ : Ty} (ht : Γ ⊢ e : τ) :
     TypeSystem.Named.HasEval.eval Γ e τ ht = HasType.eval ht := rfl
 
 @[simp] theorem elaborate_eq :
@@ -253,7 +267,7 @@ length for keeping normalization *out* of the interface, and that argument reads
 thing it excludes in view. -/
 
 /-- STLC is strongly normalizing — a property the interface does not require. -/
-theorem sn_of_hasType {Γ : Ctx String} {e : Term String} {τ : Ty} :
+theorem sn_of_hasType {Γ : Ctx N} {e : Term N} {τ : Ty} :
     Γ ⊢ e : τ → SN e :=
   HasType.sn
 

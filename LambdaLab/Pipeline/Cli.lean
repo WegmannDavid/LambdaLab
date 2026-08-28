@@ -14,10 +14,10 @@ rendered output or an error message out, the flag saying whether to show the wor
 else (argument handling, reading files, choosing a stream to print on, the exit code) is the same
 for all of them, so it is written once here and each executable is three lines.
 
-Two such functions are supplied below, matching the two chains in `Compose.lean`:
-`compileParse` for a language that only reads, and `compileElab` for one whose types and terms
-satisfy the elaboration interface. A language picks whichever it can support — `Arith` has no type
-system, so it stops at the first.
+Three such functions are supplied below, matching the three chains in `Compose.lean`:
+`compileParse` for a language that only reads, `compileElab` for one whose types and terms satisfy
+the elaboration interface, and `compileEval` for one that can also run what it elaborated. A
+language picks whichever it can support — `Arith` has no type system, so it stops at the first.
 
 ## `--stages`
 
@@ -49,6 +49,13 @@ def Language.compileElab (L : Language)
     [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
     Except String String :=
   L.elabChain.report showStages src.toList
+
+/-- **Read, elaborate, then run.** One stage further again, for a language that also supplies an
+evaluator. Nothing here enumerates the stages: it is the same `Chain.report`, on a longer chain. -/
+def Language.compileEval (L : Language)
+    [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
+    Except String String :=
+  L.evalChain.report showStages src.toList
 
 /-- Usage text, on the same shape every language's executable shares. -/
 def usage (name ext : String) : String :=

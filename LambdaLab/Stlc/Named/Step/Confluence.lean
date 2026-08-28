@@ -29,7 +29,8 @@ That claim *is* made downstream, now that α-equivalence exists:
 to `≈α`, using this theorem plus the lifting lemmas in
 `Stlc/Named/Alpha.lean`. This file stays the de Bruijn statement it always
 was — the honest one at this layer, since `≈α` is not in scope here. -/
-theorem MStep.confluent : ∀ {e e₁ e₂ : (Term String)} (Γ : List String),
+theorem MStep.confluent {N : Type} [LambdaLab.Nominal.Atom N] :
+    ∀ {e e₁ e₂ : (Term N)} (Γ : List N),
     (∀ w ∈ e.freeVars, w ∈ Γ) →
     e ⟶* e₁ → e ⟶* e₂ →
     ∃ d, Stlc.DeBruijn.MStep (e₁.toDB Γ) d ∧
