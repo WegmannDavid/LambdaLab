@@ -495,6 +495,47 @@ class LawfulHasEval (N Tm Ty : Type) [atom : Atom N] extends
   evalGround {Γ : Context N Ty} {t : Tm} {τ : Ty} (h : Γ ⊢ t : τ) :
     HasVars.Ground (A := Nat) t → HasVars.Ground (A := Nat) (eval Γ t τ h)
 
+/-- **Substituting a term for a variable**, with the three laws a stage that inlines definitions
+needs. `LawfulMVars` rather than `LawfulTypeSystem` for the parent, because two of the laws speak
+about `Ground` and that is `LawfulMVars` vocabulary.
+
+Note what is *not* asked. There is no equation relating `tsubst` to `Step`, no confluence, no
+commutation with anything — those would be work for a language to discharge and nothing here uses
+them. And `tsubst_typing` takes its value typed in the **empty** context rather than in `Γ`:
+weaker, so easier to supply, and it is the form the vernacular actually calls it in, since every
+declaration's value has been reduced to a closed term by the time it is substituted.
+
+Cheap to instantiate, and one of them for a reason worth knowing: **β *is* substitution**, so
+`tsubst_typing` is subject reduction applied to `(λ x : σ . t) v`. STLC's whole proof is
+`Preservation (HasType.app (HasType.lam ht) hv) Step.beta` — no induction, no weakening,
+no renaming lemma. -/
+class HasTermSubst (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty where
+  /-- Substitute `v` for the free occurrences of `x`. -/
+  tsubst : Tm → N → Tm → Tm
+  /-- **Substitution preserves typing** — the substitution lemma. -/
+  tsubst_typing {Γ : Context N Ty} {x : N} {σ τ : Ty} {t v : Tm} :
+    Γ.cons x σ ⊢ t : τ → (Context.empty : Context N Ty) ⊢ v : σ → Γ ⊢ tsubst t x v : τ
+  /-- **Substitution introduces no metavariable**, which `HasTypeGround` needs of every body. -/
+  tsubst_ground {x : N} {t v : Tm} :
+    HasVars.Ground (A := Nat) t → HasVars.Ground (A := Nat) v →
+      HasVars.Ground (A := Nat) (tsubst t x v)
+  /-- **Substituting into a closed term does nothing.** This is what makes inlining *idempotent*,
+  and so what keeps the evaluation stage's canonical annotation legal.
+
+  Both hypotheses are load-bearing, and the second is the surprising one: it is not enough that
+  `x` does not occur in `t`. A capture-avoiding substitution renames a binder of `t` whenever that
+  binder is free in `v` — STLC's does, through `Atom.freshFor` — and renames it *whether or not*
+  the substitution had anything to do. So "substituting for an absent variable is the identity" is
+  false in general and true here only because `v` is closed. -/
+  tsubst_closed {x : N} {σ τ : Ty} {t v : Tm} :
+    (Context.empty : Context N Ty) ⊢ t : τ → (Context.empty : Context N Ty) ⊢ v : σ →
+      tsubst t x v = t
+  /-- **A closed term types anywhere.** Not derivable from `cong`, which relates contexts agreeing
+  at *every* name; here they agree nowhere. Needed because inlining leaves each declaration's body
+  closed while `HasTypeGround` still checks it against the context its predecessors built. -/
+  weaken_closed {Γ : Context N Ty} {t : Tm} {τ : Ty} :
+    (Context.empty : Context N Ty) ⊢ t : τ → Γ ⊢ t : τ
+
 /-- **A language whose programs can be elaborated and then run.**
 
 Nothing but the conjunction of the two gates — and the conjunction is the content. `Elaborated`
@@ -509,7 +550,8 @@ elaborates them, so its source type is the elaborator's target; a language that 
 cannot elaborate has nothing for this to be a stage of. -/
 class Runnable (N Tm Ty : Type) [atom : Atom N] extends
     PrincipalElaborate N Tm Ty,
-    LawfulHasEval N Tm Ty
+    LawfulHasEval N Tm Ty,
+    HasTermSubst N Tm Ty
 
 /-! ## Two consequences, used by anything that runs a program
 
@@ -524,6 +566,14 @@ theorem preservation_mstep {N Tm Ty : Type} [Atom N] [LawfulTypeSystem N Tm Ty]
   induction hs with
   | refl => exact h
   | tail _ s ih => exact LawfulTypeSystem.Preservation ih s
+
+/-- **`eval` depends only on the term.** Its derivation argument is a `Prop`, so proof irrelevance
+makes the answer a function of the term alone — which is what lets a caller rewrite the term under
+an `eval` without carrying the derivation along by hand. -/
+theorem eval_congr {N Tm Ty : Type} [Atom N] [HasEval N Tm Ty]
+    {Γ : Context N Ty} {t u : Tm} {τ : Ty} (hu : t = u) (h : Γ ⊢ t : τ) (h' : Γ ⊢ u : τ) :
+    HasEval.eval Γ t τ h = HasEval.eval Γ u τ h' := by
+  subst hu; rfl
 
 /-- **`eval` is the identity on normal forms.** Its answer is reachable from the input
 (`evalReachable`), and nothing is reachable from a term that does not step, so the two coincide.
@@ -552,9 +602,13 @@ example {N Tm Ty : Type} [Atom N] (L : LawfulMVars N Tm Ty) :
 example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :
     L.toHasEval.toLawfulMVars.toTypeSystem = L.toConfluent.toTypeSystem := rfl
 
-/-- One `LawfulMVars` in `Runnable` — the whole reason the class exists. -/
+/-- One `LawfulMVars` in `Runnable` — the whole reason the class exists. All three parents reach
+it, and all three must reach the same one. -/
 example {N Tm Ty : Type} [Atom N] (R : Runnable N Tm Ty) :
     R.toPrincipalElaborate.toLawfulMVars = R.toLawfulHasEval.toHasEval.toLawfulMVars := rfl
+
+example {N Tm Ty : Type} [Atom N] (R : Runnable N Tm Ty) :
+    R.toPrincipalElaborate.toLawfulMVars = R.toHasTermSubst.toLawfulMVars := rfl
 
 /-- …and one `HasAlphaEq`, which arrives only through `Confluent`. -/
 example {N Tm Ty : Type} [Atom N] (L : LawfulHasEval N Tm Ty) :

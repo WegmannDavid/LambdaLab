@@ -70,6 +70,34 @@ theorem Term.annotsGround_subst {v : Term N} {x : N} (hv : v.AnnotsGround) :
       rw [Term.subst]; simp only [Term.AnnotsGround]
       exact ⟨ih₁ he.1, ih₂ he.2⟩
 
+/-- **Substituting a closed term for an absent variable does nothing.**
+
+Both hypotheses are needed, and the second is not the obvious one. `Term.subst`'s `lam` case
+renames the binder whenever that binder is free in the value being substituted — through
+`Atom.freshFor`, to avoid capture — and it does so whether or not the substitution had any work to
+do. So without `hv` the statement is *false*: `(λ y : ⋆ . x).subst z (var y)` is `λ y' : ⋆ . x`,
+which is not the term we started with even though `z` never occurred. A closed value never
+triggers that branch, which is why this is stated the way it is. -/
+theorem Term.subst_of_not_free {v : Term N} {x : N} (hv : v.freeVars = []) :
+    ∀ t : Term N, x ∉ t.freeVars → t.subst x v = t := by
+  intro t
+  induction t using Term.subst.induct (x := x) (v := v) with
+  | case1 => intro h; exact absurd (by simp [Term.freeVars]) h
+  | case2 a hne => intro _; simp [Term.subst, hne]
+  | case3 τ body => intro _; rw [Term.subst]; simp
+  | case4 y τ body _ hmem _z _ih => rw [hv] at hmem; exact absurd hmem (by simp)
+  | case5 y τ body hne hmem ih =>
+      intro h
+      rw [Term.subst]; simp only [if_neg hne, if_neg hmem]
+      have : x ∉ body.freeVars := by
+        intro hx
+        exact h (by simp [Term.freeVars, List.mem_filter, hx]; exact hne)
+      rw [ih this]
+  | case6 e₁ e₂ ih₁ ih₂ =>
+      intro h
+      simp only [Term.freeVars, List.mem_append, not_or] at h
+      rw [Term.subst, ih₁ h.1, ih₂ h.2]
+
 /-- **One step keeps a term ground.** -/
 theorem Step.annotsGround {e e' : Term N} (s : Step e e') (he : e.AnnotsGround) :
     e'.AnnotsGround := by

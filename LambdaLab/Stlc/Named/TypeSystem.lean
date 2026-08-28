@@ -235,11 +235,42 @@ instance instLawfulHasEval : TypeSystem.Named.LawfulHasEval N (Term N) Ty where
     Term.annotsGround_iff_ground.mp
       (Term.eval_annotsGround _ (HasType.sn ht) (Term.annotsGround_iff_ground.mpr hg))
 
+/-! ## Substitution, for the stage that inlines definitions -/
+
+/-- **The substitution lemma, from subject reduction.** β *is* substitution, so
+`(λ x : σ . t) v` is a well-typed term whose one β-step is the substitution, and `Preservation`
+carries the type across. No induction, no weakening lemma, no renaming lemma — this is the whole
+proof. `weaken_closed` is the only extra step, moving the closed value into `Γ`. -/
+theorem HasType.subst_typing {Γ : Ctx N} {x : N} {σ τ : Ty} {t v : Term N}
+    (ht : HasType (Γ.cons x σ) t τ) (hv : HasType Ctx.empty v σ) :
+    HasType Γ (t.subst x v) τ :=
+  HasType.preservation (HasType.app (HasType.lam ht) (HasType.weaken_closed Γ hv)) Step.beta
+
+/-- **Substituting into a closed term does nothing.** Both terms closed, so neither the variable
+being replaced nor a capture-avoiding rename has anything to act on. -/
+theorem HasType.subst_closed {x : N} {σ τ : Ty} {t v : Term N}
+    (ht : HasType Ctx.empty t τ) (hv : HasType Ctx.empty v σ) : t.subst x v = t :=
+  Term.subst_of_not_free
+    (List.eq_nil_iff_forall_not_mem.mpr (HasType.closed_no_free hv)) t
+    (HasType.closed_no_free ht x)
+
+/-- **STLC substitutes terms for variables**, with the three laws the inlining stage asks of it —
+two of which were already sitting here under other names. -/
+instance instHasTermSubst : TypeSystem.Named.HasTermSubst N (Term N) Ty where
+  tsubst t x v := t.subst x v
+  tsubst_typing ht hv := HasType.subst_typing ht hv
+  tsubst_ground hg hv :=
+    Term.annotsGround_iff_ground.mp
+      (Term.annotsGround_subst (Term.annotsGround_iff_ground.mpr hv) _
+        (Term.annotsGround_iff_ground.mpr hg))
+  tsubst_closed ht hv := HasType.subst_closed ht hv
+  weaken_closed ht := HasType.weaken_closed _ ht
+
 /-- **STLC elaborates and runs.** Nothing new to discharge: the class is the conjunction of two
 instances already proved, and its only content is that they share a `LawfulMVars` — which they do,
 since both are built from the same `instLawfulMVars`. -/
 instance instRunnable : TypeSystem.Named.Runnable N (Term N) Ty :=
-  { instPrincipalElaborate, instLawfulHasEval with }
+  { instPrincipalElaborate, instLawfulHasEval, instHasTermSubst with }
 
 /-! ## The fields are definitionally what they came from
 

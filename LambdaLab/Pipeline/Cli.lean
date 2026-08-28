@@ -51,7 +51,7 @@ def Language.compileElab (L : Language)
   L.elabChain.report showStages src.toList
 
 /-- **Read, elaborate, then run.** One stage further again, for a language that also supplies an
-evaluator. Nothing here enumerates the stages: it is the same `Chain.report`, on a longer chain. -/
+evaluator and a substitution. Nothing here enumerates the stages: it is the same `Chain.report`, on a longer chain. -/
 def Language.compileEval (L : Language)
     [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
     Except String String :=

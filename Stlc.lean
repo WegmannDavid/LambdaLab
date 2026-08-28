@@ -6,8 +6,9 @@ import LambdaLab.Pipeline.Cli
 
     lake exe stlc PATH...
 
-Reads each file (or every `.stlc` file under a directory), parses it, elaborates it, evaluates it,
-and writes the result back out with every metavariable solved and every redex gone.
+Reads each file (or every `.stlc` file under a directory), parses it, elaborates it, reduces it,
+and writes the result back out with every metavariable solved, every earlier declaration inlined
+and every redex gone.
 `LambdaLab/Pipeline/Cli.lean` is the whole driver; this file only says which language and how far
 to take it.
 -/

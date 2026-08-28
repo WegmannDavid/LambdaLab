@@ -4,16 +4,30 @@ import LambdaLab.TypeSystem.Named.Vernacular.Typing
 # Running a program
 
 `Elaborate.lean` turns a program into one with no metavariables left; this turns *that* into one
-with no redexes left. Each declaration's body is replaced by its normal form, computed in the
-context its predecessors built — the same context the typing judgement walks, for the same reason.
+with no work left. Each declaration is reduced in turn, and the result is fully **closed**: the
+earlier declarations it mentions have been inlined, and every redex — including the ones inlining
+created — is gone.
 
-## What this is not
+So this is δ *and* β. The δ half is not decoration: a declared name enters the context as a free
+variable, so `λ x . id ( id x )` is already β-normal and β alone would leave almost every program
+untouched. Inlining `id` is what turns it into `λ x . x`.
 
-It is **β only**. A declaration's name enters the context, so later declarations mention it as a
-free variable, and a body like `λ x . id ( id x )` is already normal: `id` is a variable, not a
-value to unfold. Inlining earlier declarations (δ) would reduce further, and is deliberately not
-done here — it is a different transformation, needing a term-substitution lemma this development
-does not have, and it is not what `HasEval` supplies.
+## The fold
+
+Left to right, carrying an environment of the declarations already reduced:
+
+    v₁ = eval t₁
+    vᵢ = eval (tᵢ[x₁ := v₁] … [xᵢ₋₁ := vᵢ₋₁])
+
+Substituting the *reduced* values rather than the source bodies is what keeps this linear instead
+of exponential in the nesting of definitions, and it is also what makes the result closed at every
+step: `t₁` is closed because the first declaration is checked against the empty context, and each
+`vᵢ` is closed because everything it could have mentioned has been replaced by something closed.
+
+The environment therefore carries proofs, not just values (`EnvEntry`). They are needed at every
+recursive call — `tsubst_typing` wants the value typed, `tsubst_ground` wants it ground — so they
+live in the type rather than beside it, where they would have to be threaded as hypotheses through
+the definition and all three theorems below.
 
 ## Why the derivation is threaded through
 
@@ -21,15 +35,17 @@ does not have, and it is not what `HasEval` supplies.
 That does *not* make `evalCommands` a large elimination: it recurses on the command **list**, and
 the derivation is passed along as an ordinary argument and taken apart only by the `Prop`-valued
 inversion lemmas below. Lean's definitional proof irrelevance then makes the result independent of
-*which* derivation was supplied, which is what lets the theorems below quantify over it freely.
+*which* derivation was supplied.
 
 ## The three facts
 
-Evaluation lands in the image and fixes it: the result is well-typed (`evalCommands_hasType`),
-every body is normal (`evalCommands_normalBodies`), and a program already in that state is left
-alone (`evalCommands_of_normalBodies`). The last is what an `Abstraction` needs for its canonical
-annotation, and the first is what stops the result from being a program the vernacular rejects —
-groundness is the delicate half of it, and rests on `LawfulHasEval.evalGround`.
+Reduction lands in the image and fixes it: the result is well-typed (`evalCommands_hasType`), every
+body is reduced (`evalCommands_reduced`), and a program already in that state is left alone
+(`evalCommands_of_reduced`). The last is what an `Abstraction` needs for its canonical annotation,
+and it is the reason `Reduced` says *closed* and not merely *normal*: on a closed body every
+substitution is a no-op by `tsubst_closed`, so the second pass has nothing to do. A body that were
+only normal could still mention an earlier name, and inlining it would change the program — the
+fixed point would be false.
 -/
 
 namespace LambdaLab.TypeSystem.Named.Vernacular
@@ -37,18 +53,17 @@ namespace LambdaLab.TypeSystem.Named.Vernacular
 open HasVars (Ground)
 open LambdaLab.Nominal (Atom)
 
-/-! Only `[LawfulHasEval]`, and no bare `[HasType]` beside it. A separate `HasType` variable would
-be a *second*, unrelated judgement: the derivations the inversion lemmas produce would not be the
-ones `HasEval.eval` accepts, and every application below is a type error. Same discipline as
-`Elaborate.lean`, which takes `[PrincipalElaborate]` alone for the same reason. -/
+/-! Only `[Runnable]`, and no bare `[HasType]`, `[LawfulHasEval]` or `[HasTermSubst]` beside it. A
+separate instance variable would be a *second*, unrelated judgement: the derivations the inversion
+lemmas produce would not be the ones `eval` and `tsubst` accept, and every application below is a
+type error. Same discipline as `Elaborate.lean`, which takes `[PrincipalElaborate]` alone. -/
 
-variable {N Tm Ty : Type} [Atom N] [LawfulHasEval N Tm Ty]
+variable {N Tm Ty : Type} [Atom N] [Runnable N Tm Ty]
 
 /-! ## Inverting the judgement
 
-Both are `Prop → Prop`, so `cases` on the derivation is allowed; nothing here builds data out of
-it. They exist so that `evalCommands` can name the two things it needs without repeating the
-`cases`. -/
+All `Prop → Prop`, so `cases` on the derivation is allowed; nothing here builds data out of it.
+They exist so that `evalCommands` can name the things it needs without repeating the `cases`. -/
 
 /-- The head declaration's body has its declared type. -/
 theorem HasTypeGround.head_typed {Γ : Context N Ty} {x : N} {τ : Ty} {t : Tm}
@@ -72,102 +87,180 @@ theorem HasTypeGround.tail {Γ : Context N Ty} {x : N} {τ : Ty} {t : Tm}
     HasTypeGround (Γ.cons x τ) cs := by
   cases h with | decl _ _ _ hcs => exact hcs
 
-/-- The empty program's context is ground — the `nil` constructor, inverted. -/
-theorem HasTypeGround.nil_ctxGround {Γ : Context N Ty} (h : HasTypeGround Γ ([] : List (Command N Tm Ty))) :
-    CtxGround Γ := by
-  cases h with | nil hg => exact hg
+/-! ## The environment -/
 
-/-! ## Normal bodies -/
+/-- A declaration already reduced: its value, with the two facts every later declaration needs of
+it. `typed` in the **empty** context is the closedness that makes inlining idempotent. -/
+structure EnvEntry (N Tm Ty : Type) [Atom N] [Runnable N Tm Ty] where
+  /-- The name it was declared under. -/
+  name : N
+  /-- Its declared type. -/
+  ty : Ty
+  /-- Its reduced body. -/
+  value : Tm
+  /-- Closed at its declared type. -/
+  typed : (Context.empty : Context N Ty) ⊢ value : ty
+  /-- And holding no metavariable, which `HasTypeGround` demands of every body. -/
+  ground : Ground value
 
-/-- Every declaration body admits no further reduction. The image of `evalCommands`. -/
-def NormalBodies : List (Command N Tm Ty) → Prop
-  | [] => True
-  | Command.decl _ _ t :: cs => NormalForm t ∧ NormalBodies cs
+/-- The declarations reduced so far, **most recent first** — so the head is the outermost `cons` of
+the context they stand for, which is the end `tsubst_typing` peels. -/
+abbrev Env (N Tm Ty : Type) [Atom N] [Runnable N Tm Ty] := List (EnvEntry N Tm Ty)
 
-/-- A whole program is normal when its command list is. -/
-abbrev AllNormal (p : Program N Tm Ty) : Prop :=
-  NormalBodies p.toList
+/-- The context an environment stands for. -/
+def envCtx : Env N Tm Ty → Context N Ty
+  | [] => Context.empty
+  | e :: ρ => (envCtx ρ).cons e.name e.ty
 
-/-! ## The evaluator -/
+/-- **Inline every declaration in the environment**, outermost first. -/
+def instantiate : Env N Tm Ty → Tm → Tm
+  | [], t => t
+  | e :: ρ, t => instantiate ρ (HasTermSubst.tsubst (Ty := Ty) t e.name e.value)
 
-/-- **Normalize every body**, each in the context its predecessors built. -/
-def evalCommands : (Γ : Context N Ty) → (cs : List (Command N Tm Ty)) → HasTypeGround Γ cs →
-    List (Command N Tm Ty)
+/-- Inlining closes a term: it types in the empty context afterwards. Each step is
+`tsubst_typing`, peeling one `cons` off the context. -/
+theorem instantiate_typing : ∀ (ρ : Env N Tm Ty) {t : Tm} {τ : Ty},
+    envCtx ρ ⊢ t : τ → (Context.empty : Context N Ty) ⊢ instantiate ρ t : τ
+  | [], _, _, h => h
+  | e :: ρ, _, _, h => instantiate_typing ρ (HasTermSubst.tsubst_typing h e.typed)
+
+/-- Inlining introduces no metavariable. -/
+theorem instantiate_ground : ∀ (ρ : Env N Tm Ty) {t : Tm}, Ground t → Ground (instantiate ρ t)
+  | [], _, h => h
+  | e :: ρ, _, h => instantiate_ground ρ (HasTermSubst.tsubst_ground h e.ground)
+
+/-- **Inlining does nothing to a closed term** — the idempotence half. -/
+theorem instantiate_closed : ∀ (ρ : Env N Tm Ty) {t : Tm} {τ : Ty},
+    (Context.empty : Context N Ty) ⊢ t : τ → instantiate ρ t = t
+  | [], _, _, _ => rfl
+  | e :: ρ, _, _, h => by
+      rw [instantiate, HasTermSubst.tsubst_closed h e.typed]
+      exact instantiate_closed ρ h
+
+/-! ## The reducer -/
+
+/-- One declaration reduced, packaged as the environment entry the next one will use. Split out of
+`evalCommands` so that the value and its two proofs are named once rather than three times. -/
+def reduce (ρ : Env N Tm Ty) (x : N) (τ : Ty) {t : Tm} (h : envCtx ρ ⊢ t : τ) (hg : Ground t) :
+    EnvEntry N Tm Ty :=
+  { name := x, ty := τ
+    value := HasEval.eval Context.empty (instantiate ρ t) τ (instantiate_typing ρ h)
+    typed := preservation_mstep (instantiate_typing ρ h)
+      (LawfulHasEval.evalReachable (instantiate_typing ρ h))
+    ground := LawfulHasEval.evalGround (instantiate_typing ρ h) (instantiate_ground ρ hg) }
+
+/-- The reduced value admits no further reduction. -/
+theorem reduce_normal (ρ : Env N Tm Ty) (x : N) (τ : Ty) {t : Tm} (h : envCtx ρ ⊢ t : τ)
+    (hg : Ground t) : NormalForm (reduce ρ x τ h hg).value :=
+  LawfulHasEval.evalNormal (instantiate_typing ρ h)
+
+/-- **Reducing a body that is already closed and normal returns it.** Inlining is a no-op on it
+(`instantiate_closed`) and so is evaluation (`eval_of_normalForm`). -/
+theorem reduce_value_of_reduced (ρ : Env N Tm Ty) (x : N) (τ : Ty) {t : Tm}
+    (h : envCtx ρ ⊢ t : τ) (hg : Ground t) (hc : (Context.empty : Context N Ty) ⊢ t : τ)
+    (hn : NormalForm t) : (reduce ρ x τ h hg).value = t := by
+  show HasEval.eval Context.empty (instantiate ρ t) τ (instantiate_typing ρ h) = t
+  -- The derivation mentions `instantiate ρ t` too, so `rw` cannot move the term alone;
+  -- `eval_congr` moves both at once.
+  rw [eval_congr (instantiate_closed ρ hc) (instantiate_typing ρ h) hc]
+  exact eval_of_normalForm hc hn
+
+/-- **Reduce every declaration**, each in the environment its predecessors built. -/
+def evalCommands : (ρ : Env N Tm Ty) → (cs : List (Command N Tm Ty)) →
+    HasTypeGround (envCtx ρ) cs → List (Command N Tm Ty)
   | _, [], _ => []
-  | Γ, Command.decl x τ t :: cs, h =>
-      Command.decl x τ (HasEval.eval Γ t τ h.head_typed) :: evalCommands (Γ.cons x τ) cs h.tail
+  | ρ, Command.decl x τ _ :: cs, h =>
+      Command.decl x τ (reduce ρ x τ h.head_typed h.head_ground).value
+        :: evalCommands (reduce ρ x τ h.head_typed h.head_ground :: ρ) cs h.tail
 
-/-- **The result is still a well-typed program.** Types survive by `preservation_mstep` along
-`evalReachable`; groundness — the half nothing else in the tower gives — by
-`LawfulHasEval.evalGround`. -/
-theorem evalCommands_hasType : ∀ (Γ : Context N Ty) (cs : List (Command N Tm Ty))
-    (h : HasTypeGround Γ cs), HasTypeGround Γ (evalCommands Γ cs h)
+/-! ## Fully reduced -/
+
+/-- Every declaration body is **closed and normal**: no redex left, and no earlier declaration
+mentioned. The image of `evalCommands`.
+
+Closedness is not decoration. Without it the fixed point below is false — a body could be normal
+and still name an earlier declaration, and inlining would change it. -/
+def Reduced : List (Command N Tm Ty) → Prop
+  | [] => True
+  | Command.decl _ τ t :: cs =>
+      NormalForm t ∧ ((Context.empty : Context N Ty) ⊢ t : τ) ∧ Reduced cs
+
+/-- A whole program is reduced when its command list is. -/
+abbrev AllReduced (p : Program N Tm Ty) : Prop := Reduced p.toList
+
+/-- **The result is still a well-typed program.** Each body is now closed, and `weaken_closed`
+puts it back under the context `HasTypeGround` checks it against. -/
+theorem evalCommands_hasType : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty))
+    (h : HasTypeGround (envCtx ρ) cs), HasTypeGround (envCtx ρ) (evalCommands ρ cs h)
   | _, [], h => h
-  | Γ, Command.decl x τ _t :: cs, h =>
+  | ρ, Command.decl x τ _ :: cs, h =>
       HasTypeGround.decl
-        (preservation_mstep h.head_typed (LawfulHasEval.evalReachable h.head_typed))
+        (HasTermSubst.weaken_closed (reduce ρ x τ h.head_typed h.head_ground).typed)
         h.head_tyGround
-        (LawfulHasEval.evalGround h.head_typed h.head_ground)
-        (evalCommands_hasType (Γ.cons x τ) cs h.tail)
+        (reduce ρ x τ h.head_typed h.head_ground).ground
+        (evalCommands_hasType (reduce ρ x τ h.head_typed h.head_ground :: ρ) cs h.tail)
 
-/-- **The result is normal** — `evalNormal`, declaration by declaration. -/
-theorem evalCommands_normalBodies : ∀ (Γ : Context N Ty) (cs : List (Command N Tm Ty))
-    (h : HasTypeGround Γ cs), NormalBodies (evalCommands Γ cs h)
+/-- **The result is fully reduced** — normal by `evalNormal`, closed by construction. -/
+theorem evalCommands_reduced : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty))
+    (h : HasTypeGround (envCtx ρ) cs), Reduced (evalCommands ρ cs h)
   | _, [], _ => trivial
-  | Γ, Command.decl x τ _t :: cs, h =>
-      ⟨LawfulHasEval.evalNormal h.head_typed, evalCommands_normalBodies (Γ.cons x τ) cs h.tail⟩
+  | ρ, Command.decl x τ _ :: cs, h =>
+      ⟨reduce_normal ρ x τ h.head_typed h.head_ground,
+        (reduce ρ x τ h.head_typed h.head_ground).typed,
+        evalCommands_reduced (reduce ρ x τ h.head_typed h.head_ground :: ρ) cs h.tail⟩
 
-/-- **Evaluation fixes what it has already reached.** `eval_of_normalForm`, declaration by
-declaration — the statement an `Abstraction`'s canonical annotation needs. -/
-theorem evalCommands_of_normalBodies : ∀ (Γ : Context N Ty) (cs : List (Command N Tm Ty))
-    (h : HasTypeGround Γ cs), NormalBodies cs → evalCommands Γ cs h = cs
+/-- **The fixed point.** A program whose bodies are already closed and normal is returned
+unchanged — which is what lets an `Abstraction` onto the reduced programs take each value as its
+own canonical re-presentation. -/
+theorem evalCommands_of_reduced : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty))
+    (h : HasTypeGround (envCtx ρ) cs), Reduced cs → evalCommands ρ cs h = cs
   | _, [], _, _ => rfl
-  | Γ, Command.decl x τ t :: cs, h, hn => by
-      show Command.decl x τ (HasEval.eval Γ t τ h.head_typed) :: evalCommands (Γ.cons x τ) cs h.tail
+  | ρ, Command.decl x τ t :: cs, h, hr => by
+      show Command.decl x τ (reduce ρ x τ h.head_typed h.head_ground).value
+          :: evalCommands (reduce ρ x τ h.head_typed h.head_ground :: ρ) cs h.tail
         = Command.decl x τ t :: cs
-      rw [eval_of_normalForm h.head_typed hn.1,
-        evalCommands_of_normalBodies (Γ.cons x τ) cs h.tail hn.2]
+      rw [reduce_value_of_reduced ρ x τ h.head_typed h.head_ground hr.2.1 hr.1,
+        evalCommands_of_reduced (reduce ρ x τ h.head_typed h.head_ground :: ρ) cs h.tail hr.2.2]
 
 /-! ## At the level of programs
 
 `Program` is a `NEList`, i.e. a head and a tail, and `evalCommands` never shortens a list — so the
-evaluated program is non-empty for the same reason the input was, and the head/tail split survives
-without a separate argument. -/
+reduced program is non-empty for the same reason the input was, and the head/tail split survives
+without a separate argument. `envCtx []` is `Context.empty`, which is where `HasType` starts. -/
 
-/-- **Normalize a program.** The match is on the head/tail pair rather than on `toList`, so the
-result is a `Program` by construction — `evalCommands` never shortens a list, but saying so would
-be an extra lemma where matching the pair is none. -/
+/-- **Reduce a program.** -/
 def evalProgram : (p : Program N Tm Ty) → HasType p → Program N Tm Ty
-  | (Command.decl x τ t, cs), h =>
-      (Command.decl x τ (HasEval.eval Context.empty t τ h.head_typed),
-        evalCommands ((Context.empty : Context N Ty).cons x τ) cs h.tail)
+  | (Command.decl x τ _, cs), h =>
+      (Command.decl x τ (reduce [] x τ h.head_typed h.head_ground).value,
+        evalCommands [reduce [] x τ h.head_typed h.head_ground] cs h.tail)
 
-/-- The normalized program is still well-typed. -/
+/-- The reduced program is still well-typed. -/
 theorem evalProgram_hasType : ∀ (p : Program N Tm Ty) (h : HasType p),
     HasType (evalProgram p h)
-  | (Command.decl x τ _t, cs), h =>
+  | (Command.decl x τ _, cs), h =>
       HasTypeGround.decl
-        (preservation_mstep h.head_typed (LawfulHasEval.evalReachable h.head_typed))
+        (HasTermSubst.weaken_closed (reduce [] x τ h.head_typed h.head_ground).typed)
         h.head_tyGround
-        (LawfulHasEval.evalGround h.head_typed h.head_ground)
-        (evalCommands_hasType ((Context.empty : Context N Ty).cons x τ) cs h.tail)
+        (reduce [] x τ h.head_typed h.head_ground).ground
+        (evalCommands_hasType [reduce [] x τ h.head_typed h.head_ground] cs h.tail)
 
-/-- Every body of the normalized program is a normal form. -/
-theorem evalProgram_allNormal : ∀ (p : Program N Tm Ty) (h : HasType p),
-    AllNormal (evalProgram p h)
-  | (Command.decl x τ _t, cs), h =>
-      ⟨LawfulHasEval.evalNormal h.head_typed,
-        evalCommands_normalBodies ((Context.empty : Context N Ty).cons x τ) cs h.tail⟩
+/-- Every body of the reduced program is closed and normal. -/
+theorem evalProgram_allReduced : ∀ (p : Program N Tm Ty) (h : HasType p),
+    AllReduced (evalProgram p h)
+  | (Command.decl x τ _, cs), h =>
+      ⟨reduce_normal [] x τ h.head_typed h.head_ground,
+        (reduce [] x τ h.head_typed h.head_ground).typed,
+        evalCommands_reduced [reduce [] x τ h.head_typed h.head_ground] cs h.tail⟩
 
-/-- **The fixed point.** A program whose bodies are already normal is returned unchanged — which is
-what lets an `Abstraction` whose target is the normalized programs take each value as its own
-canonical re-presentation. -/
-theorem evalProgram_of_allNormal : ∀ (p : Program N Tm Ty) (h : HasType p),
-    AllNormal p → evalProgram p h = p
-  | (Command.decl x τ t, cs), h, hn => by
-      show ((Command.decl x τ (HasEval.eval Context.empty t τ h.head_typed) :
-              Command N Tm Ty), evalCommands _ cs h.tail) = (Command.decl x τ t, cs)
-      rw [eval_of_normalForm h.head_typed hn.1,
-        evalCommands_of_normalBodies ((Context.empty : Context N Ty).cons x τ) cs h.tail hn.2]
+/-- **The fixed point, at the level of programs.** -/
+theorem evalProgram_of_allReduced : ∀ (p : Program N Tm Ty) (h : HasType p),
+    AllReduced p → evalProgram p h = p
+  | (Command.decl x τ t, cs), h, hr => by
+      show ((Command.decl x τ (reduce [] x τ h.head_typed h.head_ground).value :
+              Command N Tm Ty),
+            evalCommands [reduce [] x τ h.head_typed h.head_ground] cs h.tail)
+        = (Command.decl x τ t, cs)
+      rw [reduce_value_of_reduced [] x τ h.head_typed h.head_ground hr.2.1 hr.1,
+        evalCommands_of_reduced [reduce [] x τ h.head_typed h.head_ground] cs h.tail hr.2.2]
 
 end LambdaLab.TypeSystem.Named.Vernacular
