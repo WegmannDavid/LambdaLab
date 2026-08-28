@@ -131,11 +131,31 @@ theorem Language.parser_roundtrip (L : Language) (prog : Program L)
     L.parser.run (L.parser.print ann) = some (prog, []) :=
   L.parser.roundtrip prog ann
 
+/-- The parse stage's annotation family: **every token list that parses to this program**.
+
+The tautological fiber, rather than `Program.Ann`'s structured account of a spelling. Both give the
+same canonical print — `saturate` keeps `default` where it was — but only this one makes the stage
+reachable in the reverse direction without a proof, since an annotation *is* an accepted input.
+
+`Program.Ann` has not gone anywhere: it is still what `L.parser` prints from, and still what the
+layout in `Compose.lean` is written against. It is no longer what indexes the *morphism*. -/
+abbrev Language.ParseAnn (L : Language) (prog : NEList (Command L)) : Type :=
+  { ts : List Token // L.parser.wholeInput ts = some prog }
+
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
-whose annotation is the file's surface spelling. Composes with the tokenizer
+whose annotation is every token list the program can be written as. Composes with the tokenizer
 (`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
 def Language.abstraction (L : Language) :
-    Abstraction (List Token) (NEList (Command L)) (Program.Ann L) :=
+    Abstraction (List Token) (NEList (Command L)) (Language.ParseAnn L) :=
   L.parser.toAbstraction
+
+/-- **The parse stage forgets nothing** — a projection now, not a theorem. What the structured
+family `Program.Ann` would have cost is `Exact` for `L.parser`, and through it exactness for every
+vernacular combinator; the tautological family reaches the same conclusion with none of it, and
+`LossyParser.toAbstractionOfExact` is waiting for the day the combinators land. -/
+theorem Language.abstraction_lossless (L : Language) (ts : List Token) (prog : Program L)
+    (h : L.abstraction.abstract ts = some prog) :
+    ∃ ann : Language.ParseAnn L prog, L.abstraction.realize ann = ts :=
+  L.abstraction.lossless ts prog h
 
 end LambdaLab.Pipeline

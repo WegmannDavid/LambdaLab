@@ -105,15 +105,15 @@ def tokenCell : OneCell (List Char) (List Token) :=
 
 /-- ② as a 1-cell. -/
 def Language.parseCell (L : Language) : OneCell (List Token) (Program L) :=
-  ⟨Program.Ann L, L.abstraction⟩
+  ⟨Language.ParseAnn L, L.abstraction⟩
 
 /-- **Characters to program**, in `Abs`: the tokenizer composed with the language's parsing stage.
 Available for every `Language`, since neither stage knows what a program means. -/
 def Language.parsePipeline (L : Language) :
     Abstraction (List Char) (NEList (Command L))
-      (fun prog => Σ ann : Program.Ann L prog, Gaps isSep (L.parser.print ann)) :=
+      (fun prog => Σ β : Language.ParseAnn L prog, Gaps isSep β.val) :=
   (tokenCell.hom.comp L.abstraction).withDefault
-    (fun {_prog} => ⟨L.parser.default, L.layout L.parser.default⟩)
+    (fun {prog} => ⟨L.abstraction.default (a := prog), L.layout L.parser.default⟩)
 
 /-- Parse a source file into a program. Whole-input: leading/trailing whitespace is fine,
 anything unconsumed is not. -/
@@ -195,7 +195,7 @@ exactly the value it indexes. -/
 def Language.elabPipeline :
     Abstraction (List Char) L.Elaborated
       (fun p => Σ ann : { q : Program L // elabProgram? q = some p.val },
-        Σ a : Program.Ann L ann.val, Gaps isSep (L.parser.print a)) :=
+        Σ β : Language.ParseAnn L ann.val, Gaps isSep β.val) :=
   L.parsePipeline.comp L.elabStage
 
 /-- Parse *and* elaborate a source file. -/
@@ -269,7 +269,7 @@ def Language.evalPipeline :
     Abstraction (List Char) L.Evaluated
       (fun q => Σ ann : { p : L.Elaborated // evalProgram p.val p.property = q.val },
         Σ e : { r : Program L // elabProgram? r = some ann.val.val },
-          Σ a : Program.Ann L e.val, Gaps isSep (L.parser.print a)) :=
+          Σ β : Language.ParseAnn L e.val, Gaps isSep β.val) :=
   L.elabPipeline.comp L.evalStage
 
 /-- Parse, elaborate *and* run a source file. -/

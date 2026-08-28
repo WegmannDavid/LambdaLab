@@ -10,15 +10,23 @@ Two decisions, both forced by that pipeline:
   rejects ill-typed terms — the total version cannot host either stage. (`Except ε`
   for diagnostics is a compatible upgrade; the theory is unchanged. Undecided.)
 
-* **Soundness is the only structure law.** Completeness — every accepted concrete is
-  `realize` of some annotation — is demoted to the per-morphism predicate `Lossless`.
-  It cannot be a structure law: for a Hindley–Milner elaborator the fiber over a typed
-  term is every combination of written-vs-omitted annotations *jointly constrained by
-  unification* — one written type propagates globally, so no node-local annotation
-  family covers the fiber; only the tautological `{c // abstract c = some a}` does,
-  vacuously. Syntactic stages (tokenizer, parser) prove `Lossless`; elaboration stages
-  simply don't claim it. `Lossless` is closed under `comp` and `reindex`, so a
-  pipeline tracks exactly how far source reconstruction extends.
+* **Both directions are laws.** Soundness — realize an annotation, re-abstract, land on its
+  index — and completeness, `lossless`: every accepted concrete is `realize` of some annotation.
+  Without the second a morphism may take your concrete and hand back something unrelated to it,
+  and be well-formed; the reverse round trip is the one a compiler needs to quote what the user
+  wrote.
+
+  This was once a per-morphism predicate, on the argument that a Hindley–Milner elaborator cannot
+  satisfy it — the fiber over a typed term is every combination of written-vs-omitted annotations
+  *jointly constrained by unification*, so no node-local family covers it and only the tautological
+  `{c // abstract c = some a}` does. That argument is right, and it establishes which family to
+  choose rather than that the law is unsatisfiable: the elaboration stage was already built on the
+  tautological family, and satisfies the law as it stands. `ofFibers` is that choice, made
+  available to anything that needs it.
+
+  What the law does *not* say is that `abstract` forgot nothing. Evaluation satisfies it while
+  discarding every redex. It says the morphism's annotation is an adequate record of what
+  `abstract` collapsed — a claim about the annotation, not about the algorithm.
 
 What every stage keeps *without* completeness: `abstract_realize` at `default` is the
 canonical-print round trip — print canonically, re-`abstract`, recover the same
@@ -74,9 +82,9 @@ end Iso
 /-- A lossy-but-annotated map from `Concrete` to `Abstract`: `abstract` (partial —
 not every concrete is meaningful) together with, for each abstract value, a family
 `Ann a` of concrete *re-presentations* and their realization back into `Concrete`.
-`Ann a` is a structured account of (part of) the fiber of `abstract` over `a`; when
-it covers the fiber the abstraction is `Lossless`, but that is a property of
-individual morphisms, not a law. -/
+`Ann a` is an account of the fiber of `abstract` over `a`, and it must be a *complete* one: that
+is the `lossless` law. Where a structured family covers the fiber it may serve (`Gaps` for the
+tokenizer); where none does, the fiber itself always works (`ofFibers`). -/
 structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   /-- The forward (lossy, partial) direction — the algorithm: tokenize, parse, elaborate. -/
   abstract : Concrete → Option Abstract
@@ -84,9 +92,12 @@ structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   realize : ∀ {a : Abstract}, Ann a → Concrete
   /-- A canonical annotation: `realize default` is the pretty-printer. -/
   default : ∀ {a : Abstract}, Ann a
-  /-- Soundness: anything realized re-abstracts to exactly its index. At `default`
+  /-- **Soundness**: anything realized re-abstracts to exactly its index. At `default`
   this is the canonical-print round trip. -/
   abstract_realize : ∀ (a : Abstract) (ann : Ann a), abstract (realize ann) = some a
+  /-- **Completeness**: anything accepted was realized. The reverse direction — without it a
+  morphism may take your concrete and hand back something unrelated to it, and be well-formed. -/
+  lossless : ∀ (c : Concrete) (a : Abstract), abstract c = some a → ∃ ann : Ann a, realize ann = c
 
 namespace Abstraction
 
@@ -98,6 +109,7 @@ def id (A : Type) : Abstraction A A (fun _ => Unit) where
   realize {a} _ := a
   default := ()
   abstract_realize _ _ := rfl
+  lossless _ _ h := ⟨(), (Option.some.inj h).symm⟩
 
 /-- Composition (diagrammatic: first `f`, then `g`). The composite annotation is the
 dependent sum: an outer `G`-annotation `β` picks the intermediate `g.realize β : B`,
@@ -111,6 +123,16 @@ def comp (f : Abstraction A B F) (g : Abstraction B C G) :
     show (f.abstract (f.realize γ.2)).bind g.abstract = some c
     rw [f.abstract_realize (g.realize γ.1) γ.2]
     exact g.abstract_realize c γ.1
+  lossless x z h := by
+    have h' : (f.abstract x).bind g.abstract = some z := h
+    cases hfx : f.abstract x with
+    | none => rw [hfx] at h'; simp at h'
+    | some y =>
+        have hgy : g.abstract y = some z := by rw [hfx] at h'; exact h'
+        obtain ⟨β, hβ⟩ := g.lossless y z hgy
+        subst hβ
+        obtain ⟨α, hα⟩ := f.lossless x (g.realize β) hfx
+        exact ⟨⟨β, α⟩, hα⟩
 
 /-- Re-choose the canonical annotation, keeping the morphism itself. Legitimate because
 `default` carries **no law of its own**: `abstract_realize` is quantified over *every*
@@ -143,46 +165,38 @@ def reindex (f : Abstraction A B F) (e : ∀ b, Iso (F b) (F' b)) : Abstraction 
   realize {b} ann' := f.realize ((e b).symm ann')
   default {b} := e b f.default
   abstract_realize b ann' := f.abstract_realize b ((e b).symm ann')
+  lossless c b h := by
+    obtain ⟨ann, hann⟩ := f.lossless c b h
+    -- `(e b).symm.toFun` is `(e b).invFun` by definition but not syntactically, so `show` states
+    -- the goal in the form `left_inv` can rewrite.
+    exact ⟨e b ann, by
+      show f.realize ((e b).invFun ((e b).toFun ann)) = c
+      rw [(e b).left_inv]; exact hann⟩
 
-/-! ## Losslessness — completeness as a per-morphism property -/
+/-! ## Building one from a bare algorithm
 
-/-- `f` forgets nothing: every concrete that `f` accepts is `realize` of some
-annotation, so `Ann` covers the fibers and the source can be reconstructed exactly.
-Tokenizers and parsers have this; a Hindley–Milner elaborator does not (its fibers
-are globally constrained by unification). -/
-def Lossless (f : Abstraction A B F) : Prop :=
-  ∀ (c : A) (b : B), f.abstract c = some b → ∃ ann : F b, f.realize ann = c
+With completeness a law, a morphism can no longer be assembled from an algorithm and a *chosen*
+annotation family — the family must cover the fibers, and most chosen families do not. `ofFibers`
+is the construction that always works: take the fiber itself.
 
-theorem id_lossless (A : Type) : (id A).Lossless :=
-  fun _ _ h => ⟨(), (Option.some.inj h).symm⟩
+The cost is that the annotation stops being *structured*. A family like "a spelling of this
+program, command by command" says more than "some token list that parses to it", and the second is
+what you get here. It is the right trade wherever the structure was serving only to pick `default`
+— which is the case for the parse stage, since the layout is chosen on the composite anyway. -/
 
-/-- Losslessness is about `realize`, not `default`, so it survives re-defaulting: the two
-morphisms have the same `abstract` and the same `realize`, and `Lossless` mentions only those. -/
-theorem withDefault_lossless {f : Abstraction A B F} (d : ∀ {b : B}, F b) (h : f.Lossless) :
-    (f.withDefault d).Lossless := h
+/-- **The tautological morphism**: over `b`, an annotation *is* a concrete that abstracts to `b`.
+`canon` picks the canonical one, and both laws are then projections. -/
+def ofFibers (abstract : A → Option B) (canon : ∀ b : B, { c : A // abstract c = some b }) :
+    Abstraction A B (fun b => { c : A // abstract c = some b }) where
+  abstract := abstract
+  realize ann := ann.val
+  default {b} := canon b
+  abstract_realize _ ann := ann.property
+  lossless c _ h := ⟨⟨c, h⟩, rfl⟩
 
-theorem Lossless.comp {f : Abstraction A B F} {g : Abstraction B C G}
-    (hf : f.Lossless) (hg : g.Lossless) : (f.comp g).Lossless := by
-  intro x z h
-  have h' : (f.abstract x).bind g.abstract = some z := h
-  cases hfx : f.abstract x with
-  | none => rw [hfx] at h'; simp at h'
-  | some y =>
-      have hgy : g.abstract y = some z := by rw [hfx] at h'; exact h'
-      obtain ⟨β, hβ⟩ := hg y z hgy
-      subst hβ
-      obtain ⟨α, hα⟩ := hf x (g.realize β) hfx
-      exact ⟨⟨β, α⟩, hα⟩
-
-theorem Lossless.reindex {f : Abstraction A B F} (e : ∀ b, Iso (F b) (F' b))
-    (hf : f.Lossless) : (f.reindex e).Lossless := by
-  intro c b h
-  obtain ⟨ann, hann⟩ := hf c b h
-  -- `(e b).symm.toFun` is `(e b).invFun` by definition but not syntactically, so `show` states
-  -- the goal in the form `left_inv` can rewrite.
-  exact ⟨e b ann, by
-    show f.realize ((e b).invFun ((e b).toFun ann)) = c
-    rw [(e b).left_inv]; exact hann⟩
+@[simp] theorem ofFibers_abstract (abstract : A → Option B)
+    (canon : ∀ b : B, { c : A // abstract c = some b }) :
+    (ofFibers abstract canon).abstract = abstract := rfl
 
 /-! ## Bundling the annotation family
 
@@ -219,66 +233,5 @@ def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A
     (f.hcomp g).hom.abstract a = (f.hom.abstract a).bind g.hom.abstract := rfl
 
 end Abstraction
-
-/-! ## The reverse law, bundled
-
-`Abstraction` has one law and it runs in one direction: realize an annotation, re-abstract, land
-back on its index. Nothing constrains the other direction. Abstract a concrete and the structure
-offers no way back to it — `default` hands you *a* concrete, but its only relation to the one you
-started from is that both abstract to the same value, so a morphism may accept your text and hand
-back something else entirely and still be well-formed.
-
-`Lossless` above is the statement that would fix it, and as a bare predicate it did not: it was
-proved five times over and consumed nowhere, because knowing a spelling exists is not the same as
-a morphism promising one does. `LosslessAbstraction` is that predicate as a **law** — a stage of
-this type has both directions, and a function taking one may use the reverse direction without
-asking.
-
-It is a wrapper rather than a field of `Abstraction`, for the reason this file's header gives at
-length: the law is not universal. A Hindley–Milner elaborator cannot satisfy it, and neither can
-the evaluation stage, since reduction is exactly forgetting. Putting it in the structure would
-leave those stages with no type to be. Same placement, and the same rule, as `RoundTrips` sitting
-beside `Biparser` rather than inside it.
--/
-
-/-- An abstraction that forgets nothing: **both** round trips, as laws. -/
-structure LosslessAbstraction (Concrete Abstract : Type) (Ann : Abstract → Type) extends
-    Abstraction Concrete Abstract Ann where
-  /-- **The reverse law**: every concrete the morphism accepts is `realize` of some annotation, so
-  the source can be reconstructed rather than merely re-approximated. -/
-  lossless : Abstraction.Lossless toAbstraction
-
-namespace LosslessAbstraction
-
-variable {A B C : Type} {F : B → Type} {G : C → Type} {F' : B → Type}
-
-/-- The identity forgets nothing. -/
-def id (A : Type) : LosslessAbstraction A A (fun _ => Unit) :=
-  ⟨Abstraction.id A, Abstraction.id_lossless A⟩
-
-/-- **Lossless stages compose to a lossless pipeline** — `Abstraction.Lossless.comp`, now carried
-by the type rather than re-established at each use. -/
-def comp (f : LosslessAbstraction A B F) (g : LosslessAbstraction B C G) :
-    LosslessAbstraction A C (fun c => Σ β : G c, F (g.realize β)) :=
-  ⟨f.toAbstraction.comp g.toAbstraction, f.lossless.comp g.lossless⟩
-
-/-- Re-choosing the canonical annotation cannot break the reverse law: it mentions `realize`, and
-`withDefault` leaves `realize` alone. -/
-def withDefault (f : LosslessAbstraction A B F) (d : ∀ {b : B}, F b) :
-    LosslessAbstraction A B F :=
-  ⟨f.toAbstraction.withDefault d, Abstraction.withDefault_lossless d f.lossless⟩
-
-/-- Transport along a fibrewise bijection of annotation families. -/
-def reindex (f : LosslessAbstraction A B F) (e : ∀ b, Iso (F b) (F' b)) :
-    LosslessAbstraction A B F' :=
-  ⟨f.toAbstraction.reindex e, Abstraction.Lossless.reindex e f.lossless⟩
-
-/-- **What the law buys**, in the form a caller wants it: an accepted concrete has an annotation
-that prints it back. -/
-theorem exists_annotation (f : LosslessAbstraction A B F) {c : A} {b : B}
-    (h : f.abstract c = some b) : ∃ ann : F b, f.realize ann = c :=
-  f.lossless c b h
-
-end LosslessAbstraction
 
 end LambdaLab

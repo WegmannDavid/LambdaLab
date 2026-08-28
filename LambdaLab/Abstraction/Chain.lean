@@ -154,29 +154,16 @@ theorem run_eq_abstract (c : Chain X Y) (x : X.Carrier) :
           | error => rfl
           | ok y => cases h : e.hom.abstract y <;> simp [h, Except.toOption]
 
-/-! ## Losslessness, stage by stage
+/-! ## Losslessness
 
-`Lossless` is a property of a single morphism, and `Abstraction.Lossless.comp` closes it under
-composition — so on a collapsed pipeline the only sayable thing is "lossless" or "not". On a chain
-the useful statement is available: which *prefix* is lossless, i.e. how far back towards the
-source a value can be turned into the text the user actually wrote. -/
+There is nothing left to say here. Completeness is a law of `Abstraction` now, so every cell of
+every chain has it and `compose` inherits it like any other field — where this file used to carry
+an inductive `Chain.Lossless` and a fold transferring it to the composite.
 
-/-- Every stage forgets nothing. -/
-inductive Lossless : {X Y : Stage} → Chain X Y → Prop
-  | /-- The base stage is lossless. -/
-    one {X Y : Stage} {e : OneCell X.Carrier Y.Carrier} :
-      e.hom.Lossless → Lossless (.one e)
-  | /-- One more lossless stage on the end. -/
-    cons {X Y Z : Stage} {p : Chain X Y} {e : OneCell Y.Carrier Z.Carrier} :
-      Lossless p → e.hom.Lossless → Lossless (.cons p e)
-
-/-- A stagewise-lossless chain collapses to a lossless morphism — `Abstraction.Lossless.comp`,
-folded along the chain. The converse fails, and interestingly: a later stage may forget freely
-off the image of the earlier ones without the composite noticing. -/
-theorem Lossless.composite {c : Chain X Y} (h : c.Lossless) : c.compose.hom.Lossless := by
-  induction h with
-  | one he => rw [compose_one]; exact he
-  | cons _ he ih => rw [compose_cons]; exact Abstraction.Lossless.comp ih he
+What that costs is the *prefix* statement the old predicate could express: "reconstruction extends
+this far and no further" is not sayable when every stage reconstructs. The trade is deliberate —
+a stage that cannot cover its fibers structurally takes the tautological family instead
+(`Abstraction.ofFibers`) and covers them anyway. -/
 
 end Chain
 

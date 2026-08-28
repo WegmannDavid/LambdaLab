@@ -21,7 +21,7 @@ lossy parsing lives at the `Abstraction` level, built compositionally:
 
 `parens` needs one side condition (`hp`): no realization of `p` may itself begin with `lp` *and*
 end with `rp`, else the stripper would eat one pair too many. For `atom` this is free from
-`lp ≠ rp` (a single token cannot be both). `Lossless` is inherited: `Lossless.parens`.
+`lp ≠ rp` (a single token cannot be both). Completeness is inherited by the combinator itself.
 
 Scope: this wraps the *whole* input in parens (a toy grammar), not parens at every node
 of a recursive grammar — that generalization is the mixfix-as-`Abs` port, later.
@@ -36,29 +36,31 @@ variable {Tok V : Type} {Ann : V → Type}
 
 /-! ## The atomic stage: one token -/
 
+/-- The single-token reading, named so that `atom`'s own completeness proof can unfold it — a
+field cannot mention the definition it is a field of. -/
+def atomAbstract (isVar : Tok → Bool) :
+    List Tok → Option { t : Tok // isVar t = true }
+  | [t] => if h : isVar t = true then some ⟨t, h⟩ else none
+  | _ => none
+
 /-- Exactly one token satisfying `isVar`. `Unit` annotation — nothing is forgotten. -/
 def atom (isVar : Tok → Bool) :
     Abstraction (List Tok) { t : Tok // isVar t = true } (fun _ => Unit) where
-  abstract := fun cs =>
-    match cs with
-    | [t] => if h : isVar t = true then some ⟨t, h⟩ else none
-    | _ => none
+  abstract := atomAbstract isVar
   realize {v} _ := [v.1]
   default := ()
-  abstract_realize v _ := by simp; exact v.2
-
-theorem atom_lossless (isVar : Tok → Bool) : (atom isVar).Lossless := by
-  intro cs v h
-  match cs with
-  | [] => exact absurd h (by simp [atom])
-  | [t] =>
-      refine ⟨(), ?_⟩
-      show [v.1] = [t]
-      simp only [atom] at h
-      split at h
-      · cases h; rfl
-      · exact absurd h (by simp)
-  | _ :: _ :: _ => exact absurd h (by simp [atom])
+  abstract_realize v _ := by simp [atomAbstract]; exact v.2
+  lossless cs v h := by
+    match cs with
+    | [] => exact absurd h (by simp [atomAbstract])
+    | [t] =>
+        refine ⟨(), ?_⟩
+        show [v.1] = [t]
+        simp only [atomAbstract] at h
+        split at h
+        · cases h; rfl
+        · exact absurd h (by simp)
+    | _ :: _ :: _ => exact absurd h (by simp [atomAbstract])
 
 /-! ## Stripping and wrapping parens -/
 
@@ -130,6 +132,7 @@ theorem strip_sound [DecidableEq Tok] {lp rp : Tok} (hlprp : lp ≠ rp) (cs : Li
 the canonical print (`default`) uses none. `hp`: no realization of `p` may look wrapped itself,
 else stripping would eat into it. -/
 def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List Tok) V Ann) (lp rp : Tok)
+    (hlprp : lp ≠ rp)
     (hp : ∀ (v : V) (ann : Ann v),
       ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
     Abstraction (List Tok) V (fun v => Nat × Ann v) where
@@ -140,20 +143,16 @@ def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List
     show p.abstract (strip lp rp (wrap lp rp x.1 (p.realize x.2))).2 = some v
     rw [strip_wrap (hp v x.2)]
     exact p.abstract_realize v x.2
-
-/-- `parens` preserves losslessness: the depth measured by `strip` plus the inner annotation
-realize back to the exact input. -/
-theorem _root_.LambdaLab.Abstraction.Lossless.parens [DecidableEq Tok] {p : Abstraction (List Tok) V Ann}
-    {lp rp : Tok} (hL : p.Lossless) (hlprp : lp ≠ rp)
-    (hp : ∀ (v : V) (ann : Ann v),
-      ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
-    (p.parens lp rp hp).Lossless := by
-  intro cs v h
-  obtain ⟨ann, hann⟩ := hL _ v h
-  refine ⟨((strip lp rp cs).1, ann), ?_⟩
-  show wrap lp rp (strip lp rp cs).1 (p.realize ann) = cs
-  rw [hann]
-  exact strip_sound hlprp cs
+  -- Completeness is inherited: the depth measured by `strip` plus the inner annotation realize
+  -- back to the exact input. `lp ≠ rp` is a hypothesis of the combinator now rather than of a
+  -- separate transfer theorem — without it `strip` cannot tell an opener from a closer, and the
+  -- depth it reports is not the one that reconstructs the input.
+  lossless cs v h := by
+    obtain ⟨ann, hann⟩ := p.lossless _ v h
+    refine ⟨((strip lp rp cs).1, ann), ?_⟩
+    show wrap lp rp (strip lp rp cs).1 (p.realize ann) = cs
+    rw [hann]
+    exact strip_sound hlprp cs
 
 /-- For `atom`, the `parens` side condition is free: a single-token realization would need
 `lp = rp` to look wrapped. -/
@@ -188,11 +187,8 @@ private theorem lp_ne_rp : lpT ≠ rpT := by decide
 def parenVarPipeline :
     Abstraction (List Char) { t : Parser.IsoParser.Token sepSp // isVarT t = true }
       (fun v => Σ x : Nat × Unit, Gaps sepSp (wrap lpT rpT x.1 [v.1])) :=
-  (tokenizer ' ' rfl).comp ((atom isVarT).parens lpT rpT (atom_neverWrapped lp_ne_rp))
-
-theorem parenVarPipeline_lossless : parenVarPipeline.Lossless :=
-  (tokenizer_lossless ' ' rfl).comp
-    ((atom_lossless isVarT).parens lp_ne_rp (atom_neverWrapped lp_ne_rp))
+  (tokenizer ' ' rfl).comp
+    ((atom isVarT).parens lpT rpT lp_ne_rp (atom_neverWrapped lp_ne_rp))
 
 end Demo
 

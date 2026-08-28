@@ -37,7 +37,19 @@ and the `Option` in `Abstraction.abstract` is, here, pure overhead. That is wort
 because every earlier stage does reject: the tokenizer never does either, but the parser and the
 elaborator both do, and a reader who has followed the pipeline this far will expect a third.
 
-## And the one stage that is honestly lossy
+## Lossy, and lossless, and both honestly
+
+`Lossless` is a law now, and this stage satisfies it — which reads as a contradiction of everything
+below and is not one. Reduction genuinely discards work: `( λ f . f ) id` and `λ x . x` have the
+same normal form, and no function of the *reduced* program recovers which was written. The law does
+not ask for one. It asks that the annotation family cover the fibers, and this family over `q` is
+"an elaborated program that runs to `q`" — so the program you started from is its own witness.
+
+The honest reading of the law is therefore narrower than "nothing was lost": *the morphism's
+annotation is an adequate record of what `abstract` collapsed*. A morphism fails it by choosing an
+annotation coarser than its fiber, which is a claim about the annotation, not about the algorithm.
+
+## Lossy in the sense that matters
 
 `Lossless` fails, and not for elaboration's subtle reason (fibres constrained by unification) but
 for the obvious one: reduction discards what it reduces. `λ x . ( λ y . y ) x` and `λ x . x` have
@@ -72,20 +84,6 @@ def Language.evalStage :
   realize ann := ann.val
   default {q} := ⟨⟨q.val, q.property.1⟩, evalProgram_of_allReduced q.val q.property.1 q.property.2⟩
   abstract_realize _ ann := congrArg some (Subtype.ext ann.property)
-
-/-- **Evaluation forgets nothing either** — which reads as a contradiction of the section above and
-is not one. Reduction discards work: `( λ f . f ) id` and `λ x . x` have the same normal form, and
-no function of the *reduced* program alone can tell you which was written. `Lossless` does not ask
-for such a function. It asks that the annotation family cover the fiber, and this stage's family
-*is* the fiber — an annotation over `q` is a `p` that runs to `q`, so the `p` you started from is
-its own witness.
-
-So the honest reading of `Lossless` is narrower than "nothing was lost": it says the morphism's
-`Ann` is an adequate record of what `abstract` collapsed, not that `abstract` collapsed nothing.
-The stage that fails it is one whose annotation is *coarser* than its fiber — which is a choice
-about the annotation, not about the reduction. -/
-theorem Language.evalStage_lossless : L.evalStage.Lossless := by
-  intro p q h
-  exact ⟨⟨p, congrArg Subtype.val (Option.some.inj h)⟩, rfl⟩
+  lossless p _q h := ⟨⟨p, congrArg Subtype.val (Option.some.inj h)⟩, rfl⟩
 
 end LambdaLab.Pipeline

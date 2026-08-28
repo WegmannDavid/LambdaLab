@@ -90,46 +90,67 @@ theorem roundtrip (p : LossyParser α fst fol V Ann) (v : V) (ann : Ann v) :
 
 /-! ## `LossyParser → Abstraction` -/
 
-/-- Whole-input use of a lossy parser: the canonical `Abs` morphism. `abstract` demands an empty
-leftover; `realize` is `print`; the law is the terminal round-trip. -/
-def toAbstraction (p : LossyParser α fst fol V Ann) : Abstraction (List α) V Ann where
-  abstract cs := (p.run cs).bind fun z => if z.2.isEmpty then some z.1 else none
-  realize := p.print
-  default := p.default
-  abstract_realize v ann := by
-    show (p.run (p.print ann)).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v
-    rw [p.roundtrip v ann]
-    rfl
+/-- Whole-input reading: parse, and insist nothing was left over. -/
+def wholeInput (p : LossyParser α fst fol V Ann) (cs : List α) : Option V :=
+  (p.run cs).bind fun z => if z.2.isEmpty then some z.1 else none
 
-/-! ## Exactness, and its transfer to `Lossless` -/
+/-- Printing the canonical annotation reads back as the value — the terminal round-trip, at the
+whole-input reading. -/
+theorem wholeInput_print (p : LossyParser α fst fol V Ann) (v : V) (ann : Ann v) :
+    p.wholeInput (p.print ann) = some v := by
+  show (p.run (p.print ann)).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v
+  rw [p.roundtrip v ann]
+  rfl
+
+/-- **Whole-input use of a lossy parser as an `Abs` morphism**, on the *tautological* annotation
+family: an annotation of `v` is an input that reads back as `v`.
+
+Not the parser's own `Ann`, and that is the price of completeness being a law. `Ann` is a
+structured account of the spellings; whether it covers the fibers is `Exact`, which is a real
+theorem about a real parser and not something a conversion may assume. The tautological family
+covers them by construction, and `default` is still the canonical print, so nothing a caller could
+do with the structured version is lost — only the *description* is coarser.
+
+`toAbstractionOfExact` below is the structured version, for a parser that has earned it. -/
+def toAbstraction (p : LossyParser α fst fol V Ann) :
+    Abstraction (List α) V (fun v => { cs : List α // p.wholeInput cs = some v }) :=
+  Abstraction.ofFibers p.wholeInput
+    (fun v => ⟨p.print (p.default (v := v)), p.wholeInput_print v p.default⟩)
+
+/-! ## Exactness, and the structured conversion it earns -/
 
 /-- The parser consumes only printable material: whatever `run` accepted is the print of some
-annotation of the result. The parser-level counterpart of `Abstraction.Lossless` — and like it, a
-*property*, not structure. -/
+annotation of the result. The parser-level counterpart of the `lossless` law, and a *property* —
+a parser that deliberately accepts more than it prints is still a parser. -/
 def Exact (p : LossyParser α fst fol V Ann) : Prop :=
   ∀ (cs : List α) (v : V) (rest : List α),
     p.run cs = some (v, rest) → ∃ ann : Ann v, p.print ann ++ rest = cs
 
-/-- An exact lossy parser yields a lossless abstraction. -/
-theorem Exact.lossless {p : LossyParser α fst fol V Ann} (hp : p.Exact) :
-    p.toAbstraction.Lossless := by
-  intro cs v h
-  have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v := h
-  cases hrun : p.run cs with
-  | none => rw [hrun] at h'; simp at h'
-  | some z =>
-      obtain ⟨v', rest⟩ := z
-      rw [hrun] at h'
-      have h'' : (if rest.isEmpty then some v' else none) = some v := h'
-      split at h''
-      · next hemp =>
-          have hrest : rest = [] := by simpa using hemp
-          subst hrest
-          have hv : v' = v := Option.some.inj h''
-          obtain ⟨ann, hann⟩ := hp cs v' [] hrun
-          exact hv ▸ (⟨ann, by simpa using hann⟩ :
-            ∃ ann : Ann v', p.toAbstraction.realize ann = cs)
-      · exact absurd h'' (by simp)
+/-- **An exact parser converts on its own annotation family.** The structured spellings do cover
+the fibers, so they satisfy the law and `Ann` may index the morphism directly — which is what
+`toAbstraction` cannot assume. -/
+def toAbstractionOfExact (p : LossyParser α fst fol V Ann) (hp : p.Exact) :
+    Abstraction (List α) V Ann where
+  abstract := p.wholeInput
+  realize := p.print
+  default := p.default
+  abstract_realize v ann := p.wholeInput_print v ann
+  lossless cs v h := by
+    have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v := h
+    cases hrun : p.run cs with
+    | none => rw [hrun] at h'; simp at h'
+    | some z =>
+        obtain ⟨v', rest⟩ := z
+        rw [hrun] at h'
+        have h'' : (if rest.isEmpty then some v' else none) = some v := h'
+        split at h''
+        · next hemp =>
+            have hrest : rest = [] := by simpa using hemp
+            subst hrest
+            have hv : v' = v := Option.some.inj h''
+            obtain ⟨ann, hann⟩ := hp cs v' [] hrun
+            exact hv ▸ (⟨ann, by simpa using hann⟩ : ∃ ann : Ann v', p.print ann = cs)
+        · exact absurd h'' (by simp)
 
 /-- A `LossyParser` as an `IsoParser` whose source is the **annotated values** `Σ v, Ann v`.
 `print₁` is the index — definitionally — which is what makes `echo` proofs of composites built
