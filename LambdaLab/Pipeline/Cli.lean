@@ -9,15 +9,25 @@ exit non-zero if anything failed.
 
 ## Why one driver rather than one per language
 
-The only thing a language contributes is `String → Except String String` — source in, rendered
-output or an error message out. Everything else (argument handling, reading files, choosing a
-stream to print on, the exit code) is the same for all of them, so it is written once here and
-each executable is three lines.
+The only thing a language contributes is `Bool → String → Except String String` — source in,
+rendered output or an error message out, the flag saying whether to show the working. Everything
+else (argument handling, reading files, choosing a stream to print on, the exit code) is the same
+for all of them, so it is written once here and each executable is three lines.
 
 Two such functions are supplied below, matching the two chains in `Compose.lean`:
 `compileParse` for a language that only reads, and `compileElab` for one whose types and terms
 satisfy the elaboration interface. A language picks whichever it can support — `Arith` has no type
 system, so it stops at the first.
+
+## `--stages`
+
+Both are `Chain.report` on the corresponding chain, so neither has to enumerate the stages and
+neither knows how many there are; adding a stage to `Compose.lean` shows up here with no edit.
+`--stages` prints the input at every stage rather than only the last, and a rejection names the
+stage that was not reached — a chain still knows which `abstract` returned `none`, where the
+collapsed morphism does not. `Language.parseChain_run` and `Language.elabChain_run` prove that
+what is printed without the flag is what `parseFile`/`elaborateFile` would have said, so the
+readable version and the composite version are not two different compilers.
 
 ## No paths are baked in
 
@@ -27,30 +37,28 @@ default file: a run with no arguments is a usage error, exactly as a compiler be
 
 namespace LambdaLab.Pipeline
 
-/-- **Read, then re-render.** Everything a `Language` can do on its own, with no type system:
-`none` from the parser becomes the error message. -/
-def Language.compileParse (L : Language) (src : String) : Except String String :=
-  match L.parseFile src with
-  | none => .error "parse error: not a well-formed program"
-  | some prog => .ok (L.renderProgram prog)
+/-- **Read, then re-render.** Everything a `Language` can do on its own, with no type system. -/
+def Language.compileParse (L : Language) (showStages : Bool) (src : String) :
+    Except String String :=
+  L.parseChain.report showStages src.toList
 
 /-- **Read, then elaborate.** The same, one stage further on, for a language whose own types and
-terms satisfy `PrincipalElaborate`. A `none` here means either the source did not parse or it did
-not type — the two are not distinguished, because the composite is a single `Abs` morphism and
-that is precisely what makes its round-trip law cover both stages. -/
+terms satisfy `PrincipalElaborate`. Parse failure and type failure *are* distinguished, and
+without either stage having to say so: the chain names the stage it did not reach. -/
 def Language.compileElab (L : Language)
-    [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty] (src : String) : Except String String :=
-  match L.elaborateFile src with
-  | none => .error "error: not a well-formed program, or it does not elaborate"
-  | some p => .ok (L.renderElaborated p)
+    [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
+    Except String String :=
+  L.elabChain.report showStages src.toList
 
 /-- Usage text, on the same shape every language's executable shares. -/
 def usage (name ext : String) : String :=
-  s!"usage: {name} PATH...\n\
+  s!"usage: {name} [--stages] PATH...\n\
      \n\
      Each PATH is a source file, or a directory to search recursively for `.{ext}` files.\n\
      Writes the canonical rendering of each to stdout, diagnostics to stderr.\n\
-     Exits non-zero if any path is missing, unreadable, or rejected."
+     Exits non-zero if any path is missing, unreadable, or rejected.\n\
+     \n\
+     --stages  show the input at every stage of the pipeline, not only the result."
 
 /-- Every `.ext` file at or under `p`, in a deterministic order.
 
@@ -109,16 +117,19 @@ def processFile (ext : String) (compile : String → Except String String)
 /-- **The driver.** Every file named on the command line is processed, rather than stopping at the
 first failure — a compiler that reports one error per run is annoying to use. The exit code is 0
 only if all of them succeeded. -/
-def cli (name ext : String) (compile : String → Except String String) (args : List String) :
-    IO UInt32 := do
+def cli (name ext : String) (compile : Bool → String → Except String String)
+    (args : List String) : IO UInt32 := do
   if args.contains "--help" || args.contains "-h" then
     IO.println (usage name ext)
     return 0
-  if args.isEmpty then
+  let showStages := args.contains "--stages"
+  let paths := args.filter (· != "--stages")
+  if paths.isEmpty then
     IO.eprintln (usage name ext)
     return 1
+  let compile := compile showStages
   let mut failed := false
-  for arg in args do
+  for arg in paths do
     match ← expand ext arg with
     | .error msg =>
         IO.eprintln s!"{arg}: {msg}"

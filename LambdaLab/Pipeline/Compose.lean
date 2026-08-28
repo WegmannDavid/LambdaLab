@@ -1,6 +1,7 @@
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Abstraction.Tokenizer
+import LambdaLab.Abstraction.Chain
 
 /-!
 # Chaining the stages: fill in a `Language`, get a front end
@@ -97,12 +98,20 @@ def Language.layout (L : Language) {prog : Program L} (ann : Program.Ann L prog)
 
 /-! ## ① ∘ ② — reading, no semantics required -/
 
+/-- ① as a 1-cell — the annotation family bundled in, so the stage can sit in a `Chain`. -/
+def tokenCell : OneCell (List Char) (List Token) :=
+  ⟨Gaps isSep, tokenizer (sep := isSep) ' ' (by decide)⟩
+
+/-- ② as a 1-cell. -/
+def Language.parseCell (L : Language) : OneCell (List Token) (Program L) :=
+  ⟨Program.Ann L, L.abstraction⟩
+
 /-- **Characters to program**, in `Abs`: the tokenizer composed with the language's parsing stage.
 Available for every `Language`, since neither stage knows what a program means. -/
 def Language.parsePipeline (L : Language) :
     Abstraction (List Char) (NEList (Command L))
       (fun prog => Σ ann : Program.Ann L prog, Gaps isSep (L.parser.print ann)) :=
-  ((tokenizer (sep := isSep) ' ' (by decide)).comp L.abstraction).withDefault
+  (tokenCell.hom.comp L.abstraction).withDefault
     (fun {_prog} => ⟨L.parser.default, L.layout L.parser.default⟩)
 
 /-- Parse a source file into a program. Whole-input: leading/trailing whitespace is fine,
@@ -113,6 +122,56 @@ def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
 /-- Render a program canonically: every command in its canonical spelling, one per line. -/
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.parsePipeline.realize (L.parsePipeline.default (a := prog)))
+
+/-! ## The same two stages, uncollapsed
+
+`parsePipeline` is the pipeline as one morphism; `parseChain` is the same pipeline as the list of
+its stages. The composite is what carries the round-trip law — one law covering every stage is the
+whole point of composing — but it has forgotten that there *were* stages, and a compiler needs
+that back: to show the token stream on the way past, and to say which stage rejected a file
+instead of only that something did. `Abstraction/Chain.lean` has the argument in full.
+
+The two are not two pipelines. `parseChain_abstract` below proves they read a file the same way,
+and they differ only in `default` — the chain folds each stage's own canonical annotation, while
+the composite re-chooses it (`withDefault`) to get one command per line, which is a choice only
+expressible where both stages are in scope. So the *stages* carry the renderers already defined
+above rather than deriving them, and `programStage` renders with `renderProgram`, layout and all.
+-/
+
+/-- The file, as read. -/
+def sourceStage : Stage where
+  Carrier := List Char
+  name := "source"
+  render := String.ofList
+
+/-- After ①: the token stream, shown re-rendered with single spaces. -/
+def tokenStage : Stage where
+  Carrier := List Token
+  name := "tokens"
+  render := fun ts => String.ofList (tokenCell.hom.realize (tokenCell.hom.default (a := ts)))
+
+/-- After ②: the program, shown in its canonical layout. -/
+def Language.programStage (L : Language) : Stage where
+  Carrier := Program L
+  name := "program"
+  render := L.renderProgram
+
+/-- **Characters to program, stage by stage.** -/
+def Language.parseChain (L : Language) : Chain sourceStage L.programStage :=
+  Chain.cons (Y := tokenStage) (Chain.one tokenCell) L.parseCell
+
+/-- Stepping through the stages reads a file exactly as collapsing them does. -/
+@[simp] theorem Language.parseChain_abstract (L : Language) (cs : List Char) :
+    L.parseChain.compose.hom.abstract cs = L.parsePipeline.abstract cs := by
+  rw [parseChain, Chain.compose_cons, Chain.compose_one]
+  simp only [parsePipeline, parseCell, Abstraction.comp, Abstraction.withDefault_abstract,
+    OneCell.hcomp_abstract]
+  rfl
+
+/-- What the driver relies on: running the chain over a file agrees with `parseFile`. -/
+theorem Language.parseChain_run (L : Language) (s : String) :
+    (L.parseChain.run s.toList).2.toOption = L.parseFile s :=
+  (L.parseChain.run_eq_abstract _).trans (L.parseChain_abstract _)
 
 /-! ## ① ∘ ② ∘ ③ — and type checking, when the language has a type system
 
@@ -149,5 +208,36 @@ theorem Language.elaborateFile_renderElaborated (p : L.Elaborated) :
     (L.elabPipeline.realize (L.elabPipeline.default (a := p)))).toList = some p
   rw [String.toList_ofList]
   exact L.elabPipeline.abstract_realize p L.elabPipeline.default
+
+/-! ## All three stages, uncollapsed -/
+
+/-- ③ as a 1-cell. -/
+def Language.elabCell : OneCell (Program L) L.Elaborated :=
+  ⟨fun p => { q : Program L // elabProgram? q = some p.val }, L.elabStage⟩
+
+/-- After ③: the program with every metavariable solved. -/
+def Language.elaboratedStage : Stage where
+  Carrier := L.Elaborated
+  name := "elaborated program"
+  render := L.renderElaborated
+
+/-- **The whole front end, stage by stage** — `parseChain` with elaboration on the end. Note that
+this is `cons`, not a new pipeline: the parsing chain is literally a prefix of it, which is the
+statement that a language with no type system stops one stage short rather than doing something
+else. -/
+def Language.elabChain : Chain sourceStage L.elaboratedStage :=
+  L.parseChain.cons L.elabCell
+
+/-- Stepping through all three stages agrees with collapsing them. -/
+@[simp] theorem Language.elabChain_abstract (cs : List Char) :
+    L.elabChain.compose.hom.abstract cs = L.elabPipeline.abstract cs := by
+  rw [elabChain, Chain.compose_cons, OneCell.hcomp_abstract, L.parseChain_abstract]
+  simp only [elabPipeline, elabCell, Abstraction.comp]
+  rfl
+
+/-- What the driver relies on: running the chain over a file agrees with `elaborateFile`. -/
+theorem Language.elabChain_run (s : String) :
+    (L.elabChain.run s.toList).2.toOption = L.elaborateFile s :=
+  (L.elabChain.run_eq_abstract _).trans (L.elabChain_abstract _)
 
 end LambdaLab.Pipeline

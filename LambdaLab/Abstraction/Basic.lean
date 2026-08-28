@@ -184,6 +184,40 @@ theorem Lossless.reindex {f : Abstraction A B F} (e : ∀ b, Iso (F b) (F' b))
     show f.realize ((e b).invFun ((e b).toFun ann)) = c
     rw [(e b).left_inv]; exact hann⟩
 
+/-! ## Bundling the annotation family
+
+`Abstraction A B Ann` names `Ann` in its own type, so two stages of a pipeline have *different*
+types and cannot be put in a list. `OneCell` packages the family with the morphism, which is what
+makes `Abstraction/Chain.lean` possible.
+
+It is also the 1-cell of the bicategory, and it lives here rather than in `Abstraction/Bicat.lean`
+for the reason `Iso` lives here rather than being `Equiv`: `Bicat.lean` imports Mathlib, `Chain.lean`
+is in the executables' import cone, and one Mathlib import there is about 1300 modules. Nothing
+below needs `CategoryTheory`; only the 2-cells do. -/
+
+/-- A 1-cell `A ⇝ B`: an abstraction with its annotation family packaged in. -/
+structure OneCell (A B : Type) where
+  /-- The annotation family, no longer an index. -/
+  Ann : B → Type
+  /-- The morphism itself. -/
+  hom : Abstraction A B Ann
+
+/-- The identity 1-cell `A ⇝ A` — the `Unit`-annotated `Abstraction.id`. Its `realize` is
+definitionally the index, which is what keeps the bicategory's unitors transport-free. -/
+def OneCell.id (A : Type) : OneCell A A where
+  Ann := fun _ => Unit
+  hom := Abstraction.id A
+
+/-- Horizontal composition of 1-cells: `Abstraction.comp` with the `Σ`-nest it produces bundled
+back in as the composite's family. -/
+def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A C where
+  Ann := fun c => Σ β : g.Ann c, f.Ann (g.hom.realize β)
+  hom := f.hom.comp g.hom
+
+/-- The forward map of a composite, unbundled. -/
+@[simp] theorem OneCell.hcomp_abstract (f : OneCell A B) (g : OneCell B C) (a : A) :
+    (f.hcomp g).hom.abstract a = (f.hom.abstract a).bind g.hom.abstract := rfl
+
 end Abstraction
 
 end LambdaLab

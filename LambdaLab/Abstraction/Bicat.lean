@@ -36,10 +36,10 @@ theorem realize_cast {A B : Type} {Ann : B → Type} (F : (b : B) → Ann b → 
 theorem map_eqRec {B : Type} {P Q : B → Type} (F : (b : B) → P b → Q b)
     {b1 b2 : B} (h : b1 = b2) (x : P b1) : F b2 (h ▸ x) = h ▸ F b1 x := by cases h; rfl
 
-/-- A 1-cell `A ⟶ B`: an abstraction with its annotation family packaged in. -/
-structure OneCell (A B : Type) where
-  Ann : B → Type
-  hom : Abstraction A B Ann
+/-! `OneCell`, `OneCell.id` and `OneCell.hcomp` — the 1-cell data — are declared in
+`Abstraction/Basic.lean`, not here. They need no Mathlib, and `Abstraction/Chain.lean` (which is
+in the executables' import cone, where a Mathlib import costs about 1300 modules) needs them. Only
+the 2-cells and the coherence below actually want `CategoryTheory`. -/
 
 /-- A 2-cell `f ⟹ g`: a **fibrewise** map of annotation families commuting with `realize`.
 `map` takes the fibre index `b` explicitly, which keeps `ext` and `funext` clean.
@@ -76,17 +76,6 @@ instance (A B : Type) : Category (OneCell A B) where
 @[simp] theorem TwoCell.comp_map {A B : Type} {f g h : OneCell A B}
     (α : f ⟶ g) (β : g ⟶ h) (b : B) (x : f.Ann b) :
     (α ≫ β).map b x = β.map b (α.map b x) := rfl
-
-/-- The identity 1-cell `A ⟶ A` — the `Unit`-annotated `Abstraction.id`. Its `realize` is
-definitionally the index, which keeps the unitors transport-free. -/
-def OneCell.id (A : Type) : OneCell A A where
-  Ann := fun _ => Unit
-  hom := Abstraction.id A
-
-/-- Horizontal composition of 1-cells. -/
-def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A C where
-  Ann := fun c => Σ β : g.Ann c, f.Ann (g.hom.realize β)
-  hom := f.hom.comp g.hom
 
 /-! ## Associator and unitors (the invertible 2-cell data) -/
 
