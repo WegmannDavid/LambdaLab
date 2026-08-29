@@ -289,7 +289,7 @@ def arithLanguage : Language where
         intro t ht
         have h : t = kwAssign := ht
         subst h
-        exact follow_assign)).toLossyParserUnit (fun _ => rfl)
+        exact follow_assign)).toLossyParserUnit (fun _ => rfl) (mixfix_exact (G := tyGrammar) () .loosest).weakenFollow
 
   -- terms: the mixfix parser chained with the truncation. FIRST is already `anyTok`; FOLLOW is
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
@@ -303,6 +303,6 @@ def arithLanguage : Language where
         intro t ht
         have h : t = kwDef := ht
         subst h
-        exact follow_def) |> aRules.truncateParser) (fun _ => rfl)
+        exact follow_def) |> aRules.truncateParser) (fun _ => rfl) (mixfix_exact (G := aGrammar) () .loosest).weakenFollow
 
 end LambdaLab.Arith

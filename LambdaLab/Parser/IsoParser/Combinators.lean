@@ -78,6 +78,24 @@ def sat (pred : α → Bool) :
   firstOk c rest hc := by simp [satParse, hc]
   ok d rest _ := by simp [satParse, d.property]
 
+/-- `sat` is exact: it consumed one token, and that token is the print of the value returned. -/
+theorem sat_exact (pred : α → Bool) : (sat pred).Exact := by
+  intro input b rest h
+  obtain ⟨r, hp, hv⟩ := run_eq_some h
+  refine ⟨b, rfl, ?_⟩
+  cases input with
+  | nil => rw [IsoParser.run_nil] at hp; simp at hp
+  | cons hd tl =>
+      have hp' : (if h : pred hd = true
+          then some ((⟨hd, h⟩ : { a : α // pred a = true }), ⟨tl, by simp⟩)
+          else none) = some (b, r) := hp
+      split at hp'
+      · cases hp'
+        have htl : tl = rest := hv
+        subst htl
+        rfl
+      · simp at hp'
+
 /-- Parse a literal symbol `t`. -/
 def tokParse [DecidableEq α] (t : α) : (input : List α) →
     Option (Unit × { r : List α // r.length < input.length })

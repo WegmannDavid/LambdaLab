@@ -77,6 +77,14 @@ theorem run_eq_some {p : IsoParser α fst fol w v} {input : List α} {b : v} {re
     obtain ⟨rfl, rfl⟩ := h
     exact ⟨r, rfl, rfl⟩
 
+/-- **Exactness** — the converse of `ok`: whatever the parser consumed is the print of some
+source. A *predicate* at this level, proved per parser by an exactness induction
+(`Mixfix/Sound.lean` for the mixfix stack); the `IsoParser → LossyParser` converters consume it
+to discharge the lossy level's `exact` law. -/
+def IsoParser.Exact (p : IsoParser α fst fol w v) : Prop :=
+  ∀ (input : List α) (b : v) (rest : List α),
+    p.run input = some (b, rest) → ∃ a : w, (p.print a).1 = b ∧ (p.print a).2 ++ rest = input
+
 /-- `ok`, restated on `run`. -/
 theorem IsoParser.run_print (p : IsoParser α fst fol w v) (a : w) (rest : List α)
     (h : HeadIn fol rest) : p.run ((p.print a).2 ++ rest) = some ((p.print a).1, rest) :=

@@ -282,14 +282,15 @@ def tokenizer (sc : Char) (hsc : sep sc = true) :
   abstract_realize := fun ts g => by
     show some (tokens sep (g.leading.val ++ realizeInner sep ts g.inner)) = some ts
     rw [tokens_sep_prepend g.leading.2, tokens_realizeInner ts g.inner]
+  complete cs ts h := by
+    have hts : tokens sep cs = ts := Option.some.inj h
+    subst hts
+    exact realize_complete_aux cs
 
 /-- **The tokenizer forgets only the gaps**: every string is the realization of the gaps read off
 it. The archetypal `Lossless` stage. -/
 theorem tokenizer_lossless (sc : Char) (hsc : sep sc = true) :
-    (tokenizer sc hsc).Lossless := by
-  intro cs ts h
-  have hts : tokens sep cs = ts := Option.some.inj h
-  subst hts
-  exact realize_complete_aux cs
+    (tokenizer sc hsc).Lossless :=
+  (tokenizer sc hsc).complete
 
 end LambdaLab.Abstraction

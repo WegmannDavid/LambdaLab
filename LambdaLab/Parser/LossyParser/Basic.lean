@@ -74,6 +74,12 @@ structure LossyParser (α : Type) (fst fol : α → Prop) (V : Type) (Ann : V �
   continuation — recover `v`, continuation untouched. -/
   ok : ∀ (v : V) (ann : Ann v) (rest : List α), HeadIn fol rest →
     (parse (print ann ++ rest)).map (fun z => (z.1, z.2.val)) = some (v, rest)
+  /-- **Exactness** — the converse of `ok`: whatever the parser consumed is the print of some
+  annotation of the result. This is what makes `Ann` cover every accepted spelling, and it is
+  what `toAbstraction` turns into `Abstraction.complete`. -/
+  exact : ∀ (cs : List α) (v : V) (rest : List α),
+    (parse cs).map (fun z => (z.1, z.2.val)) = some (v, rest) →
+    ∃ ann : Ann v, print ann ++ rest = cs
 
 namespace LossyParser
 
@@ -91,7 +97,9 @@ theorem roundtrip (p : LossyParser α fst fol V Ann) (v : V) (ann : Ann v) :
 /-! ## `LossyParser → Abstraction` -/
 
 /-- Whole-input use of a lossy parser: the canonical `Abs` morphism. `abstract` demands an empty
-leftover; `realize` is `print`; the law is the terminal round-trip. -/
+leftover; `realize` is `print`; the soundness law is the terminal round-trip, and the
+completeness law is `exact` at `rest = []`. No side conditions: both laws travel in the
+structure. -/
 def toAbstraction (p : LossyParser α fst fol V Ann) : Abstraction (List α) V Ann where
   abstract cs := (p.run cs).bind fun z => if z.2.isEmpty then some z.1 else none
   realize := p.print
@@ -100,36 +108,22 @@ def toAbstraction (p : LossyParser α fst fol V Ann) : Abstraction (List α) V A
     show (p.run (p.print ann)).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v
     rw [p.roundtrip v ann]
     rfl
-
-/-! ## Exactness, and its transfer to `Lossless` -/
-
-/-- The parser consumes only printable material: whatever `run` accepted is the print of some
-annotation of the result. The parser-level counterpart of `Abstraction.Lossless` — and like it, a
-*property*, not structure. -/
-def Exact (p : LossyParser α fst fol V Ann) : Prop :=
-  ∀ (cs : List α) (v : V) (rest : List α),
-    p.run cs = some (v, rest) → ∃ ann : Ann v, p.print ann ++ rest = cs
-
-/-- An exact lossy parser yields a lossless abstraction. -/
-theorem Exact.lossless {p : LossyParser α fst fol V Ann} (hp : p.Exact) :
-    p.toAbstraction.Lossless := by
-  intro cs v h
-  have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v := h
-  cases hrun : p.run cs with
-  | none => rw [hrun] at h'; simp at h'
-  | some z =>
-      obtain ⟨v', rest⟩ := z
-      rw [hrun] at h'
-      have h'' : (if rest.isEmpty then some v' else none) = some v := h'
-      split at h''
-      · next hemp =>
-          have hrest : rest = [] := by simpa using hemp
-          subst hrest
-          have hv : v' = v := Option.some.inj h''
-          obtain ⟨ann, hann⟩ := hp cs v' [] hrun
-          exact hv ▸ (⟨ann, by simpa using hann⟩ :
-            ∃ ann : Ann v', p.toAbstraction.realize ann = cs)
-      · exact absurd h'' (by simp)
+  complete cs v h := by
+    have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v := h
+    cases hrun : p.run cs with
+    | none => rw [hrun] at h'; simp at h'
+    | some z =>
+        obtain ⟨v', rest⟩ := z
+        rw [hrun] at h'
+        have h'' : (if rest.isEmpty then some v' else none) = some v := h'
+        split at h''
+        · next hemp =>
+            have hrest : rest = [] := by simpa using hemp
+            subst hrest
+            have hv : v' = v := Option.some.inj h''
+            obtain ⟨ann, hann⟩ := p.exact cs v' [] hrun
+            exact hv ▸ (⟨ann, by simpa using hann⟩ : ∃ ann : Ann v', p.print ann = cs)
+        · exact absurd h'' (by simp)
 
 /-- A `LossyParser` as an `IsoParser` whose source is the **annotated values** `Σ v, Ann v`.
 `print₁` is the index — definitionally — which is what makes `echo` proofs of composites built
@@ -151,7 +145,7 @@ produce): if the printed value is the index (`echo`), the family is a genuine an
 This keeps the *pretty* family — unlike the fiber of `toLossyParser`. -/
 def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserSigma {Ann : V → Type}
     (p : IsoParser α fst fol (Σ v : V, Ann v) V) (dflt : ∀ {v : V}, Ann v)
-    (echo : ∀ s : Σ v : V, Ann v, (p.print s).1 = s.1) :
+    (echo : ∀ s : Σ v : V, Ann v, (p.print s).1 = s.1) (hx : p.Exact) :
     LossyParser α fst fol V Ann where
   parse := p.parse
   print {v} ann := (p.print ⟨v, ann⟩).2
@@ -160,13 +154,18 @@ def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserSigma {Ann : V → 
   ok v ann rest h := by
     have hk := p.ok ⟨v, ann⟩ rest h
     rwa [echo ⟨v, ann⟩] at hk
+  exact cs v rest h := by
+    obtain ⟨⟨v', ann⟩, h1, h2⟩ := hx cs v rest h
+    have hv : v' = v := (echo ⟨v', ann⟩).symm.trans h1
+    subst hv
+    exact ⟨ann, h2⟩
 
 /-- An aligned parser whose printer echoes its source, as a `LossyParser` with **trivial**
 annotation — the embedding of canonical-form-only (lossless) languages into the lossy interface.
 (The generalization to a *lossy* projection into a custom type is `IsoParser.truncate`, in
 `Parser/Truncation.lean`.) -/
 def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser α fst fol v v)
-    (echo : ∀ a : v, (p.print a).1 = a) :
+    (echo : ∀ a : v, (p.print a).1 = a) (hx : p.Exact) :
     LossyParser α fst fol v (fun _ => Unit) where
   parse := p.parse
   print {b} _ := (p.print b).2
@@ -175,12 +174,17 @@ def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserUnit (p : IsoParser
   ok b _ rest h := by
     have hk := p.ok b rest h
     rwa [echo b] at hk
+  exact cs b rest h := by
+    obtain ⟨a, h1, h2⟩ := hx cs b rest h
+    have ha : a = b := (echo a).symm.trans h1
+    subst ha
+    exact ⟨(), h2⟩
 
 /-- An `IsoParser` as a `LossyParser`: the annotation family over `b` is the **fiber of `print`**
 — every source that prints to `b`. The split model stores no value→source section, so the
 canonical annotation is the one datum to supply: `canon` with `hcanon`. -/
 def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParser (p : IsoParser α fst fol w v)
-    (canon : v → w) (hcanon : ∀ b : v, (p.print (canon b)).1 = b) :
+    (canon : v → w) (hcanon : ∀ b : v, (p.print (canon b)).1 = b) (hx : p.Exact) :
     LossyParser α fst fol v (fun b => { a : w // (p.print a).1 = b }) where
   parse := p.parse
   print ann := (p.print ann.1).2
@@ -190,12 +194,15 @@ def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParser (p : IsoParser α 
     have h := p.ok ann.1 rest hrest
     rw [ann.2] at h
     exact h
+  exact cs b rest h := by
+    obtain ⟨a, h1, h2⟩ := hx cs b rest h
+    exact ⟨⟨a, h1⟩, h2⟩
 
 /-- The aligned case (`w = v`, printer echoes its source — e.g. mixfix): the section is `id`,
 so the `LossyParser` is free. -/
 def _root_.LambdaLab.Parser.IsoParser.IsoParser.toLossyParserAligned (p : IsoParser α fst fol v v)
-    (echo : ∀ a : v, (p.print a).1 = a) :
+    (echo : ∀ a : v, (p.print a).1 = a) (hx : p.Exact) :
     LossyParser α fst fol v (fun b => { a : v // (p.print a).1 = b }) :=
-  p.toLossyParser id echo
+  p.toLossyParser id echo hx
 
 end LambdaLab.Parser.LossyParser

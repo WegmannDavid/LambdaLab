@@ -324,7 +324,7 @@ after the same unfolding. -/
         intro t ht
         have h : t = kwAssign := ht
         subst h
-        exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl)
+        exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl) (mixfix_exact (G := stlcGrammar) SEnt.ty .loosest).weakenFollow
 
   isVarName := isVarTok
   varAtom := inferInstance
@@ -336,7 +336,7 @@ after the same unfolding. -/
         intro t ht
         have h : t = kwDef := ht
         subst h
-        exact sFollow_def) |> sRules.truncateParser) (fun _ => rfl)
+        exact sFollow_def) |> sRules.truncateParser) (fun _ => rfl) (mixfix_exact (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
 
 /-! ## …and a semantics
 

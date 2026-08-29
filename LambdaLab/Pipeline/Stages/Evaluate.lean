@@ -72,5 +72,6 @@ def Language.evalStage :
   realize ann := ann.val
   default {q} := ⟨⟨q.val, q.property.1⟩, evalProgram_of_allReduced q.val q.property.1 q.property.2⟩
   abstract_realize _ ann := congrArg some (Subtype.ext ann.property)
+  complete p _q h := ⟨⟨p, congrArg Subtype.val (Option.some.inj h)⟩, rfl⟩
 
 end LambdaLab.Pipeline

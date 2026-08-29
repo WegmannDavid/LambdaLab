@@ -33,4 +33,13 @@ def IsoParser.enlargeFirst {fst' : α → Prop} (h : ∀ c, ¬ fst' c → ¬ fst
   firstOk c rest hc := p.firstOk c rest (h c hc)
   ok := p.ok
 
+/-! Exactness mentions only `parse` and `print`, and the adapters change neither — so it
+transports definitionally. `h` is implicit: the expected type at the use site pins it. -/
+
+theorem IsoParser.Exact.weakenFollow {fol' : α → Prop} {p : IsoParser α fst fol w v}
+    {h : ∀ c, fol' c → fol c} (hx : p.Exact) : (p.weakenFollow h).Exact := hx
+
+theorem IsoParser.Exact.enlargeFirst {fst' : α → Prop} {p : IsoParser α fst fol w v}
+    {h : ∀ c, ¬ fst' c → ¬ fst c} (hx : p.Exact) : (p.enlargeFirst h).Exact := hx
+
 end LambdaLab.Parser.IsoParser

@@ -37,8 +37,10 @@ find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
 
   pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
+    (sat_exact isName).weakenFollow.enlargeFirst
   pTm := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
+    (sat_exact isName).weakenFollow.enlargeFirst
 
 /-- `def x : A := e` — one command. -/
 def prog : Program trivialLanguage :=

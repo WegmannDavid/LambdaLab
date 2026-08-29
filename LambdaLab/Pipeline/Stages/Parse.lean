@@ -62,12 +62,17 @@ theorem Language.commandIso_echo (L : Language) :
     ∀ s : Σ c : Command L, Command.Ann L c, (L.commandIso.print s).1 = s.1
   | ⟨.decl _ _ _, _⟩ => rfl
 
+/-- **The command parser is exact**: whatever it consumed is the print of some annotated command.
+The outstanding obligation at this stage — an exactness induction over the `gdo` chain, from the
+sub-parsers' own `exact` laws. -/
+theorem Language.commandIso_exact (L : Language) : L.commandIso.Exact := sorry
+
 /-- **The command parser, lossy**: value `Command L`, annotation `Command.Ann`. Canonical print
 uses the sub-parsers' canonical annotations. -/
 def Language.command (L : Language) :
     LossyParser Token (· = kwDef) followDef (Command L) (Command.Ann L) :=
   L.commandIso.toLossyParserSigma (fun {_} => (L.pTy.default, L.pTm.default))
-    L.commandIso_echo
+    L.commandIso_echo L.commandIso_exact
 
 /-! ## The program -/
 
@@ -115,6 +120,10 @@ theorem Language.parserIso_echo (L : Language)
     many1PrintV L.commandIso (zipAnnList L s.1.2 s.2.2)) = s.1
   rw [L.commandIso_echo ⟨s.1.1, s.2.1⟩, L.printV_zipAnnList s.1.2 s.2.2]
 
+/-- **The file parser is exact**: whatever it consumed is the print of some annotated program.
+The outstanding obligation at this stage — `many1`'s exactness from `commandIso_exact`. -/
+theorem Language.parserIso_exact (L : Language) : L.parserIso.Exact := sorry
+
 /-- **The file parser, lossy**: value `Program L` (as `NEList (Command L)`), annotation the full
 surface spelling. Canonical print = every command in canonical form. -/
 def Language.parser (L : Language) :
@@ -122,7 +131,7 @@ def Language.parser (L : Language) :
       (NEList (Command L)) (Program.Ann L) :=
   L.parserIso.toLossyParserSigma
     (fun {prog} => ((L.pTy.default, L.pTm.default), defaultListAnn L prog.2))
-    L.parserIso_echo
+    L.parserIso_echo L.parserIso_exact
 
 /-- **The file round-trip.** Print a program under *any* spelling, parse it back, recover the
 program exactly with nothing left over — for every language, no side-conditions. -/

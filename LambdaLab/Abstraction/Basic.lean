@@ -87,6 +87,9 @@ structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   /-- Soundness: anything realized re-abstracts to exactly its index. At `default`
   this is the canonical-print round trip. -/
   abstract_realize : ∀ (a : Abstract) (ann : Ann a), abstract (realize ann) = some a
+  /-- Completeness: every accepted concrete is `realize` of some annotation — `Ann`
+  covers the fibers of `abstract`, so the source can always be reconstructed. -/
+  complete : ∀ (c : Concrete) (a : Abstract), abstract c = some a → ∃ ann : Ann a, realize ann = c
 
 namespace Abstraction
 
@@ -98,6 +101,7 @@ def id (A : Type) : Abstraction A A (fun _ => Unit) where
   realize {a} _ := a
   default := ()
   abstract_realize _ _ := rfl
+  complete _ _ h := ⟨(), (Option.some.inj h).symm⟩
 
 /-- Composition (diagrammatic: first `f`, then `g`). The composite annotation is the
 dependent sum: an outer `G`-annotation `β` picks the intermediate `g.realize β : B`,
@@ -111,6 +115,16 @@ def comp (f : Abstraction A B F) (g : Abstraction B C G) :
     show (f.abstract (f.realize γ.2)).bind g.abstract = some c
     rw [f.abstract_realize (g.realize γ.1) γ.2]
     exact g.abstract_realize c γ.1
+  complete a c h := by
+    have h' : (f.abstract a).bind g.abstract = some c := h
+    cases hfa : f.abstract a with
+    | none => rw [hfa] at h'; simp at h'
+    | some b =>
+        have hgb : g.abstract b = some c := by rw [hfa] at h'; exact h'
+        obtain ⟨β, hβ⟩ := g.complete b c hgb
+        subst hβ
+        obtain ⟨α, hα⟩ := f.complete a (g.realize β) hfa
+        exact ⟨⟨β, α⟩, hα⟩
 
 /-- Re-choose the canonical annotation, keeping the morphism itself. Legitimate because
 `default` carries **no law of its own**: `abstract_realize` is quantified over *every*
@@ -143,6 +157,11 @@ def reindex (f : Abstraction A B F) (e : ∀ b, Iso (F b) (F' b)) : Abstraction 
   realize {b} ann' := f.realize ((e b).symm ann')
   default {b} := e b f.default
   abstract_realize b ann' := f.abstract_realize b ((e b).symm ann')
+  complete c b h := by
+    obtain ⟨ann, hann⟩ := f.complete c b h
+    exact ⟨e b ann, by
+      show f.realize ((e b).invFun ((e b).toFun ann)) = c
+      rw [(e b).left_inv]; exact hann⟩
 
 /-! ## Losslessness — completeness as a per-morphism property -/
 

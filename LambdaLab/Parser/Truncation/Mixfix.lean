@@ -293,8 +293,8 @@ every tree spelling a target value; the canonical print is `injC`. -/
 def Rules.truncateParser {α : Type} {fst fol : α → Prop} (R : Rules G C)
     [∀ e : G.Ent, DecidableEq (G.entry e).Op] {e : G.Ent}
     (p : IsoParser α fst fol (Expr G e .loosest) (Expr G e .loosest))
-    (echo : ∀ a, (p.print a).1 = a) :
+    (echo : ∀ a, (p.print a).1 = a) (hx : p.Exact) :
     LossyParser α fst fol (C e) (fun x => { t : Expr G e .loosest // truncExpr R t = x }) :=
-  p.truncate echo (truncExpr R) (injC R) (fun x => trunc_inj R x)
+  p.truncate echo (truncExpr R) (injC R) (fun x => trunc_inj R x) hx
 
 end LambdaLab.Parser.Truncation.Mixfix

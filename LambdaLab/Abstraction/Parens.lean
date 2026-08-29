@@ -46,19 +46,20 @@ def atom (isVar : Tok → Bool) :
   realize {v} _ := [v.1]
   default := ()
   abstract_realize v _ := by simp; exact v.2
+  complete cs v h := by
+    match cs with
+    | [] => have h' : (none : Option _) = some v := h; simp at h'
+    | [t] =>
+        refine ⟨(), ?_⟩
+        show [v.1] = [t]
+        have h' : (if h : isVar t = true then some ⟨t, h⟩ else none) = some v := h
+        split at h'
+        · cases h'; rfl
+        · simp at h'
+    | _ :: _ :: _ => have h' : (none : Option _) = some v := h; simp at h'
 
-theorem atom_lossless (isVar : Tok → Bool) : (atom isVar).Lossless := by
-  intro cs v h
-  match cs with
-  | [] => exact absurd h (by simp [atom])
-  | [t] =>
-      refine ⟨(), ?_⟩
-      show [v.1] = [t]
-      simp only [atom] at h
-      split at h
-      · cases h; rfl
-      · exact absurd h (by simp)
-  | _ :: _ :: _ => exact absurd h (by simp [atom])
+theorem atom_lossless (isVar : Tok → Bool) : (atom isVar).Lossless :=
+  (atom isVar).complete
 
 /-! ## Stripping and wrapping parens -/
 
@@ -130,6 +131,7 @@ theorem strip_sound [DecidableEq Tok] {lp rp : Tok} (hlprp : lp ≠ rp) (cs : Li
 the canonical print (`default`) uses none. `hp`: no realization of `p` may look wrapped itself,
 else stripping would eat into it. -/
 def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List Tok) V Ann) (lp rp : Tok)
+    (hlprp : lp ≠ rp)
     (hp : ∀ (v : V) (ann : Ann v),
       ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
     Abstraction (List Tok) V (fun v => Nat × Ann v) where
@@ -140,6 +142,12 @@ def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List
     show p.abstract (strip lp rp (wrap lp rp x.1 (p.realize x.2))).2 = some v
     rw [strip_wrap (hp v x.2)]
     exact p.abstract_realize v x.2
+  complete cs v h := by
+    obtain ⟨ann, hann⟩ := p.complete _ v h
+    refine ⟨((strip lp rp cs).1, ann), ?_⟩
+    show wrap lp rp (strip lp rp cs).1 (p.realize ann) = cs
+    rw [hann]
+    exact strip_sound hlprp cs
 
 /-- `parens` preserves losslessness: the depth measured by `strip` plus the inner annotation
 realize back to the exact input. -/
@@ -147,7 +155,7 @@ theorem _root_.LambdaLab.Abstraction.Lossless.parens [DecidableEq Tok] {p : Abst
     {lp rp : Tok} (hL : p.Lossless) (hlprp : lp ≠ rp)
     (hp : ∀ (v : V) (ann : Ann v),
       ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
-    (p.parens lp rp hp).Lossless := by
+    (p.parens lp rp hlprp hp).Lossless := by
   intro cs v h
   obtain ⟨ann, hann⟩ := hL _ v h
   refine ⟨((strip lp rp cs).1, ann), ?_⟩
@@ -188,7 +196,7 @@ private theorem lp_ne_rp : lpT ≠ rpT := by decide
 def parenVarPipeline :
     Abstraction (List Char) { t : Parser.IsoParser.Token sepSp // isVarT t = true }
       (fun v => Σ x : Nat × Unit, Gaps sepSp (wrap lpT rpT x.1 [v.1])) :=
-  (tokenizer ' ' rfl).comp ((atom isVarT).parens lpT rpT (atom_neverWrapped lp_ne_rp))
+  (tokenizer ' ' rfl).comp ((atom isVarT).parens lpT rpT lp_ne_rp (atom_neverWrapped lp_ne_rp))
 
 theorem parenVarPipeline_lossless : parenVarPipeline.Lossless :=
   (tokenizer_lossless ' ' rfl).comp

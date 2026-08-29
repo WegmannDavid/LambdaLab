@@ -82,5 +82,9 @@ def Language.elabStage :
         rw [hq] at hann
         rw [Option.map_some, Option.some.injEq]
         exact Subtype.ext (Option.some.inj hann)
+  complete q p h := by
+    rw [Option.map_eq_some_iff] at h
+    obtain ⟨s, hs, rfl⟩ := h
+    exact ⟨⟨q, by rw [elabProgram?, hs]; rfl⟩, rfl⟩
 
 end LambdaLab.Pipeline

@@ -44,7 +44,7 @@ annotation over `x` is **the fiber of `f`** — every tree spelling `x` — deri
 so the lossy round-trip covers every spelling and `default = g` is the canonical one. -/
 def IsoParser.IsoParser.truncate
     (p : IsoParser α fst fol v v) (echo : ∀ a : v, (p.print a).1 = a)
-    (f : v → c') (g : c' → v) (sect : ∀ x, f (g x) = x) :
+    (f : v → c') (g : c' → v) (sect : ∀ x, f (g x) = x) (hx : p.Exact) :
     LossyParser α fst fol c' (fun x => { t : v // f t = x }) where
   parse input := (p.parse input).map (fun z => (f z.1, z.2))
   print ann := (p.print ann.1).2
@@ -59,5 +59,18 @@ def IsoParser.IsoParser.truncate
     rw [hp]
     simp only [Option.map_some]
     rw [hv, echo ann.1, ann.2]
+  exact cs x rest h := by
+    cases hp : p.parse cs with
+    | none => rw [hp] at h; simp at h
+    | some z =>
+        rw [hp] at h
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨hfx, hr⟩ := h
+        obtain ⟨a, h1, h2⟩ := hx cs z.1 z.2.val (by
+          show (p.parse cs).map (fun z => (z.1, z.2.val)) = some (z.1, z.2.val)
+          simp [hp])
+        have ha : a = z.1 := (echo a).symm.trans h1
+        subst ha
+        exact ⟨⟨z.1, hfx⟩, hr ▸ h2⟩
 
 end LambdaLab.Parser
