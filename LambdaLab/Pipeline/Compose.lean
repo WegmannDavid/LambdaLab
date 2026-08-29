@@ -39,10 +39,15 @@ attached — `Arith` — simply stops at the first, and that is a fact about `Ar
 
 `abstract` is the file reader (whole input, `none` on any error), `realize` re-renders any recorded
 spelling, and `realize ∘ default` is the canonical printer. Because the *composite* is a single
-`Abs` morphism, its round-trip law covers every stage at once: `elaborateFile_renderElaborated`
-below says that rendering an elaborated program and reading it back re-tokenizes, re-parses **and**
-re-elaborates to exactly what you started with. That theorem is one line, because composition did
-the work.
+`Abs` morphism, its laws cover every stage at once, in both directions:
+
+* `elaborateFile_renderElaborated` (soundness at `default`): rendering an elaborated program and
+  reading it back re-tokenizes, re-parses **and** re-elaborates to exactly what you started with.
+* `parseFile_complete` / `elaborateFile_complete` / `evaluateFile_complete` (completeness): any
+  file the front end accepts is, character for character, the realization of a recorded
+  spelling — the user's own text is one of the annotations' prints.
+
+Each theorem is one line, because composition did the work and every morphism carries both laws.
 
 The annotation of a composite is the pair of its parts' annotations — for `parsePipeline`, a
 spelling of every command together with the whitespace gaps of the resulting token rendering:
@@ -123,6 +128,17 @@ def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
 /-- Render a program canonically: every command in its canonical spelling, one per line. -/
 def Language.renderProgram (L : Language) (prog : Program L) : String :=
   String.ofList (L.parsePipeline.realize (L.parsePipeline.default (a := prog)))
+
+/-- **Nothing accepted is beyond re-rendering.** Any file the reader accepts is, character for
+character, the realization of a recorded spelling — the user's own text is one of the
+annotations' prints, whitespace included. This is `complete` surfaced at the `String` API: the
+converse of the canonical-print round trip, and one line for the same reason — the composite is
+a single morphism, and every morphism carries the law. -/
+theorem Language.parseFile_complete (L : Language) {s : String} {prog : Program L}
+    (h : L.parseFile s = some prog) :
+    ∃ ann, String.ofList (L.parsePipeline.realize (a := prog) ann) = s := by
+  obtain ⟨ann, hann⟩ := L.parsePipeline.complete s.toList prog h
+  exact ⟨ann, by rw [hann, String.ofList_toList]⟩
 
 /-! ## The same two stages, uncollapsed
 
@@ -217,6 +233,16 @@ theorem Language.elaborateFile_renderElaborated (p : L.Elaborated) :
   rw [String.toList_ofList]
   exact L.elabPipeline.abstract_realize p L.elabPipeline.default
 
+/-- Anything the type checker accepts is still, character for character, the realization of a
+recorded spelling — `parseFile_complete` with elaboration on the end. The fiber over an
+elaborated program is every way of leaving types to be inferred; the annotation records which
+one the user wrote. -/
+theorem Language.elaborateFile_complete {s : String} {p : L.Elaborated}
+    (h : L.elaborateFile s = some p) :
+    ∃ ann, String.ofList (L.elabPipeline.realize (a := p) ann) = s := by
+  obtain ⟨ann, hann⟩ := L.elabPipeline.complete s.toList p h
+  exact ⟨ann, by rw [hann, String.ofList_toList]⟩
+
 /-! ## All three stages, uncollapsed -/
 
 /-- ③ as a 1-cell. -/
@@ -289,6 +315,17 @@ theorem Language.evaluateFile_renderEvaluated (q : L.Evaluated) :
     (L.evalPipeline.realize (L.evalPipeline.default (a := q)))).toList = some q
   rw [String.toList_ofList]
   exact L.evalPipeline.abstract_realize q L.evalPipeline.default
+
+/-- **Running a program spends nothing the pipeline remembers.** Even after evaluation — the
+stage that discards its working — any accepted file is character for character the realization
+of a recorded spelling: the annotation tower holds the un-reduced elaborated program, its source
+program, that program's spelling, and the spelling's whitespace, all the way back to the exact
+text the user typed. -/
+theorem Language.evaluateFile_complete {s : String} {q : L.Evaluated}
+    (h : L.evaluateFile s = some q) :
+    ∃ ann, String.ofList (L.evalPipeline.realize (a := q) ann) = s := by
+  obtain ⟨ann, hann⟩ := L.evalPipeline.complete s.toList q h
+  exact ⟨ann, by rw [hann, String.ofList_toList]⟩
 
 /-! ### The fourth stage, uncollapsed -/
 
