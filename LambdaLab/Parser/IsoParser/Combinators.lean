@@ -96,6 +96,21 @@ theorem sat_exact (pred : α → Bool) : (sat pred).Exact := by
         rfl
       · simp at hp'
 
+/-- Invert a successful `satParse`: the input began with the returned token. -/
+theorem satParse_eq_some {pred : α → Bool} {input : List α} {d : { a : α // pred a = true }}
+    {r : { r : List α // r.length < input.length }} (h : satParse pred input = some (d, r)) :
+    input = d.val :: r.val := by
+  cases input with
+  | nil => exact absurd h (by simp [satParse])
+  | cons hd tl =>
+      have h' : (if hp : pred hd = true
+          then some ((⟨hd, hp⟩ : { a : α // pred a = true }),
+            (⟨tl, by simp⟩ : { r : List α // r.length < (hd :: tl).length }))
+          else none) = some (d, r) := h
+      split at h'
+      · cases h'; rfl
+      · exact absurd h' (by simp)
+
 /-- Parse a literal symbol `t`. -/
 def tokParse [DecidableEq α] (t : α) : (input : List α) →
     Option (Unit × { r : List α // r.length < input.length })
@@ -109,6 +124,20 @@ def tok [DecidableEq α] (t : α) : IsoParser α (· = t) (fun _ => True) w Unit
   print _ := ((), [t])
   firstOk c rest hc := by simp [tokParse, hc]
   ok a rest _ := by simp [tokParse]
+
+/-- Invert a successful `tokParse`: the input began with the literal. -/
+theorem tokParse_eq_some [DecidableEq α] {t : α} {input : List α} {u : Unit}
+    {r : { r : List α // r.length < input.length }} (h : tokParse t input = some (u, r)) :
+    input = t :: r.val := by
+  cases input with
+  | nil => exact absurd h (by simp [tokParse])
+  | cons hd tl =>
+      have h' : (if hd = t
+          then some ((), (⟨tl, by simp⟩ : { r : List α // r.length < (hd :: tl).length }))
+          else none) = some (u, r) := h
+      split at h'
+      · next heq => cases h'; rw [heq]
+      · exact absurd h' (by simp)
 
 /-! ## Plumbing -/
 
@@ -132,6 +161,22 @@ def map (f : v → v') (p : IsoParser α fst fol w v) : IsoParser α fst fol w v
     rw [hp]
     simp [hv]
 
+/-- Invert a successful `map` parse: the underlying parse succeeded with the same leftover. -/
+theorem map_parse_eq_some {f : v → v'} {p : IsoParser α fst fol w v} {input : List α}
+    {c : v'} {r : { r : List α // r.length < input.length }}
+    (h : (map f p).parse input = some (c, r)) :
+    ∃ b : v, p.parse input = some (b, r) ∧ f b = c := by
+  have h' : (p.parse input).map (fun br => (f br.1, br.2)) = some (c, r) := h
+  cases hp : p.parse input with
+  | none => rw [hp] at h'; simp at h'
+  | some z =>
+      obtain ⟨b0, r0⟩ := z
+      rw [hp] at h'
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h'
+      obtain ⟨h1, h2⟩ := h'
+      subst h2
+      exact ⟨b0, rfl, h1⟩
+
 /-! ## Sequencing — the indexed monadic bind -/
 
 /-- The composite parse, named for clean motives. Progress composes by transitivity. -/
@@ -144,6 +189,25 @@ def bindParse (p : IsoParser α f₁ fo₁ w v) (k : v → IsoParser α f₂ fo�
       match (k b).parse r.val with
       | none => none
       | some (c, r') => some (c, ⟨r'.val, Nat.lt_trans r'.property r.property⟩)
+
+/-- Invert a successful `bindParse`: both stages succeeded in sequence, and the composite
+leftover is the second stage's. -/
+theorem bindParse_eq_some {v v' : Type} {p : IsoParser α f₁ fo₁ w v}
+    {k : v → IsoParser α f₂ fo₂ w v'} {input : List α} {c : v'}
+    {r : { r : List α // r.length < input.length }}
+    (h : bindParse p k input = some (c, r)) :
+    ∃ (b : v) (r₁ : { r : List α // r.length < input.length })
+      (r₂ : { rr : List α // rr.length < r₁.val.length }),
+      p.parse input = some (b, r₁) ∧ (k b).parse r₁.val = some (c, r₂) ∧ r.val = r₂.val := by
+  unfold bindParse at h
+  split at h
+  · exact absurd h (by simp)
+  · next b r₁ heq₁ =>
+      split at h
+      · exact absurd h (by simp)
+      · next c₂ r₂ heq₂ =>
+          cases h
+          exact ⟨b, r₁, r₂, heq₁, heq₂, rfl⟩
 
 /-- **Monadic bind** — possible because `k`'s *type* pins its FIRST/FOLLOW independently of the
 parsed value (the indexed-monad discipline). The seam `FIRST(k) ⊆ FOLLOW(p)` is its one
@@ -311,6 +375,57 @@ def many1 (p : IsoParser α fst fol w v) (hrep : ∀ c, fst c → fol c) :
     show (many1Parse p (((p.print a).2 ++ many1PrintOut p as) ++ rest)).map _ = _
     rw [List.append_assoc]
     exact many1Parse_run p hrep as a rest hrest
+
+/-- **Exactness for the greedy loop**: each iteration's own witness from `p.Exact`, assembled
+by recursion on the (length-decreasing) leftovers. The sources never clash — `NEList w` gives
+every iteration its own element. -/
+theorem many1Parse_exact {p : IsoParser α fst fol w v} (hx : p.Exact) :
+    ∀ (input : List α) (nel : NEList v) (r : { r : List α // r.length < input.length }),
+      many1Parse p input = some (nel, r) →
+      ∃ s : NEList w, ((p.print s.1).1, many1PrintV p s.2) = nel ∧
+        ((p.print s.1).2 ++ many1PrintOut p s.2) ++ r.val = input
+  | input, nel, r, h => by
+    rw [many1Parse] at h
+    cases hp : p.parse input with
+    | none => rw [hp] at h; simp at h
+    | some z =>
+        obtain ⟨b, r₁⟩ := z
+        rw [hp] at h
+        dsimp only at h
+        obtain ⟨a, ha1, ha2⟩ := hx input b r₁.val (by
+          show (p.parse input).map (fun z => (z.1, z.2.val)) = some (b, r₁.val)
+          rw [hp]; rfl)
+        cases hm : many1Parse p r₁.val with
+        | none =>
+            rw [hm] at h
+            dsimp only at h
+            cases h
+            refine ⟨(a, []), ?_, ?_⟩
+            · simp [many1PrintV, ha1]
+            · simpa [many1PrintOut] using ha2
+        | some z₂ =>
+            obtain ⟨nel₂, r₂⟩ := z₂
+            rw [hm] at h
+            dsimp only at h
+            cases h
+            obtain ⟨⟨a₂, as⟩, hs1, hs2⟩ := many1Parse_exact hx r₁.val nel₂ r₂ hm
+            refine ⟨(a, a₂ :: as), ?_, ?_⟩
+            · simp only [many1PrintV]
+              rw [ha1, ← hs1]
+              rfl
+            · simp only [many1PrintOut]
+              rw [List.append_assoc, hs2]
+              exact ha2
+termination_by input _ _ _ => input.length
+decreasing_by exact r₁.property
+
+/-- **`many1` is exact** when its element parser is. -/
+theorem many1_exact {p : IsoParser α fst fol w v} (hrep : ∀ c, fst c → fol c)
+    (hx : p.Exact) : (many1 p hrep).Exact := by
+  intro input b rest h
+  obtain ⟨r, hp, hv⟩ := run_eq_some h
+  obtain ⟨s, hs1, hs2⟩ := many1Parse_exact hx input b r hp
+  exact ⟨s, hs1, by rw [hv] at hs2; exact hs2⟩
 
 /-- A seed, then zero-or-more steps (reusing `many1Parse`); named for clean motives. -/
 def chainlParse (pSeed : IsoParser α f₁ fol w v) (pStep : IsoParser α f₂ fol w' v') :

@@ -63,9 +63,35 @@ theorem Language.commandIso_echo (L : Language) :
   | ⟨.decl _ _ _, _⟩ => rfl
 
 /-- **The command parser is exact**: whatever it consumed is the print of some annotated command.
-The outstanding obligation at this stage — an exactness induction over the `gdo` chain, from the
-sub-parsers' own `exact` laws. -/
-theorem Language.commandIso_exact (L : Language) : L.commandIso.Exact := sorry
+Peel the five binds; the keyword and name slices have one spelling each, and the type and term
+slices produce their annotations from the sub-parsers' own `exact` laws. -/
+theorem Language.commandIso_exact (L : Language) : L.commandIso.Exact := by
+  intro input b rest h
+  obtain ⟨r, hp, hv⟩ := run_eq_some h
+  obtain ⟨_kw, r₁, r₁', hTok, hp₂, he₁⟩ := bindParse_eq_some hp
+  obtain ⟨n, r₂, r₂', hName, hp₃, he₂⟩ := bindParse_eq_some hp₂
+  obtain ⟨_c, r₃, r₃', hColon, hp₄, he₃⟩ := bindParse_eq_some hp₃
+  obtain ⟨tyv, r₄, r₄', hTy, hp₅, he₄⟩ := bindParse_eq_some hp₄
+  obtain ⟨_a, r₅, r₅', hAssign, hp₆, he₅⟩ := bindParse_eq_some hp₅
+  obtain ⟨tmv, hTm, hMap⟩ := map_parse_eq_some hp₆
+  have hin : input = kwDef :: r₁.val := tokParse_eq_some hTok
+  have hnm : r₁.val = n.val :: r₂.val := satParse_eq_some hName
+  have hco : r₂.val = kwColon :: r₃.val := tokParse_eq_some hColon
+  have has : r₄.val = kwAssign :: r₅.val := tokParse_eq_some hAssign
+  obtain ⟨tyAnn, hTyAnn⟩ := L.pTy.exact r₃.val tyv r₄.val (by
+    show (L.pTy.parse r₃.val).map (fun z => (z.1, z.2.val)) = some (tyv, r₄.val)
+    rw [show L.pTy.parse r₃.val = some (tyv, r₄) from hTy]; rfl)
+  obtain ⟨tmAnn, hTmAnn⟩ := L.pTm.exact r₅.val tmv r₅'.val (by
+    show (L.pTm.parse r₅.val).map (fun z => (z.1, z.2.val)) = some (tmv, r₅'.val)
+    rw [show L.pTm.parse r₅.val = some (tmv, r₅') from hTm]; rfl)
+  have hrest : r₅'.val = rest := by rw [← he₅, ← he₄, ← he₃, ← he₂, ← he₁, hv]
+  refine ⟨⟨Command.decl n tyv tmv, (tyAnn, tmAnn)⟩, ?_, ?_⟩
+  · rw [L.commandIso_echo]
+    exact hMap
+  · show [kwDef] ++ ([n.val] ++ ([kwColon] ++ (L.pTy.print tyAnn
+        ++ ([kwAssign] ++ L.pTm.print tmAnn)))) ++ rest = input
+    rw [hin, hnm, hco, ← hTyAnn, has, ← hTmAnn, hrest]
+    simp
 
 /-- **The command parser, lossy**: value `Command L`, annotation `Command.Ann`. Canonical print
 uses the sub-parsers' canonical annotations. -/
@@ -95,6 +121,28 @@ def zipAnnList (L : Language) :
   | [], _ => []
   | c :: cs, (a, as) => ⟨c, a⟩ :: zipAnnList L cs as
 
+/-- Unzip `many1`'s source shape back into its commands — `zipAnnList`'s inverse, first half. -/
+def unzipCmds (L : Language) : List (Σ c : Command L, Command.Ann L c) → List (Command L)
+  | [] => []
+  | s :: ss => s.1 :: unzipCmds L ss
+
+/-- …and into their annotations — the second half. -/
+def unzipAnns (L : Language) :
+    (l : List (Σ c : Command L, Command.Ann L c)) → ListAnn L (unzipCmds L l)
+  | [] => PUnit.unit
+  | s :: ss => (s.2, unzipAnns L ss)
+
+/-- Zipping undoes unzipping — what lets an exactness witness for `many1` (a list of annotated
+commands) be reshaped into `parserIso`'s `Σ prog, Program.Ann` source. -/
+theorem zipAnnList_unzip (L : Language) :
+    ∀ l : List (Σ c : Command L, Command.Ann L c),
+      zipAnnList L (unzipCmds L l) (unzipAnns L l) = l
+  | [] => rfl
+  | s :: ss => by
+      show (⟨s.1, s.2⟩ : Σ c : Command L, Command.Ann L c)
+          :: zipAnnList L (unzipCmds L ss) (unzipAnns L ss) = s :: ss
+      rw [zipAnnList_unzip L ss]
+
 /-- The file parser at the `IsoParser` level: the existing `many1` over `commandIso`, with the
 source reshaped from `Σ prog, annotations` to `many1`'s list-of-`Σ`. A command's FIRST *is*
 `def` and its FOLLOW *is* `def`, so the repetition obligation is the identity, as before. -/
@@ -120,9 +168,21 @@ theorem Language.parserIso_echo (L : Language)
     many1PrintV L.commandIso (zipAnnList L s.1.2 s.2.2)) = s.1
   rw [L.commandIso_echo ⟨s.1.1, s.2.1⟩, L.printV_zipAnnList s.1.2 s.2.2]
 
-/-- **The file parser is exact**: whatever it consumed is the print of some annotated program.
-The outstanding obligation at this stage — `many1`'s exactness from `commandIso_exact`. -/
-theorem Language.parserIso_exact (L : Language) : L.parserIso.Exact := sorry
+/-- **The file parser is exact**: `many1`'s exactness from `commandIso_exact`, with the witness
+(a list of annotated commands) unzipped into the `Σ prog, Program.Ann` source. -/
+theorem Language.parserIso_exact (L : Language) : L.parserIso.Exact := by
+  intro input b rest h
+  obtain ⟨⟨s₀, ss⟩, hs1, hs2⟩ :=
+    many1_exact (fun _ h => h) L.commandIso_exact input b rest h
+  refine ⟨⟨⟨s₀.1, unzipCmds L ss⟩, (s₀.2, unzipAnns L ss)⟩, ?_, ?_⟩
+  · show ((many1 L.commandIso (fun _ h => h)).print
+        (⟨s₀.1, s₀.2⟩, zipAnnList L (unzipCmds L ss) (unzipAnns L ss))).1 = b
+    rw [zipAnnList_unzip]
+    exact hs1
+  · show ((many1 L.commandIso (fun _ h => h)).print
+        (⟨s₀.1, s₀.2⟩, zipAnnList L (unzipCmds L ss) (unzipAnns L ss))).2 ++ rest = input
+    rw [zipAnnList_unzip]
+    exact hs2
 
 /-- **The file parser, lossy**: value `Program L` (as `NEList (Command L)`), annotation the full
 surface spelling. Canonical print = every command in canonical form. -/
