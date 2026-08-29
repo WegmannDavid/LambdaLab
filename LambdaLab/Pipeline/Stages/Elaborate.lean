@@ -38,10 +38,12 @@ print. Here it is `p` itself, and `elabProgram?_self` is exactly the proof that 
 in its own fiber: an elaborated program is ground, substitution does not touch a ground object, so
 running the elaborator on it succeeds and returns it unchanged.
 
-Note what is *not* claimed. `Lossless` is not proved and does not hold: the fiber over `p` is every
-way of leaving annotations to be inferred, jointly constrained by unification, and the annotation
-family here does not enumerate it — `Abstraction/Basic.lean` says why no node-local family could.
-What survives is the canonical-print round trip, which is the compiler-grade guarantee: render an
+And `complete` costs nothing more: the annotation family *is* the fiber of `elabProgram?`, so a
+source the stage accepts is its own annotation — `abstract` succeeding is fiber membership, and
+the proof is a line. The fiber is rich (every way of leaving annotations to be inferred, jointly
+constrained by unification), and no family assembled from node-local choices would enumerate it —
+`Abstraction/Basic.lean` tells that story; indexing by the fiber itself is what sidesteps the
+enumeration. The canonical-print round trip stays the compiler-grade guarantee: render an
 elaborated program and re-read it, and you are back where you started.
 -/
 

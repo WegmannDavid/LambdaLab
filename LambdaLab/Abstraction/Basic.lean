@@ -10,20 +10,23 @@ Two decisions, both forced by that pipeline:
   rejects ill-typed terms — the total version cannot host either stage. (`Except ε`
   for diagnostics is a compatible upgrade; the theory is unchanged. Undecided.)
 
-* **Soundness is the only structure law.** Completeness — every accepted concrete is
-  `realize` of some annotation — is demoted to the per-morphism predicate `Lossless`.
-  It cannot be a structure law: for a Hindley–Milner elaborator the fiber over a typed
-  term is every combination of written-vs-omitted annotations *jointly constrained by
-  unification* — one written type propagates globally, so no node-local annotation
-  family covers the fiber; only the tautological `{c // abstract c = some a}` does,
-  vacuously. Syntactic stages (tokenizer, parser) prove `Lossless`; elaboration stages
-  simply don't claim it. `Lossless` is closed under `comp` and `reindex`, so a
-  pipeline tracks exactly how far source reconstruction extends.
+* **Soundness and completeness are both structure laws.** `abstract_realize` says
+  anything realized re-abstracts to its index; `complete` says every accepted concrete
+  is `realize` of some annotation — `Ann` covers the fibers, so the source is always
+  reconstructible. Completeness once looked unlawful: for a Hindley–Milner elaborator
+  the fiber over a typed term is every combination of written-vs-omitted annotations
+  *jointly constrained by unification* — one written type propagates globally, so no
+  family assembled from node-local choices enumerates it. The law survives because the
+  stage never had such a family: its annotation *is* the fiber — a source that
+  elaborates to the program — so the accepted concrete is its own witness and the
+  proof is one line (`Stages/Elaborate.lean`, likewise `Stages/Evaluate.lean`).
+  Syntactic stages (tokenizer, parser) cover their fibers with genuinely structured
+  families: gaps, paren depths, surface spellings.
 
-What every stage keeps *without* completeness: `abstract_realize` at `default` is the
-canonical-print round trip — print canonically, re-`abstract`, recover the same
-abstract value. That is the compiler-grade guarantee; `Lossless` is only about
-preserving the *user's* spelling.
+`abstract_realize` at `default` is the canonical-print round trip — print canonically,
+re-`abstract`, recover the same abstract value. That is the compiler-grade guarantee;
+`complete` is the other direction of faithfulness: nothing the pipeline accepts is
+outside what its annotations can spell.
 
 On `default` for an elaborator: the fully-annotated spelling makes it cheap to
 provide; the fully-erased spelling is principal typing (`JComplete.elabSubst_principal_below`
@@ -74,9 +77,8 @@ end Iso
 /-- A lossy-but-annotated map from `Concrete` to `Abstract`: `abstract` (partial —
 not every concrete is meaningful) together with, for each abstract value, a family
 `Ann a` of concrete *re-presentations* and their realization back into `Concrete`.
-`Ann a` is a structured account of (part of) the fiber of `abstract` over `a`; when
-it covers the fiber the abstraction is `Lossless`, but that is a property of
-individual morphisms, not a law. -/
+`Ann a` is a structured account of the fiber of `abstract` over `a`, and `complete`
+says it covers it. -/
 structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   /-- The forward (lossy, partial) direction — the algorithm: tokenize, parse, elaborate. -/
   abstract : Concrete → Option Abstract
@@ -162,46 +164,6 @@ def reindex (f : Abstraction A B F) (e : ∀ b, Iso (F b) (F' b)) : Abstraction 
     exact ⟨e b ann, by
       show f.realize ((e b).invFun ((e b).toFun ann)) = c
       rw [(e b).left_inv]; exact hann⟩
-
-/-! ## Losslessness — completeness as a per-morphism property -/
-
-/-- `f` forgets nothing: every concrete that `f` accepts is `realize` of some
-annotation, so `Ann` covers the fibers and the source can be reconstructed exactly.
-Tokenizers and parsers have this; a Hindley–Milner elaborator does not (its fibers
-are globally constrained by unification). -/
-def Lossless (f : Abstraction A B F) : Prop :=
-  ∀ (c : A) (b : B), f.abstract c = some b → ∃ ann : F b, f.realize ann = c
-
-theorem id_lossless (A : Type) : (id A).Lossless :=
-  fun _ _ h => ⟨(), (Option.some.inj h).symm⟩
-
-/-- Losslessness is about `realize`, not `default`, so it survives re-defaulting: the two
-morphisms have the same `abstract` and the same `realize`, and `Lossless` mentions only those. -/
-theorem withDefault_lossless {f : Abstraction A B F} (d : ∀ {b : B}, F b) (h : f.Lossless) :
-    (f.withDefault d).Lossless := h
-
-theorem Lossless.comp {f : Abstraction A B F} {g : Abstraction B C G}
-    (hf : f.Lossless) (hg : g.Lossless) : (f.comp g).Lossless := by
-  intro x z h
-  have h' : (f.abstract x).bind g.abstract = some z := h
-  cases hfx : f.abstract x with
-  | none => rw [hfx] at h'; simp at h'
-  | some y =>
-      have hgy : g.abstract y = some z := by rw [hfx] at h'; exact h'
-      obtain ⟨β, hβ⟩ := hg y z hgy
-      subst hβ
-      obtain ⟨α, hα⟩ := hf x (g.realize β) hfx
-      exact ⟨⟨β, α⟩, hα⟩
-
-theorem Lossless.reindex {f : Abstraction A B F} (e : ∀ b, Iso (F b) (F' b))
-    (hf : f.Lossless) : (f.reindex e).Lossless := by
-  intro c b h
-  obtain ⟨ann, hann⟩ := hf c b h
-  -- `(e b).symm.toFun` is `(e b).invFun` by definition but not syntactically, so `show` states
-  -- the goal in the form `left_inv` can rewrite.
-  exact ⟨e b ann, by
-    show f.realize ((e b).invFun ((e b).toFun ann)) = c
-    rw [(e b).left_inv]; exact hann⟩
 
 /-! ## Bundling the annotation family
 

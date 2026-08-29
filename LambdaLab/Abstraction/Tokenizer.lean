@@ -2,7 +2,7 @@ import LambdaLab.Abstraction.Basic
 import LambdaLab.Parser.IsoParser.Tokenize
 
 /-!
-# The tokenizer as a morphism of `Abs` — the archetypal `Lossless` instance
+# The tokenizer as a morphism of `Abs` — the archetypal complete instance
 
 `List Char ⇝ List Token`. The lossy map is `tokens` (tokenize), which forgets the separators; the
 **annotation over a token sequence `ts` is exactly the gaps** — the separator runs that, interleaved
@@ -18,10 +18,10 @@ would fuse. Encoding that non-emptiness *in the type* (`NEGap` between tokens, `
 is what makes `abstract_realize` — tokenize the reconstruction and recover `ts` — go through.
 
 Tokenizing never fails, so `abstract` is `some ∘ tokens`; and the tokenizer forgets *only* the
-gaps, so it is the archetypal **`Lossless`** stage (`tokenizer_lossless`): every string is the
-realization of the gaps read off it. The same decomposition proof once discharged a
-`realize_complete` *law*, back when completeness was a field of the structure rather than a
-per-morphism predicate.
+gaps, so its `complete` law is the archetype: every string is the realization of the gaps read
+off it. The same decomposition proof discharged a `realize_complete` law once before, was parked
+as a per-morphism `Lossless` predicate while completeness was off the structure, and now
+discharges the restored field.
 
 The `Gaps` shape (a `structure` of leading run + per-token `Inner` gaps) is one presentation of the
 fiber grammar `sep* (tok (sep⁺ tok)* sep*)?`; a two-inductive presentation indexed by the token
@@ -139,7 +139,7 @@ theorem tokens_realizeInner : ∀ (ts : List (Token sep)) (inner : Inner sep ts)
 /-! ## `realize` is surjective onto every character string (faithful decomposition)
 
 Every `cs` is the realization of the gaps read off it: the leading separators, then each maximal
-token followed by its trailing/interior separators. This discharges `Lossless`. -/
+token followed by its trailing/interior separators. This discharges `complete`. -/
 
 /-- Prepend a token `t` (with a new leading run) in front of the gaps `g'`. The old leading run of
 `g'` becomes the gap after `t` — which must be non-empty when `g'` still has tokens (`hne`). -/
@@ -286,11 +286,5 @@ def tokenizer (sc : Char) (hsc : sep sc = true) :
     have hts : tokens sep cs = ts := Option.some.inj h
     subst hts
     exact realize_complete_aux cs
-
-/-- **The tokenizer forgets only the gaps**: every string is the realization of the gaps read off
-it. The archetypal `Lossless` stage. -/
-theorem tokenizer_lossless (sc : Char) (hsc : sep sc = true) :
-    (tokenizer sc hsc).Lossless :=
-  (tokenizer sc hsc).complete
 
 end LambdaLab.Abstraction

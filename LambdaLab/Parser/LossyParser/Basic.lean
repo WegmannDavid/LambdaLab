@@ -11,8 +11,8 @@ split model's own header documents:
 
 * *"the law pins only the printed value, never connecting it to the source"* — here `print` is
   indexed by the value, so `ok` pins the index: parsing a printed annotation recovers **its** value.
-* *"exactness is not even stateable"* — it is now (`Exact`): whatever the parser consumed is the
-  print of *some* annotation of the result.
+* *"exactness is not even stateable"* — it is now a *law* (`exact`): whatever the parser
+  consumed is the print of *some* annotation of the result.
 * *"there is no annotation family, so only canonical-form languages are genuine isos"* — the
   family is the whole point: `Ann v` holds every surface spelling of `v` (redundant parens,
   whitespace, sugar), and `default` is the canonical one.
@@ -29,13 +29,14 @@ IsoParser  ─toLossyParser─▶  LossyParser  ─toAbstraction─▶  Abstract
   printer echoes its source (`w = v`, `(print a).1 = a` — e.g. the mixfix parser) it is free
   (`toLossyParserAligned`).
 * `LossyParser.toAbstraction`: whole-input use — `abstract` runs the parser and demands an empty
-  leftover, `realize` is `print`, and `abstract_realize` is the terminal round-trip (`rest = []`,
-  where the FOLLOW guard is vacuous). No side conditions.
-* `Exact` transfers to `Lossless` (`Exact.lossless`): a parser that consumes only printable
-  material yields a reconstruction-complete abstraction. Like `Lossless`, `Exact` is a
-  *predicate*, not a field — proving it is a per-parser exactness induction, and elaborator-like
-  stages won't have it. No parser in the tree claims it yet; the mixfix stack proves the
-  corresponding fact at the `IsoParser` level instead (`Mixfix/Exact.lean`).
+  leftover, `realize` is `print`, `abstract_realize` is the terminal round-trip (`rest = []`,
+  where the FOLLOW guard is vacuous), and `complete` is `exact` at `rest = []`. No side
+  conditions: both of `Abstraction`'s laws flow from this structure's.
+* `exact` is the third law, the converse of `ok`: whatever the parser consumed is the print of
+  *some* annotation of the result, so `Ann` covers every accepted spelling. The
+  `IsoParser → LossyParser` converters obtain it from an `IsoParser.Exact` witness — for the
+  mixfix stack that is `parseExpr_sound`, repackaged as `mixfix_exact` (`Mixfix/Biparser.lean`);
+  for the vernacular it is the induction in `Pipeline/Stages/Parse.lean`.
 
 FIRST/FOLLOW and progress-in-the-type are kept verbatim from `IsoParser`, so the free theorems
 (`run_nil`, `print_ne_nil`) and the combinator style port unchanged; a combinator layer over

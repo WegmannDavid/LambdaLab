@@ -37,15 +37,17 @@ and the `Option` in `Abstraction.abstract` is, here, pure overhead. That is wort
 because every earlier stage does reject: the tokenizer never does either, but the parser and the
 elaborator both do, and a reader who has followed the pipeline this far will expect a third.
 
-## And the one stage that is honestly lossy
+## And the stage whose forgetting is all in the fibers
 
-`Lossless` fails, and not for elaboration's subtle reason (fibres constrained by unification) but
-for the obvious one: reduction discards what it reduces. `λ x . ( λ y . y ) x` and `λ x . x` have
-the same normal form, and after inlining a program no longer records which of its declarations
-were written by hand and which were spelled out by name. Only the annotation, which holds the
-un-reduced program, tells them apart. `realize default` still round-trips, so the canonical-print
-guarantee is untouched; what is gone is the user's working, which is precisely what running a
-program is for.
+Reduction discards what it reduces: `λ x . ( λ y . y ) x` and `λ x . x` have the same normal
+form, and after inlining a program no longer records which of its declarations were written by
+hand and which were spelled out by name. Yet `complete` holds, in one line — the annotation over
+an evaluated `q` is a program that runs to it, so a program the stage accepted is verbatim an
+annotation of its own result. The discard shows up not as a failed law but as the *size* of the
+fibers: everything with the same normal form sits over it, told apart only by its annotation.
+`realize default` still round-trips, so the canonical-print guarantee is untouched; the user's
+working survives exactly as long as its annotation does, which is precisely what running a
+program spends.
 -/
 
 namespace LambdaLab.Pipeline

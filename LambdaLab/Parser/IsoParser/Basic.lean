@@ -19,10 +19,12 @@ would put the leftover under a dependent proof and break input rewrites (append-
 `bind`); erased, the equation's type is input-independent and every rewrite is clean.
 
 What the split model trades away (relative to the previous fused design): the law pins only the
-printed *value* `(print w).1`, never connecting it to the source `w`; exactness ("whatever parse
-consumed, print reproduces") is not even stateable (parse yields values, print consumes sources);
-and there is no annotation family, so only canonical-form languages are genuine isos. What it
-buys: `comap`, a real (indexed) monadic `bind`, and `do`-style sequencing over product sources.
+printed *value* `(print w).1`, never connecting it to the source `w`; exactness in its indexed
+form ("whatever parse consumed is a print of *the result's* annotation") is not stateable (parse
+yields values, print consumes sources) — only the ∃-source form is, and `Exact` below states it,
+as the witness the `IsoParser → LossyParser` converters consume; and there is no annotation
+family, so only canonical-form languages are genuine isos. What it buys: `comap`, a real
+(indexed) monadic `bind`, and `do`-style sequencing over product sources.
 
 Free theorems from progress-in-the-type: `run_nil` (every parser fails on `[]`) and
 `print_ne_nil` (printed output is nonempty) — so alternation needs only FIRST-disjointness.

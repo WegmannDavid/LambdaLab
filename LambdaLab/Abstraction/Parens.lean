@@ -6,7 +6,7 @@ import LambdaLab.Abstraction.Tokenizer
 
 The pipeline's `parse` stage: a parser that accepts `((((a))))`, abstracts it to just `a`, and
 canonically prints it back as `a`. The forgotten information — how many redundant parens the
-source wrote — goes in the annotation, so the stage is still `Lossless`.
+source wrote — goes in the annotation, which is what lets the stage keep the `complete` law.
 
 ## Design: a combinator on `Abs` morphisms, not a lossy `IsoParser`
 
@@ -19,15 +19,16 @@ lossy parsing lives at the `Abstraction` level, built compositionally:
   parens. Annotation `Nat × Ann v` — the nesting depth, then `p`'s own annotation. `default`
   is `(0, p.default)`: the canonical print has **no** redundant parens.
 
-`parens` needs one side condition (`hp`): no realization of `p` may itself begin with `lp` *and*
-end with `rp`, else the stripper would eat one pair too many. For `atom` this is free from
-`lp ≠ rp` (a single token cannot be both). `Lossless` is inherited: `Lossless.parens`.
+`parens` needs two side conditions: `lp ≠ rp` (so `strip` and `wrap` round-trip), and `hp` — no
+realization of `p` may itself begin with `lp` *and* end with `rp`, else the stripper would eat
+one pair too many. For `atom` the latter is free from the former (a single token cannot be both).
+`complete` is inherited: the combinator's proof consumes `p.complete`.
 
 Scope: this wraps the *whole* input in parens (a toy grammar), not parens at every node
 of a recursive grammar — that generalization is the mixfix-as-`Abs` port, later.
 
 The bottom of the file composes `tokenizer ⋙ parens atom` into the first two-stage pipeline
-`List Char ⇝ {var}`, losslessness and all.
+`List Char ⇝ {var}` — complete by construction, since every stage now is.
 -/
 
 namespace LambdaLab.Abstraction
@@ -57,9 +58,6 @@ def atom (isVar : Tok → Bool) :
         · cases h'; rfl
         · simp at h'
     | _ :: _ :: _ => have h' : (none : Option _) = some v := h; simp at h'
-
-theorem atom_lossless (isVar : Tok → Bool) : (atom isVar).Lossless :=
-  (atom isVar).complete
 
 /-! ## Stripping and wrapping parens -/
 
@@ -149,20 +147,6 @@ def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List
     rw [hann]
     exact strip_sound hlprp cs
 
-/-- `parens` preserves losslessness: the depth measured by `strip` plus the inner annotation
-realize back to the exact input. -/
-theorem _root_.LambdaLab.Abstraction.Lossless.parens [DecidableEq Tok] {p : Abstraction (List Tok) V Ann}
-    {lp rp : Tok} (hL : p.Lossless) (hlprp : lp ≠ rp)
-    (hp : ∀ (v : V) (ann : Ann v),
-      ¬((p.realize ann).head? = some lp ∧ (p.realize ann).getLast? = some rp)) :
-    (p.parens lp rp hlprp hp).Lossless := by
-  intro cs v h
-  obtain ⟨ann, hann⟩ := hL _ v h
-  refine ⟨((strip lp rp cs).1, ann), ?_⟩
-  show wrap lp rp (strip lp rp cs).1 (p.realize ann) = cs
-  rw [hann]
-  exact strip_sound hlprp cs
-
 /-- For `atom`, the `parens` side condition is free: a single-token realization would need
 `lp = rp` to look wrapped. -/
 theorem atom_neverWrapped {isVar : Tok → Bool} {lp rp : Tok} (hlprp : lp ≠ rp) :
@@ -197,10 +181,6 @@ def parenVarPipeline :
     Abstraction (List Char) { t : Parser.IsoParser.Token sepSp // isVarT t = true }
       (fun v => Σ x : Nat × Unit, Gaps sepSp (wrap lpT rpT x.1 [v.1])) :=
   (tokenizer ' ' rfl).comp ((atom isVarT).parens lpT rpT lp_ne_rp (atom_neverWrapped lp_ne_rp))
-
-theorem parenVarPipeline_lossless : parenVarPipeline.Lossless :=
-  (tokenizer_lossless ' ' rfl).comp
-    ((atom_lossless isVarT).parens lp_ne_rp (atom_neverWrapped lp_ne_rp))
 
 end Demo
 
