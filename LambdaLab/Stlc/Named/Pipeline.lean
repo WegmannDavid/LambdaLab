@@ -23,10 +23,13 @@ which is what lets the type parser produce `Stlc.Ty` itself rather than a syntax
 * **binder annotations are mandatory** — `λ x : T . e`. The surface therefore determines the
   annotation, instead of the parser having to invent one.
 
-Nobody writes `?7` by hand; the intended surface for "infer this" is `_`, which is deliberately
-*not* here yet. `_` cannot join the lossless core — it does not determine an index — so it
-belongs in a lossy layer above, whose annotation records which binders were elided — an
-`annotated | infer` split, with the elision living in the annotation rather than the value.
+Nobody writes `?7` by hand; the surface for "infer this" is `_`, and it lives exactly where
+this paragraph once promised: *not* here. `_` cannot join the lossless core — it does not
+determine an index — so the freshening stage (`Abstraction/Freshen.lean`, instantiated at
+`sHoles` below) sits above it, replacing each `_` with a `?n` fresh past everything written
+before the grammar ever looks. Which occurrences were elided is that stage's annotation — the
+`annotated | infer` split, with the elision living in the annotation rather than the value —
+and `parseSourceWithHoles` is the assembled surface.
 
 ## The parser lands in `Term` itself
 

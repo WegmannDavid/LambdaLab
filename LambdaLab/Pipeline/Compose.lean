@@ -181,6 +181,17 @@ def Language.holeParseFile (L : Language) (H : Abstraction.HoleSyntax Token)
     (s : String) : Option (Program L) :=
   (L.holePipeline H hprint).abstract s.toList
 
+/-- The completeness capstone, holes included: a file written with `_`s is still, character for
+character, the realization of a recorded spelling — the elisions live in the annotation's middle
+component, the token stream as the user wrote it. -/
+theorem Language.holeParseFile_complete (L : Language) (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann)
+    {s : String} {prog : Program L} (h : L.holeParseFile H hprint s = some prog) :
+    ∃ ann, String.ofList ((L.holePipeline H hprint).realize (a := prog) ann) = s := by
+  obtain ⟨ann, hann⟩ := (L.holePipeline H hprint).complete s.toList prog h
+  exact ⟨ann, by rw [hann, String.ofList_toList]⟩
+
 /-! ## The same two stages, uncollapsed
 
 `parsePipeline` is the pipeline as one morphism; `parseChain` is the same pipeline as the list of
