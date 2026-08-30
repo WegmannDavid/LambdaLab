@@ -393,13 +393,26 @@ of elaboration are theorems.
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
 instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
 
+/-- **The grammar never spells `_`**: every token of a flattened tree is a variable
+(`isVarTok`), a type atom (`isTyAtom`), or an operator name part — `_` is reserved, no `?n`, and
+in no notation. -/
+theorem flatten_ne_blank {e : SEnt} {l : Level (stlcGrammar.entry e)}
+    (t : Expr stlcGrammar e l) : ∀ tok ∈ t.flatten, tok ≠ blankTok :=
+  Expr.flatten_vocab (fun tok => tok ≠ blankTok)
+    (fun e t hv heq => by subst heq; cases e <;> exact absurd hv (by decide))
+    (fun e o t hm heq => by subst heq; cases e <;> cases o <;> exact absurd hm (by decide)) t
+
 /-- **The printer never emits a hole**: every token of a printed program is a keyword, a grammar
 name-part, a variable, or a `?n` — and `_` is none of them, being reserved and not an mvar
 spelling. This is the obligation `Abstraction.restrict` asks for to put the freshening stage in
 front of the parser. -/
 theorem parser_print_no_blank {prog : Program stlcLanguage}
     (ann : Program.Ann stlcLanguage prog) :
-    blankTok ∉ stlcLanguage.parser.print ann := sorry
+    blankTok ∉ stlcLanguage.parser.print ann :=
+  stlcLanguage.parser_print_not_mem (by decide) (by decide) (by decide) (by decide)
+    (fun a hmem => flatten_ne_blank a.1 blankTok hmem rfl)
+    (fun a hmem => flatten_ne_blank a.1 blankTok hmem rfl)
+    ann
 
 /-- Parse a source file that may write `_` for a type to be inferred: `def id : _ → _ := …`.
 Each `_` becomes a metavariable fresh past every `?n` in the file, and elaboration solves them

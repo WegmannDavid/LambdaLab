@@ -200,6 +200,68 @@ theorem Language.parser_roundtrip (L : Language) (prog : Program L)
     L.parser.run (L.parser.print ann) = some (prog, []) :=
   L.parser.roundtrip prog ann
 
+/-! ## The printer's vocabulary
+
+Everything the file printer emits is a vernacular keyword, a declaration name, or a token of one
+of the two sub-printers. So a token outside all of those — the freshening stage's `_`, say — is
+never printed, which is the obligation `Abstraction.restrict` asks for to put a stage in front
+of the parser. -/
+
+/-- The command printer's vocabulary: keywords, the name, the two sub-prints. -/
+theorem command_print_not_mem (L : Language) {x : Token}
+    (hdef : x ≠ kwDef) (hcolon : x ≠ kwColon) (hassign : x ≠ kwAssign)
+    (hvar : L.isVarName x = false)
+    (hty : ∀ {v : L.Ty} (a : L.AnnTy v), x ∉ L.pTy.print a)
+    (htm : ∀ {v : L.Tm} (a : L.AnnTm v), x ∉ L.pTm.print a)
+    (c : Command L) (a : Command.Ann L c) :
+    x ∉ (L.commandIso.print ⟨c, a⟩).2 := by
+  obtain ⟨n, τ, t⟩ := c
+  show x ∉ [kwDef] ++ ([n.val] ++ ([kwColon] ++ (L.pTy.print a.1
+    ++ ([kwAssign] ++ L.pTm.print a.2))))
+  intro hmem
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hmem
+  rcases hmem with h | h | h | h | h | h
+  · exact hdef h
+  · have hn := h.symm ▸ n.property
+    rw [hvar] at hn
+    simp at hn
+  · exact hcolon h
+  · exact hty a.1 h
+  · exact hassign h
+  · exact htm a.2 h
+
+/-- …and the program printer's: every command's, concatenated. -/
+theorem printOut_not_mem (L : Language) {x : Token}
+    (hcmd : ∀ (c : Command L) (a : Command.Ann L c), x ∉ (L.commandIso.print ⟨c, a⟩).2) :
+    ∀ (cs : List (Command L)) (as : ListAnn L cs),
+      x ∉ many1PrintOut L.commandIso (zipAnnList L cs as)
+  | [], _ => by simp [zipAnnList, many1PrintOut]
+  | c :: cs, (a, as) => by
+      rw [zipAnnList, many1PrintOut]
+      intro hmem
+      cases List.mem_append.mp hmem with
+      | inl h => exact hcmd c a h
+      | inr h => exact printOut_not_mem L hcmd cs as h
+
+/-- **A token outside the printable vocabulary is never printed** — keywords, names, and the two
+sub-printers' outputs are all there is. -/
+theorem Language.parser_print_not_mem (L : Language) {x : Token}
+    (hdef : x ≠ kwDef) (hcolon : x ≠ kwColon) (hassign : x ≠ kwAssign)
+    (hvar : L.isVarName x = false)
+    (hty : ∀ {v : L.Ty} (a : L.AnnTy v), x ∉ L.pTy.print a)
+    (htm : ∀ {v : L.Tm} (a : L.AnnTm v), x ∉ L.pTm.print a)
+    {prog : Program L} (ann : Program.Ann L prog) :
+    x ∉ L.parser.print ann := by
+  show x ∉ (L.commandIso.print ⟨prog.1, ann.1⟩).2
+    ++ many1PrintOut L.commandIso (zipAnnList L prog.2 ann.2)
+  intro hmem
+  cases List.mem_append.mp hmem with
+  | inl h =>
+      exact command_print_not_mem L hdef hcolon hassign hvar hty htm prog.1 ann.1 h
+  | inr h =>
+      exact printOut_not_mem L
+        (command_print_not_mem L hdef hcolon hassign hvar hty htm) prog.2 ann.2 h
+
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
 whose annotation is the file's surface spelling. Composes with the tokenizer
 (`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
