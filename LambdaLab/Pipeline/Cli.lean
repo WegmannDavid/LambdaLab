@@ -57,6 +57,17 @@ def Language.compileEval (L : Language)
     Except String String :=
   L.evalChain.report showStages src.toList
 
+/-- `compileEval` through the freshening stage, for a language that also declares a hole
+lexicon: `_` in the source becomes a metavariable fresh past every written `?n` before the
+parser looks, and `--stages` shows the freshened token stream on the way past. -/
+def Language.compileEvalHoles (L : Language)
+    [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty]
+    (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann)
+    (showStages : Bool) (src : String) : Except String String :=
+  (L.holeEvalChain H hprint).report showStages src.toList
+
 /-- Usage text, on the same shape every language's executable shares. -/
 def usage (name ext : String) : String :=
   s!"usage: {name} [--stages] PATH...\n\

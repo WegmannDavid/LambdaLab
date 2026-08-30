@@ -192,6 +192,7 @@ theorem Language.holeParseFile_complete (L : Language) (H : Abstraction.HoleSynt
   obtain ⟨ann, hann⟩ := (L.holePipeline H hprint).complete s.toList prog h
   exact ⟨ann, by rw [hann, String.ofList_toList]⟩
 
+
 /-! ## The same two stages, uncollapsed
 
 `parsePipeline` is the pipeline as one morphism; `parseChain` is the same pipeline as the list of
@@ -241,6 +242,47 @@ def Language.parseChain (L : Language) : Chain sourceStage L.programStage :=
 theorem Language.parseChain_run (L : Language) (s : String) :
     (L.parseChain.run s.toList).2.toOption = L.parseFile s :=
   (L.parseChain.run_eq_abstract _).trans (L.parseChain_abstract _)
+
+/-! ### The hole stages, uncollapsed — so `--stages` shows what the `_`s became -/
+
+/-- After ①½: the token stream with every hole freshened, shown like `tokenStage` shows any
+stream. -/
+def freshenedStage (H : Abstraction.HoleSyntax Token) : Stage where
+  Carrier := { ts : List Token // H.blank ∉ ts }
+  name := "tokens, holes freshened"
+  render := fun ts => tokenStage.render ts.val
+
+/-- ①½ as a 1-cell. -/
+def freshenCell (H : Abstraction.HoleSyntax Token) :
+    OneCell (List Token) { ts : List Token // H.blank ∉ ts } :=
+  ⟨fun ts => { input : List Token // H.freshenList input = ts.val }, H.freshen⟩
+
+/-- ② restricted to freshened streams, as a 1-cell. -/
+def Language.holeParseCell (L : Language) (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) :
+    OneCell { ts : List Token // H.blank ∉ ts } (Program L) :=
+  ⟨Program.Ann L, L.abstraction.restrict (fun ts => H.blank ∉ ts) hprint⟩
+
+/-- **Characters to program with holes, stage by stage.** -/
+def Language.holeParseChain (L : Language) (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) :
+    Chain sourceStage L.programStage :=
+  (Chain.cons (Y := tokenStage) (Chain.one tokenCell)
+    (freshenCell H) (Z := freshenedStage H)).cons (L.holeParseCell H hprint)
+
+/-- Stepping through the hole stages reads a file exactly as `holeParseFile` does. -/
+@[simp] theorem Language.holeParseChain_abstract (L : Language)
+    (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) (cs : List Char) :
+    (L.holeParseChain H hprint).compose.hom.abstract cs
+      = (L.holePipeline H hprint).abstract cs := by
+  rw [holeParseChain, Chain.compose_cons, Chain.compose_cons, Chain.compose_one]
+  simp only [holePipeline, holeParseCell, freshenCell, Abstraction.comp,
+    Abstraction.withDefault_abstract, OneCell.hcomp_abstract]
+  rfl
 
 /-! ## ① ∘ ② ∘ ③ — and type checking, when the language has a type system
 
@@ -321,6 +363,13 @@ def Language.elabChain : Chain sourceStage L.elaboratedStage :=
   simp only [elabPipeline, elabCell, Abstraction.comp]
   rfl
 
+/-- The hole chain, elaboration on the end — `holeParseChain` is literally a prefix of it. -/
+def Language.holeElabChain (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) :
+    Chain sourceStage L.elaboratedStage :=
+  (L.holeParseChain H hprint).cons L.elabCell
+
 /-- What the driver relies on: running the chain over a file agrees with `elaborateFile`. -/
 theorem Language.elabChain_run (s : String) :
     (L.elabChain.run s.toList).2.toOption = L.elaborateFile s :=
@@ -394,6 +443,13 @@ def Language.evaluatedStage : Stage where
 /-- **The whole front end, stage by stage.** `elabChain` with evaluation on the end. -/
 def Language.evalChain : Chain sourceStage L.evaluatedStage :=
   L.elabChain.cons L.evalCell
+
+/-- The hole chain, run to the end: tokenize, freshen `_`s, parse, elaborate, evaluate. -/
+def Language.holeEvalChain (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) :
+    Chain sourceStage L.evaluatedStage :=
+  (L.holeElabChain H hprint).cons L.evalCell
 
 /-- Stepping through all four stages agrees with collapsing them. -/
 @[simp] theorem Language.evalChain_abstract (cs : List Char) :

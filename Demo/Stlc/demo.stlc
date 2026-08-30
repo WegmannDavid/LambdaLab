@@ -1,9 +1,9 @@
-def id : ?0 → ?1 := λ x : ⋆ . x
+def id : _ → _ := λ x : ⋆ . x
 
-def alias : ?2 := id
+def alias : _ := id
 
-def twice : ?3 → ?4 := λ x : ?5 . id ( id x )
+def twice : _ → _ := λ x : _ . id ( id x )
 
-def applied : ?6 := ( λ f : ⋆ → ⋆ . f ) id
+def applied : _ := ( λ f : ⋆ → ⋆ . f ) id
 
-def nested : ?7 := ( λ f : ⋆ → ⋆ . f ) ( ( λ g : ⋆ → ⋆ . g ) id )
+def nested : _ := ( λ f : ⋆ → ⋆ . f ) ( ( λ g : ⋆ → ⋆ . g ) id )
