@@ -45,6 +45,7 @@ import LambdaLab.Parser.Numeral
 import LambdaLab.Abstraction.Basic
 import LambdaLab.Abstraction.Bicat
 import LambdaLab.Abstraction.Chain
+import LambdaLab.Abstraction.Freshen
 import LambdaLab.Abstraction.Parens
 import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Arith.Pipeline

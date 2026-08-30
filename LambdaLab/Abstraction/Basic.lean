@@ -151,6 +151,21 @@ def withDefault (f : Abstraction A B F) (d : ∀ {b : B}, F b) : Abstraction A B
 @[simp] theorem withDefault_default (f : Abstraction A B F) (d : ∀ {b : B}, F b) {b : B} :
     (f.withDefault d).default (a := b) = d := rfl
 
+/-- Restrict the concrete carrier to a predicate the printer respects: if every realization
+satisfies `P`, the same morphism reads from `{ a // P a }` instead of `A`, laws included. This is
+what lets a stage whose *image* is a subtype (e.g. freshening, whose output is blank-free) feed a
+successor that was stated on the full carrier. -/
+def restrict (f : Abstraction A B F) (P : A → Prop)
+    (h : ∀ {b : B} (ann : F b), P (f.realize ann)) :
+    Abstraction { a : A // P a } B F where
+  abstract a := f.abstract a.val
+  realize {b} ann := ⟨f.realize ann, h ann⟩
+  default := f.default
+  abstract_realize b ann := f.abstract_realize b ann
+  complete a b hb := by
+    obtain ⟨ann, hann⟩ := f.complete a.val b hb
+    exact ⟨ann, Subtype.ext hann⟩
+
 /-- Transport an abstraction along a fibrewise bijection of annotation families —
 swap an unwieldy annotation type (e.g. the `Σ`-nest a composite produces) for a
 hand-rolled presentation of the same data. -/
