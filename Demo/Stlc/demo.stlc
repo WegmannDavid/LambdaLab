@@ -4,6 +4,6 @@ def alias : _ := id
 
 def twice : _ → _ := λ x : _ . id ( id x )
 
-def applied : _ := ( λ f : ⋆ → ⋆ . f ) id
+def applied : _ := ( λ f : _ → _ . f ) id
 
-def nested : _ := ( λ f : ⋆ → ⋆ . f ) ( ( λ g : ⋆ → ⋆ . g ) id )
+def nested : _ := ( λ f : _ → _ . f ) ( ( λ g : ⋆ → ⋆ . g ) id )
