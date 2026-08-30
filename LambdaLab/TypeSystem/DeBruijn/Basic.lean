@@ -34,11 +34,16 @@ keywise-equal contexts are all a consumer can produce. Lists agreeing at every i
 (`List.ext_getElem?`), so the law holds of every judgement whatsoever and demanding it would be
 a field no instance could fail to discharge.
 
-## Scope
+## Scope — this tower is for metatheory, not for the front end
 
 `FreeName.lean` has no mirror (nothing to reserve — there are no names to collide with
-keywords), and the `Vernacular/` layer is not mirrored here; this file is the interface a
-de Bruijn language instantiates, as `Named/Basic.lean` is for a named one.
+keywords), and the `Vernacular/` layer is not mirrored **and will not be**: the compiler front
+end only ever consumes the named tower. This one exists for the division of labour the two
+STLCs already practice — properties are *proved* where binding is positional and α-noise
+cannot arise (`Stlc/Named` discharges its `Confluent` and `StronglyNormalizing` by detouring
+through `Stlc/DeBruijn`), then carried across the translation to the named system the pipeline
+runs on. A de Bruijn language instantiates this interface to *host* that metatheory, not to be
+compiled.
 -/
 
 namespace LambdaLab.TypeSystem.DeBruijn
