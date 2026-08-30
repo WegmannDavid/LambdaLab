@@ -2,6 +2,7 @@ import LambdaLab.Stlc.Named.Basic
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.TypeSystem
 import LambdaLab.Pipeline.Compose
+import LambdaLab.Abstraction.Freshen
 import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
@@ -53,9 +54,11 @@ open LambdaLab.Parser.Numeral (isDigitChar isNatTok natTok natOfTok)
 
 def tkS (s : String) (h : isToken isSep s = true := by decide) : Pipeline.Token := ⟨s, h⟩
 
-/-- Grammar name-parts and vernacular keywords: never variables. -/
+/-- Grammar name-parts, vernacular keywords, and the hole `_`: never variables. `_` is reserved
+even though no grammar mentions it — it is the *freshening* stage's token (`sHoles` below), and a
+variable named `_` would make `λ _ : ⋆ . _` ambiguous between a hole and a bound name. -/
 def sReserved : List Pipeline.Token :=
-  [tkS "(", tkS ")", tkS "λ", tkS ".", tkS ":", tkS "→", tkS "⋆", tkS "def", tkS ":="]
+  [tkS "(", tkS ")", tkS "λ", tkS ".", tkS ":", tkS "→", tkS "⋆", tkS "def", tkS ":=", tkS "_"]
 
 abbrev isVarTok (t : Pipeline.Token) : Bool := isFree sReserved t
 
@@ -83,6 +86,23 @@ theorem isMvarTok_mvarTok (n : Nat) : isMvarTok (mvarTok n) = true :=
 
 theorem isTyAtom_mvarTok (n : Nat) : isTyAtom (mvarTok n) = true := by
   simp [isTyAtom, isMvarTok_mvarTok n]
+
+/-! ## The hole syntax: `_` for "infer this"
+
+The freshening stage (`Abstraction/Freshen.lean`) replaces each `_` with a fresh `?n` before the
+parser runs, so the grammar below never sees a hole; `_` reaches it only as a reserved non-name.
+What the elision looked like lives in the freshening annotation, not here. -/
+
+/-- The hole the user writes. Reserved (`sReserved`), so it is never a variable. -/
+def blankTok : Pipeline.Token := tkS "_"
+
+/-- STLC's hole lexicon: `_` elides, `?n` spells, `isMvarTok`/`tokMvar` recognize. -/
+def sHoles : LambdaLab.Abstraction.HoleSyntax Pipeline.Token where
+  blank := blankTok
+  mkMvar := mvarTok
+  idx t := if isMvarTok t then some (tokMvar t) else none
+  idx_mkMvar n := by rw [if_pos (isMvarTok_mvarTok n), tokMvar_mvarTok]
+  idx_blank := by decide
 
 /-! ## The grammar: three entries — terms, binders, types -/
 
@@ -372,6 +392,21 @@ of elaboration are theorems.
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
 instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
+
+/-- **The printer never emits a hole**: every token of a printed program is a keyword, a grammar
+name-part, a variable, or a `?n` — and `_` is none of them, being reserved and not an mvar
+spelling. This is the obligation `Abstraction.restrict` asks for to put the freshening stage in
+front of the parser. -/
+theorem parser_print_no_blank {prog : Program stlcLanguage}
+    (ann : Program.Ann stlcLanguage prog) :
+    blankTok ∉ stlcLanguage.parser.print ann := sorry
+
+/-- Parse a source file that may write `_` for a type to be inferred: `def id : _ → _ := …`.
+Each `_` becomes a metavariable fresh past every `?n` in the file, and elaboration solves them
+all — so this is the Curry-facing surface, with the elisions recorded in the pipeline's
+annotation rather than lost. -/
+def parseSourceWithHoles (src : String) : Option (Program stlcLanguage) :=
+  stlcLanguage.holeParseFile sHoles parser_print_no_blank src
 
 /-- Parse a source file and elaborate it, rendering the result. -/
 def elaborateSource (src : String) : Option String :=

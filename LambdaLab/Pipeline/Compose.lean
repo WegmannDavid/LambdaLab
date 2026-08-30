@@ -2,6 +2,7 @@ import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Pipeline.Stages.Evaluate
 import LambdaLab.Abstraction.Tokenizer
+import LambdaLab.Abstraction.Freshen
 import LambdaLab.Abstraction.Chain
 
 /-!
@@ -139,6 +140,46 @@ theorem Language.parseFile_complete (L : Language) {s : String} {prog : Program 
     ∃ ann, String.ofList (L.parsePipeline.realize (a := prog) ann) = s := by
   obtain ⟨ann, hann⟩ := L.parsePipeline.complete s.toList prog h
   exact ⟨ann, by rw [hann, String.ofList_toList]⟩
+
+/-! ## ① ∘ ①½ ∘ ② — reading, with holes
+
+A language with an indexed-metavariable spelling may admit `_` for "infer this". The freshening
+stage (`Abstraction/Freshen.lean`) sits between tokenizer and parser — it must see the whole
+token stream, because a fresh index must clear every index written anywhere in the file — and
+replaces each `_` with the next unused `?n`; which occurrences were elided is its annotation.
+The parser then plugs in through `Abstraction.restrict`: freshening's output is blank-free by
+construction, and `hprint` says the printer never emits a blank, which is what lets the
+restricted parser realize into that subtype. A language declares its hole lexicon by supplying
+the `HoleSyntax`; one without holes simply doesn't. -/
+
+/-- **Characters to program, holes admitted**: tokenize, freshen `_`s, parse. The annotation
+stacks the program's spelling, the token stream as the user wrote it (blanks and all), and the
+whitespace gaps. -/
+def Language.holePipeline (L : Language) (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann) :
+    Abstraction (List Char) (NEList (Command L))
+      (fun prog =>
+        Σ β : Σ ann : Program.Ann L prog,
+          { src : List Token // H.freshenList src = L.parser.print ann },
+        Gaps isSep β.2.val) :=
+  (tokenCell.hom.comp
+    ((H.freshen).comp
+      (L.abstraction.restrict (fun ts => H.blank ∉ ts) hprint))).withDefault
+    (fun {_prog} =>
+      ⟨⟨L.parser.default,
+        L.parser.print L.parser.default,
+        H.freshenList_of_not_mem (hprint L.parser.default)⟩,
+        L.layout L.parser.default⟩)
+
+/-- Parse a source file that may write `_`. On a hole-free file this agrees with `parseFile` —
+freshening is the identity there — but the two pipelines have different annotation types, so
+they are different morphisms, not a rewrite of one another. -/
+def Language.holeParseFile (L : Language) (H : Abstraction.HoleSyntax Token)
+    (hprint : ∀ {prog : Program L} (ann : Program.Ann L prog),
+      H.blank ∉ L.parser.print ann)
+    (s : String) : Option (Program L) :=
+  (L.holePipeline H hprint).abstract s.toList
 
 /-! ## The same two stages, uncollapsed
 
