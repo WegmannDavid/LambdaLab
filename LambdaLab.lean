@@ -66,6 +66,8 @@ import LambdaLab.Nominal.Unification.MGU
 import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.TypeSystem.Named.Basic
 import LambdaLab.TypeSystem.Intrinsic.Basic
+import LambdaLab.TypeSystem.DeBruijn.Context
+import LambdaLab.TypeSystem.DeBruijn.Basic
 import LambdaLab.TypeSystem.Named.Vernacular.Basic
 import LambdaLab.TypeSystem.Named.Vernacular.Typing
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
