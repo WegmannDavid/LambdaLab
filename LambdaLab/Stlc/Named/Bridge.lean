@@ -102,6 +102,17 @@ instance instTypingBridge :
       HasType.toDB _ ht binders Δ hc (ctxCompat_iff.mp hcompat)
     erase_typing_reflect := fun binders Δ hc hcompat hdb => by
       have h := HasType.fromDB _ binders Δ _ hc (ctxCompat_iff.mp hcompat) hdb
-      rwa [Ty.fromDB_toDB] at h }
+      rwa [Ty.fromDB_toDB] at h
+    typing_covers := fun ht x hx => HasType.freeVars_in_ctx _ ht x hx }
+
+/-- The reflection bridge: both laws are `Alpha.lean`'s theorems — `Term.step_reflect` lifts a
+de Bruijn step, `Term.alphaEq_of_toDB` lifts a one-scope agreement to `Term.AlphaEq`, which *is*
+`ErasureEq` (`alphaEq_iff_erasureEq`), so the inlined conclusion is met on the nose. -/
+instance instReflectBridge : ReflectBridge N (Term N) Stlc.DeBruijn.Term :=
+  { instStepBridge with
+    step_reflect := fun Γ hc hs =>
+      let ⟨u, hu, he⟩ := Term.step_reflect _ Γ _ hc hs
+      ⟨u, RTC.single hu, he⟩
+    erasureEq_of_agree := fun hct hcu heq => Term.alphaEq_of_toDB hct hcu heq }
 
 end LambdaLab.Stlc.Named

@@ -36,10 +36,18 @@ the syntax is the entire point.
   scope. An equivalence by construction, and `HasAlphaEq`-shaped (`erasureAlphaEq`, a `def` and
   not an instance, as `HasAlphaEq.ofEq` is and for its reason).
 
-Still to come, in later units: erasure of types and contexts with typing transported both ways,
-the `eval` commutation theorem, the reflection law (`step_reflect` generalized) with named
-confluence-up-to-`≈α` derived, and — the stated destination — the syntactic categories with the
-bridge as an equivalence between them, where subobjects await.
+Above the reduction layer: `TypingBridge` transports the judgement both ways over compatible
+context triples, `typing_covers` plus the canonical enumeration (`canonScope`/`canonCtx`) make
+the transports *unconditional* — `preservation_of_bridge`, `stronglyNormalizing_of_bridge`,
+`typing_respects_of_bridge` take a bare typing and nothing else — and `ReflectBridge` carries
+reduction back up, yielding `confluent_of_bridge`: named confluence up to the induced `≈α`,
+from de Bruijn confluence. With those, everything that is transport material — the reduction
+metatheory — flows from a bridge instance; what stays language-native is data (`eval`,
+`tsubst`, elaboration), metavariable algebra, and representation trivia, by design.
+
+Still to come: the `eval` commutation theorem (certifying a native normalizer against the
+reference), and the categorical capstone (`Bridged.lean` has the category; the localization
+statement awaits).
 -/
 
 namespace LambdaLab.TypeSystem.Bridge
@@ -178,6 +186,84 @@ then its `≈α` is *derived* from its binding structure rather than asserted be
   symm := ErasureEq.symm
   trans := ErasureEq.trans
 
+/-! ## The reflection bridge — the upward direction
+
+`StepBridge` carries reduction down; this carries it back up, and it is what named confluence
+was waiting for: de Bruijn confluence joins the *erasures*, and reflection is what turns the
+joined trace into named reducts. Its second law lifts a single-scope agreement of erasures to
+the full induced α-equality — the abstraction of `Term.alphaEq_of_toDB`, whose conclusion is
+inlined because `ErasureEq` is instance-parameterized and the instance here is the parent under
+construction (the `CtxCompat` lesson, again). -/
+
+/-- **The upward laws**: a de Bruijn step out of an erasure lifts to a named reduction with the
+matching erasure, and erasure-agreement at one covering scope is α at every one. -/
+class ReflectBridge (N Tm Tm' : Type) [Step Tm] [Step Tm']
+    extends StepBridge N Tm Tm' where
+  /-- A step of the image is the shadow of a reduction of the source. -/
+  step_reflect : ∀ {t : Tm} {d : Tm'} (Γ : List N), (∀ x ∈ freeVars t, x ∈ Γ) →
+    (erase t Γ ⟶ d) → ∃ t' : Tm, t ⟶* t' ∧ erase t' Γ = d
+  /-- One covering scope's agreement is every covering scope's — `ErasureEq`, inlined. -/
+  erasureEq_of_agree : ∀ {t u : Tm} {Γ : List N},
+    (∀ x ∈ freeVars t, x ∈ Γ) → (∀ x ∈ freeVars u, x ∈ Γ) → erase t Γ = erase u Γ →
+    freeVars t = freeVars u ∧
+      ∀ Γ' : List N, (∀ x ∈ freeVars t, x ∈ Γ') → erase t Γ' = erase u Γ'
+
+namespace ReflectBridge
+
+open HasFreeVars HasErase StepBridge
+
+variable {N Tm Tm' : Type} [Step Tm] [Step Tm'] [ReflectBridge N Tm Tm']
+
+/-- The packaged form of `erasureEq_of_agree`, once the instances exist to state it. -/
+theorem erasureEq_of_agree' {t u : Tm} {Γ : List N}
+    (hct : Covers Γ t) (hcu : Covers Γ u) (h : erase (N := N) t Γ = (erase u Γ : Tm')) :
+    ErasureEq Tm' (N := N) t u :=
+  erasureEq_of_agree hct hcu h
+
+/-- Reflection, folded along a de Bruijn reduction sequence — the generalization of
+`Term.mstep_reflect`, by the same head-first induction. -/
+theorem mstep_reflect : ∀ {c d : Tm'}, c ⟶* d →
+    ∀ (t : Tm) (Γ : List N), erase (N := N) t Γ = c → Covers Γ t →
+    ∃ u : Tm, t ⟶* u ∧ erase u Γ = d := by
+  intro c d h
+  induction h using RTC.head_induction_on with
+  | refl => intro t Γ he _; exact ⟨t, RTC.refl, he⟩
+  | head hstep _ ih =>
+      intro t Γ he hc
+      obtain ⟨u₁, hs1, he1⟩ := step_reflect Γ hc (he ▸ hstep)
+      obtain ⟨u, hus, hue⟩ := ih u₁ Γ he1 (covers_mstep (Tm' := Tm') hc hs1)
+      exact ⟨u, hs1.trans hus, hue⟩
+
+/-- Free variables only shrink along a reduction sequence. -/
+theorem preserves_freeVars_mstep {t t' : Tm} (h : t ⟶* t') :
+    ∀ x ∈ freeVars t', x ∈ freeVars (N := N) t := by
+  induction h with
+  | refl => exact fun _ hx => hx
+  | tail _ s ih => exact fun x hx => ih x (preserves_freeVars (Tm' := Tm') s x hx)
+
+/-- **Named confluence up to the induced α, from de Bruijn confluence** — the abstraction of
+`Stlc/Named/TypeSystem.lean`'s `instConfluent`, scope and all: erase both paths over the term's
+own free variables (which cover it by reflexivity), join in the image, reflect both traces, and
+lift the single-scope agreement of the reflected reducts to `ErasureEq`. A language whose `≈α`
+is the induced one reads this as its `Confluent` field. -/
+theorem confluent_of_bridge
+    (hconf : ∀ {d d₁ d₂ : Tm'}, d ⟶* d₁ → d ⟶* d₂ → ∃ e, d₁ ⟶* e ∧ d₂ ⟶* e)
+    {t t₁ t₂ : Tm} (h₁ : t ⟶* t₁) (h₂ : t ⟶* t₂) :
+    ∃ u₁ u₂ : Tm, t₁ ⟶* u₁ ∧ t₂ ⟶* u₂ ∧ ErasureEq Tm' (N := N) u₁ u₂ := by
+  have hct : Covers (HasFreeVars.freeVars (N := N) t) t := fun _ hx => hx
+  obtain ⟨d, hd₁, hd₂⟩ := hconf
+    (erase_mstep (Tm' := Tm') (freeVars t) hct h₁)
+    (erase_mstep (Tm' := Tm') (freeVars t) hct h₂)
+  have hc1 : Covers (freeVars (N := N) t) t₁ := covers_mstep (Tm' := Tm') hct h₁
+  have hc2 : Covers (freeVars (N := N) t) t₂ := covers_mstep (Tm' := Tm') hct h₂
+  obtain ⟨u₁, hs₁, he₁⟩ := mstep_reflect hd₁ t₁ _ rfl hc1
+  obtain ⟨u₂, hs₂, he₂⟩ := mstep_reflect hd₂ t₂ _ rfl hc2
+  refine ⟨u₁, u₂, hs₁, hs₂, ?_⟩
+  exact erasureEq_of_agree' (covers_mstep (Tm' := Tm') hc1 hs₁)
+    (covers_mstep (Tm' := Tm') hc2 hs₂) (he₁.trans he₂.symm)
+
+end ReflectBridge
+
 /-! ## The typing bridge
 
 A named context is a map, a de Bruijn context is a list, and the enumeration `binders` is the
@@ -254,6 +340,12 @@ class TypingBridge (N Tm Ty Tm' Ty' : Type) [Atom N] [Step Tm] [Step Tm']
       (binders : List N) (Δ : DeBruijn.Context Ty'),
       (∀ x ∈ freeVars t, x ∈ binders) → CtxCompat eraseTy Γ binders Δ →
       Δ ⊢ erase t binders : eraseTy τ → Γ ⊢ t : τ
+  /-- **Typed terms are scoped**: every free variable of a typed term is bound. True of any
+  judgement worth the name, underivable from the abstract one — and the law that turns the
+  enumeration-carrying transport theorems into unconditional ones, via the canonical scope
+  below. -/
+  typing_covers : ∀ {Γ : Named.Context N Ty} {t : Tm} {τ : Ty},
+      Γ ⊢ t : τ → ∀ x ∈ freeVars t, ∃ σ : Ty, Γ.get? x = some σ
 
 /-- **Preservation transports**: a named reduct keeps its type because its *erasure* does —
 erase the typing, run de Bruijn preservation along the erased steps, reflect. The route
@@ -274,6 +366,110 @@ theorem preservation_via_erase [Atom N] [Step Tm]
   have hdb' := DeBruijn.preservation_mstep hdb hms
   exact TypingBridge.erase_typing_reflect binders Δ
     (StepBridge.covers_step (fun x hx => hc x hx) hs) hcompat hdb'
+
+/-! ### The canonical enumeration
+
+Every transport theorem above carries "choose an enumeration, supply a compatible de Bruijn
+context". A context supplies its own: the keys of its `toList`, with the erased values in the
+same order. `typing_covers` then puts every typed term inside it, and the enumeration
+hypotheses disappear from the statements a named instance actually needs. -/
+
+/-- The canonical scope of a context: its keys, in `toList` order. -/
+def canonScope [Atom N] (Γ : Named.Context N Ty) : List N :=
+  Γ.toList.map Prod.fst
+
+/-- …and the canonical de Bruijn context: the erased values, in the same order. -/
+def canonCtx [Atom N] (eraseTy : Ty → Ty') (Γ : Named.Context N Ty) : DeBruijn.Context Ty' :=
+  Γ.toList.map (fun p => eraseTy p.2)
+
+private theorem canon_aligned [Atom N] (eraseTy : Ty → Ty') :
+    ∀ (l : List (N × Ty)) (x : N), x ∈ l.map Prod.fst →
+      ∃ τ : Ty, (x, τ) ∈ l ∧
+        (l.map (fun p => eraseTy p.2))[scopeIdx x (l.map Prod.fst)]? = some (eraseTy τ)
+  | [], x, hx => by simp at hx
+  | (y, σ) :: l, x, hx => by
+      by_cases hxy : y = x
+      · subst hxy
+        refine ⟨σ, List.mem_cons_self .., ?_⟩
+        show (eraseTy σ :: l.map (fun p => eraseTy p.2))[scopeIdx y (y :: l.map Prod.fst)]?
+          = some (eraseTy σ)
+        rw [show scopeIdx y (y :: l.map Prod.fst) = 0 from by simp [scopeIdx]]
+        rfl
+      · have hx' : x ∈ l.map Prod.fst := by
+          cases List.mem_cons.mp hx with
+          | inl h => exact absurd h.symm hxy
+          | inr h => exact h
+        obtain ⟨τ, hmem, hidx⟩ := canon_aligned eraseTy l x hx'
+        refine ⟨τ, List.mem_cons_of_mem _ hmem, ?_⟩
+        show (eraseTy σ :: l.map (fun p => eraseTy p.2))[scopeIdx x (y :: l.map Prod.fst)]?
+          = some (eraseTy τ)
+        rw [show scopeIdx x (y :: l.map Prod.fst) = scopeIdx x (l.map Prod.fst) + 1 from by
+          simp [scopeIdx, hxy]]
+        simpa using hidx
+
+/-- The canonical pair is compatible — no choice was ever needed. -/
+theorem canon_compat [Atom N] (eraseTy : Ty → Ty') (Γ : Named.Context N Ty) :
+    CtxCompat eraseTy Γ (canonScope Γ) (canonCtx eraseTy Γ) := by
+  intro x hx
+  obtain ⟨τ, hmem, hidx⟩ := canon_aligned eraseTy Γ.toList x hx
+  refine ⟨τ, ?_, hidx⟩
+  rw [Std.HashMap.get?_eq_getElem?]
+  exact Std.HashMap.mem_toList_iff_getElem?_eq_some.mp hmem
+
+/-- A bound name is enumerated. -/
+theorem mem_canonScope [Atom N] {Γ : Named.Context N Ty} {x : N} {σ : Ty}
+    (h : Γ.get? x = some σ) : x ∈ canonScope Γ := by
+  have hm : (x, σ) ∈ Γ.toList := by
+    rw [Std.HashMap.mem_toList_iff_getElem?_eq_some, ← Std.HashMap.get?_eq_getElem?]
+    exact h
+  exact List.mem_map.mpr ⟨(x, σ), hm, rfl⟩
+
+variable [Atom N] [Step Tm] [Named.HasType N Tm Ty]
+
+/-- Typed terms are covered by the canonical scope — `typing_covers` composed with
+`mem_canonScope`, the hinge of everything below. -/
+theorem typed_covers [Step Tm'] [DeBruijn.HasType Tm' Ty'] [TypingBridge N Tm Ty Tm' Ty']
+    {Γ : Named.Context N Ty} {t : Tm} {τ : Ty} (ht : Γ ⊢ t : τ) :
+    ∀ x ∈ HasFreeVars.freeVars t, x ∈ canonScope Γ := fun x hx =>
+  let ⟨_, hσ⟩ := TypingBridge.typing_covers (Tm' := Tm') (Ty' := Ty') ht x hx
+  mem_canonScope hσ
+
+/-- **Preservation, unconditionally**: the enumeration hypotheses of `preservation_via_erase`
+discharged by the canonical pair. The named subject-reduction obligation is now zero choices. -/
+theorem preservation_of_bridge [DeBruijn.LawfulTypeSystem Tm' Ty']
+    [TypingBridge N Tm Ty Tm' Ty']
+    {Γ : Named.Context N Ty} {t t' : Tm} {τ : Ty}
+    (ht : Γ ⊢ t : τ) (hs : t ⟶ t') : Γ ⊢ t' : τ :=
+  preservation_via_erase (canonScope Γ) (canonCtx HasEraseTy.eraseTy Γ)
+    (typed_covers (Tm' := Tm') (Ty' := Ty') ht) (canon_compat _ Γ) ht hs
+
+/-- **Strong normalization, unconditionally**: erase the typing canonically, take the de Bruijn
+tower's SN, reflect along the erasure. The named tower's hardest field, from a bridge and the
+positional proof. -/
+theorem stronglyNormalizing_of_bridge [DeBruijn.StronglyNormalizing Tm' Ty']
+    [TypingBridge N Tm Ty Tm' Ty']
+    {Γ : Named.Context N Ty} {t : Tm} {τ : Ty} (ht : Γ ⊢ t : τ) :
+    SN (· ⟶ ·) t :=
+  StepBridge.sn_of_erase (canonScope Γ) (typed_covers (Tm' := Tm') (Ty' := Ty') ht)
+    (DeBruijn.StronglyNormalizing.StronglyNormalizing
+      (TypingBridge.erase_typing (canonScope Γ) (canonCtx HasEraseTy.eraseTy Γ)
+        (typed_covers (Tm' := Tm') (Ty' := Ty') ht) (canon_compat _ Γ) ht))
+
+/-- **α-respect of typing, unconditionally**: erasure-equal terms type alike — erase, rewrite
+along the agreement, reflect. The named tower's `LawfulAlphaEq.typing_respects`, for a language
+whose `≈α` is the induced one. -/
+theorem typing_respects_of_bridge [Step Tm'] [DeBruijn.HasType Tm' Ty']
+    [TypingBridge N Tm Ty Tm' Ty']
+    {Γ : Named.Context N Ty} {t u : Tm} {τ : Ty}
+    (h : ErasureEq Tm' (N := N) t u) (ht : Γ ⊢ t : τ) : Γ ⊢ u : τ := by
+  have hct := typed_covers (Tm' := Tm') (Ty' := Ty') ht
+  have hcu : ∀ x ∈ HasFreeVars.freeVars u, x ∈ canonScope Γ := fun x hx =>
+    hct x (h.1 ▸ hx)
+  apply TypingBridge.erase_typing_reflect (canonScope Γ) (canonCtx HasEraseTy.eraseTy Γ)
+    hcu (canon_compat _ Γ)
+  rw [← h.2 (canonScope Γ) hct]
+  exact TypingBridge.erase_typing (canonScope Γ) (canonCtx HasEraseTy.eraseTy Γ)
+    hct (canon_compat _ Γ) ht
 
 end Typing
 
