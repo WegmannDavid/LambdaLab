@@ -135,4 +135,104 @@ instance : HasVars Nat Term where
 instance : HasSubst Nat Term Ty where
   pSubst := Term.tyPSubst
 
+/-! ## `pSubst` unfolding lemmas for each `Ty` constructor
+
+The `Signature`-derived `pSubst` recurses by well-founded recursion through `deconstruct`, so it
+does not reduce on the constructors; these are the closed forms, as on the named side. -/
+
+@[simp] theorem Ty.pSubst_base (σ : Subst Nat Ty) :
+    HasSubst.pSubst Ty.base σ = Ty.base := by
+  show Signature.pSubst Ty.base σ = _
+  show Signature.pSubst (Signature.construct (Sum.inr
+        ⟨TyConstructor.base, Vector.ofFn Fin.elim0⟩)) σ = _
+  rw [Signature.pSubst_construct]
+  rfl
+
+@[simp] theorem Ty.pSubst_mvar (n : Nat) (σ : Subst Nat Ty) :
+    HasSubst.pSubst (Ty.mvar n) σ = σ.getD n (Ty.mvar n) := by
+  show Signature.pSubst (Signature.var n : Ty) σ = _
+  exact Signature.pSubst_var n σ
+
+@[simp] theorem Ty.pSubst_arrow (a b : Ty) (σ : Subst Nat Ty) :
+    HasSubst.pSubst (Ty.arrow a b) σ =
+      Ty.arrow (HasSubst.pSubst a σ) (HasSubst.pSubst b σ) := by
+  show Signature.pSubst (Signature.construct (Sum.inr ⟨TyConstructor.arrow,
+        Vector.ofFn (fun i : Fin 2 =>
+          match i with | 0 => a | 1 => b)⟩)) σ = _
+  rw [Signature.pSubst_construct]
+  show Signature.construct (Sum.inr ⟨TyConstructor.arrow,
+        Vector.ofFn fun i : Fin 2 => Signature.pSubst
+          ((Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get i) σ⟩) = _
+  show Ty.arrow ((Vector.ofFn _).get 0) ((Vector.ofFn _).get 1) = _
+  have h0 : (Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get 0 = a := by
+    show ((Vector.ofFn _)[(0 : Fin 2).val]'(0 : Fin 2).isLt) = _
+    simp
+  have h1 : (Vector.ofFn (fun j : Fin 2 =>
+            match j with | 0 => a | 1 => b)).get 1 = b := by
+    show ((Vector.ofFn _)[(1 : Fin 2).val]'(1 : Fin 2).isLt) = _
+    simp
+  show Ty.arrow (Signature.pSubst ((Vector.ofFn _).get 0) σ)
+    (Signature.pSubst ((Vector.ofFn _).get 1) σ) = _
+  rw [h0, h1]
+  rfl
+
+/-! ## The substitution laws, term level
+
+The three mixins `LawfulMVars` bundles, proved by the inductions the named side has — one case
+shorter each, `lam` carrying no name. -/
+
+theorem Term.pSubst_ground {e : Term} (σ : Subst Nat Ty)
+    (h : HasVars.Ground (A := Nat) e) : HasSubst.pSubst e σ = e := by
+  show Term.tyPSubst e σ = e
+  induction e with
+  | var x => rfl
+  | lam τ body ih =>
+      have hτ : HasVars.Ground (A := Nat) τ := fun n hn => h n (Or.inl hn)
+      have hb : HasVars.Ground (A := Nat) body := fun n hn => h n (Or.inr hn)
+      show Term.lam (HasSubst.pSubst τ σ) (Term.tyPSubst body σ) = _
+      rw [GroundStable.pSubst_ground σ hτ, ih hb]
+  | app e₁ e₂ ih₁ ih₂ =>
+      have h₁ : HasVars.Ground (A := Nat) e₁ := fun n hn => h n (Or.inl hn)
+      have h₂ : HasVars.Ground (A := Nat) e₂ := fun n hn => h n (Or.inr hn)
+      show Term.app (Term.tyPSubst e₁ σ) (Term.tyPSubst e₂ σ) = _
+      rw [ih₁ h₁, ih₂ h₂]
+
+instance : GroundStable Nat Term Ty where
+  pSubst_ground σ h := Term.pSubst_ground σ h
+
+theorem Term.pSubst_comp (e : Term) (σ τ : Subst Nat Ty) :
+    HasSubst.pSubst e (Subst.comp σ τ) = HasSubst.pSubst (HasSubst.pSubst e τ) σ := by
+  show Term.tyPSubst e _ = Term.tyPSubst (Term.tyPSubst e τ) σ
+  induction e with
+  | var x => rfl
+  | lam τa body ih =>
+      show Term.lam (HasSubst.pSubst τa (Subst.comp σ τ)) (Term.tyPSubst body _)
+        = Term.lam (HasSubst.pSubst (HasSubst.pSubst τa τ) σ) (Term.tyPSubst (Term.tyPSubst body τ) σ)
+      rw [LawfulComp.pSubst_comp τa σ τ, ih]
+  | app e₁ e₂ ih₁ ih₂ =>
+      show Term.app _ _ = Term.app _ _
+      rw [ih₁, ih₂]
+
+instance : LawfulComp Nat Term Ty where
+  pSubst_comp := Term.pSubst_comp
+
+theorem Term.pSubst_restrictTo (e : Term) (σ : Subst Nat Ty) (s : List Nat)
+    (h : ∀ a, HasVars.isFree e a → a ∈ s) :
+    HasSubst.pSubst e (Subst.restrictTo σ s) = HasSubst.pSubst e σ := by
+  show Term.tyPSubst e _ = Term.tyPSubst e σ
+  induction e with
+  | var x => rfl
+  | lam τa body ih =>
+      show Term.lam _ _ = Term.lam _ _
+      rw [LawfulRestrict.pSubst_restrictTo τa σ s (fun a ha => h a (Or.inl ha)),
+        ih (fun a ha => h a (Or.inr ha))]
+  | app e₁ e₂ ih₁ ih₂ =>
+      show Term.app _ _ = Term.app _ _
+      rw [ih₁ (fun a ha => h a (Or.inl ha)), ih₂ (fun a ha => h a (Or.inr ha))]
+
+instance : LawfulRestrict Nat Term Ty where
+  pSubst_restrictTo := Term.pSubst_restrictTo
+
 end LambdaLab.Stlc.DeBruijn

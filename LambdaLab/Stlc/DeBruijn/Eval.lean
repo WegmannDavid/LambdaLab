@@ -56,4 +56,40 @@ termination_by (⟨e, h⟩ : SNTerm)
 def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty} (ht : HasType Γ e τ) : Term :=
   Term.eval e (HasType.sn ht)
 
+/-! ## What the normalizer returns
+
+The two laws that make `eval`'s answer an *answer* — mirrors of the named side's, proved here
+independently as everything on this side is. -/
+
+/-- **The redex picker is complete**: where a step exists, it finds one. -/
+theorem Term.findReductStep_ne_none {e e' : Term} (s : Step e e') :
+    e.findReductStep ≠ none := by
+  induction s with
+  | beta => simp [Term.findReductStep]
+  | lam _ ih =>
+      simp only [Term.findReductStep]
+      split <;> simp_all
+  | @appL e₁ _ _ _ ih =>
+      cases e₁ <;> simp only [Term.findReductStep] <;> (repeat' split) <;>
+        simp_all [Term.findReductStep]
+  | @appR _ _ e₁ _ ih =>
+      cases e₁ <;> simp only [Term.findReductStep] <;> (repeat' split) <;> simp_all
+
+/-- **`eval` finishes the job**: its result admits no further reduction. -/
+theorem Term.eval_normalForm (e : Term) (h : SN e) :
+    ∀ e', ¬ Step (e.eval h) e' := by
+  rw [Term.eval]
+  split
+  · next hf => exact fun e' s => Term.findReductStep_ne_none s hf
+  · next e' s _ => exact Term.eval_normalForm e' (h.unfold s)
+termination_by (⟨e, h⟩ : SNTerm)
+
+/-- **`eval` answers the question asked**: its result is reachable from the input. -/
+theorem Term.mstep_eval (e : Term) (h : SN e) : RTC Step e (e.eval h) := by
+  rw [Term.eval]
+  split
+  · exact RTC.refl
+  · next e' s _ => exact RTC.head s (Term.mstep_eval e' (h.unfold s))
+termination_by (⟨e, h⟩ : SNTerm)
+
 end LambdaLab.Stlc.DeBruijn
