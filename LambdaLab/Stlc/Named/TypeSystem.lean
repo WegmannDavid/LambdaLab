@@ -6,6 +6,7 @@ import LambdaLab.Stlc.Named.Typing.Preservation
 import LambdaLab.Stlc.Named.Typing.Normalization
 import LambdaLab.Stlc.Named.Typing.Unification
 import LambdaLab.Stlc.Named.Typing.JComplete
+import LambdaLab.Stlc.Named.Bridge
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
@@ -92,7 +93,9 @@ instance instTypeSystem : TypeSystem.Named.TypeSystem N (Term N) Ty := {}
 one instance with content: building it *is* the claim that STLC is well-behaved in the framework's
 sense, since `Preservation` cannot be filled without a proof. -/
 instance instLawfulTypeSystem : TypeSystem.Named.LawfulTypeSystem N (Term N) Ty where
-  Preservation := HasType.preservation
+  Preservation ht hs :=
+    TypeSystem.Bridge.preservation_of_bridge
+      (Tm' := Stlc.DeBruijn.Term) (Ty' := Stlc.DeBruijn.Ty) ht hs
   cong h ht := HasType.cong h ht
 
 /-- Both substitution instances already exist, so fill from them rather than defining new ones —
@@ -113,15 +116,19 @@ instance instLawfulMVars : TypeSystem.Named.LawfulMVars N (Term N) Ty where
   tyLawfulRestrict := inferInstance
   tmLawfulRestrict := inferInstance
 
-/-- **The fourth instance with content**: α-equal terms type alike, discharged by
-`Term.AlphaEq.hasType`. Like `Preservation` and `Stability` this is a field that cannot be skipped,
-and like them the proof is the translation's, not new work — α-equality *is* equality of de Bruijn
-erasures, so the law is `HasType.toDB` out and `HasType.fromDB` back.
+/-- **The fourth instance with content**: α-equal terms type alike — now ridden across the
+bridge: `Term.AlphaEq` *is* the induced `ErasureEq` (`alphaEq_iff_erasureEq`, by `Iff.rfl`), so
+`typing_respects_of_bridge` applies verbatim, and the hand proof `Term.AlphaEq.hasType` is its
+per-language ancestor.
 
 `HasAlphaEq` itself is supplied in `Stlc/Named/Alpha.lean`, beside the relation; this is only the
 law that ties it to the judgement. -/
 instance instLawfulAlphaEq : TypeSystem.Named.LawfulAlphaEq N (Term N) Ty where
-  typing_respects h ht := Term.AlphaEq.hasType h ht
+  typing_respects := fun {Γ t u τ} h ht => by
+    have hE : TypeSystem.Bridge.ErasureEq Stlc.DeBruijn.Term (N := N) t u := h
+    have ht' : HasType Γ t τ := ht
+    exact TypeSystem.Bridge.typing_respects_of_bridge
+      (Tm' := Stlc.DeBruijn.Term) (Ty' := Stlc.DeBruijn.Ty) hE ht'
 
 /-! ## Groundness, decided
 
@@ -190,7 +197,9 @@ at this `Step`, so there is nothing to convert.
 The field could not ask for well-foundedness of `⟶`: `omega_not_sn` refutes that. -/
 instance instStronglyNormalizing :
     TypeSystem.Named.StronglyNormalizing N (Term N) Ty where
-  StronglyNormalizing h := HasType.sn h
+  StronglyNormalizing h :=
+    TypeSystem.Bridge.stronglyNormalizing_of_bridge
+      (Tm' := Stlc.DeBruijn.Term) (Ty' := Stlc.DeBruijn.Ty) h
 
 /-- **Confluence.**
 
@@ -205,17 +214,14 @@ erasures into `≈α`. The context is `t.freeVars`, the smallest one `MStep.conf
 reduction never introduces a free variable (`MStep.preserves_freeVars`), so it stays adequate all
 the way down. -/
 instance instConfluent : TypeSystem.Named.Confluent N (Term N) Ty where
-  Confluent {_Γ} {t t₁ t₂} {_τ} _ht h₁ h₂ := by
-    obtain ⟨d, hd₁, hd₂⟩ := MStep.confluent t.freeVars (fun _ hw => hw) h₁ h₂
-    have hfv1 : ∀ w ∈ t₁.freeVars, w ∈ t.freeVars := MStep.preserves_freeVars h₁
-    have hfv2 : ∀ w ∈ t₂.freeVars, w ∈ t.freeVars := MStep.preserves_freeVars h₂
-    obtain ⟨u₁, hs₁, he₁⟩ := Term.mstep_reflect hd₁ t₁ rfl hfv1
-    obtain ⟨u₂, hs₂, he₂⟩ := Term.mstep_reflect hd₂ t₂ rfl hfv2
-    refine ⟨u₁, u₂, hs₁, hs₂, ?_⟩
-    exact Term.alphaEq_of_toDB
-      (fun w hw => hfv1 w (MStep.preserves_freeVars hs₁ w hw))
-      (fun w hw => hfv2 w (MStep.preserves_freeVars hs₂ w hw))
-      (he₁.trans he₂.symm)
+  Confluent := fun {Γ t t₁ t₂ τ} _ht h₁ h₂ => by
+    have h₁' : RTC Step t t₁ := h₁
+    have h₂' : RTC Step t t₂ := h₂
+    obtain ⟨u₁, u₂, hs₁, hs₂, hα⟩ :=
+      TypeSystem.Bridge.ReflectBridge.confluent_of_bridge
+        (N := N) (Tm := Term N) (Tm' := Stlc.DeBruijn.Term)
+        (fun m₁ m₂ => Stlc.DeBruijn.MStep.confluent m₁ m₂) h₁' h₂'
+    exact ⟨u₁, u₂, hs₁, hs₂, hα⟩
 
 /-- **The normalizer.** `HasType.eval` is already derivation-indexed, so the field is filled
 outright. -/
