@@ -178,4 +178,103 @@ then its `≈α` is *derived* from its binding structure rather than asserted be
   symm := ErasureEq.symm
   trans := ErasureEq.trans
 
+/-! ## The typing bridge
+
+A named context is a map, a de Bruijn context is a list, and the enumeration `binders` is the
+choice that relates them: a name's index is its position, its type erases to that position's
+entry. `CtxCompat` is that relation; the two laws say the judgement transports both ways over
+it. Reflection is stated *at erased types* — no inverse of `eraseTy` is demanded; a language
+with an iso (as STLC has `Ty.fromDB`) recovers the stronger form by rewriting.
+
+Both towers' turnstiles are global and both fire below; the type of the context picks the
+reading, which is what the two towers' notation design promised. -/
+
+section Typing
+
+open LambdaLab.Nominal (Atom)
+
+/-- **Type erasure**: data only, as `HasErase` is. -/
+class HasEraseTy (Ty Ty' : Type) where
+  /-- Erase a type. Total — types carry no binders in the towers this bridges. -/
+  eraseTy : Ty → Ty'
+
+variable {N Tm Ty Tm' Ty' : Type}
+
+/-- A name's de Bruijn index: its position in the scope enumeration. The definition matches the
+concrete `lookupVar` clause for clause, so instances adapt by `rfl`-adjacent lemmas. -/
+def scopeIdx [Atom N] (x : N) : List N → Nat
+  | [] => 0
+  | y :: ys => if y = x then 0 else scopeIdx x ys + 1
+
+/-- **Context compatibility**: every enumerated name is bound, and its erased type sits at its
+index. `eraseTy` is passed as a function rather than found as an instance, so the definition is
+usable inside the class below, where the instance is the parent under construction. -/
+def CtxCompat [Atom N] (eraseTy : Ty → Ty') (Γ : Named.Context N Ty) (binders : List N)
+    (Δ : DeBruijn.Context Ty') : Prop :=
+  ∀ x ∈ binders, ∃ τ : Ty, Γ.get? x = some τ ∧ Δ[scopeIdx x binders]? = some (eraseTy τ)
+
+/-- Compatibility extends under a binder: the new name at index `0`, everything else shifted —
+by `cons` on all three components at once. -/
+theorem CtxCompat.cons [Atom N] {eraseTy : Ty → Ty'} {Γ : Named.Context N Ty}
+    {binders : List N} {Δ : DeBruijn.Context Ty'} (x : N) (τ : Ty)
+    (h : CtxCompat eraseTy Γ binders Δ) :
+    CtxCompat eraseTy (Γ.cons x τ) (x :: binders) (eraseTy τ :: Δ) := by
+  intro y hy
+  by_cases hyx : y = x
+  · subst hyx
+    refine ⟨τ, ?_, ?_⟩
+    · rw [Named.Context.get?_cons, if_pos rfl]
+    · show (eraseTy τ :: Δ)[scopeIdx y (y :: binders)]? = some (eraseTy τ)
+      rw [show scopeIdx y (y :: binders) = 0 from by simp [scopeIdx]]
+      rfl
+  · obtain ⟨τ', hget, hidx⟩ :=
+      h y ((List.mem_cons.mp hy).resolve_left hyx)
+    have hxy : ¬ x = y := fun h => hyx h.symm
+    refine ⟨τ', ?_, ?_⟩
+    · rw [Named.Context.get?_cons, if_neg hxy]
+      exact hget
+    · show (eraseTy τ :: Δ)[scopeIdx y (x :: binders)]? = some (eraseTy τ')
+      rw [show scopeIdx y (x :: binders) = scopeIdx y binders + 1 from by
+        simp [scopeIdx, hxy]]
+      simpa using hidx
+
+/-- **The typing bridge**: the judgement transports both ways over a compatible context triple.
+Extends `StepBridge` rather than standing beside it, so a consumer holding both sees one
+erasure — the diamond lesson, applied preemptively. -/
+class TypingBridge (N Tm Ty Tm' Ty' : Type) [Atom N] [Step Tm] [Step Tm']
+    [Named.HasType N Tm Ty] [DeBruijn.HasType Tm' Ty']
+    extends StepBridge N Tm Tm', HasEraseTy Ty Ty' where
+  /-- Typing is preserved by erasure. -/
+  erase_typing : ∀ {Γ : Named.Context N Ty} {t : Tm} {τ : Ty}
+      (binders : List N) (Δ : DeBruijn.Context Ty'),
+      (∀ x ∈ freeVars t, x ∈ binders) → CtxCompat eraseTy Γ binders Δ →
+      Γ ⊢ t : τ → Δ ⊢ erase t binders : eraseTy τ
+  /-- …and reflected, at erased types. -/
+  erase_typing_reflect : ∀ {Γ : Named.Context N Ty} {t : Tm} {τ : Ty}
+      (binders : List N) (Δ : DeBruijn.Context Ty'),
+      (∀ x ∈ freeVars t, x ∈ binders) → CtxCompat eraseTy Γ binders Δ →
+      Δ ⊢ erase t binders : eraseTy τ → Γ ⊢ t : τ
+
+/-- **Preservation transports**: a named reduct keeps its type because its *erasure* does —
+erase the typing, run de Bruijn preservation along the erased steps, reflect. The route
+`Stlc/Named/Typing/Preservation.lean` takes concretely, proved once; the named side's whole
+subject-reduction obligation shrinks to choosing an enumeration. -/
+theorem preservation_via_erase [Atom N] [Step Tm]
+    [Named.HasType N Tm Ty] [DeBruijn.LawfulTypeSystem Tm' Ty']
+    [TypingBridge N Tm Ty Tm' Ty']
+    {Γ : Named.Context N Ty} {t t' : Tm} {τ : Ty}
+    (binders : List N) (Δ : DeBruijn.Context Ty')
+    (hc : ∀ x ∈ HasFreeVars.freeVars t, x ∈ binders)
+    (hcompat : CtxCompat (HasEraseTy.eraseTy (Ty' := Ty')) Γ binders Δ)
+    (ht : Γ ⊢ t : τ) (hs : t ⟶ t') : Γ ⊢ t' : τ := by
+  have hdb := TypingBridge.erase_typing binders Δ hc hcompat ht
+  obtain ⟨d, hd1, hd2⟩ := StepBridge.erase_step_pos binders hc hs
+  have hms : HasErase.erase t binders ⟶* (HasErase.erase t' binders : Tm') :=
+    RTC.head hd1 hd2
+  have hdb' := DeBruijn.preservation_mstep hdb hms
+  exact TypingBridge.erase_typing_reflect binders Δ
+    (StepBridge.covers_step (fun x hx => hc x hx) hs) hcompat hdb'
+
+end Typing
+
 end LambdaLab.TypeSystem.Bridge

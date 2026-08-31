@@ -49,4 +49,59 @@ theorem alphaEq_iff_erasureEq {t u : Term N} :
     t.AlphaEq u ↔ ErasureEq Stlc.DeBruijn.Term (N := N) t u :=
   Iff.rfl
 
+/-! ## The typing bridge
+
+Two vocabulary adapters, then the instance. The bridge states de Bruijn lookup as `Δ[i]?` (the
+de Bruijn tower's spelling); `Translation.lean` states it as the `Lookup` inductive with
+`lookupVar` computing the index. The adapters say these are the same facts. -/
+
+/-- The bridge's index function is `Translation.lean`'s, clause for clause. -/
+theorem scopeIdx_eq_lookupVar (x : N) : ∀ l : List N, scopeIdx x l = lookupVar x l
+  | [] => rfl
+  | y :: ys => by simp [scopeIdx, lookupVar, scopeIdx_eq_lookupVar x ys]
+
+/-- The `Lookup` inductive is positional `getElem?`. -/
+theorem lookup_iff_getElem? {Δ : Stlc.DeBruijn.Ctx} {n : Nat} {τ : Stlc.DeBruijn.Ty} :
+    Stlc.DeBruijn.Lookup Δ n τ ↔ Δ[n]? = some τ := by
+  constructor
+  · intro h
+    induction h with
+    | here => rfl
+    | there _ ih => simpa using ih
+  · intro h
+    induction Δ generalizing n with
+    | nil => simp at h
+    | cons τ' Δ ih =>
+        cases n with
+        | zero =>
+            simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+            exact h ▸ .here
+        | succ n =>
+            simp only [List.getElem?_cons_succ] at h
+            exact .there (ih h)
+
+/-- The bridge's compatibility is `Translation.lean`'s `CtxCompat`, through the adapters. -/
+theorem ctxCompat_iff {Γ : Ctx N} {binders : List N} {Δ : Stlc.DeBruijn.Ctx} :
+    TypeSystem.Bridge.CtxCompat Ty.toDB Γ binders Δ ↔ CtxCompat Γ binders Δ := by
+  constructor <;> intro h x hx <;> obtain ⟨τ, h1, h2⟩ := h x hx <;> refine ⟨τ, h1, ?_⟩
+  · rw [← scopeIdx_eq_lookupVar]
+    exact lookup_iff_getElem?.mpr h2
+  · rw [scopeIdx_eq_lookupVar]
+    exact lookup_iff_getElem?.mp h2
+
+instance : HasEraseTy Ty Stlc.DeBruijn.Ty where
+  eraseTy := Ty.toDB
+
+/-- The typing bridge: both laws are `Translation.lean`'s theorems, through the adapters —
+reflection recovering the on-the-nose type by `Ty.fromDB_toDB`. -/
+instance instTypingBridge :
+    TypingBridge N (Term N) Ty Stlc.DeBruijn.Term Stlc.DeBruijn.Ty :=
+  { instStepBridge with
+    eraseTy := Ty.toDB
+    erase_typing := fun binders Δ hc hcompat ht =>
+      HasType.toDB _ ht binders Δ hc (ctxCompat_iff.mp hcompat)
+    erase_typing_reflect := fun binders Δ hc hcompat hdb => by
+      have h := HasType.fromDB _ binders Δ _ hc (ctxCompat_iff.mp hcompat) hdb
+      rwa [Ty.fromDB_toDB] at h }
+
 end LambdaLab.Stlc.Named
