@@ -3,6 +3,8 @@
 import LambdaLab.Relation.Closure
 import LambdaLab.Relation.Normalization
 import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.Stlc.DeBruijn.Unification
+import LambdaLab.Stlc.DeBruijn.TypeSystem
 import LambdaLab.Stlc.DeBruijn.Typing
 import LambdaLab.Stlc.DeBruijn.Step
 import LambdaLab.Stlc.DeBruijn.MStep
