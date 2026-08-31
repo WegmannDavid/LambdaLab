@@ -73,7 +73,9 @@ import LambdaLab.TypeSystem.DeBruijn.Basic
 import LambdaLab.TypeSystem.Bridge
 import LambdaLab.TypeSystem.DeBruijn.Category
 import LambdaLab.TypeSystem.Named.Category
+import LambdaLab.TypeSystem.Bridged
 import LambdaLab.Stlc.Named.Bridge
+import LambdaLab.Stlc.Named.Bridged
 import LambdaLab.TypeSystem.Named.Vernacular.Basic
 import LambdaLab.TypeSystem.Named.Vernacular.Typing
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
