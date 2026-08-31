@@ -1,9 +1,9 @@
 import LambdaLab.Stlc.Named.Step.MStep
 import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.DeBruijn.MStep
+import LambdaLab.Stlc.DeBruijn.Step.MStep
 import LambdaLab.Stlc.DeBruijn.Substitution
-import LambdaLab.Stlc.DeBruijn.Typing
-import LambdaLab.Stlc.DeBruijn.Preservation
+import LambdaLab.Stlc.DeBruijn.Typing.Basic
+import LambdaLab.Stlc.DeBruijn.Typing.Preservation
 
 /-!
 # Translation from named-variable to de Bruijn STLC

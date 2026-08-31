@@ -1,5 +1,5 @@
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.MStep
+import LambdaLab.Stlc.DeBruijn.Step.Basic
+import LambdaLab.Stlc.DeBruijn.Step.MStep
 import LambdaLab.Stlc.DeBruijn.Substitution
 
 /-!

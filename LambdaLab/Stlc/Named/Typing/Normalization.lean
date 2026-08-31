@@ -1,7 +1,7 @@
 import LambdaLab.Nominal.Instances
 import LambdaLab.Stlc.Named.Translation
 import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Stlc.DeBruijn.Typing.Reducibility
 
 /-!
 # Strong normalization (named-variable variant), via the de Bruijn translation

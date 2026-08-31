@@ -1,8 +1,8 @@
-import LambdaLab.Stlc.DeBruijn.Unification
-import LambdaLab.Stlc.DeBruijn.Preservation
-import LambdaLab.Stlc.DeBruijn.Confluence
-import LambdaLab.Stlc.DeBruijn.Eval
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Stlc.DeBruijn.Typing.Unification
+import LambdaLab.Stlc.DeBruijn.Typing.Preservation
+import LambdaLab.Stlc.DeBruijn.Step.Confluence
+import LambdaLab.Stlc.DeBruijn.Step.Eval
+import LambdaLab.Stlc.DeBruijn.Typing.Reducibility
 import LambdaLab.TypeSystem.DeBruijn.Basic
 
 /-!
@@ -13,13 +13,14 @@ other side of the naming divide. The purpose is the one `TypeSystem/DeBruijn/Bas
 this tower hosts metatheory and audits the named formalization — so the instances here are the
 *reference* readings of the properties the named side claims through translation.
 
-What discharges immediately is the metatheory this side always owned: preservation
+Half the tower is the metatheory this side always owned: preservation
 (`HasType.preservation`), confluence on the nose (`MStep.confluent` — no `≈α` anywhere),
 strong normalization (`HasType.sn`, through the reducibility candidates), and the normalizer
-(`HasType.eval`). What is `sorry` is the frontier: stability of typing under type-substitution,
-the term-side substitution mixins, the two `eval` laws (`Term.eval` was defined here long before
-anything asked what its answer *means*), and the `tsubst` laws — each a de Bruijn-native proof to
-be written, not a translation.
+(`HasType.eval`). The other half is proved here or beside its definition, de Bruijn-native
+throughout: stability of typing under type-substitution, the term-side substitution mixins
+(`Typing/Unification.lean`), the two `eval` laws (`Step/Eval.lean`), groundness along
+reduction, and the `tsubst` laws — whose closed-term cases are free-variable-bound arguments,
+with no capture to protect against.
 
 `PrincipalElaborate` and `Runnable` are deliberately not claimed: there is no de Bruijn
 elaborator yet. The seat stays warm — the classes exist, per the tower's opt-in doctrine — for
@@ -33,7 +34,8 @@ are `List Ty` — so nothing is translated, only claimed. -/
 instance instHasType : TypeSystem.DeBruijn.HasType Term Ty where
   HasType := HasType
 
-/-- Judgement and reduction together — `Step.lean`'s `instStep` supplies the reduction half. -/
+/-- Judgement and reduction together — `Step/Basic.lean`'s `instStep` supplies the reduction
+half. -/
 instance instTypeSystem : TypeSystem.DeBruijn.TypeSystem Term Ty := {}
 
 /-- Preservation, discharged by the proof that predates the interface. -/
@@ -81,7 +83,7 @@ instance instLawfulMVars : TypeSystem.DeBruijn.LawfulMVars Term Ty where
   tyLawfulRestrict := inferInstance
   tmLawfulRestrict := inferInstance
 
-/-- `Reducibility.lean`'s `SN` and `Relation/Normalization.lean`'s are the same inductive shape
+/-- `Typing/Reducibility.lean`'s `SN` and `Relation/Normalization.lean`'s are the same inductive shape
 at this `Step`; this is the conversion, by the one induction available. -/
 theorem SN.toRelation : ∀ {e : Term}, SN e → LambdaLab.SN (· ⟶ ·) e := by
   intro e h
@@ -190,7 +192,7 @@ theorem MStep.ground {e e' : Term} (h : RTC Step e e')
   | refl => exact hg
   | tail _ s ih => exact Step.ground s ih
 
-/-- The two `eval` laws are `Eval.lean`'s, proved beside the definition; groundness folds
+/-- The two `eval` laws are `Step/Eval.lean`'s, proved beside the definition; groundness folds
 `Step.ground` along the reduction `eval` actually takes. The `have`s re-read each hypothesis at
 the concrete judgement — pure defeq through the instance projections, which the elaborator only
 performs metavariable-free. -/

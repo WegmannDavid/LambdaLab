@@ -1,6 +1,6 @@
 import LambdaLab.Stlc.DeBruijn.Basic
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Stlc.DeBruijn.Step.Basic
+import LambdaLab.Stlc.DeBruijn.Typing.Reducibility
 
 /-!
 # Total normalizer (de Bruijn variant)

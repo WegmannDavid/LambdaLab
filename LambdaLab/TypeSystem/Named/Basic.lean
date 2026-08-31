@@ -153,7 +153,7 @@ class HasType (N Tm Ty : Type) [atom : Atom N] where
 Precedence and spelling are the concrete judgements', so a generic statement reads exactly like
 the instance it will be applied to. `Stlc/Named/Typing/Basic.lean` dropped its own copy when this
 one arrived, and had to: both elaborate wherever the instance is in scope, and being defeq they
-make every use `Ambiguous term`. `Stlc/DeBruijn/Typing.lean` keeps a local one and may — its
+make every use `Ambiguous term`. `Stlc/DeBruijn/Typing/Basic.lean` keeps a local one and may — its
 context is a `List Ty`, which cannot instantiate `HasType`, so there is no second reading to
 collide with and the elaborator tells the two apart by the type of `Γ`.
 

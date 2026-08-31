@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Step
+import LambdaLab.Stlc.DeBruijn.Step.Basic
 import LambdaLab.Relation.Closure
 
 /-!

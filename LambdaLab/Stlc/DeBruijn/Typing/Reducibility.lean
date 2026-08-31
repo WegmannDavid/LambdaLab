@@ -1,8 +1,8 @@
-import LambdaLab.Stlc.DeBruijn.Typing
-import LambdaLab.Stlc.DeBruijn.Step
+import LambdaLab.Stlc.DeBruijn.Typing.Basic
+import LambdaLab.Stlc.DeBruijn.Step.Basic
 import LambdaLab.Stlc.DeBruijn.Substitution
 import LambdaLab.Stlc.DeBruijn.ParSubst
-import LambdaLab.Stlc.DeBruijn.Confluence
+import LambdaLab.Stlc.DeBruijn.Step.Confluence
 
 /-!
 # Strong normalization and Tait's reducibility predicate
