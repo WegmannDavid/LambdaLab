@@ -1,3 +1,5 @@
+import LambdaLab.CoC.Basic
+
 /-!
 # The Calculus of Constructions, de Bruijn — one syntactic category
 
@@ -25,11 +27,7 @@ constructors and `rfl` alone.
 
 namespace LambdaLab.CoC.DeBruijn
 
-/-- The two sorts: `*` (propositions/types of terms) and `□` (the sort of `*`). -/
-inductive Srt where
-  | prop
-  | typ
-  deriving DecidableEq, Repr
+open LambdaLab.CoC (Srt)
 
 /-- One syntactic category: sorts, variables, `Π`, `λ`, application. -/
 inductive Term where
