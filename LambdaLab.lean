@@ -75,6 +75,7 @@ import LambdaLab.Pipeline.Basic
 -- it constructs are carved out of the grammar's reserved `Token`s. It is the one place the two
 -- folders' layering is inverted.
 import LambdaLab.TypeSystem.Named.FreeName
+import LambdaLab.Pipeline.Def
 import LambdaLab.Pipeline.Stages.Parse
 import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Pipeline.Stages.Evaluate

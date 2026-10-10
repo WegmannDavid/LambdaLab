@@ -15,75 +15,47 @@ them simply has no fourth stage, and that is a fact about the language, not a ga
 A declared name enters the context as a *free variable*, so `λ x . id ( id x )` is already
 β-normal and β alone would leave nearly every program untouched. Inlining is what makes the stage
 do anything. It also changes what the output is: the declarations come out independent of one
-another, each body closed, which is why the target predicate says *closed* and normal.
+another, each body closed.
 
-## The target is the image, as always
+## A walk after a walk
 
-`Evaluated` is the *reduced* programs, not all well-typed ones. An arbitrary elaborated program is
-not something reduction produces, and `abstract_realize` would then have nothing to say about it.
-Being a fixed point is what makes the canonical annotation legal: an already-reduced program is its
-own best re-presentation, so `default` is the program itself, justified by
-`evalProgram_of_allReduced` exactly as ③'s `default` is justified by `elabProgram?_self`.
-
-`AllReduced` demands *closed* and normal, and the first conjunct is load-bearing rather than
-incidental: a body that were merely normal could still name an earlier declaration, inlining would
-rewrite it, and the fixed point — hence `default` — would be false.
-
-## The one stage that never rejects
-
-`abstract` is `some` unconditionally. Evaluation is total on well-typed terms — that is
-`StronglyNormalizing`, reached through `LawfulHasEval` — so this stage has no failure mode at all
-and the `Option` in `Abstraction.abstract` is, here, pure overhead. That is worth saying out loud
-because every earlier stage does reject: the tokenizer never does either, but the parser and the
-elaborator both do, and a reader who has followed the pipeline this far will expect a third.
-
-## Lossy, and lossless, and both honestly
-
-`Lossless` is a law now, and this stage satisfies it — which reads as a contradiction of everything
-below and is not one. Reduction genuinely discards work: `( λ f . f ) id` and `λ x . x` have the
-same normal form, and no function of the *reduced* program recovers which was written. The law does
-not ask for one. It asks that the annotation family cover the fibers, and this family over `q` is
-"an elaborated program that runs to `q`" — so the program you started from is its own witness.
-
-The honest reading of the law is therefore narrower than "nothing was lost": *the morphism's
-annotation is an adequate record of what `abstract` collapsed*. A morphism fails it by choosing an
-annotation coarser than its fiber, which is a claim about the annotation, not about the algorithm.
+The stage is `Semantics.Walk.stageOn` applied to the evaluator `Vernacular.evalWalk`. Its source is
+the elaboration stage's target — the programs elaboration leaves unchanged — and its target is the
+programs evaluation leaves unchanged *among those*. The law it needs (`evalWalk_lawfulOn`) is that
+evaluating an elaborated program gives an elaborated program, and that evaluation is idempotent;
+the canonical annotation of an evaluated program is then the program itself.
 
 ## Lossy in the sense that matters
 
-`Lossless` fails, and not for elaboration's subtle reason (fibres constrained by unification) but
-for the obvious one: reduction discards what it reduces. `λ x . ( λ y . y ) x` and `λ x . x` have
-the same normal form, and after inlining a program no longer records which of its declarations
-were written by hand and which were spelled out by name. Only the annotation, which holds the
-un-reduced program, tells them apart. `realize default` still round-trips, so the canonical-print
-guarantee is untouched; what is gone is the user's working, which is precisely what running a
-program is for.
+Reduction discards what it reduces. `λ x . ( λ y . y ) x` and `λ x . x` have the same normal form,
+and after inlining a program no longer records which of its declarations were written by hand and
+which were spelled out by name. Only the annotation, which holds the un-reduced program, tells them
+apart. `realize default` still round-trips, so the canonical-print guarantee is untouched; what is
+gone is the user's working, which is precisely what running a program is for.
+
+The completeness law holds all the same, because it is a claim about the annotation and not about
+the algorithm: the annotation over `q` is every elaborated program that runs to `q`, so the program
+you started from is its own witness.
 -/
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.Abstraction
+open LambdaLab.Semantics (Walk)
 
-open TypeSystem.Named.Vernacular (HasType AllReduced evalProgram evalProgram_hasType
-  evalProgram_allReduced evalProgram_of_allReduced)
+variable (D : DefLanguage) [TypeSystem.Named.Runnable (Var D) D.Tm D.Ty]
 
-variable (L : Language) [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty]
+/-- The evaluator over `D`'s declarations. -/
+abbrev DefLanguage.evalWalk : Walk (Command D) := TypeSystem.Named.Vernacular.evalWalk
 
-/-- The **evaluated programs** of `L`: well-typed, every metavariable solved, and every body a
-normal form. The image of `evalProgram`, and a fixed point of it. -/
-def Language.Evaluated : Type := { q : Program L // HasType q ∧ AllReduced q }
+/-- The **evaluated programs** of `D`: elaborated, and left unchanged by evaluation — every body
+closed and normal. -/
+abbrev DefLanguage.Evaluated : Type :=
+  D.evalWalk.FixedOn (fun p => D.elabWalk.run p = some p)
 
-/-- **Evaluation as an `Abs` morphism.** `abstract` normalizes every body; the annotation over an
-evaluated `q` records an elaborated program that runs to it, and `default` records the canonical
-such program — `q` itself, which runs to itself because it is already normal. -/
-def Language.evalStage :
-    Abstraction L.Elaborated L.Evaluated
-      (fun q => { p : L.Elaborated // evalProgram p.val p.property = q.val }) where
-  abstract p := some ⟨evalProgram p.val p.property,
-    evalProgram_hasType p.val p.property, evalProgram_allReduced p.val p.property⟩
-  realize ann := ann.val
-  default {q} := ⟨⟨q.val, q.property.1⟩, evalProgram_of_allReduced q.val q.property.1 q.property.2⟩
-  abstract_realize _ ann := congrArg some (Subtype.ext ann.property)
-  lossless p _q h := ⟨⟨p, congrArg Subtype.val (Option.some.inj h)⟩, rfl⟩
+/-- **Evaluation as an `Abs` morphism**, from the elaborated programs. `abstract` reduces every
+body; the annotation over an evaluated program records an elaborated program that runs to it, and
+`default` records the canonical such program — the evaluated program itself. -/
+def DefLanguage.evalStage :=
+  D.evalWalk.stageOn TypeSystem.Named.Vernacular.evalWalk_lawfulOn
 
 end LambdaLab.Pipeline

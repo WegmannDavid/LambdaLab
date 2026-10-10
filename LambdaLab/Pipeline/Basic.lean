@@ -1,13 +1,13 @@
 import LambdaLab.Parser.LossyParser.Basic
 import LambdaLab.Parser.IsoParser.Token
-import LambdaLab.Nominal.Atom
-import LambdaLab.TypeSystem.Named.Vernacular.Basic
+import LambdaLab.Abstraction.Basic
+import LambdaLab.NEList
 
 namespace LambdaLab.Pipeline
 
 open LambdaLab.Parser.IsoParser
-open LambdaLab.Nominal (Atom)
 open LambdaLab.Parser.LossyParser (LossyParser)
+open LambdaLab (Iso)
 
 /-! ## Lexemes
 
@@ -30,147 +30,117 @@ It is not a type of our own: the alphabet is fixed above the vernacular, in
 parser must agree by construction rather than by coincidence. By construction, printing a
 `Token` and re-lexing recovers it.
 
-`IsoParser.isToken` is a *decidable* `Bool`, which is why the keyword literals below can be
-discharged by `decide`. -/
+`IsoParser.isToken` is a *decidable* `Bool`, which is why keyword literals can be discharged by
+`decide`. -/
 abbrev Token := _root_.LambdaLab.Parser.IsoParser.Token isSep
-
-/-! ## The vernacular -/
-
-/-- The reserved lexemes of the file format (`def NAME : TYPE := BODY`). A *language*'s own
-keywords (`\lambda`, `->`, …) are a separate, per-language concern living inside `pTm`/`pTy`,
-invisible here. -/
-def kwDef    : Token := ⟨"def", by decide⟩
-def kwColon  : Token := ⟨":",   by decide⟩
-def kwAssign : Token := ⟨":=",  by decide⟩
-
-def isVernacularKeyword (t : Token) : Bool :=
-  t.val == "def" || t.val == ":" || t.val == ":="
-
-/-- The vernacular's own keywords, as a list — so a language can be *checked* against them by
-`decide`. Quantifying the exclusion over this finite list, rather than over all of `Token`, is
-what keeps `Language.keywords_excluded` decidable. -/
-def vernacularReserved : List Token := [kwDef, kwColon, kwAssign]
 
 /-- Tokens available as names: everything the given list has not reserved. The `Atom`
 instance for the resulting subtype lives in `TypeSystem/Named/FreeName.lean` (it needs a
-fresh-name generator);
-the definitions live here so that `Name` below, and `Language.isVarName`, can be stated in terms
-of them. -/
+fresh-name generator); the definitions live here so that a language's name type can be stated in
+terms of them. -/
 def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
 
 /-- The atoms determined by a reserved list. -/
 abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
 
-/-- A name is any non-keyword lexeme. The subtype is load-bearing: a `Command` holding the name
-`def` would print a lexeme the parser reads back as a keyword. -/
-abbrev isName : Token → Bool := isFree vernacularReserved
+/-! ## A language: declaration forms
 
-abbrev Name := FreeName vernacularReserved
+A file is a non-empty run of declarations, and a declaration starts with a keyword. That keyword
+is the only thing the framework fixes about it: it says which **form** the declaration has, and
+everything after it is the form's own business — `def x : T := e`, `type α : κ := τ`,
+`float x := 4` are three forms, and the framework knows none of their insides.
 
-/-! ## The plug-in interface
+What it does need is to know where a declaration *ends*. The next declaration starts with a
+keyword, so every form's body must stop in front of any declaration keyword — not consume it, and
+not be confused by it. That is the **termination seam**, and it is the one obligation a body
+carries: its FOLLOW must admit every keyword (`body`'s type says so).
 
-**Design note.** `Token` deliberately does *not* exclude the vernacular keywords. Making it do
-so is appealing — `pTm`/`pTy` then literally could not consume `def` — but it does not survive
-contact: `Language.parser` *must* consume those keywords, so it would need a different alphabet
-and a lift across alphabets. Worse, "a type may be followed by `:=`" would not even be
-*expressible*, since `:=` would not inhabit `pTy`'s FOLLOW domain.
+**Keywords are ordinary tokens.** `Token` does not exclude them. A body may well use one
+internally, and what stops it from swallowing the next declaration's keyword is its FOLLOW set —
+the same mechanism by which a digit run stops at whitespace. For a mixfix body the seam is
+`follow G e t = true` for each keyword `t`, which `decide` settles, and it fails exactly when the
+keyword could start or continue an expression (`Mixfix/Complete.lean`'s `follow`).
 
-So keywords are ordinary tokens, and what stops a term parser from swallowing them is its
-**FOLLOW set** — the same mechanism by which a digit run stops at whitespace. The guarantee
-becomes the two facts a language declares below. -/
+**Why FIRST is unconstrained.** A body always follows its form's keyword, whose FOLLOW is `⊤`, so
+the seam into a body is `FIRST ⊆ ⊤` — true for any FIRST whatsoever. And `firstOk` is a purely
+negative claim ("outside FIRST, I fail"), so widening FIRST only ever weakens it. So bodies have
+FIRST `anyTok`.
 
-/-- The FOLLOW a type must accept: exactly `:=`. -/
-abbrev followAssign : Token → Prop := fun t => t = kwAssign
+**The plug-in boundary.** A body states its *real* FIRST and FOLLOW and then adapts: widen FIRST
+up to `anyTok` (`enlargeFirst`, sound because `firstOk` is negative) and narrow FOLLOW down to the
+keywords (`weakenFollow`, sound because the round trip is antitone in FOLLOW, `HeadIn.mono`). Both
+are sound in exactly one direction, and that direction is the one needed. -/
 
-/-- The FOLLOW a term must accept: exactly `def` (the next command). -/
-abbrev followDef : Token → Prop := fun t => t = kwDef
-
-/-- FIRST is **unconstrained** by the vernacular, so the interface simply allows everything. -/
+/-- FIRST is **unconstrained** for a body, so the interface allows everything. -/
 abbrev anyTok : Token → Prop := fun _ => True
 
-/-- A **pluggable language**: a term parser and a type parser. That is the whole interface.
-Everything above it — commands, programs, and the file round-trip — is *derived*.
+/-- A **pluggable language**: its declaration forms, each a keyword and a parser for what follows
+it. The file parser, its round trip, and the `Abs` morphism are *derived* (`Stages/Parse.lean`).
 
-**Why there are no FIRST fields.** FIRST never constrains anything here: `pTy` and `pTm` are
-each preceded by a fixed keyword (`:`, `:=`) whose FOLLOW is `⊤`, so their seams are
-`FIRST ⊆ ⊤` — true for any FIRST whatsoever. And `firstOk` is a purely *negative* claim
-("outside FIRST, I fail"), so widening FIRST only ever *weakens* it. So the interface asks for
-nothing: `anyTok`.
-
-**Why FOLLOW is pinned instead.** FOLLOW is what carries the real guarantee. `pTm`'s law at
-`followDef` says: *print a term, append anything starting with `def`, re-parse → you get the
-term back with the `def` untouched.* That is a **proof** that a term parser stops at a command
-boundary — and it is why the two seam obligations vanished; they are now definitionally true.
-
-**The plug-in boundary.** A language states its parser's *real* FIRST and FOLLOW and then adapts:
-widen FIRST up to `anyTok` (sound because `firstOk` is negative — a larger FIRST promises less) and
-narrow FOLLOW down to the key token (sound because the round-trip is antitone in FOLLOW, `HeadIn.mono`).
-Both are sound in exactly one direction, and that direction is the one you need. -/
+Nothing here mentions types, terms or a type system. What a declaration *means* is a separate
+concern, supplied as walks over `Decl` (`Semantics/Walk.lean`); a language with none still parses
+and pretty-prints. `Pipeline/Def.lean` builds the one-form language `def x : T := e` from a term
+and a type parser, which is how every language before this structure is expressed in it. -/
 structure Language where
-  Tm : Type
-  Ty : Type
+  /-- The declaration forms. -/
+  Form : Type
+  /-- Every form, listed — so that the keywords form a finite list. -/
+  forms : List Form
+  forms_complete : ∀ f, f ∈ forms
+  /-- The keyword that starts a declaration of form `f`. -/
+  head : Form → Token
+  /-- **One keyword, one form.** This is what lets the file parser choose a form by reading one
+  token. -/
+  head_injective : ∀ f g, head f = head g → f = g
+  /-- What follows the keyword: the value a declaration of form `f` carries. -/
+  Body : Form → Type
+  /-- The surface spellings a body may have beyond its canonical one — redundant parentheses,
+  sugar. `fun _ _ => Unit` for a canonical-form-only body. -/
+  BodyAnn : (f : Form) → Body f → Type
+  /-- The parser for what follows the keyword. **Lossy** — it parses to the value and prints any
+  annotated spelling, `default` being the canonical one. Its FOLLOW admits every keyword: the
+  termination seam. -/
+  body : (f : Form) →
+    LossyParser Token anyTok (fun t => t ∈ forms.map head) (Body f) (BodyAnn f)
+  /-- The type a declaration is, for whatever walks over it. A language may take
+  `Σ f, Body f` itself; one with its own inductive gives it here and relates the two by `decl`. -/
+  Decl : Type
+  /-- A declaration *is* a form and a body, up to this bijection. -/
+  decl : Iso Decl (Σ f, Body f)
 
-  /-- Surface spellings a type value may have beyond the canonical one — redundant parens,
-  sugar, elided (`_`) annotations. `fun _ => Unit` for a canonical-form-only language. -/
-  AnnTy : Ty → Type
-  /-- Surface spellings a term value may have. -/
-  AnnTm : Tm → Type
+namespace Language
 
-  /-- The type parser: must stop at `:=` rather than swallowing the assignment. **Lossy**:
-  parses to the value, prints any annotated spelling; `pTy.default` is the canonical printer.
-  A lossless (`IsoParser`) parser plugs in via `toLossyParserUnit`. -/
-  pTy : LossyParser Token anyTok followAssign Ty AnnTy
-  /-- The term parser: must stop at a command boundary (`def`). Lossy — this is what lets a
-  language *truncate*: accept `((((a))))`, remember only `a`, and still round-trip. -/
-  pTm : LossyParser Token anyTok followDef Tm AnnTm
+variable (L : Language)
 
-  /-- Which tokens may name a variable — and hence a declaration.
+/-- The keywords that start a declaration — what every body must stop in front of. -/
+def heads : List Token := L.forms.map L.head
 
-  The vernacular uses this *same* notion for a declaration's name, so `def f : T := e` puts `f`
-  in scope as an ordinary term variable, with no injection between two kinds of name. -/
-  isVarName : Token → Bool
-  /-- Names must carry an `Atom` instance: decidable, hashable, and inexhaustible (capture-avoiding
-  substitution has to invent names). A language that simply excludes a finite reserved list gets
-  this from `FreeName`'s instance — `isVarName := isFree myReserved` and `inferInstance`. One
-  with a genuine lexical class ("identifiers start with a letter") supplies its own, which is
-  why this is a field rather than being derived from a reserved list. -/
-  varAtom : Atom { t : Token // isVarName t = true }
-  /-- Variable names may not collide with the vernacular's keywords: a declaration named `def`
-  would make the file parser mis-split commands.
+theorem head_mem_heads (f : L.Form) : L.head f ∈ L.heads :=
+  List.mem_map.mpr ⟨f, L.forms_complete f, rfl⟩
 
-  Note what this does *not* have to say. A language's own grammar keywords are already excluded —
-  the mixfix `Entry.varDisjoint` field proves no operator name part satisfies `isVar`. This field
-  covers exactly the gap that proof cannot reach, since a grammar knows nothing about the
-  vernacular wrapped around it. -/
-  keywords_excluded : ∀ k ∈ vernacularReserved, isVarName k = false
+/-- The form a keyword starts, if it starts one. -/
+def formOf (t : Token) : Option L.Form := L.forms.find? (fun f => L.head f == t)
 
-/-- A language's variable names — and its declaration names, which are the same thing. -/
-abbrev Var (L : Language) : Type := { t : Token // L.isVarName t = true }
+theorem formOf_head (f : L.Form) : L.formOf (L.head f) = some f := by
+  unfold formOf
+  cases h : L.forms.find? (fun g => L.head g == L.head f) with
+  | none =>
+      rw [List.find?_eq_none] at h
+      exact absurd (beq_self_eq_true (L.head f)) (h f (L.forms_complete f))
+  | some g =>
+      have hg := List.find?_some h
+      rw [beq_iff_eq] at hg
+      rw [L.head_injective g f hg]
 
-instance (L : Language) : Atom (Var L) := L.varAtom
+/-- The surface spellings of a declaration: those of its body. -/
+def DeclAnn (d : L.Decl) : Type := L.BodyAnn (L.decl.toFun d).1 (L.decl.toFun d).2
 
-/-! ## Commands and programs
+end Language
 
-Not defined here. `def NAME : TYPE := BODY` and a non-empty run of them are the *vernacular*, and
-the vernacular is a notion of the type-system layer (`TypeSystem/Named/Vernacular/Basic.lean`) which
-knows nothing about parsers: it is where a program's typing judgement and its elaborator live, and
-those must be stateable without a `Language` in sight.
+/-- A **program**: a non-empty run of declarations.
 
-What this layer contributes is the **instantiation**: the name type is `Var L`, so a declaration's
-name is the language's own variable name — `def f : T := e` puts `f` in scope as an ordinary term
-variable, with no injection between two kinds of name, and a command holding the lexeme `def` is
-unrepresentable, hence cannot print something the parser reads back as a keyword. -/
-
-/-- A single declaration of `L`: `def NAME : TYPE := BODY`, named by `L`'s own variables. -/
-abbrev Command (L : Language) : Type := TypeSystem.Named.Vernacular.Command (Var L) L.Tm L.Ty
-
-/-- A **non-empty** run of `L`'s declarations — the shape `many1` consumes (its source is an
-`NEList`), so the vernacular parser lines up with it with no adapter. -/
-abbrev Program (L : Language) : Type := TypeSystem.Named.Vernacular.Program (Var L) L.Tm L.Ty
-
-/-- The constructor at the instantiated arity. `match_pattern` so it reads as a constructor on
-both sides of an equation, not only in construction. -/
-@[match_pattern] abbrev Command.decl {L : Language} (n : Var L) (τ : L.Ty) (t : L.Tm) :
-    Command L := TypeSystem.Named.Vernacular.Command.decl n τ t
+Why not a `List`: a one-or-more parser never *parses* an empty list, so an empty program has no
+printed form to parse back — it would falsify the file parser's round-trip law. -/
+abbrev Program (L : Language) : Type := NEList L.Decl
 
 end LambdaLab.Pipeline

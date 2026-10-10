@@ -33,8 +33,8 @@ namespace LambdaLab.TypeSystem.Named
 open LambdaLab.Parser.IsoParser LambdaLab.Pipeline
 open LambdaLab.Nominal (Atom freshFor freshFor_not_in le_foldr_max)
 
--- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Name` and
--- `Pipeline.Language.isVarName` can be phrased with them; this file adds the instance.
+-- `isFree` and `FreeName` are declared in `Pipeline/Basic.lean`, so that `Pipeline.Name` and a
+-- language's own name type can be phrased with them; this file adds the instance.
 
 /-! ## A supply of arbitrarily long tokens -/
 

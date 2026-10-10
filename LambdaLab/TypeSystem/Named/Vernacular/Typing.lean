@@ -36,11 +36,10 @@ smallest class that can say it. Deliberately *not* over `MVars` or the rest of t
 tower: nothing here substitutes, so nothing here should demand a substitution operation, let alone
 a reduction relation.
 
-For STLC this is exactly the condition the pipeline already enforces. `HasVars Nat (Term N)`'s
-`isFree` is `Term.tyIsFree`, so `Ground t` says no annotation inside `t` mentions a metavariable —
-the `AnnotsGround` conjunct of `Stlc/Named/Pipeline.lean`'s `solve` — and `Ground τ` is its
-`Ground` conjunct. The vernacular's rule and the elaborator's refusal to let a metavariable
-survive a declaration are the same rule, now stated once and generically.
+For STLC this is a familiar condition. `HasVars Nat (Term N)`'s `isFree` is `Term.tyIsFree`, so
+`Ground t` says no annotation inside `t` mentions a metavariable — `Term.AnnotsGround` — and
+`Ground τ` is `Ty.Ground`. The vernacular's rule and the elaborator's refusal to let a metavariable
+survive a declaration (`Elaborate.lean`'s step) are the same rule, stated once and generically.
 
 ## What a declaration contributes
 
@@ -107,7 +106,8 @@ inductive HasTypeGround : Context N Ty → List (Command N Tm Ty) → Prop where
 of them leaves a metavariable behind.
 
 `p.toList` is `p.head :: p.tail`, so the head is the declaration checked against `Context.empty`
-— a program's first declaration may refer to nothing but itself. -/
+— a program's first declaration may refer to nothing, not even itself: a declaration's own name is
+added to the context only after its body is checked. -/
 abbrev HasType (p : Program N Tm Ty) : Prop :=
   HasTypeGround (Context.empty : Context N Ty) p.toList
 

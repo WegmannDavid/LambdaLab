@@ -16,4 +16,4 @@ to take it.
 open LambdaLab.Pipeline LambdaLab.Stlc.Named
 
 def main (args : List String) : IO UInt32 :=
-  cli "stlc" "stlc" stlcLanguage.compileEval args
+  cli "stlc" "stlc" (compile stlcLanguage.evalChain) args

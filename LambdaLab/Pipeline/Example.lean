@@ -5,9 +5,9 @@ import LambdaLab.Parser.IsoParser.Adapters
 /-!
 # A plug-in language
 
-The simplest possible plug-in: terms and types are each a single identifier. It exists to show
-what a language author actually has to supply — and that the file parser, printer, and
-round-trip proof all come back **for free**.
+The simplest possible plug-in: a `def`-language whose terms and types are each a single
+identifier. It exists to show what a language author actually has to supply — and that the file
+parser, printer, and round-trip proof all come back **for free**.
 -/
 
 namespace LambdaLab.Pipeline
@@ -25,7 +25,7 @@ key token (sound: the round-trip is antitone in FOLLOW).
 
 `reducible` for the reason `stlcLanguage` is: instance search has to see through the definition to
 find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
-@[reducible] def trivialLanguage : Language where
+@[reducible] def trivialLanguage : DefLanguage where
   Tm := Name
   Ty := Name
   AnnTy := fun _ => Unit
@@ -33,52 +33,52 @@ find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
   -- Variables are any non-keyword lexeme — the same `Name` the terms themselves are.
   isVarName := isName
   varAtom := inferInstance
-  keywords_excluded := by decide
 
   pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
   pTm := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
 
-/-- `def x : A := e` — one command. -/
-def prog : Program trivialLanguage :=
+/-- `def x : A := e` — one declaration. -/
+def prog : Program trivialLanguage.toLanguage :=
   (Command.decl ⟨⟨"x", by decide⟩, by decide⟩ ⟨⟨"A", by decide⟩, by decide⟩ ⟨⟨"e", by decide⟩, by decide⟩, [])
 
-/-- Two commands. -/
-def prog2 : Program trivialLanguage :=
+/-- Two declarations. -/
+def prog2 : Program trivialLanguage.toLanguage :=
   (Command.decl ⟨⟨"x", by decide⟩, by decide⟩ ⟨⟨"A", by decide⟩, by decide⟩ ⟨⟨"e", by decide⟩, by decide⟩,
    [Command.decl ⟨⟨"y", by decide⟩, by decide⟩ ⟨⟨"B", by decide⟩, by decide⟩ ⟨⟨"f", by decide⟩, by decide⟩])
 
 /-- The canonical spelling of a program — `print` at the `default` annotation. -/
-def canonPrint (p : Program trivialLanguage) : List Token :=
-  trivialLanguage.parser.print (trivialLanguage.parser.default (v := p))
+def canonPrint (p : Program trivialLanguage.toLanguage) : List Token :=
+  trivialLanguage.toLanguage.parser.print (trivialLanguage.toLanguage.parser.default (v := p))
 
 /-- The round-trip, instantiated: **free**, inherited from the framework — now for *any*
 spelling `ann`, not only the canonical one. -/
-example (p : Program trivialLanguage) (ann : Program.Ann trivialLanguage p) :
-    trivialLanguage.parser.run (trivialLanguage.parser.print ann) = some (p, []) :=
-  trivialLanguage.parser_roundtrip p ann
+example (p : Program trivialLanguage.toLanguage) (ann : Program.Ann trivialLanguage.toLanguage p) :
+    trivialLanguage.toLanguage.parser.run (trivialLanguage.toLanguage.parser.print ann)
+      = some (p, []) :=
+  trivialLanguage.toLanguage.parser_roundtrip p ann
 
 /-! ## The full pipeline: `List Char ⇝ Program`
 
 `Language.parsePipeline` (and its `String`-level API `parseFile`/`renderProgram`) come with the
-framework — one `Abs` morphism from raw characters to parsed commands. Since `trivialLanguage`
+framework — one `Abs` morphism from raw characters to parsed declarations. Since `trivialLanguage`
 is sorry-free, the whole pipeline is too. -/
 
 /-- Parse a file, print the declared names. -/
 def parseNames (s : String) : Option (List String) :=
-  (trivialLanguage.parseFile s).map fun p => p.toList.map (fun c => c.name.val.val)
+  (trivialLanguage.toLanguage.parseFile s).map fun p => p.toList.map (fun c => c.name.val.val)
 
 /-- Parse a file, re-render it canonically (single spaces, canonical spellings). -/
 def reprint (s : String) : Option String :=
-  (trivialLanguage.parseFile s).map trivialLanguage.renderProgram
+  (trivialLanguage.toLanguage.parseFile s).map trivialLanguage.toLanguage.renderProgram
 
 /-! ## Giving it a semantics
 
-`trivialLanguage` is a `Language`, so it parses. Making its *types and terms* satisfy
-`TypeSystem.Named.PrincipalElaborate` gets the whole front end including type checking — and note where the
-work happens: everything below is an instance of a `TypeSystem` class, with no mention of a
-parser, a token or a `Language`. The pipeline picks it up on its own.
+`trivialLanguage` is a `DefLanguage`, so it parses. Making its *types and terms* satisfy
+`TypeSystem.Named.PrincipalElaborate` gets the whole front end including type checking — and note
+where the work happens: everything below is an instance of a `TypeSystem` class, with no mention of
+a parser, a token or a `Language`. The pipeline picks it up on its own.
 
 Terms here are just names, and `Var` is the same `Name`, so a term is literally a variable
 reference — which makes the only interesting judgement scope-and-agreement: a name already
@@ -86,7 +86,7 @@ declared must be used at the type it was declared with. A name not yet declared 
 so a file can open with anything.
 
 Small as it is, this exercises the part that only exists at the vernacular level: the context is
-threaded through the declarations, so whether the *second* command checks depends on what the
+threaded through the declarations, so whether the *second* declaration checks depends on what the
 first one declared.
 -/
 

@@ -12,7 +12,7 @@ import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 # STLC against the `TypeSystem` interface
 
 The named STLC plugged into the classes of `TypeSystem/Named/Basic.lean`, as `Pipeline.lean` plugs it
-into `Pipeline.Language`. Every field is an existing declaration under its own name; nothing is
+into `Pipeline.DefLanguage`. Every field is an existing declaration under its own name; nothing is
 proved here, which is the point — the interface asks for what the development already has.
 
 ## Every instance is generic in `N`

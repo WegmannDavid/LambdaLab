@@ -8,7 +8,7 @@ namespace LambdaLab.TypeSystem.Named.Vernacular
 The name is drawn from whatever atoms the surrounding layer uses for *term* variables, not
 from a vernacular notion of its own. So `def f : T := e` puts `f` in scope for what follows with
 no injection between two kinds of name — and a front end whose name type excludes its keywords
-(`Pipeline.Var`) gets, for free, that a command spelling a keyword is unrepresentable. -/
+(`Pipeline.Var`) gets, for free, that a declaration named by a keyword is unrepresentable. -/
 inductive Command (N Tm Ty : Type) where
 | decl : N → Ty → Tm → Command N Tm Ty
 
@@ -60,8 +60,8 @@ instance instHasSubstCommand [HasSubst Nat Tm Ty] [HasSubst Nat Ty Ty] :
       = Command.decl x (HasSubst.pSubst τ σ) (HasSubst.pSubst t σ) := rfl
 
 /-- A ground declaration is untouched by substitution. Together with the pair and list instances
-of `Nominal/Unification/Subst.lean` this reaches a whole `Program`, which is what makes an elaborated
-file a fixed point of its own elaborator. -/
+of `Nominal/Unification/Subst.lean` this reaches a whole `Program`: substitution leaves a ground
+program alone. -/
 instance instGroundStableCommand [HasSubst Nat Tm Ty] [HasSubst Nat Ty Ty]
     [GroundStable Nat Tm Ty] [GroundStable Nat Ty Ty] : GroundStable Nat (Command N Tm Ty) Ty where
   pSubst_ground {c} σ h := by
@@ -79,7 +79,7 @@ instance instLawfulCompCommand [HasSubst Nat Tm Ty] [HasSubst Nat Ty Ty]
 
 /-- A declaration's atoms are its type's and its body's together, so an atom set the declaration
 sits inside is one both sit inside. With the pair and list instances this reaches a whole
-`Program`, which is what lets `elabProgram` prune its answer. -/
+`Program`. -/
 instance instLawfulRestrictCommand [HasSubst Nat Tm Ty] [HasSubst Nat Ty Ty]
     [LawfulRestrict Nat Tm Ty] [LawfulRestrict Nat Ty Ty] : LawfulRestrict Nat (Command N Tm Ty) Ty where
   pSubst_restrictTo c σ s h := by

@@ -1,108 +1,56 @@
-import LambdaLab.Pipeline.Basic
+import LambdaLab.Pipeline.Def
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
-# The elaboration stage: `Program ⇝ well-typed Program`
+# The elaboration stage: `Program ⇝ elaborated Program`
 
 One stage, and nothing else — `Compose.lean` is where it is chained onto the ones before it.
 
 Note what this file does **not** import: neither the tokenizer nor `Stages/Parse.lean`. Nothing
-here knows how a program was read. A `Language` is only the source of `Program L`, `Var L`, `L.Tm`
-and `L.Ty` — `Pipeline/Basic.lean` does drag in the parser *types*, since a `Language` has `pTy`
-and `pTm` fields, but no parsing happens at or below this file. Keeping the composition out of it
-is what makes that visible in the import list rather than merely asserted below.
+here knows how a program was read. A `DefLanguage` is only the source of `Command D`, `Var D`,
+`D.Tm` and `D.Ty` — `Pipeline/Def.lean` does drag in the parser *types*, since a `DefLanguage` has
+`pTy` and `pTm` fields, but no parsing happens at or below this file.
 
 ## Where the semantics comes from
 
-Nowhere in this file. A `Language` says how to read and print; it says nothing about what a
-program *means*, and it never will — meaning is the type system's business. So the stage below is
-parameterised by `[TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]`: **the moment a language's own
-types and terms satisfy the elaboration interface, the whole front end exists**, parse and check
-as one `Abs` morphism, with nothing further to supply.
+Nowhere in this file. The stage is `Semantics.Walk.stage` applied to the program elaborator
+`Vernacular.elabWalk`, which is parameterised by
+`[TypeSystem.Named.PrincipalElaborate (Var D) D.Tm D.Ty]`: **the moment a language's own types and
+terms satisfy the elaboration interface, the stage exists**, with nothing further to supply.
 
-That is the entire wiring. `Var L` is the language's variable alphabet, which is also its
-declaration-name alphabet, so the instance the front end needs is exactly the instance the object
-language would want anyway — `Stlc/Named/TypeSystem.lean` proves it once, generically in the name
-type, and this file consumes it at `Var stlcLanguage` without STLC knowing a parser exists.
+`Var D` is the language's variable alphabet, which is also its declaration-name alphabet, so the
+instance the front end needs is exactly the instance the object language would want anyway —
+`Stlc/Named/TypeSystem.lean` proves it once, generically in the name type, and this file consumes it
+at `Var stlcLanguage` without STLC knowing a parser exists.
 
 ## What the stage abstracts onto
 
-Concrete is the program as written; abstract is `{ p // HasType p }` — the programs
-that are well-typed *and* carry no unsolved metavariable, which is what that judgement means. The
-annotation over such a `p` is the fiber: the source programs that elaborate to it.
-
-## Why `default` is available, and what it costs
-
-`Abstraction.default` demands a canonical member of every fiber — a printer must have something to
-print. Here it is `p` itself, and `elabProgram?_self` is exactly the proof that `p` lies
-in its own fiber: an elaborated program is ground, substitution does not touch a ground object, so
-running the elaborator on it succeeds and returns it unchanged.
-
-Note what is *not* claimed. `Lossless` is not proved and does not hold: the fiber over `p` is every
-way of leaving annotations to be inferred, jointly constrained by unification, and the annotation
-family here does not enumerate it — `Abstraction/Basic.lean` says why no node-local family could.
-What survives is the canonical-print round trip, which is the compiler-grade guarantee: render an
-elaborated program and re-read it, and you are back where you started.
+Concrete is the program as written; abstract is what the elaborator leaves unchanged
+(`Walk.Fixed`) — exactly the well-typed programs, every metavariable solved
+(`Vernacular.elabWalk_fixed_iff`). The annotation over such a program is the fiber: the source
+programs that elaborate to it, its canonical member being the program itself. That the canonical
+member lies in the fiber is the walk's idempotence, which is soundness together with
+`elabWalk_self`: an elaborated program is ground, substitution does not touch a ground object, so
+re-elaborating it changes nothing.
 -/
 
 namespace LambdaLab.Pipeline
 
-open LambdaLab.Abstraction
+open LambdaLab.Semantics (Walk)
 
-/-! Selectively, not wholesale: `Vernacular` also exports `Command` and `Program`, which this
-namespace has its own instantiated abbreviations for. -/
-open LambdaLab.TypeSystem.Named.Vernacular
-  (HasType elabProgram elabProgram? elabProgram?_self)
+variable (D : DefLanguage) [TypeSystem.Named.PrincipalElaborate (Var D) D.Tm D.Ty]
 
-variable (L : Language) [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty]
+/-- The program elaborator over `D`'s declarations. -/
+abbrev DefLanguage.elabWalk : Walk (Command D) := TypeSystem.Named.Vernacular.elabWalk
 
-/-- The **elaborated programs** of `L`: well-typed, and with every metavariable solved.
+/-- The **elaborated programs** of `D`: what elaboration leaves unchanged — the well-typed programs
+with every metavariable solved. -/
+abbrev DefLanguage.Elaborated : Type := D.elabWalk.Fixed
 
-This, not `Program L`, is what elaboration abstracts onto. An arbitrary program need not be
-anything the elaborator produces, and `default` would then have no surface form to offer for
-it. -/
-def Language.Elaborated : Type := { p : Program L // HasType p }
-
-/-- **Elaboration as an `Abs` morphism.**
-
-`Abstraction/Basic.lean` used to argue that completeness could not be a law *because* of this
-stage: no node-local annotation family covers a Hindley–Milner fiber, since one written type
-propagates globally through unification, so only the tautological `{ q // abstract q = some p }`
-does — "vacuously". That argument settles which family to choose. It was already the one chosen
-here, so the law holds and its proof is the `Option` inversion below.
-
-"Vacuously" is fair about the proof and unfair about the statement: a caller handed an elaborated
-program can get back a source that elaborates to it.
- `abstract` runs the whole-program elaborator and applies
-the substitution it found; the annotation over an elaborated `p` records a source program that
-means it, and `default` records the canonical such source — `p` itself. -/
-def Language.elabStage :
-    Abstraction (Program L) L.Elaborated
-      (fun p => { q : Program L // elabProgram? q = some p.val }) where
-  abstract q := (elabProgram q).map fun s => ⟨HasSubst.pSubst q s.val, s.property.1⟩
-  realize ann := ann.val
-  default {p} := ⟨p.val, elabProgram?_self p.property⟩
-  abstract_realize p ann := by
-    have hann : elabProgram? ann.val = some p.val := ann.property
-    rw [elabProgram?] at hann
-    show ((elabProgram ann.val).map _) = some p
-    cases hq : elabProgram ann.val with
-    | none => rw [hq] at hann; exact absurd hann (by simp)
-    | some s =>
-        rw [hq] at hann
-        rw [Option.map_some, Option.some.injEq]
-        exact Subtype.ext (Option.some.inj hann)
-  lossless q p h := by
-    refine ⟨⟨q, ?_⟩, rfl⟩
-    show elabProgram? q = some p.val
-    have h' : ((elabProgram q).map fun s => (⟨_, s.property.1⟩ : L.Elaborated)) = some p := h
-    cases hq : elabProgram q with
-    | none => rw [hq] at h'; simp at h'
-    | some s =>
-        rw [hq] at h'
-        simp only [Option.map_some] at h'
-        simp only [elabProgram?, hq, Option.map_some, Option.some.injEq]
-        exact congrArg Subtype.val (Option.some.inj h')
-
+/-- **Elaboration as an `Abs` morphism.** `abstract` runs the elaborator; the annotation over an
+elaborated program records a source program that elaborates to it, and `default` records the
+canonical such source — the program itself. -/
+def DefLanguage.elabStage :=
+  D.elabWalk.stage TypeSystem.Named.Vernacular.elabWalk_idempotent
 
 end LambdaLab.Pipeline

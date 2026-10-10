@@ -10,11 +10,11 @@ Reads each file (or every `.arith` file under a directory), parses it, and write
 forgotten and re-inserted where the grammar needs them, spacing normalised.
 
 It stops there, and that is not an omission — `Arith` has no type system, so it has no
-`PrincipalElaborate` instance and no elaboration stage to run. `compileParse` rather than
-`compileElab` is exactly that fact, in the type.
+`PrincipalElaborate` instance and no elaboration stage to run. Handing `cli` the `parseChain`
+rather than an `elabChain` is exactly that fact, in the type.
 -/
 
 open LambdaLab.Pipeline LambdaLab.Arith
 
 def main (args : List String) : IO UInt32 :=
-  cli "arith" "arith" arithLanguage.compileParse args
+  cli "arith" "arith" (compile arithLanguage.toLanguage.parseChain) args

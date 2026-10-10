@@ -10,7 +10,7 @@ import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Parser.Numeral
 
 /-!
-# STLC as a `Pipeline.Language` — types land in `Stlc.Ty`
+# STLC as a `Pipeline.DefLanguage` — types land in `Stlc.Ty`
 
 The lambda-calculus instance. Two things make the surface *complete* for the semantic types,
 which is what lets the type parser produce `Stlc.Ty` itself rather than a syntax tree:
@@ -312,7 +312,7 @@ are `VName`, `Term VName` and `Ty`, and the generic instance in `TypeSystem.lean
 The alternative — restating the instance at the projected types — needs its `Atom` instance
 argument to be the one `Var` supplies rather than the one `VName` does, and the two are equal only
 after the same unfolding. -/
-@[reducible] def stlcLanguage : Language where
+@[reducible] def stlcLanguage : DefLanguage where
   Tm := Term VName
   Ty := Ty
   AnnTy := fun x => { t : Expr stlcGrammar SEnt.ty .loosest // truncExpr sRules t = x }
@@ -328,7 +328,6 @@ after the same unfolding. -/
 
   isVarName := isVarTok
   varAtom := inferInstance
-  keywords_excluded := by decide
 
   pTm :=
     ((mixfix (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
@@ -363,7 +362,7 @@ that fails to elaborate has no typing. Most-generality is claimed **on the sourc
 (`JComplete.elabSubst_principal_below`), which is the strongest form available — the unrestricted
 one is false, and `Typing/Principality.lean` proves it. Whole-*program* completeness still does not
 follow: the elaborator commits to one solution per declaration, and a later declaration may need a
-different one. What is proved is the direction a printer needs, `elabProgram?_self`: an
+different one. What is proved is the direction a printer needs, `Vernacular.elabWalk_self`: an
 already-elaborated program re-elaborates to itself.
 
 Nothing here reports `sorryAx`: `stlcUnambiguous` is derived rather than assumed, and both halves
@@ -383,10 +382,10 @@ def elaborateSource (src : String) : Option String :=
 neither is new work: `mixfix_exact` is `parseExpr_sound` repackaged, and the two transfers say that
 narrowing FOLLOW and truncating the tree cannot make a parser accept more than it prints.
 
-This is what a `LosslessAbstraction` needs of a language, and it is the half of the round trip the
-development never stated. What is still missing above it is exactness through the *vernacular*
-combinators — `tok`, `comap`, `gdo`, `many1`, `toLossyParserSigma` — which is what stands between
-this and `Language.parser.Exact`. -/
+This is what `LossyParser.toAbstractionOfExact` needs of a parser, and it is the half of the round
+trip the development never stated. What is still missing above it is exactness through the
+*vernacular* combinators — `tok`, `comap`, `gdo`, `dispatch`, `many1`, `toLossyParserSigma` —
+which is what stands between this and `Language.parser.Exact`. -/
 
 /-- The type parser accepts only what it prints. -/
 theorem stlcLanguage_pTy_exact : stlcLanguage.pTy.Exact :=

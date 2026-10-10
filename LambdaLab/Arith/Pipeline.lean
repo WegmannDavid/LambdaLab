@@ -1,4 +1,5 @@
 import LambdaLab.Pipeline.Stages.Parse
+import LambdaLab.Pipeline.Def
 import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
@@ -9,10 +10,10 @@ import LambdaLab.Parser.IsoParser.Adapters
 /-!
 # Arithmetic — the running example language
 
-The mixfix arithmetic vernacular as a `Pipeline.Language`: two mixfix grammars (terms and
+The mixfix arithmetic vernacular as a `Pipeline.DefLanguage`: two mixfix grammars (terms and
 types), a truncated term AST via the generic `Rules` bundle, and the plug-in instance — from
-which the framework derives the command parser, the file parser, the round-trip law, the `Abs`
-morphism, and the `List Char ⇝ Program` pipeline (`Main.lean` runs it).
+which the framework derives the declaration parser, the file parser, the round-trip law, the `Abs`
+morphism, and the `List Char ⇝ Program` pipeline (`Arith.lean` runs it).
 
 Historical layers this file once carried (a combinator-only grammar and a hand-proved recursive
 parser — the unconditional round-trip proof whose mixfix analogue was for a long time the one open
@@ -263,13 +264,13 @@ theorem tyUnambiguous : Unambiguous tyGrammar := unambiguous tyGrammar
 
 /-! ### The language -/
 
-/-- The term parser stops at a command boundary. **Derived**, not declared. -/
+/-- The term parser stops at a declaration boundary. **Derived**, not declared. -/
 theorem follow_def : follow (G := aGrammar) () (tkA "def") = true := by decide
 
 /-- The type parser stops at the assignment. **Derived**, not declared. -/
 theorem follow_assign : follow (G := tyGrammar) () (tkA ":=") = true := by decide
 
-def arithLanguage : Language where
+def arithLanguage : DefLanguage where
   Tm := ATm
   Ty := Expr tyGrammar () .loosest
 
@@ -295,7 +296,6 @@ def arithLanguage : Language where
   -- the grammar's, narrowed to `def` — sound exactly because `def` is in it (`follow_def`).
   isVarName := isFree aReserved
   varAtom := inferInstance
-  keywords_excluded := by decide
 
   pTm :=
     ((mixfix (G := aGrammar) () .loosest).weakenFollow

@@ -298,8 +298,10 @@ class LawfulMVars (N Tm Ty : Type) [atom : Atom N] extends MVars N Tm Ty, Lawful
   tmLawfulComp : LawfulComp Nat Tm Ty
   /-- Bindings above a type's threshold do not act on it… -/
   tyLawfulRestrict : LawfulRestrict Nat Ty Ty
-  /-- …nor on a term's. Together these are what let the vernacular hand back a solution pruned to
-  the source's own metavariables instead of the elaborator's internal scaffolding. -/
+  /-- …nor on a term's. Together with the composition laws these are what a consumer needs to
+  describe a run of solutions by one substitution pruned to the source's own metavariables. The
+  program elaborator does not need them: it is a walk (`Vernacular/Elaborate.lean`) that hands back
+  the elaborated program, not a substitution. -/
   tmLawfulRestrict : LawfulRestrict Nat Tm Ty
 
 /-! The six laws above are `Prop` mixins over the `HasSubst` instances `MVars` carries, so
@@ -538,12 +540,12 @@ class HasTermSubst (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N Tm Ty 
 
 /-- **A language whose programs can be elaborated and then run.**
 
-Nothing but the conjunction of the two gates — and the conjunction is the content. `Elaborated`
-is `{ p // HasType p }` at `PrincipalElaborate`'s judgement, while `HasEval.eval` demands a
-derivation at `LawfulHasEval`'s; take both classes as separate hypotheses and those are two
-unrelated judgements, so the derivation the vernacular hands over is not the one `eval` accepts
-and every application is a type error. Extending both makes them share one `LawfulMVars`, which
-the diamond check below pins.
+Nothing but the conjunction of the two gates — and the conjunction is the content. The evaluator
+(`Vernacular/Evaluate.lean`) obtains each declaration's typing derivation from
+`PrincipalElaborate.elaborate` and hands it to `HasEval.eval`; take both classes as separate
+hypotheses and those are two unrelated judgements, so the derivation `elaborate` produces is not
+the one `eval` accepts and every application is a type error. Extending both makes them share one
+`LawfulMVars`, which the diamond check below pins.
 
 Deliberately *not* an evaluation-only class. A stage that runs programs sits after the stage that
 elaborates them, so its source type is the elaborator's target; a language that evaluates but

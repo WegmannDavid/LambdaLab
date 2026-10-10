@@ -3,31 +3,28 @@ import LambdaLab.Pipeline.Compose
 /-!
 # A command-line front end, shared by every language
 
-`Compose.lean` assembles a `Language` into a function from source text to a program. This turns
-that into a program you can run: read the files named on the command line, report what happened,
-exit non-zero if anything failed.
+`Compose.lean` assembles a `Language` into a chain of stages from source text to a program. This
+turns that into a program you can run: read the files named on the command line, report what
+happened, exit non-zero if anything failed.
 
 ## Why one driver rather than one per language
 
-The only thing a language contributes is `Bool → String → Except String String` — source in,
-rendered output or an error message out, the flag saying whether to show the working. Everything
-else (argument handling, reading files, choosing a stream to print on, the exit code) is the same
-for all of them, so it is written once here and each executable is three lines.
-
-Three such functions are supplied below, matching the three chains in `Compose.lean`:
-`compileParse` for a language that only reads, `compileElab` for one whose types and terms satisfy
-the elaboration interface, and `compileEval` for one that can also run what it elaborated. A
-language picks whichever it can support — `Arith` has no type system, so it stops at the first.
+The only thing a language contributes is its chain — source text in, and however many stages it
+has. `compile` turns any chain into `Bool → String → Except String String`: rendered output or an
+error message out, the flag saying whether to show the working. Everything else (argument handling,
+reading files, choosing a stream to print on, the exit code) is the same for all of them, so it is
+written once here and each executable is three lines. A language passes whichever chain it can
+support — `Arith` has no type system, so it passes its `parseChain`.
 
 ## `--stages`
 
-Both are `Chain.report` on the corresponding chain, so neither has to enumerate the stages and
-neither knows how many there are; adding a stage to `Compose.lean` shows up here with no edit.
-`--stages` prints the input at every stage rather than only the last, and a rejection names the
-stage that was not reached — a chain still knows which `abstract` returned `none`, where the
-collapsed morphism does not. `Language.parseChain_run` and `Language.elabChain_run` prove that
-what is printed without the flag is what `parseFile`/`elaborateFile` would have said, so the
-readable version and the composite version are not two different compilers.
+`compile` is `Chain.report`, so it does not enumerate the stages and does not know how many there
+are; adding a stage to a chain shows up here with no edit. `--stages` prints the input at every
+stage rather than only the last, and a rejection names the stage that was not reached — a chain
+still knows which `abstract` returned `none`, where the collapsed morphism does not.
+`Language.parseChain_run`, `DefLanguage.elabChain_run` and `DefLanguage.evalChain_run` prove that
+what is printed without the flag is what `parseFile`/`elaborateFile`/`evaluateFile` would have
+said, so the readable version and the composite version are not two different compilers.
 
 ## No paths are baked in
 
@@ -37,25 +34,13 @@ default file: a run with no arguments is a usage error, exactly as a compiler be
 
 namespace LambdaLab.Pipeline
 
-/-- **Read, then re-render.** Everything a `Language` can do on its own, with no type system. -/
-def Language.compileParse (L : Language) (showStages : Bool) (src : String) :
+/-- **A chain, as a compiler**: source in, the last stage's rendering out — or every stage's, with
+`showStages`. Parse failure and type failure *are* distinguished, and without any stage having to
+say so: the chain names the stage it did not reach. -/
+def compile {Y : Abstraction.Stage} (c : Abstraction.Chain sourceStage Y) (showStages : Bool)
+    (src : String) :
     Except String String :=
-  L.parseChain.report showStages src.toList
-
-/-- **Read, then elaborate.** The same, one stage further on, for a language whose own types and
-terms satisfy `PrincipalElaborate`. Parse failure and type failure *are* distinguished, and
-without either stage having to say so: the chain names the stage it did not reach. -/
-def Language.compileElab (L : Language)
-    [TypeSystem.Named.PrincipalElaborate (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
-    Except String String :=
-  L.elabChain.report showStages src.toList
-
-/-- **Read, elaborate, then run.** One stage further again, for a language that also supplies an
-evaluator and a substitution. Nothing here enumerates the stages: it is the same `Chain.report`, on a longer chain. -/
-def Language.compileEval (L : Language)
-    [TypeSystem.Named.Runnable (Var L) L.Tm L.Ty] (showStages : Bool) (src : String) :
-    Except String String :=
-  L.evalChain.report showStages src.toList
+  c.report showStages src.toList
 
 /-- Usage text, on the same shape every language's executable shares. -/
 def usage (name ext : String) : String :=
