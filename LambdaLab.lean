@@ -49,8 +49,6 @@ import LambdaLab.Abstraction.Parens
 import LambdaLab.Abstraction.Tokenizer
 import LambdaLab.Float.Decimal
 import LambdaLab.Float.Pipeline
-import LambdaLab.Inductive.Basic
-import LambdaLab.Inductive.Example
 import LambdaLab.Nominal.Atom
 import LambdaLab.Nominal.Basic
 import LambdaLab.Nominal.Instances

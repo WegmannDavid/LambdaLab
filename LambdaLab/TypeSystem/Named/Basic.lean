@@ -134,8 +134,8 @@ it. -/
 
 /-- α-equality as a `Setoid`, for a client that wants the quotient `Tm ⧸ ≈α`.
 
-A `def`, not an instance, for the reason `Inductive.wfRel` is one: `Setoid Tm` keys on a bare type,
-so a global instance would shadow whatever setoid a carrier already has. Take it by name at the
+A `def`, not an instance: `Setoid Tm` keys on a bare type, so a global instance would shadow
+whatever setoid a carrier already has. Take it by name at the
 point the quotient is formed. -/
 def HasAlphaEq.setoid (Tm : Type) [HasAlphaEq Tm] : Setoid Tm where
   r := HasAlphaEq.AlphaEq
