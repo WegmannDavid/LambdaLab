@@ -12,12 +12,14 @@ correct by construction. The toolkit:
 * **plumbing** — `comap` (adapt the source), `map` (adapt the value);
 * **sequencing** — `bind`, an *indexed* monadic bind (the seam `FIRST(k) ⊆ FOLLOW(p)` is its one
   obligation; `Notation.lean`'s `gdo` provides the do-syntax);
-* **choice** — `orElse` (FIRST-disjoint; source and value are sums);
+* **choice** — `orElse` (FIRST-disjoint; source and value are sums), and `dispatch` (n-ary,
+  keyed on the first symbol; source and value are dependent sums over the branches);
 * **repetition** — `many1` (one-or-more; source `NEList w`), `chainl` (a seed then zero-or-more
   steps — the left-associative chain shape).
 
-Composite parse functions are **named** (`bindParse`, `orElseParse`, `many1Parse`, `chainlParse`):
-rewriting the input of an applied function has a clean motive, an inline `match` does not.
+Composite parse functions are **named** (`bindParse`, `orElseParse`, `dispatchParse`, `many1Parse`,
+`chainlParse`): rewriting the input of an applied function has a clean motive, an inline `match`
+does not.
 -/
 
 namespace LambdaLab.Parser.IsoParser
@@ -210,6 +212,58 @@ def orElse (p : IsoParser α f₁ fol w v) (q : IsoParser α f₂ fol w' v')
       simp only [orElseParse]
       rw [hpnone, hq]
       simp [hv]
+
+/-! ## Choice by first symbol — `dispatch`
+
+`orElse` is binary, over sums. A file of declarations needs an *n*-ary choice indexed by which
+declaration form comes next, and the forms are told apart by their first symbol alone — so the
+choice is a lookup, not a trial. -/
+
+/-- Run whichever branch `pick` names for the first symbol; named for clean motives. -/
+def dispatchParse {ι : Type} {key : ι → α} {W V : ι → Type} (pick : α → Option ι)
+    (p : (i : ι) → IsoParser α (· = key i) fol (W i) (V i)) (input : List α) :
+    Option ((Σ i, V i) × { r : List α // r.length < input.length }) :=
+  match input.head?.bind pick with
+  | none => none
+  | some i =>
+      match (p i).parse input with
+      | none => none
+      | some (b, r) => some (⟨i, b⟩, r)
+
+/-- **Choice by first symbol.** Branch `i` starts with exactly `key i`, and `pick` recovers `i`
+from it (`hpick`), so reading the first symbol decides the branch and nothing is tried twice. Source
+and value are dependent sums over the branches; every branch shares FOLLOW, as in `orElse`.
+
+`hpick` is the whole disjointness argument: two branches with one key would make `pick` choose
+between them, and `hpick` could not hold of both. -/
+def dispatch {ι : Type} (key : ι → α) (pick : α → Option ι) (hpick : ∀ i, pick (key i) = some i)
+    {W V : ι → Type} (p : (i : ι) → IsoParser α (· = key i) fol (W i) (V i)) :
+    IsoParser α (fun c => ∃ i, c = key i) fol (Σ i, W i) (Σ i, V i) where
+  parse := dispatchParse pick p
+  print s := (⟨s.1, ((p s.1).print s.2).1⟩, ((p s.1).print s.2).2)
+  firstOk c rest hc := by
+    show dispatchParse pick p (c :: rest) = none
+    unfold dispatchParse
+    simp only [List.head?_cons, Option.bind_some]
+    cases h : pick c with
+    | none => rfl
+    | some i =>
+        simp only
+        rw [(p i).firstOk c rest (fun e => hc ⟨i, e⟩)]
+  ok s rest hrest := by
+    obtain ⟨i, a⟩ := s
+    obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil ((p i).print_ne_nil a)
+    have hhead : (((p i).print a).2 ++ rest).head?.bind pick = some i := by
+      rw [hcs, List.cons_append, List.head?_cons, Option.bind_some,
+        print_head_fst (p i) a c cs hcs, hpick]
+    obtain ⟨r, hp, hv⟩ := map_val_eq_some ((p i).ok a rest hrest)
+    show (dispatchParse pick p (((p i).print a).2 ++ rest)).map (fun z => (z.1, z.2.val))
+        = some (⟨i, ((p i).print a).1⟩, rest)
+    unfold dispatchParse
+    rw [hhead]
+    simp only
+    rw [hp]
+    simp [hv]
 
 /-! ## Repetition — `many1` and `chainl` -/
 
