@@ -1,0 +1,7 @@
+float one := 1
+float sum := 0.1 + 0.2
+float half := 0.5 + 0.25 * 2
+float grouped := ( 1 + 2 ) * 3
+float price := 19.99 * 3
+float tiny := 0.1 * 0.1 + 0.01
+float parens := ( ( 7 ) )

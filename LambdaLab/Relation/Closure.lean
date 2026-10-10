@@ -11,7 +11,7 @@ its own.
 
 Mathlib has exactly these, as `Relation.ReflTransGen` / `Relation.TransGen`, with a far
 larger API, and using them was measured. It is not affordable here: all three call sites are
-inside the `stlc`/`arith` executables' import cone, and `Mathlib.Logic.Relation` transitively
+inside the `stlc`/`float` executables' import cone, and `Mathlib.Logic.Relation` transitively
 imports `Mathlib.Init`, which pulls in `Lean.Linter.Sets`, `ImportGraph.Tools` and
 `Batteries.Tactic.Lint` — i.e. the Lean elaborator and tactic frontend. Only 57 Mathlib
 modules end up in the closure, but linking them took `stlc` from 4.9 MB to 154 MB (113.7 MB

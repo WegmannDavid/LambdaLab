@@ -67,7 +67,7 @@ this must become an explicit parameter and every use site gains an `(A := ·)`.
 
 ## What this file does not do
 
-It imports `Nominal/Basic.lean`, so it takes Mathlib, so **it must not enter the `stlc`/`arith`
+It imports `Nominal/Basic.lean`, so it takes Mathlib, so **it must not enter the `stlc`/`float`
 import cone** — measured at 129 MB the last time Mathlib was in there. That is exactly why
 `Nominal/Unification/Subst.lean` exists as a separate, Mathlib-free module depending on
 `Nominal/Atom.lean` alone: the executables carry that one, and this one states what it means.

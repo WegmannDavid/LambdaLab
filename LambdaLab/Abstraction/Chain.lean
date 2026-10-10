@@ -23,7 +23,7 @@ Mathlib has exactly this type, `Quiver.Path`, with `CategoryTheory.composePath` 
 Two reasons it is re-declared here in four lines:
 
 * `Pipeline/` is in the executables' import cone, and that cone is Mathlib-free — `Mathlib`
-  appears nowhere in `stlc`'s or `arith`'s link trace. One Mathlib import anywhere below them
+  appears nowhere in `stlc`'s or `float`'s link trace. One Mathlib import anywhere below them
   pulls in about 1300 modules; when that was last measured it was the difference between a
   2.8 MB `stlc` and a 129 MB one. Same trade as `Iso` versus `Equiv` in `Basic.lean`.
 * `composePath` requires `[Category C]` and would not apply anyway. `Abs` is a *bi*category:

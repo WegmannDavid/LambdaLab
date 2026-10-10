@@ -10,8 +10,8 @@ name = "stlc"
 root = "Stlc"
 
 [[lean_exe]]
-name = "arith"
-root = "Arith"
+name = "float"
+root = "Float"
 
 [[require]]
 name = "mathlib"

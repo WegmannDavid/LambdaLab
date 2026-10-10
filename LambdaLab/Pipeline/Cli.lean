@@ -13,8 +13,8 @@ The only thing a language contributes is its chain — source text in, and howev
 has. `compile` turns any chain into `Bool → String → Except String String`: rendered output or an
 error message out, the flag saying whether to show the working. Everything else (argument handling,
 reading files, choosing a stream to print on, the exit code) is the same for all of them, so it is
-written once here and each executable is three lines. A language passes whichever chain it can
-support — `Arith` has no type system, so it passes its `parseChain`.
+written once here and each executable is three lines. A language passes whichever chain it has —
+`Float` has no type system, so it passes its parser and its one walk, `floatChain`.
 
 ## `--stages`
 

@@ -19,8 +19,8 @@ Two layers:
 
 ## Why the digits are hand-rolled
 
-This file used `Nat.digits` and `Nat.ofDigits_digits`, and was the last thing below `Stlc` and
-`Arith` importing Mathlib. Everything an executable imports is *linked* into it — erasure removes
+This file used `Nat.digits` and `Nat.ofDigits_digits`, and was the last thing below the
+executables importing Mathlib. Everything an executable imports is *linked* into it — erasure removes
 a proof term, not the module that proved it — so that one import put ~1300 modules into the
 binary. There is still no verified decimal round-trip in core (`Nat.repr` and `String.toNat!` are
 not proved inverse), so the pair below is defined and proved here: three short inductions, all on

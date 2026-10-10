@@ -32,7 +32,7 @@ computational entry point without giving up the group.
 
 `Finset`, `Set.Finite`, `Group` and `MulAction` all come from Mathlib, and taking them means
 every downstream fact about composing and inverting permutations is already proved. `Atom.lean`
-cannot make that trade — the `stlc` and `arith` executables' import cone runs through it, and
+cannot make that trade — the `stlc` and `float` executables' import cone runs through it, and
 Mathlib in that cone cost 129 MB the last time it was measured. Nothing in `Nominal/` below the
 atoms is in that cone, so the constraint stops here.
 

@@ -28,7 +28,7 @@ freshness is arithmetic keeps `decide` and `omega` usable in those proofs. Nothi
 uses it.
 
 Like `Atom.lean`, and unlike the rest of `Nominal/`, this file must stay Mathlib-free: the `stlc`
-and `arith` executables run at `String`, so their import cone runs through here.
+and `float` executables' import cone runs through here.
 -/
 
 namespace LambdaLab.Nominal

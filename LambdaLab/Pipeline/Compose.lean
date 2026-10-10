@@ -38,8 +38,9 @@ evaluation after it, given `Runnable`:
 * `elabPipeline : List Char ⇝ Elaborated`, and `elaborateFile`/`renderElaborated`;
 * `evalPipeline : List Char ⇝ Evaluated`, and `evaluateFile`/`renderEvaluated`.
 
-Neither is "the" pipeline, and none is named as though it were. A language with no semantics
-attached — `Arith` — simply stops at the first, and that is a fact about `Arith`, not a gap.
+None is "the" pipeline, and none is named as though it were. A language with no type system has
+neither of the last two: `Float` has one walk of its own, evaluation, and is a `walkChain` (below)
+— a fact about `Float`, not a gap.
 
 ## What composition buys
 
@@ -323,8 +324,8 @@ One more stage on the end, on the same terms as ③: it exists exactly when the 
 it. `Runnable` is `PrincipalElaborate` and `LawfulHasEval` sharing one judgement — see its
 docstring for why the conjunction has to be a class rather than two hypotheses.
 
-`Arith` stops at ②, `Stlc` goes to ④. Neither is "the" pipeline; the chain a language supports is
-a fact about the language. -/
+`Float` has one walk and no type system; `Stlc` goes to ④ through its type system. Neither is
+"the" pipeline; the chain a language supports is a fact about the language. -/
 
 section Running
 
