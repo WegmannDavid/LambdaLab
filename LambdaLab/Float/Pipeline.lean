@@ -7,16 +7,17 @@ import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
 
 /-!
-# `float` — numbers, and nothing else
+# `float` — numbers, named and combined
 
 A language with no type system: a file is a run of
 
     float NAME := TERM
 
-where a term is decimal literals, `+` and `*`, and parentheses to group them. Running a program
-replaces every term by its value:
+where a term is built from decimal literals and the names of **earlier** declarations with `+`
+and `*`, and parentheses to group them. Running a program replaces every term by its value:
 
-    float c := ( 1 + 2 ) * 3        ⟹     float c := 9
+    float a := ( 1 + 2 ) * 3        ⟹     float a := 9
+    float b := a + 0.5              ⟹     float b := 9.5
 
 It is a `Language` written directly — one declaration form, keyword `float` — and not a
 `DefLanguage`: there is no type to declare, so there is no `: TYPE`, and nothing here mentions a
@@ -25,18 +26,33 @@ values.
 
 ## The pieces
 
-* **terms** come from the mixfix engine, as arithmetic does: literals are the grammar's atoms, `*`
-  binds tighter than `+`, both associate to the left. The parse tree still holds the parentheses;
-  the `Rules` bundle truncates it to `FTm`, which has none, so `( ( 7 ) )` is read as `7` and the
-  parentheses come back only where the grammar needs them.
+* **terms** come from the mixfix engine, as arithmetic does. The grammar's atoms are the literals
+  and the names, which cannot be confused: a name is never a number (`isFName`). `*` binds tighter
+  than `+`, both associate to the left. The parse tree still holds the parentheses; the `Rules`
+  bundle truncates it to `FTm`, which has none, so `( ( 7 ) )` is read as `7` and the parentheses
+  come back only where the grammar needs them.
 * **the declaration** is `NAME := TERM` after the keyword: a `gdo` block, like `def`'s body.
-* **evaluation** computes each term exactly (`Decimal`), records the name's value in the state,
-  and writes the value back as a literal. Its one law, idempotence, holds a step at a time: a
-  literal evaluates to the value it spells (`Decimal.ofToken_toToken`), and every computed value is
-  already normalized.
+* **evaluation** computes each term exactly (`Decimal`) in the state, records the declaration's
+  value under its name, and writes the value back as a literal.
 
-Terms have no variables, so nothing reads the map yet. It is the state the walk carries, and the
-place a term referring to an earlier declaration would look its value up.
+## Only earlier declarations, never itself
+
+A step evaluates its term in the state *as it was before the step*, and records the declaration's
+own name only afterwards. So a name in a term means the most recent earlier declaration of that
+name, and nothing else:
+
+* `float x := x + 1`, with no earlier `x`, is rejected — the name is unknown, as it would be for
+  any other undeclared name, or one declared only further down;
+* after `float x := 1`, the same declaration is accepted and means `2`: its `x` is the earlier one.
+  Redeclaring a name shadows it from then on.
+
+There is no recursion to rule out, because nothing a step can see includes itself.
+
+## The law
+
+Evaluation is idempotent a step at a time. What a step writes is a literal, and a literal evaluates
+to the value it spells (`Decimal.ofToken_toToken`) without consulting the state; every value a term
+has is normalized (`FTm.eval_normalize`), so it is the very value the step recorded.
 -/
 
 namespace LambdaLab.Float
@@ -55,7 +71,36 @@ def kwFloat : Token := tkF "float"
 /-- The assignment between a declaration's name and its term. -/
 def assignTok : Token := tkF ":="
 
-/-! ## Terms: literals, `+`, `*` -/
+/-! ## Names -/
+
+/-- The tokens a name may not be. -/
+def fReserved : List Token := [kwFloat, assignTok, tkF "(", tkF ")", tkF "+", tkF "*"]
+
+/-- A name is any token that is neither reserved nor a number. -/
+def isFName (t : Token) : Bool := isFree fReserved t && !Decimal.isDecimalTok t
+
+abbrev FName : Type := { t : Token // isFName t = true }
+
+theorem not_decimal_of_name {t : Token} (h : isFName t = true) :
+    ¬ Decimal.isDecimalTok t = true := by
+  simp only [isFName, Bool.and_eq_true, Bool.not_eq_true'] at h
+  simp [h.2]
+
+/-- The grammar's atoms: literals and names. -/
+def isAtom (t : Token) : Bool := Decimal.isDecimalTok t || isFName t
+
+theorem isAtom_of_decimal {t : Token} (h : Decimal.isDecimalTok t = true) : isAtom t = true := by
+  simp [isAtom, h]
+
+theorem isAtom_of_name {t : Token} (h : isFName t = true) : isAtom t = true := by
+  simp [isAtom, h]
+
+theorem isFName_of_atom {t : Token} (h : isAtom t = true) (hd : ¬ Decimal.isDecimalTok t = true) :
+    isFName t = true := by
+  simp only [isAtom, Bool.or_eq_true] at h
+  exact h.resolve_left hd
+
+/-! ## Terms: literals, names, `+`, `*` -/
 
 /-- Operators: parentheses, `_ * _`, `_ + _`. -/
 inductive FSym | paren | times | plus
@@ -74,7 +119,7 @@ def fOp : FSym → Operator Token Unit
   | .times => .infxl (.last (tkF "*"))
   | .plus  => .infxl (.last (tkF "+"))
 
-/-- The term grammar's one entry. Its atoms are the decimal literals. -/
+/-- The term grammar's one entry. Its atoms are the literals and the names. -/
 def fEntry : Entry Token Unit where
   Op := FSym
   operator := fOp
@@ -86,7 +131,7 @@ def fEntry : Entry Token Unit where
   topRank := 3
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all [fTighter, fRank]
   rank_lt_topRank := by intro o; cases o <;> decide
-  isVar := Decimal.isDecimalTok
+  isVar := isAtom
   headsDistinct := by
     intro o₁ o₂ h₁ h
     cases o₁ <;> cases o₂ <;>
@@ -122,6 +167,7 @@ theorem fUnambiguous : Unambiguous fGrammar := unambiguous fGrammar
 /-- A term: what `Expr fGrammar` is *about*, with the parentheses gone. -/
 inductive FTm where
   | lit : (t : Token) → Decimal.isDecimalTok t = true → FTm
+  | ref : FName → FTm
   | add : FTm → FTm → FTm
   | mul : FTm → FTm → FTm
 
@@ -134,13 +180,15 @@ instance : ∀ e : fGrammar.Ent, DecidableEq (fGrammar.entry e).Op :=
 /-- A structural size (constructor counts one) — `omega`-friendly, unlike the opaque `sizeOf`. -/
 def FTm.size : FTm → Nat
   | .lit _ _ => 1
+  | .ref _ => 1
   | .add a b => a.size + b.size + 1
   | .mul a b => a.size + b.size + 1
 
-/-- The truncation instructions: one clause per operator each way, plus the paren designation and
-the bookkeeping laws. -/
+/-- The truncation instructions: an atom is a literal if it is a number and a name otherwise, one
+clause per operator each way, plus the paren designation and the bookkeeping laws. -/
 def fRules : Rules fGrammar (fun _ => FTm) where
-  var t h := .lit t h
+  var t h :=
+    if hd : Decimal.isDecimalTok t = true then .lit t hd else .ref ⟨t, isFName_of_atom h hd⟩
   op o vs :=
     match o, vs with
     | .paren, (e, _)    => e
@@ -148,7 +196,8 @@ def fRules : Rules fGrammar (fun _ => FTm) where
     | .plus,  (a, b, _) => .add a b
   dest x :=
     match x with
-    | .lit t h => .var t h
+    | .lit t h => .var t (isAtom_of_decimal h)
+    | .ref x => .var x.val (isAtom_of_name x.property)
     | .mul a b => .node .times (a, b, PUnit.unit)
     | .add a b => .node .plus (a, b, PUnit.unit)
   parenOp _ := .paren
@@ -157,11 +206,17 @@ def fRules : Rules fGrammar (fun _ => FTm) where
   paren_eq _ := rfl
   holesOk := by rintro ⟨⟩ o; cases o <;> decide
   topOk := by rintro ⟨⟩ o; cases o <;> decide
-  alg_dest := by rintro _ (⟨t, h⟩ | ⟨a, b⟩ | ⟨a, b⟩) <;> rfl
+  alg_dest := by
+    rintro _ (⟨t, h⟩ | x | ⟨a, b⟩ | ⟨a, b⟩)
+    · exact dif_pos h
+    · exact dif_neg (not_decimal_of_name x.property)
+    · rfl
+    · rfl
   op_paren _ := rfl
   size := FTm.size
   dest_size := by
-    rintro _ (⟨t, h⟩ | ⟨a, b⟩ | ⟨a, b⟩)
+    rintro _ (⟨t, h⟩ | x | ⟨a, b⟩ | ⟨a, b⟩)
+    · trivial
     · trivial
     all_goals exact ⟨by simp +arith [FTm.size], by simp +arith [FTm.size], trivial⟩
 
@@ -187,14 +242,6 @@ theorem fTerm_exact : fTerm.Exact :=
     (IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
 
 /-! ## The declaration: `float NAME := TERM` -/
-
-/-- The tokens a name may not be. -/
-def fReserved : List Token := [kwFloat, assignTok, tkF "(", tkF ")", tkF "+", tkF "*"]
-
-/-- A name is any token that is neither reserved nor a number. -/
-def isFName (t : Token) : Bool := isFree fReserved t && !Decimal.isDecimalTok t
-
-abbrev FName : Type := { t : Token // isFName t = true }
 
 /-- A declaration: a name and the term it is bound to. -/
 structure FDecl where
@@ -236,32 +283,62 @@ def floatLanguage : Language where
 
 /-! ## Evaluation -/
 
-/-- A term's value. -/
-def FTm.eval : FTm → Decimal
-  | .lit t _ => Decimal.ofToken t
-  | .add a b => a.eval.add b.eval
-  | .mul a b => a.eval.mul b.eval
+/-- **The state**: the value of every name declared so far. -/
+abbrev FState : Type := Std.HashMap String Decimal
 
-/-- Every value a term has is already normalized. -/
-theorem FTm.eval_normalize : ∀ e : FTm, e.eval.normalize = e.eval
-  | .lit _ _ => Decimal.normalize_normalize _
-  | .add _ _ => Decimal.ofMS_normalize _ _
-  | .mul _ _ => Decimal.ofMS_normalize _ _
+/-- A term's value in a state — `none` if it names something the state does not hold. -/
+def FTm.eval (s : FState) : FTm → Option Decimal
+  | .lit t _ => some (Decimal.ofToken t)
+  | .ref x => (s.get? x.val.val).map Decimal.normalize
+  | .add a b =>
+      match a.eval s, b.eval s with
+      | some u, some v => some (u.add v)
+      | _, _ => none
+  | .mul a b =>
+      match a.eval s, b.eval s with
+      | some u, some v => some (u.mul v)
+      | _, _ => none
+
+/-- Every value a term has is normalized — whatever the state holds. -/
+theorem FTm.eval_normalize (s : FState) :
+    ∀ {e : FTm} {v : Decimal}, e.eval s = some v → v.normalize = v
+  | .lit _ _, _, h => by
+      simp only [FTm.eval, Option.some.injEq] at h
+      subst h
+      exact Decimal.normalize_normalize _
+  | .ref _, _, h => by
+      simp only [FTm.eval, Option.map_eq_some_iff] at h
+      obtain ⟨w, _, rfl⟩ := h
+      exact Decimal.normalize_normalize w
+  | .add _ _, _, h => by
+      simp only [FTm.eval] at h
+      split at h
+      · simp only [Option.some.injEq] at h
+        subst h
+        exact Decimal.add_normalize _ _
+      · exact absurd h (by simp)
+  | .mul _ _, _, h => by
+      simp only [FTm.eval] at h
+      split at h
+      · simp only [Option.some.injEq] at h
+        subst h
+        exact Decimal.mul_normalize _ _
+      · exact absurd h (by simp)
 
 /-- A value, written as a term: its literal. -/
 def Decimal.toLit (d : Decimal) : FTm := .lit d.toToken (Decimal.isDecimalTok_toToken d)
 
-/-- A value's literal evaluates to the value, normalized. -/
-theorem Decimal.eval_toLit (d : Decimal) : d.toLit.eval = d.normalize := Decimal.ofToken_toToken d
+/-- A value's literal evaluates to the value, normalized, in any state. -/
+theorem Decimal.eval_toLit (d : Decimal) (s : FState) : d.toLit.eval s = some d.normalize := by
+  simp only [Decimal.toLit, FTm.eval, Decimal.ofToken_toToken]
 
-/-- **The state**: the value of every name declared so far. -/
-abbrev FState : Type := Std.HashMap String Decimal
-
-/-- **Evaluate one declaration**: compute its term, record the value under its name, and write the
-value back as a literal. It never rejects — there is nothing a term of literals, `+` and `*` can
-get wrong. -/
+/-- **Evaluate one declaration**: compute its term in the state as it stands — which holds only the
+declarations before this one — record the value under the declaration's name, and write the value
+back as a literal. A term naming anything the state does not hold is rejected. -/
 def evalStep (s : FState) (d : FDecl) : Option (FDecl × FState) :=
-  some (⟨d.name, d.value.eval.toLit⟩, s.insert d.name.val.val d.value.eval)
+  match d.value.eval s with
+  | some v => some (⟨d.name, v.toLit⟩, s.insert d.name.val.val v)
+  | none => none
 
 /-- **The evaluator**: the walk from the empty map. -/
 def evalWalk : Walk FDecl where
@@ -269,15 +346,20 @@ def evalWalk : Walk FDecl where
   init := ∅
   step := evalStep
 
-/-- **Idempotence, a step at a time.** A literal evaluates to the value it spells, so an evaluated
-declaration evaluates to itself, and records the same value under the same name. -/
+/-- **Idempotence, a step at a time.** An evaluated declaration's term is a literal, which
+evaluates to the value it spells without consulting the state — so the declaration evaluates to
+itself, and records the same value under the same name. -/
 theorem evalWalk_stepIdempotent : evalWalk.StepIdempotent := by
   rintro s ⟨x, e⟩ d' s' h
-  simp only [evalWalk, evalStep, Option.some.injEq, Prod.mk.injEq] at h
-  obtain ⟨rfl, rfl⟩ := h
-  show evalStep s ⟨x, e.eval.toLit⟩ = _
-  simp only [evalStep, Decimal.eval_toLit, FTm.eval_normalize]
-  rfl
+  change evalStep s ⟨x, e⟩ = some (d', s') at h
+  simp only [evalStep] at h
+  split at h
+  · rename_i v he
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    have hv : v.normalize = v := FTm.eval_normalize s he
+    show evalStep s ⟨x, v.toLit⟩ = some (⟨x, v.toLit⟩, s.insert x.val.val v)
+    simp only [evalStep, Decimal.eval_toLit, hv]
+  · exact absurd h (by simp)
 
 theorem evalWalk_idempotent : evalWalk.Idempotent :=
   evalWalk.idempotent_of_step evalWalk_stepIdempotent

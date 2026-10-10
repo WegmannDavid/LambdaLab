@@ -79,6 +79,12 @@ theorem normalize_normalize (d : Decimal) : d.normalize.normalize = d.normalize 
 theorem ofMS_normalize (m s : Nat) : (ofMS m s).normalize = ofMS m s :=
   normalize_normalize _
 
+/-- Sums come out normalized… -/
+theorem add_normalize (a b : Decimal) : (a.add b).normalize = a.add b := ofMS_normalize _ _
+
+/-- …and so do products. -/
+theorem mul_normalize (a b : Decimal) : (a.mul b).normalize = a.mul b := ofMS_normalize _ _
+
 /-! ## Literals -/
 
 /-- Split off the leading run of digits. -/
