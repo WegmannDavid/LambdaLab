@@ -19,6 +19,7 @@ on:
       - 'LambdaLab/**'
       - 'Stlc.lean'
       - 'Float.lean'
+      - 'SystemF.lean'
       - 'lakefile.toml'
       - 'lake-manifest.json'
       - 'lean-toolchain'

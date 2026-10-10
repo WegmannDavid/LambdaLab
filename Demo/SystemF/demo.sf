@@ -1,0 +1,9 @@
+type Id := ∀ α . α → α
+def id : Id := Λ α . ( λ x : α . x )
+def idId : Id := id [ Id ] id
+type Nat := ∀ α . ( α → α ) → α → α
+def zero : Nat := Λ α . ( λ f : α → α . ( λ x : α . x ) )
+def succ : Nat → Nat := λ n : Nat . ( Λ α . ( λ f : α → α . ( λ x : α . f ( n [ α ] f x ) ) ) )
+def plus : Nat → Nat → Nat := λ m : Nat . ( λ n : Nat . ( Λ α . ( λ f : α → α . ( λ x : α . m [ α ] f ( n [ α ] f x ) ) ) ) )
+def two : Nat := succ ( succ zero )
+def four : Nat := plus two two

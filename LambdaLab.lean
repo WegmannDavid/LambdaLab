@@ -35,6 +35,10 @@ import LambdaLab.Languages.SystemF.Syntax
 import LambdaLab.Languages.SystemF.Typing
 import LambdaLab.Languages.SystemF.Reduction
 import LambdaLab.Languages.SystemF.Normalization
+import LambdaLab.Languages.SystemF.Check
+import LambdaLab.Languages.SystemF.Eval
+import LambdaLab.Languages.SystemF.Surface
+import LambdaLab.Languages.SystemF.Pipeline
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
