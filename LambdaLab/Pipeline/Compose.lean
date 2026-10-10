@@ -206,6 +206,54 @@ def Language.walkCellOn (w : Walk L.Decl) {P : Program L → Prop} (h : w.Lawful
 
 end Walks
 
+/-! ## ① ∘ ② ∘ ③ — one walk after parsing
+
+The front end of a language with one walk, assembled once for all of them: the composite, the
+file reader, the renderer, its round trip, and the chain the driver runs. -/
+
+section OneWalk
+
+variable (L : Language) (w : Walk L.Decl) (h : w.Idempotent)
+
+/-- **Characters to what the walk produces**, in `Abs`. Parsing and the walk are one morphism, so
+the round-trip law covers both. -/
+def Language.walkPipeline := L.parsePipeline.comp (w.stage h)
+
+/-- Read a source file and run the walk over it. -/
+def Language.walkFile (s : String) : Option w.Fixed := (L.walkPipeline w h).abstract s.toList
+
+/-- Render what the walk produced canonically: one declaration per line, each in its canonical
+spelling. -/
+def Language.renderWalked (q : w.Fixed) : String :=
+  String.ofList ((L.walkPipeline w h).realize ((L.walkPipeline w h).default (a := q)))
+
+/-- **The front end round-trips.** Render what the walk produced and read it back, and the walk
+returns it — tokenizing, parsing and the walk at once. -/
+theorem Language.walkFile_renderWalked (q : w.Fixed) :
+    L.walkFile w h (L.renderWalked w h q) = some q := by
+  show (L.walkPipeline w h).abstract (String.ofList
+    ((L.walkPipeline w h).realize ((L.walkPipeline w h).default (a := q)))).toList = some q
+  rw [String.toList_ofList]
+  exact (L.walkPipeline w h).abstract_realize q (L.walkPipeline w h).default
+
+/-- **The front end, stage by stage** — `parseChain` with the walk on the end. -/
+def Language.walkChain (name : String) : Chain sourceStage (L.walkStage name w) :=
+  L.parseChain.cons (L.walkCell w h)
+
+/-- Stepping through the stages agrees with collapsing them. -/
+@[simp] theorem Language.walkChain_abstract (name : String) (cs : List Char) :
+    (L.walkChain w h name).compose.hom.abstract cs = (L.walkPipeline w h).abstract cs := by
+  rw [walkChain, Chain.compose_cons, OneCell.hcomp_abstract, L.parseChain_abstract]
+  simp only [walkPipeline, walkCell, Abstraction.comp]
+  rfl
+
+/-- What the driver relies on: running the chain over a file agrees with `walkFile`. -/
+theorem Language.walkChain_run (name : String) (s : String) :
+    ((L.walkChain w h name).run s.toList).2.toOption = L.walkFile w h s :=
+  ((L.walkChain w h name).run_eq_abstract _).trans (L.walkChain_abstract w h name _)
+
+end OneWalk
+
 /-! ## ① ∘ ② ∘ ③ — and type checking, for a `def`-language with a type system
 
 Everything below is the same construction with one more stage on the end: the elaborator walk. The
@@ -224,52 +272,48 @@ variable (D : DefLanguage) [TypeSystem.Named.PrincipalElaborate (Var D) D.Tm D.T
 /-- **Characters to an elaborated program**, in `Abs`. Parsing and elaboration are one morphism,
 so the round-trip law covers both — `realize` of any annotation re-parses *and* re-elaborates to
 exactly the value it indexes. -/
-def DefLanguage.elabPipeline := D.toLanguage.parsePipeline.comp D.elabStage
+abbrev DefLanguage.elabPipeline :=
+  D.toLanguage.walkPipeline D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent
 
 /-- Parse *and* elaborate a source file. -/
-def DefLanguage.elaborateFile (s : String) : Option D.Elaborated :=
-  D.elabPipeline.abstract s.toList
+abbrev DefLanguage.elaborateFile (s : String) : Option D.Elaborated :=
+  D.toLanguage.walkFile D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent s
 
 /-- Render an elaborated program canonically: every declaration on its own line, in its canonical
 spelling, with the types elaboration solved written out. -/
-def DefLanguage.renderElaborated (p : D.Elaborated) : String :=
-  String.ofList (D.elabPipeline.realize (D.elabPipeline.default (a := p)))
+abbrev DefLanguage.renderElaborated (p : D.Elaborated) : String :=
+  D.toLanguage.renderWalked D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent p
 
 /-- **The front end round-trips.** Render an elaborated program and read it back, and elaboration
 returns it — the canonical-print guarantee, covering tokenizing, parsing and type checking at
 once. -/
 theorem DefLanguage.elaborateFile_renderElaborated (p : D.Elaborated) :
-    D.elaborateFile (D.renderElaborated p) = some p := by
-  show D.elabPipeline.abstract (String.ofList
-    (D.elabPipeline.realize (D.elabPipeline.default (a := p)))).toList = some p
-  rw [String.toList_ofList]
-  exact D.elabPipeline.abstract_realize p D.elabPipeline.default
+    D.elaborateFile (D.renderElaborated p) = some p :=
+  D.toLanguage.walkFile_renderWalked _ _ p
 
 /-! ### All three stages, uncollapsed -/
 
 /-- After ③: the program with every metavariable solved. -/
-def DefLanguage.elaboratedStage : Stage :=
+abbrev DefLanguage.elaboratedStage : Stage :=
   D.toLanguage.walkStage "elaborated program" D.elabWalk
 
 /-- **The whole front end, stage by stage** — `parseChain` with elaboration on the end. Note that
 this is `cons`, not a new pipeline: the parsing chain is literally a prefix of it, which is the
 statement that a language with no type system stops one stage short rather than doing something
 else. -/
-def DefLanguage.elabChain : Chain sourceStage D.elaboratedStage :=
-  D.toLanguage.parseChain.cons
-    (D.toLanguage.walkCell D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent)
+abbrev DefLanguage.elabChain : Chain sourceStage D.elaboratedStage :=
+  D.toLanguage.walkChain D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent
+    "elaborated program"
 
 /-- Stepping through all three stages agrees with collapsing them. -/
-@[simp] theorem DefLanguage.elabChain_abstract (cs : List Char) :
-    D.elabChain.compose.hom.abstract cs = D.elabPipeline.abstract cs := by
-  rw [elabChain, Chain.compose_cons, OneCell.hcomp_abstract, Language.parseChain_abstract]
-  simp only [elabPipeline, Language.walkCell, elabStage, Abstraction.comp]
-  rfl
+theorem DefLanguage.elabChain_abstract (cs : List Char) :
+    D.elabChain.compose.hom.abstract cs = D.elabPipeline.abstract cs :=
+  D.toLanguage.walkChain_abstract _ _ _ cs
 
 /-- What the driver relies on: running the chain over a file agrees with `elaborateFile`. -/
 theorem DefLanguage.elabChain_run (s : String) :
     (D.elabChain.run s.toList).2.toOption = D.elaborateFile s :=
-  (D.elabChain.run_eq_abstract _).trans (D.elabChain_abstract _)
+  D.toLanguage.walkChain_run _ _ _ s
 
 end Elaborating
 
