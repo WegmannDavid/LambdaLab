@@ -1,4 +1,4 @@
-import LambdaLab.Languages.SystemF.Reduction
+import LambdaLab.Languages.SystemF.DeBruijn.Reduction
 
 /-!
 # System F — strong normalization, by reducibility candidates
@@ -47,7 +47,7 @@ Instantiating everything with identities — `σ = var`, `γ = var`, and every t
 interpreted by `snCand` — puts `t` itself in a candidate, and CR1 finishes.
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 /-! ## Candidates -/
 
@@ -323,4 +323,4 @@ theorem HasType.sn {Δ : Nat} {Γ : List Ty} {t : Tm} {A : Ty} (h : HasType Δ �
   rw [Tm.tsubst_var, Tm.subst_var] at this
   exact (RedC A _).sn this
 
-end LambdaLab.Languages.SystemF
+end LambdaLab.Languages.SystemF.DeBruijn

@@ -23,7 +23,7 @@ the facts the metatheory needs are rewriting rather than index arithmetic.
 Equality of types is syntactic: there are no names to be α-equivalent.
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 /-! ## Maps on indices -/
 
@@ -217,6 +217,13 @@ def tsubst (σ : Nat → Ty) : Tm → Tm
 
 /-- Instantiate a term's outermost type variable: the body of `Λ . t` at `B`. -/
 def tinst (t : Tm) (B : Ty) : Tm := t.tsubst (scons B Ty.var)
+
+theorem tren_id : ∀ t : Tm, t.tren id = t
+  | var _ => rfl
+  | lam A t => by simp only [tren, Ty.ren_id, tren_id t]
+  | app t u => by simp only [tren, tren_id t, tren_id u]
+  | tlam t => by simp only [tren, upRen_id, tren_id t]
+  | tapp t A => by simp only [tren, tren_id t, Ty.ren_id]
 
 theorem tren_tren : ∀ (t : Tm) (ξ ζ : Nat → Nat), (t.tren ζ).tren ξ = t.tren (ξ ∘ ζ)
   | var _, _, _ => rfl
@@ -510,4 +517,4 @@ theorem tinst_tsubst (t : Tm) (B : Ty) (σ : Nat → Ty) :
 
 end Tm
 
-end LambdaLab.Languages.SystemF
+end LambdaLab.Languages.SystemF.DeBruijn

@@ -1,17 +1,19 @@
 import LambdaLab.Languages.SystemF.Surface
-import LambdaLab.Languages.SystemF.Check
-import LambdaLab.Languages.SystemF.Eval
+import LambdaLab.Languages.SystemF.DeBruijn.Check
+import LambdaLab.Languages.SystemF.DeBruijn.Eval
+import LambdaLab.Languages.SystemF.Named.Typing
 import LambdaLab.Semantics.Walk
 
 /-!
 # System F — from what is written to what it means
 
-The surface (`Surface.lean`) is named; the metatheory (`Typing.lean` … `Eval.lean`) is de Bruijn.
-This file connects them, and runs programs.
+The surface (`Surface.lean`) parses into the named calculus (`Named/`); the checker and the
+evaluator run on the de Bruijn core (`DeBruijn/`). This file connects them, and runs programs.
 
 ## Translation
 
-`elabTy`/`elabTm` resolve every name: a bound variable becomes its de Bruijn index; a free type
+`elabTy`/`elabTm` are `Named.Ty.toDB`/`Named.Tm.toDB` extended to declarations
+(`elabTm_eq_toDB`): they resolve every name: a bound variable becomes its de Bruijn index; a free type
 name is a `type` abbreviation and is replaced by its definition (so the core never sees an
 abbreviation, and type equality stays syntactic); a free term name is an earlier `def`, and becomes
 a variable beyond the local ones — the term is checked in the context of the earlier definitions'
@@ -44,6 +46,7 @@ namespace LambdaLab.Languages.SystemF
 open LambdaLab.Pipeline
 open LambdaLab.Parser.Numeral (isDigitChar natTok natOfTok isNatTok)
 open LambdaLab.Semantics (Walk)
+open LambdaLab.Languages.SystemF.DeBruijn
 
 /-! ## Name lookup -/
 
@@ -86,6 +89,87 @@ def elabTm (tyB tmB : List SName) (ab : List (SName × Ty)) (gl : List SName) : 
       match elabTm tyB tmB ab gl f, elabTy tyB ab A with
       | some f', some A' => some (.tapp f' A')
       | _, _ => none
+
+/-! ## With nothing declared, it is the named calculus's translation
+
+The parser lands in `Named.Tm`, and `elabTy`/`elabTm` differ from `Named.Ty.toDB`/`Named.Tm.toDB`
+only in what they do with a name no binder accounts for: the pipeline looks it up among the
+declarations, the named calculus sends it past the end of the binder list. With nothing declared,
+a translation that succeeds is the named calculus's. -/
+
+theorem lookupIdx_eq_some {n : SName} : ∀ {l : List SName} {i : Nat},
+    lookupIdx n l = some i → Named.lookupVar n l = i
+  | [], _, h => by simp [lookupIdx] at h
+  | m :: ms, i, h => by
+      simp only [lookupIdx] at h
+      by_cases hm : m = n
+      · subst hm
+        simp only [if_true, Option.some.injEq] at h
+        subst h
+        simp
+      · rw [if_neg hm] at h
+        cases hl : lookupIdx n ms with
+        | none => simp [hl] at h
+        | some j =>
+            simp only [hl, Option.map_some, Option.some.injEq] at h
+            subst h
+            rw [Named.lookupVar_cons_ne _ (Ne.symm hm), lookupIdx_eq_some hl]
+
+theorem elabTy_eq_toDB : ∀ (A : STy) (tyB : List SName) (A' : Ty),
+    elabTy tyB [] A = some A' → A' = A.toDB tyB
+  | .var n, tyB, A', h => by
+      simp only [elabTy] at h
+      split at h
+      · rename_i i hi
+        cases h
+        simp only [Named.Ty.toDB, lookupIdx_eq_some hi]
+      · simp at h
+  | .arr a b, tyB, A', h => by
+      simp only [elabTy] at h
+      split at h
+      · rename_i a' b' ha hb
+        cases h
+        simp only [Named.Ty.toDB, elabTy_eq_toDB a tyB a' ha, elabTy_eq_toDB b tyB b' hb]
+      · cases h
+  | .all α A, tyB, A', h => by
+      simp only [elabTy, Option.map_eq_some_iff] at h
+      obtain ⟨A₀, hA, rfl⟩ := h
+      simp only [Named.Ty.toDB, elabTy_eq_toDB A (α :: tyB) A₀ hA]
+
+theorem elabTm_eq_toDB : ∀ (t : STm) (tyB tmB : List SName) (t' : Tm),
+    elabTm tyB tmB [] [] t = some t' → t' = t.toDB tyB tmB
+  | .var x, tyB, tmB, t', h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i i hi
+        cases h
+        simp only [Named.Tm.toDB, lookupIdx_eq_some hi]
+      · simp [lookupIdx] at h
+  | .lam x A b, tyB, tmB, t', h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i A' b' hA hb
+        cases h
+        simp only [Named.Tm.toDB, elabTy_eq_toDB A tyB A' hA, elabTm_eq_toDB b tyB (x :: tmB) b' hb]
+      · cases h
+  | .app f a, tyB, tmB, t', h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i f' a' hf ha
+        cases h
+        simp only [Named.Tm.toDB, elabTm_eq_toDB f tyB tmB f' hf, elabTm_eq_toDB a tyB tmB a' ha]
+      · cases h
+  | .tlam α b, tyB, tmB, t', h => by
+      simp only [elabTm, Option.map_eq_some_iff] at h
+      obtain ⟨b', hb, rfl⟩ := h
+      simp only [Named.Tm.toDB, elabTm_eq_toDB b (α :: tyB) tmB b' hb]
+  | .tapp f A, tyB, tmB, t', h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i f' A' hf hA
+        cases h
+        simp only [Named.Tm.toDB, elabTm_eq_toDB f tyB tmB f' hf, elabTy_eq_toDB A tyB A' hA]
+      · cases h
 
 /-! ## Canonical names -/
 
@@ -151,14 +235,6 @@ def rbTm : Nat → Nat → Tm → STm
   | d, e, .tlam b => .tlam (tyName e) (rbTm d (e + 1) b)
   | d, e, .tapp f A => .tapp (rbTm d e f) (rbTy e A)
 
-/-- Every variable is in scope: term variables below `d`, type variables below `e`. -/
-def Tm.scoped : Nat → Nat → Tm → Bool
-  | d, _, .var i => decide (i < d)
-  | d, e, .lam A b => A.wf e && b.scoped (d + 1) e
-  | d, e, .app f a => f.scoped d e && a.scoped d e
-  | d, e, .tlam b => b.scoped d (e + 1)
-  | d, e, .tapp f A => f.scoped d e && A.wf e
-
 /-- **Reading a printed type back gives the type.** -/
 theorem elabTy_rbTy : ∀ (A : Ty) (e : Nat) (ab : List (SName × Ty)),
     A.wf e = true → elabTy (depthNames tyName e) ab (rbTy e A) = some A
@@ -206,62 +282,6 @@ theorem elabTm_rbTm : ∀ (t : Tm) (d e : Nat) (ab : List (SName × Ty)) (gl : L
   | .tapp f A, d, e, ab, gl, h => by
       simp only [Tm.scoped, Bool.and_eq_true] at h
       simp only [rbTm, elabTm, elabTm_rbTm f d e ab gl h.1, elabTy_rbTy A e ab h.2]
-
-/-- A typed term has its variables in scope. -/
-theorem HasType.scoped {Δ : Nat} {Γ : List Ty} {t : Tm} {A : Ty} (h : HasType Δ Γ t A) :
-    t.scoped Γ.length Δ = true := by
-  induction h with
-  | var hn =>
-      simp only [Tm.scoped, decide_eq_true_eq]
-      exact (List.getElem?_eq_some_iff.mp hn).1
-  | lam hA _ ih =>
-      simp only [Tm.scoped, Bool.and_eq_true, List.length_cons] at ih ⊢
-      exact ⟨hA, ih⟩
-  | app _ _ ih₁ ih₂ =>
-      simp only [Tm.scoped, Bool.and_eq_true]
-      exact ⟨ih₁, ih₂⟩
-  | tlam _ ih =>
-      simp only [Tm.scoped]
-      rwa [List.length_map] at ih
-  | tapp _ hB ih =>
-      simp only [Tm.scoped, Bool.and_eq_true]
-      exact ⟨ih, hB⟩
-
-/-- Substitution leaves alone every variable it maps to itself; on a term whose variables are all
-among those, it does nothing. -/
-theorem Tm.subst_of_scoped : ∀ (t : Tm) (d e : Nat) (σ : Nat → Tm), (∀ i, i < d → σ i = .var i) →
-    t.scoped d e = true → t.subst σ = t
-  | .var i, d, _, σ, hσ, h => by
-      simp only [Tm.scoped, decide_eq_true_eq] at h
-      exact hσ i h
-  | .lam A b, d, e, σ, hσ, h => by
-      simp only [Tm.scoped, Bool.and_eq_true] at h
-      simp only [Tm.subst]
-      rw [Tm.subst_of_scoped b (d + 1) e (Tm.up σ) (fun i hi => by
-        cases i with
-        | zero => rfl
-        | succ i => simp only [Tm.up_succ, hσ i (by omega)]; rfl) h.2]
-  | .app f a, d, e, σ, hσ, h => by
-      simp only [Tm.scoped, Bool.and_eq_true] at h
-      simp only [Tm.subst, Tm.subst_of_scoped f d e σ hσ h.1, Tm.subst_of_scoped a d e σ hσ h.2]
-  | .tlam b, d, e, σ, hσ, h => by
-      simp only [Tm.scoped] at h
-      simp only [Tm.subst]
-      rw [Tm.subst_of_scoped b d (e + 1) (Tm.tup σ) (fun i hi => by
-        simp only [Tm.tup, hσ i hi]; rfl) h]
-  | .tapp f A, d, e, σ, hσ, h => by
-      simp only [Tm.scoped, Bool.and_eq_true] at h
-      simp only [Tm.subst, Tm.subst_of_scoped f d e σ hσ h.1]
-
-/-- A closed, well-typed term is left alone by any substitution. -/
-theorem HasType.subst_closed {t : Tm} {A : Ty} (h : HasType 0 [] t A) (σ : Nat → Tm) :
-    t.subst σ = t :=
-  Tm.subst_of_scoped t 0 0 σ (fun _ hi => absurd hi (Nat.not_lt_zero _)) h.scoped
-
-/-- `eval` depends only on the term. -/
-theorem Tm.eval_congr {t u : Tm} (e : t = u) (h : SN Step t) (h' : SN Step u) :
-    t.eval h = u.eval h' := by
-  subst e; rfl
 
 /-! ## Checking -/
 
@@ -336,6 +356,16 @@ theorem checkStep_defn_iff (s : CState) (x : SName) (A : STy) (t : STm) :
   · rintro ⟨A', t', hA, ht, hty⟩
     simp only [hA, ht, infer_complete hty, if_true]
     rfl
+
+/-- **With nothing declared before it, a definition the checker accepts is well typed in the named
+calculus** — the parsed term at the parsed type, no translation in sight. -/
+theorem checkStep_named {x : SName} {A : STy} {t : STm}
+    (h : (checkStep ⟨[], []⟩ (.defn x A t)).isSome) : Named.HasType [] [] t A := by
+  obtain ⟨A', t', hA, ht, hty⟩ := (checkStep_defn_iff _ x A t).mp h
+  have e₁ := elabTy_eq_toDB A [] A' hA
+  have e₂ := elabTm_eq_toDB t [] [] t' ht
+  subst e₁ e₂
+  exact Named.hasType_iff_toDB.mpr hty
 
 /-! ## Evaluation -/
 

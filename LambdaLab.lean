@@ -31,12 +31,18 @@ import LambdaLab.Languages.Stlc.Named.Typing.J
 import LambdaLab.Languages.Stlc.Named.Typing.D
 import LambdaLab.Languages.Stlc.Named.Typing.S
 import LambdaLab.Languages.Stlc.Named.Typing.Target
-import LambdaLab.Languages.SystemF.Syntax
-import LambdaLab.Languages.SystemF.Typing
-import LambdaLab.Languages.SystemF.Reduction
-import LambdaLab.Languages.SystemF.Normalization
-import LambdaLab.Languages.SystemF.Check
-import LambdaLab.Languages.SystemF.Eval
+import LambdaLab.Languages.SystemF.DeBruijn.Syntax
+import LambdaLab.Languages.SystemF.DeBruijn.Typing
+import LambdaLab.Languages.SystemF.DeBruijn.Reduction
+import LambdaLab.Languages.SystemF.DeBruijn.Normalization
+import LambdaLab.Languages.SystemF.DeBruijn.Check
+import LambdaLab.Languages.SystemF.DeBruijn.Eval
+import LambdaLab.Languages.SystemF.Named.Basic
+import LambdaLab.Languages.SystemF.Named.Translation
+import LambdaLab.Languages.SystemF.Named.Step
+import LambdaLab.Languages.SystemF.Named.Typing
+import LambdaLab.Languages.SystemF.Named.Alpha
+import LambdaLab.Languages.SystemF.Named.Eval
 import LambdaLab.Languages.SystemF.Surface
 import LambdaLab.Languages.SystemF.Pipeline
 

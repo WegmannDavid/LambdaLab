@@ -1,4 +1,4 @@
-import LambdaLab.Languages.SystemF.Typing
+import LambdaLab.Languages.SystemF.DeBruijn.Typing
 
 /-!
 # System F — the type checker, sound and complete
@@ -16,7 +16,7 @@ Both directions are proved against the declarative judgement:
 Together, `infer` *decides* the judgement, and types are unique (`HasType.unique`).
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 /-- **Type inference.** -/
 def infer (Δ : Nat) (Γ : List Ty) : Tm → Option Ty
@@ -92,4 +92,4 @@ theorem HasType.unique {Δ : Nat} {Γ : List Ty} {t : Tm} {A B : Ty}
     (hA : HasType Δ Γ t A) (hB : HasType Δ Γ t B) : A = B :=
   Option.some.inj ((infer_complete hA).symm.trans (infer_complete hB))
 
-end LambdaLab.Languages.SystemF
+end LambdaLab.Languages.SystemF.DeBruijn

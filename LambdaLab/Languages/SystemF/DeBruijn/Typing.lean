@@ -1,4 +1,4 @@
-import LambdaLab.Languages.SystemF.Syntax
+import LambdaLab.Languages.SystemF.DeBruijn.Syntax
 
 /-!
 # System F — the typing judgement
@@ -31,7 +31,7 @@ Each is one induction on the derivation; the binder cases are where the composit
 their keep.
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 namespace Ty
 
@@ -266,4 +266,65 @@ theorem tinst {Δ : Nat} {Γ : List Ty} {t : Tm} {A B : Ty}
 
 end HasType
 
-end LambdaLab.Languages.SystemF
+/-! ## Scope -/
+
+/-- Every variable is in scope: term variables below `d`, type variables below `e`. -/
+def Tm.scoped : Nat → Nat → Tm → Bool
+  | d, _, .var i => decide (i < d)
+  | d, e, .lam A b => A.wf e && b.scoped (d + 1) e
+  | d, e, .app f a => f.scoped d e && a.scoped d e
+  | d, e, .tlam b => b.scoped d (e + 1)
+  | d, e, .tapp f A => f.scoped d e && A.wf e
+
+/-- A typed term has its variables in scope. -/
+theorem HasType.scoped {Δ : Nat} {Γ : List Ty} {t : Tm} {A : Ty} (h : HasType Δ Γ t A) :
+    t.scoped Γ.length Δ = true := by
+  induction h with
+  | var hn =>
+      simp only [Tm.scoped, decide_eq_true_eq]
+      exact (List.getElem?_eq_some_iff.mp hn).1
+  | lam hA _ ih =>
+      simp only [Tm.scoped, Bool.and_eq_true, List.length_cons] at ih ⊢
+      exact ⟨hA, ih⟩
+  | app _ _ ih₁ ih₂ =>
+      simp only [Tm.scoped, Bool.and_eq_true]
+      exact ⟨ih₁, ih₂⟩
+  | tlam _ ih =>
+      simp only [Tm.scoped]
+      rwa [List.length_map] at ih
+  | tapp _ hB ih =>
+      simp only [Tm.scoped, Bool.and_eq_true]
+      exact ⟨ih, hB⟩
+
+/-- Substitution leaves alone every variable it maps to itself; on a term whose variables are all
+among those, it does nothing. -/
+theorem Tm.subst_of_scoped : ∀ (t : Tm) (d e : Nat) (σ : Nat → Tm), (∀ i, i < d → σ i = .var i) →
+    t.scoped d e = true → t.subst σ = t
+  | .var i, d, _, σ, hσ, h => by
+      simp only [Tm.scoped, decide_eq_true_eq] at h
+      exact hσ i h
+  | .lam A b, d, e, σ, hσ, h => by
+      simp only [Tm.scoped, Bool.and_eq_true] at h
+      simp only [Tm.subst]
+      rw [Tm.subst_of_scoped b (d + 1) e (Tm.up σ) (fun i hi => by
+        cases i with
+        | zero => rfl
+        | succ i => simp only [Tm.up_succ, hσ i (by omega)]; rfl) h.2]
+  | .app f a, d, e, σ, hσ, h => by
+      simp only [Tm.scoped, Bool.and_eq_true] at h
+      simp only [Tm.subst, Tm.subst_of_scoped f d e σ hσ h.1, Tm.subst_of_scoped a d e σ hσ h.2]
+  | .tlam b, d, e, σ, hσ, h => by
+      simp only [Tm.scoped] at h
+      simp only [Tm.subst]
+      rw [Tm.subst_of_scoped b d (e + 1) (Tm.tup σ) (fun i hi => by
+        simp only [Tm.tup, hσ i hi]; rfl) h]
+  | .tapp f A, d, e, σ, hσ, h => by
+      simp only [Tm.scoped, Bool.and_eq_true] at h
+      simp only [Tm.subst, Tm.subst_of_scoped f d e σ hσ h.1]
+
+/-- A closed, well-typed term is left alone by any substitution. -/
+theorem HasType.subst_closed {t : Tm} {A : Ty} (h : HasType 0 [] t A) (σ : Nat → Tm) :
+    t.subst σ = t :=
+  Tm.subst_of_scoped t 0 0 σ (fun _ hi => absurd hi (Nat.not_lt_zero _)) h.scoped
+
+end LambdaLab.Languages.SystemF.DeBruijn

@@ -1,4 +1,4 @@
-import LambdaLab.Languages.SystemF.Typing
+import LambdaLab.Languages.SystemF.DeBruijn.Typing
 import LambdaLab.Relation.Closure
 import LambdaLab.Relation.Normalization
 
@@ -16,7 +16,7 @@ inversions the reducibility argument takes apart, and the facts that move strong
 backwards along a substitution or out of an application. Then **preservation**.
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 /-- **One step of full β-reduction.** -/
 inductive Step : Tm → Tm → Prop
@@ -173,4 +173,4 @@ theorem HasType.preservation_rtc {Δ : Nat} {Γ : List Ty} {t t' : Tm} {A : Ty}
   | refl => exact h
   | tail _ s ih => exact HasType.preservation s ih
 
-end LambdaLab.Languages.SystemF
+end LambdaLab.Languages.SystemF.DeBruijn

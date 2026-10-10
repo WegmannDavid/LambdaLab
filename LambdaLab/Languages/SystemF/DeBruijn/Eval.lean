@@ -1,4 +1,4 @@
-import LambdaLab.Languages.SystemF.Normalization
+import LambdaLab.Languages.SystemF.DeBruijn.Normalization
 
 /-!
 # System F — the normalizer
@@ -16,7 +16,7 @@ strongly normalizing. What is proved about the result (`eval_spec`, `eval_of_nor
 * a term that is already normal is its own result.
 -/
 
-namespace LambdaLab.Languages.SystemF
+namespace LambdaLab.Languages.SystemF.DeBruijn
 
 /-- **Find a redex**, leftmost-outermost, and contract it. -/
 def Tm.findStep : (t : Tm) → Option ((t' : Tm) ×' Step t t')
@@ -174,4 +174,9 @@ theorem HasType.eval_typed {Δ : Nat} {Γ : List Ty} {t : Tm} {A : Ty} (h : HasT
     HasType Δ Γ h.eval A :=
   h.preservation_rtc (Tm.eval_spec h.sn).1
 
-end LambdaLab.Languages.SystemF
+/-- `eval` depends only on the term. -/
+theorem Tm.eval_congr {t u : Tm} (e : t = u) (h : SN Step t) (h' : SN Step u) :
+    t.eval h = u.eval h' := by
+  subst e; rfl
+
+end LambdaLab.Languages.SystemF.DeBruijn

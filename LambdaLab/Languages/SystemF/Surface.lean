@@ -1,5 +1,7 @@
 import LambdaLab.Pipeline.Compose
 import LambdaLab.Parser.Numeral
+import LambdaLab.Languages.SystemF.Named.Basic
+import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.IsoParser.Adapters
@@ -20,8 +22,9 @@ A `type` declaration is an abbreviation: later types may name it, and it means i
 A `def` declaration names a term at a declared type; later terms may name it.
 
 The grammar is the mixfix engine's, with three entries as in STLC — terms, binder names, types —
-and parses into a *named* syntax tree (`STy`, `STm`), parentheses truncated away. `Pipeline.lean`
-translates that tree into the de Bruijn core, which is where all the metatheory lives.
+and parses straight into the **named calculus** (`Named/`): `STy` and `STm` are `Named.Ty SName`
+and `Named.Tm SName`, parentheses truncated away. Everything `Named/` proves is about what was
+parsed; `Pipeline.lean` translates it into the de Bruijn core to check and run it.
 
 ## Precedence
 
@@ -187,43 +190,31 @@ theorem sfUnambiguous : Unambiguous sfGrammar := unambiguous sfGrammar
 
 /-! ## The named syntax tree -/
 
-/-- A type as written. -/
-inductive STy where
-  | var : SName → STy
-  | arr : STy → STy → STy
-  | all : SName → STy → STy
+/-- A type as written: a named System F type, named by the grammar's names. -/
+abbrev STy : Type := Named.Ty SName
 
-/-- A term as written. -/
-inductive STm where
-  | var : SName → STm
-  | lam : SName → STy → STm → STm
-  | app : STm → STm → STm
-  | tlam : SName → STm → STm
-  | tapp : STm → STy → STm
+/-- A term as written: a named System F term. The parser lands in the named calculus itself
+(`Named/`), so everything proved there is about what was parsed. -/
+abbrev STm : Type := Named.Tm SName
 
+/-- The size of a type as written. -/
 def STy.size : STy → Nat
   | .var _ => 1
-  | .arr a b => a.size + b.size + 1
-  | .all _ a => a.size + 2
+  | .arr a b => STy.size a + STy.size b + 1
+  | .all _ a => STy.size a + 2
 
+/-- The size of a term as written, annotations counted — the measure the truncation needs. -/
 def STm.size : STm → Nat
   | .var _ => 1
-  | .lam _ A b => A.size + b.size + 2
-  | .app f a => f.size + a.size + 1
-  | .tlam _ b => b.size + 2
-  | .tapp f A => f.size + A.size + 1
+  | .lam _ A b => STy.size A + STm.size b + 2
+  | .app f a => STm.size f + STm.size a + 1
+  | .tlam _ b => STm.size b + 2
+  | .tapp f A => STm.size f + STy.size A + 1
 
-theorem STy.size_pos : ∀ A : STy, 0 < A.size
+theorem STy.size_pos : ∀ A : STy, 0 < STy.size A
   | .var _ => by simp [STy.size]
   | .arr _ _ => by simp [STy.size]
   | .all _ _ => by simp [STy.size]
-
-theorem STm.size_pos : ∀ t : STm, 0 < t.size
-  | .var _ => by simp [STm.size]
-  | .lam _ _ _ => by simp [STm.size]
-  | .app _ _ => by simp [STm.size]
-  | .tlam _ _ => by simp [STm.size]
-  | .tapp _ _ => by simp [STm.size]
 
 /-- What each entry parses into. -/
 def SFC : SFEnt → Type
@@ -235,9 +226,9 @@ def SFC : SFEnt → Type
 def sfRules : Rules sfGrammar SFC where
   var {e} t h :=
     match e, h with
-    | .tm, h => STm.var ⟨t, h⟩
+    | .tm, h => Named.Tm.var ⟨t, h⟩
     | .var, h => ⟨t, h⟩
-    | .ty, h => STy.var ⟨t, h⟩
+    | .ty, h => Named.Ty.var ⟨t, h⟩
   op {e} o vs :=
     match e, o, vs with
     | .tm, .paren, (t, _)       => t
@@ -251,15 +242,15 @@ def sfRules : Rules sfGrammar SFC where
     | .ty, .all,   (α, A, _)    => .all α A
   dest {e} x :=
     match e, x with
-    | .tm, STm.var x     => .var x.1 x.2
-    | .tm, STm.app f a   => .node .app (f, a, PUnit.unit)
-    | .tm, STm.tapp f A  => .node .tapp (f, A, PUnit.unit)
-    | .tm, STm.lam x A b => .node .lam (x, A, b, PUnit.unit)
-    | .tm, STm.tlam α b  => .node .tlam (α, b, PUnit.unit)
+    | .tm, Named.Tm.var x     => .var x.1 x.2
+    | .tm, Named.Tm.app f a   => .node .app (f, a, PUnit.unit)
+    | .tm, Named.Tm.tapp f A  => .node .tapp (f, A, PUnit.unit)
+    | .tm, Named.Tm.lam x A b => .node .lam (x, A, b, PUnit.unit)
+    | .tm, Named.Tm.tlam α b  => .node .tlam (α, b, PUnit.unit)
     | .var, x => .var x.1 x.2
-    | .ty, STy.var x     => .var x.1 x.2
-    | .ty, STy.arr a b   => .node .arrow (a, b, PUnit.unit)
-    | .ty, STy.all α A   => .node .all (α, A, PUnit.unit)
+    | .ty, Named.Ty.var x     => .var x.1 x.2
+    | .ty, Named.Ty.arr a b   => .node .arrow (a, b, PUnit.unit)
+    | .ty, Named.Ty.all α A   => .node .all (α, A, PUnit.unit)
   parenOp | .tm => TmSym.paren | .var => VarSym.paren | .ty => TySym.paren
   lp _ := tkSF "("
   rp _ := tkSF ")"
