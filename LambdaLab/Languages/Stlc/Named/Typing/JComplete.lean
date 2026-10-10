@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Typing.Target
+import LambdaLab.Languages.Stlc.Named.Typing.Target
 import LambdaLab.Nominal.Unification.MGU
 
 /-!
@@ -23,7 +23,7 @@ term is typeable, the constraints have a solution which moreover sends the gener
 using agreement to put `τ` back under the new substitution.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -492,4 +492,4 @@ cannot drift apart: there is one computation, `elabSubst`, and both report it. -
   rw [elabMGU]
   split <;> simp [PrincipalProp.toSolution, SolutionProp.subst?, *]
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Basic
+import LambdaLab.Languages.Stlc.Named.Basic
 import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.TypeSystem.Named.Basic
 
@@ -10,9 +10,9 @@ The context is `TypeSystem.Named.Context N Ty` — a `Std.HashMap N Ty`. Shadowi
 
 ## Parametric in the atoms
 
-`Term` is parametric in its names (`Stlc/Named/Basic.lean`), so the judgement typing it has to be
-too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed context
-cannot receive one without a conversion at the boundary.
+`Term` is parametric in its names (`Languages/Stlc/Named/Basic.lean`), so the judgement typing it
+has to be too: a *parsed* term is named by the tokens the grammar admits, and a `String`-keyed
+context cannot receive one without a conversion at the boundary.
 
 `Ctx N` is therefore literally `TypeSystem.Named.Context N Ty`, not a copy of it. That is deliberate:
 the `TypeSystem` classes are all stated over a `TypeSystem.Named.Context`, so anything short of
@@ -27,7 +27,7 @@ not a convenience — see `Named/TypeSystem.lean`, where `instStronglyNormalizin
 instance declared at `String` rather than at an arbitrary `N`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 open LambdaLab.TypeSystem.Named (Context)
@@ -110,4 +110,4 @@ theorem HasType.ground_result : ∀ {e : Term N} {Γ : Ctx N} {τ : Ty},
           have h₁₂ := ih₁ hΓ h₁ag hf
           exact (Ty.Ground.arrow.mp h₁₂).2
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

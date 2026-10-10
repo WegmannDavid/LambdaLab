@@ -1,5 +1,5 @@
 import LambdaLab.Nominal.Instances
-import LambdaLab.Stlc.Named.Typing.JComplete
+import LambdaLab.Languages.Stlc.Named.Typing.JComplete
 
 /-!
 # Principality is *not* `MoreGeneral` — a counterexample
@@ -45,7 +45,7 @@ is what is left. It is confined to `ce_answer` below, and nothing on the live pa
 file — `#print axioms elabSubst_principal_below` stays clean.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 /-! ## The triple -/
 
@@ -139,4 +139,4 @@ theorem elabSubst_not_principal :
   rw [← e2] at e0
   exact absurd e0 (by simp)
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

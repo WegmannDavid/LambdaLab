@@ -1,5 +1,5 @@
-import LambdaLab.Stlc.DeBruijn.Typing
-import LambdaLab.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.Typing
+import LambdaLab.Languages.Stlc.DeBruijn.Step
 
 /-!
 # Preservation
@@ -13,7 +13,7 @@ Built up via:
 4. `HasType.preservation` — induction on the step.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Weakening -/
 
@@ -155,4 +155,4 @@ theorem HasType.preservation :
       cases he with
       | app hf ha => exact .app hf (ih ha)
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

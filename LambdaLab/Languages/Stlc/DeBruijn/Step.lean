@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.Basic
 import LambdaLab.TypeSystem.Named.Basic
 
 /-!
@@ -8,7 +8,7 @@ Reduce anywhere — under lambdas and on either side of an application —
 with no value restriction on redex arguments.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 inductive Step : Term → Term → Prop where
   | beta : Step (.app (.lam τ e₁) e₂) (e₁.subst 0 e₂)
@@ -19,4 +19,4 @@ inductive Step : Term → Term → Prop where
 instance instStep : LambdaLab.TypeSystem.Named.Step Term where
   Step := Step
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

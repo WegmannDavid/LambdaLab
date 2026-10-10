@@ -4,7 +4,7 @@
 A locally-nameless-free presentation using de Bruijn indices.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Types -/
 
@@ -26,8 +26,8 @@ Variables are de Bruijn indices: `var 0` is the nearest enclosing binder.
 Lambdas carry the type annotation of their argument. -/
 
 /-- `DecidableEq` because the *named* variant's α-equality is equality of de Bruijn erasures
-(`Stlc/Named/Alpha.lean`), and deciding that is what makes `≈α` decidable there. Free here: `Ty`
-already has it and every field is a `Nat`, a `Ty` or a subterm. -/
+(`Languages/Stlc/Named/Alpha.lean`), and deciding that is what makes `≈α` decidable there. Free
+here: `Ty` already has it and every field is a `Nat`, a `Ty` or a subterm. -/
 inductive Term where
   | var : Nat → Term
   | lam : Ty → Term → Term
@@ -53,13 +53,13 @@ def Term.subst : Term → Nat → Term → Term
   | .lam τ e,   n, v => .lam τ (e.subst (n + 1) (v.shift 0))
   | .app e₁ e₂, n, v => .app (e₁.subst n v) (e₂.subst n v)
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Example terms -/
 
-namespace LambdaLab.Stlc.DeBruijn.Examples
+namespace LambdaLab.Languages.Stlc.DeBruijn.Examples
 
-open LambdaLab.Stlc.DeBruijn
+open LambdaLab.Languages.Stlc.DeBruijn
 
 /-- `λx:ι. x` -/
 def idBase : Term := .lam .base (.var 0)
@@ -70,4 +70,4 @@ def idArr : Term := .lam (.base ⇒ .base) (.var 0)
 /-- `(λf:ι⇒ι. f) (λx:ι. x)` -/
 def app1 : Term := .app idArr idBase
 
-end LambdaLab.Stlc.DeBruijn.Examples
+end LambdaLab.Languages.Stlc.DeBruijn.Examples

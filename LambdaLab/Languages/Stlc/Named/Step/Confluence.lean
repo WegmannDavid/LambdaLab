@@ -1,6 +1,6 @@
 import LambdaLab.Nominal.Instances
-import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.DeBruijn.Confluence
+import LambdaLab.Languages.Stlc.Named.Translation
+import LambdaLab.Languages.Stlc.DeBruijn.Confluence
 
 /-!
 # Confluence for the named-variable variant via translation
@@ -11,11 +11,11 @@ distinct results — confluence cannot be stated as joint convergence on
 named terms without an α-equivalence relation.
 
 We sidestep that by translating named terms into de Bruijn (via
-`LambdaLab.Stlc.Named.Translation`) and inheriting confluence from
+`LambdaLab.Languages.Stlc.Named.Translation`) and inheriting confluence from
 `Stlc.DeBruijn.MStep.confluent`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 /-- Two reduction paths from a named term `e` converge in the de Bruijn
 world: their translations multi-step to a common de Bruijn term.
@@ -25,9 +25,9 @@ We do not claim joint convergence on named terms — that would require
 nondeterministic on syntactic terms.
 
 That claim *is* made downstream, now that α-equivalence exists:
-`Stlc/Named/TypeSystem.lean`'s `instConfluent` joins the named reducts up
+`Languages/Stlc/Named/TypeSystem.lean`'s `instConfluent` joins the named reducts up
 to `≈α`, using this theorem plus the lifting lemmas in
-`Stlc/Named/Alpha.lean`. This file stays the de Bruijn statement it always
+`Languages/Stlc/Named/Alpha.lean`. This file stays the de Bruijn statement it always
 was — the honest one at this layer, since `≈α` is not in scope here. -/
 theorem MStep.confluent {N : Type} [LambdaLab.Nominal.Atom N] :
     ∀ {e e₁ e₂ : (Term N)} (Γ : List N),
@@ -40,4 +40,4 @@ theorem MStep.confluent {N : Type} [LambdaLab.Nominal.Atom N] :
   have m₂ := MStep.toDB_step Γ hfv h₂
   exact Stlc.DeBruijn.MStep.confluent m₁ m₂
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

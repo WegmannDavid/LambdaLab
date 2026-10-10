@@ -746,7 +746,7 @@ private theorem foldr_max_le {β : Type} (f : β → Nat) (n : Nat) :
 /-! ## Composition law for `Subst.comp` (generic for `Signature α`)
 
 The named-STLC instance proves `Ty.pSubst_comp` in
-`Stlc/Named/Unification.lean` by structural induction on `Ty`; here we
+`Languages/Stlc/Named/Typing/Unification.lean` by structural induction on `Ty`; here we
 prove the same fact abstractly for any `Signature α` using `term_ind`.
 Stated with `HasSubst.pSubst` so downstream `rw`s work without `show`. -/
 

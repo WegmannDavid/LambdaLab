@@ -1,7 +1,7 @@
 import LambdaLab.Nominal.Instances
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
 
 /-!
 # `D` — the declarative Hindley–Milner system
@@ -43,7 +43,7 @@ Metavariables (`Ty.mvar`) serve as the type variables `α`. In `D` they are genu
 `?n` is an opaque atom for the plain `HasType`, which has no rule mentioning `Ty.mvar` at all.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -343,4 +343,4 @@ literature uses. What remains true is the narrower statement actually proved her
 what would make this file earn its keep.
 -/
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.Basic
 
 /-!
 # de Bruijn substitution algebra
@@ -7,7 +7,7 @@ Commutation lemmas for `Term.shift` and `Term.subst`. These are pure
 calculations on terms; no typing or reduction relations involved.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 theorem Term.shift_shift_swap :
     ∀ (e : Term) {c₁ c₂ : Nat}, c₁ ≤ c₂ →
@@ -109,4 +109,4 @@ theorem Term.subst_subst_distrib :
       simp only [Term.subst]
       rw [ih₁ a v hle, ih₂ a v hle]
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

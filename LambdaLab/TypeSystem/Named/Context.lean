@@ -17,8 +17,8 @@ This is also the first place the `Hashable` field of `Atom` earns its keep: it i
 by `Std.HashMap`, and by nothing else in the interface. If contexts ever stop being hashmaps, that
 field can go.
 
-The lemmas are the two from `Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized unchanged —
-`decEq` supplies the `LawfulBEq` that `getElem?_insert` needs.
+The lemmas are the two from `Languages/Stlc/Named/Typing/Basic.lean`'s `Ctx`, generalized unchanged
+— `decEq` supplies the `LawfulBEq` that `getElem?_insert` needs.
 -/
 
 namespace LambdaLab.TypeSystem.Named

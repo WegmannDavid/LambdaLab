@@ -1,8 +1,8 @@
-import LambdaLab.Stlc.DeBruijn.Typing
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.Substitution
-import LambdaLab.Stlc.DeBruijn.ParSubst
-import LambdaLab.Stlc.DeBruijn.Confluence
+import LambdaLab.Languages.Stlc.DeBruijn.Typing
+import LambdaLab.Languages.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.Substitution
+import LambdaLab.Languages.Stlc.DeBruijn.ParSubst
+import LambdaLab.Languages.Stlc.DeBruijn.Confluence
 
 /-!
 # Strong normalization and Tait's reducibility predicate
@@ -18,7 +18,7 @@ type. The plan to prove SN for STLC:
 3. Conclude SN.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Strong normalization -/
 
@@ -268,4 +268,4 @@ theorem HasType.sn : ∀ {Γ : Ctx} {e : Term} {τ : Ty}, HasType Γ e τ → SN
   rw [Term.psubst_id] at h
   exact Reducible.sn h
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

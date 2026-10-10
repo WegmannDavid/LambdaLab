@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Typing.Normalization
+import LambdaLab.Languages.Stlc.Named.Typing.Normalization
 
 /-!
 # Total normalizer (named variant)
@@ -14,7 +14,7 @@ by `SN`, packaged into a `WellFoundedRelation` on `SNTerm` so Lean
 compiles via `WellFounded.fix`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 variable {N : Type} [LambdaLab.Nominal.Atom N]
 
@@ -120,4 +120,4 @@ theorem Term.eval_annotsGround (e : Term N) (h : SN e) (he : e.AnnotsGround) :
     (e.eval h).AnnotsGround :=
   Term.mstep_annotsGround (Term.mstep_eval e h) he
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

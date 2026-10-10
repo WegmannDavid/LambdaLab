@@ -1,5 +1,5 @@
-import LambdaLab.Stlc.Named.Typing.D
-import LambdaLab.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Typing.D
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
 
 /-!
 # `S` — the syntactical Hindley–Milner system
@@ -40,7 +40,7 @@ made in prose.
 Completeness (`D ⟹ S`, weakened) is *not* here; see the end of the file for what it needs.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -239,4 +239,4 @@ Either way `SCtx.close` (Γ̄) stays unused until `Term` has `let`, which is the
 this machinery exists for.
 -/
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

@@ -1,10 +1,10 @@
-import LambdaLab.Stlc.DeBruijn.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.Basic
 
 /-!
 # Typing
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 abbrev Ctx := List Ty
 
@@ -23,11 +23,11 @@ notation with. Argument levels are pinned so that `Γ ⊢ e : τ → P` splits a
 parsing `τ → P` as the type — the class notation pins them for the same reason. -/
 notation:40 Γ:41 " ⊢ " e:41 " : " τ:41 => HasType Γ e τ
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn
 
-namespace LambdaLab.Stlc.DeBruijn.Examples
+namespace LambdaLab.Languages.Stlc.DeBruijn.Examples
 
-open LambdaLab.Stlc.DeBruijn
+open LambdaLab.Languages.Stlc.DeBruijn
 
 example : [] ⊢ idBase : (.base ⇒ .base) :=
   .lam (.var .here)
@@ -38,4 +38,4 @@ example : [] ⊢ idArr : ((.base ⇒ .base) ⇒ (.base ⇒ .base)) :=
 example : [] ⊢ app1 : (.base ⇒ .base) :=
   .app (.lam (.var .here)) (.lam (.var .here))
 
-end LambdaLab.Stlc.DeBruijn.Examples
+end LambdaLab.Languages.Stlc.DeBruijn.Examples

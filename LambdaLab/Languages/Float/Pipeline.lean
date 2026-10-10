@@ -1,5 +1,5 @@
 import LambdaLab.Pipeline.Compose
-import LambdaLab.Float.Decimal
+import LambdaLab.Languages.Float.Decimal
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
 import LambdaLab.Parser.IsoParser.Mixfix.Unambiguity
 import LambdaLab.Parser.IsoParser.Adapters
@@ -55,7 +55,7 @@ to the value it spells (`Decimal.ofToken_toToken`) without consulting the state;
 has is normalized (`FTm.eval_normalize`), so it is the very value the step recorded.
 -/
 
-namespace LambdaLab.Float
+namespace LambdaLab.Languages.Float
 
 open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Pipeline
 open LambdaLab.Parser.LossyParser (LossyParser)
@@ -385,4 +385,4 @@ def floatChain : Abstraction.Chain sourceStage
     (floatLanguage.walkStage "evaluated program" evalWalk) :=
   floatLanguage.walkChain evalWalk evalWalk_idempotent "evaluated program"
 
-end LambdaLab.Float
+end LambdaLab.Languages.Float

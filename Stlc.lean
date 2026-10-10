@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Pipeline
+import LambdaLab.Languages.Stlc.Named.Pipeline
 import LambdaLab.Pipeline.Cli
 
 /-!
@@ -13,7 +13,7 @@ and every redex gone.
 to take it.
 -/
 
-open LambdaLab.Pipeline LambdaLab.Stlc.Named
+open LambdaLab.Pipeline LambdaLab.Languages.Stlc.Named
 
 def main (args : List String) : IO UInt32 :=
   cli "stlc" "stlc" (compile stlcLanguage.evalChain) args

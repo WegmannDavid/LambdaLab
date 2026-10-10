@@ -1,10 +1,10 @@
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
 import LambdaLab.Nominal.Unification.Soundness
 import LambdaLab.Nominal.Unification.MGU
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -421,4 +421,4 @@ Worth noting that `Vernacular.HasTypeGround`'s groundness demand is exactly this
 arrived at independently from "no metavariable may leak between declarations".
 -/
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

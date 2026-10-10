@@ -85,8 +85,8 @@ Nothing else in this tower looks inside a term: `HasType`, `Step`, `pSubst` and 
 treat `Tm` as opaque, and a language plugs in by pointing each field at a declaration it already
 has. Deriving α-equality instead would mean asking every language to *describe its syntax* — which
 positions bind, which are variables — and that is the one thing the interface has so far never
-needed to know. `Pipeline.Example`'s `trivialLanguage`, whose `Tm` is a bare identifier with no
-binders anywhere, would have to answer a question it has no answer to.
+needed to know. `Languages/Trivial.lean`'s `trivialLanguage`, whose `Tm` is a bare identifier with
+no binders anywhere, would have to answer a question it has no answer to.
 
 So it is data plus its laws, exactly as `Nominal/Unification/Subst.lean`'s `LawfulComp` carries
 `comp` alongside `pSubst_comp`: the operation cannot be written without knowing the representation,
@@ -106,12 +106,12 @@ the `Setoid` and deciding `≈α` all want this class alone.
 
 ## It is not only α
 
-The name says α because that is what a named object language fills it with — and `Stlc/Named/`
-does, since its reduction picks fresh binder names and two reduction paths from one term reach
-syntactically different results. But nothing below constrains it beyond being an equivalence: a
-syntactically rigid language passes `Eq` (`ofEq`) and every statement over it recovers its
-on-the-nose form, and a system with η or definitional unfolding may pass that instead. -/
-class HasAlphaEq (Tm : Type) where
+The name says α because that is what a named object language fills it with — and
+`Languages/Stlc/Named/` does, since its reduction picks fresh binder names and two reduction paths
+from one term reach syntactically different results. But nothing below constrains it beyond being an
+equivalence: a syntactically rigid language passes `Eq` (`ofEq`) and every statement over it
+recovers its on-the-nose form, and a system with η or definitional unfolding may pass that instead.
+-/ class HasAlphaEq (Tm : Type) where
   /-- The equivalence itself. -/
   AlphaEq : Tm → Tm → Prop
   refl : ∀ t, AlphaEq t t
@@ -151,11 +151,11 @@ class HasType (N Tm Ty : Type) [atom : Atom N] where
 /-- **The typing judgement**: `Γ ⊢ t : τ` — under `Γ`, the term `t` has type `τ`.
 
 Precedence and spelling are the concrete judgements', so a generic statement reads exactly like
-the instance it will be applied to. `Stlc/Named/Typing/Basic.lean` dropped its own copy when this
-one arrived, and had to: both elaborate wherever the instance is in scope, and being defeq they
-make every use `Ambiguous term`. `Stlc/DeBruijn/Typing.lean` keeps a local one and may — its
-context is a `List Ty`, which cannot instantiate `HasType`, so there is no second reading to
-collide with and the elaborator tells the two apart by the type of `Γ`.
+the instance it will be applied to. `Languages/Stlc/Named/Typing/Basic.lean` dropped its own copy
+when this one arrived, and had to: both elaborate wherever the instance is in scope, and being defeq
+they make every use `Ambiguous term`. `Languages/Stlc/DeBruijn/Typing.lean` keeps a local one and
+may — its context is a `List Ty`, which cannot instantiate `HasType`, so there is no second reading
+to collide with and the elaborator tells the two apart by the type of `Γ`.
 
 Argument levels are pinned at 41 so that `Γ ⊢ t : τ → P` splits at the arrow; unpinned, the
 trailing slot parses at level 0, swallows it, and the statement fails to elaborate. -/
@@ -211,12 +211,12 @@ parameters do not include a `Ty` to be typed at.
 ## The law that is deliberately *not* here
 
 The companion is compatibility with reduction — `t ≈α u → t ⟶ t' → ∃ u', u ⟶* u' ∧ t' ≈α u'`. It
-belongs in this family, and it was left out because no instance could discharge it: `Stlc/Named/`
-translated named steps *to* de Bruijn with no converse, so the reduct `u'` could not be produced.
-That converse now exists (`Term.step_reflect`), which is what let `Confluent` be discharged, so the
-original objection is gone and the law could be added. It has not been, because nothing yet asks
-for it — the reduct it produces is multi-step, so a caller wanting the single-step form would be
-disappointed anyway. Recorded here so the choice stays visible. -/
+belongs in this family, and it was left out because no instance could discharge it:
+`Languages/Stlc/Named/` translated named steps *to* de Bruijn with no converse, so the reduct `u'`
+could not be produced. That converse now exists (`Term.step_reflect`), which is what let `Confluent`
+be discharged, so the original objection is gone and the law could be added. It has not been,
+because nothing yet asks for it — the reduct it produces is multi-step, so a caller wanting the
+single-step form would be disappointed anyway. Recorded here so the choice stays visible. -/
 class LawfulAlphaEq (N Tm Ty : Type) [atom : Atom N] extends TypeSystem N Tm Ty, HasAlphaEq Tm where
   /-- **Typing does not see the difference**: α-equal terms have the same types, in the same
   context. -/
@@ -349,8 +349,8 @@ an elaborator draws metavariables the source never mentioned, and its answer may
 mention them — `f (g b)` with `f, g` unknown elaborates to `?0 ↦ ?2 ⇒ ⋆`, `?1 ↦ ⋆ ⇒ ?2`, where
 `?2` names the intermediate type. A competing solution says nothing about `?2`, so no witness can
 factor it through the answer *at the type `?2` itself*, which is what `MoreGeneral`'s `∀ t` demands.
-`Stlc/Named/Typing/Principality.lean` proves that statement false for the STLC elaborator; the
-restricted one is `JComplete.elabSubst_principal_below`, and it is a theorem.
+`Languages/Stlc/Named/Typing/Principality.lean` proves that statement false for the STLC elaborator;
+the restricted one is `JComplete.elabSubst_principal_below`, and it is a theorem.
 
 `sourceSupp` is the threshold, supplied by the language rather than computed here. `Context N Ty`
 has two `HasVars` instances — the generic `HashMap` one, which counts keys, and the `Context` one,
@@ -433,9 +433,9 @@ and one whose does not just ignores the hypothesis.
 ## Why the reducts are joined up to `≈α` and not on the nose
 
 Because otherwise a whole class of languages cannot instantiate it at all, and they are exactly the
-named ones this folder is about. `Stlc/Named/`'s β-rule renames binders out of the way through
-`Atom.freshFor`, so two reduction paths from one term reach results that differ in their bound
-names; `Stlc.Named.MStep.confluent` says so outright, and states its convergence *after*
+named ones this folder is about. `Languages/Stlc/Named/`'s β-rule renames binders out of the way
+through `Atom.freshFor`, so two reduction paths from one term reach results that differ in their
+bound names; `Stlc.Named.MStep.confluent` says so outright, and states its convergence *after*
 translation to de Bruijn. On-the-nose joining is not merely unproved for that language, it is
 false, so the old shape of this field could never have been filled by it.
 

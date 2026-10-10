@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Basic
+import LambdaLab.Languages.Stlc.Named.Basic
 import LambdaLab.Nominal.Instances
 import LambdaLab.TypeSystem.Named.Context
 import LambdaLab.Nominal.Unification.Basic
@@ -10,7 +10,7 @@ import LambdaLab.Nominal.Instances
 0- and 2-ary constructors. With this instance, type equations are
 discharged by `unify` from the unification module. -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -591,4 +591,4 @@ omit [Atom N] in
   rw [Term.tySupp, counterAbove_append]
   rfl
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

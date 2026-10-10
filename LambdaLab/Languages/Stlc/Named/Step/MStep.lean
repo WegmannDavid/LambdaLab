@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Step.Basic
+import LambdaLab.Languages.Stlc.Named.Step.Basic
 import LambdaLab.Relation.Closure
 
 /-!
@@ -7,10 +7,10 @@ import LambdaLab.Relation.Closure
 Reflexive-transitive closure of `Step`, with congruence rules for
 lambda and application — same shape as the de Bruijn `MStep`, and, like it,
 the shared `RTC` rather than a bespoke inductive. See
-`LambdaLab/Stlc/DeBruijn/MStep.lean` for the note on `head` vs `tail`.
+`LambdaLab/Languages/Stlc/DeBruijn/MStep.lean` for the note on `head` vs `tail`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 variable {N : Type} [LambdaLab.Nominal.Atom N]
 
@@ -43,4 +43,4 @@ theorem MStep.app {e₁ e₁' e₂ e₂' : Term N} (h₁ : MStep e₁ e₁') (h�
     MStep (.app e₁ e₂) (.app e₁' e₂') :=
   (MStep.appL h₁).trans (MStep.appR h₂)
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

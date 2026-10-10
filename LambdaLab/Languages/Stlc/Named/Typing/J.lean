@@ -1,6 +1,6 @@
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
 import LambdaLab.Nominal.Unification.MGU
 
 /-!
@@ -66,7 +66,7 @@ left to a side effect, so a rule may *name* the variable it draws:
 "here is a witness, built incrementally".
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -261,4 +261,4 @@ hold unrestrictedly: `Typing/Principality.lean` refutes the `MoreGeneral` form f
 elaborator.
 -/
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

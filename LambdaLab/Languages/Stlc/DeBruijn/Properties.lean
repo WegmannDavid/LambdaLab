@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Typing
+import LambdaLab.Languages.Stlc.DeBruijn.Typing
 
 /-!
 # Properties of typing
@@ -9,7 +9,7 @@ A term has at most one type in a given context. This rests on the fact
 that de Bruijn lookup is functional.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 theorem Lookup.unique : Lookup Γ n τ₁ → Lookup Γ n τ₂ → τ₁ = τ₂
   | .here,     .here     => rfl
@@ -22,4 +22,4 @@ theorem HasType.unique : HasType Γ e τ₁ → HasType Γ e τ₂ → τ₁ = �
       have h := HasType.unique f₁ f₂
       cases h; rfl
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

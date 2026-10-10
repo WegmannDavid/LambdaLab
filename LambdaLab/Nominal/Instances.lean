@@ -24,8 +24,8 @@ The same argument with the length step deleted: `used.foldr max 0 + 1` is bigger
 in `used`, so it is not in `used`, and `le_foldr_max` proves it directly rather than through a
 `String.length`. It is here for the nominal development rather than for the object languages —
 `Perm`, support and α-equivalence want a concrete atom type to test against, and one whose
-freshness is arithmetic keeps `decide` and `omega` usable in those proofs. Nothing in `Stlc/`
-uses it.
+freshness is arithmetic keeps `decide` and `omega` usable in those proofs. Nothing in
+`Languages/Stlc/` uses it.
 
 Like `Atom.lean`, and unlike the rest of `Nominal/`, this file must stay Mathlib-free: the `stlc`
 and `float` executables' import cone runs through here.

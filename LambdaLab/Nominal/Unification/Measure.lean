@@ -30,7 +30,7 @@ termination moved.
 
 Nothing in this file mentions a counter any more. The elaborator still wants one, but it is
 `freshIdx` — *derived* from `supp` rather than assumed — and it lives with the algorithms that
-allocate metavariables (`Stlc/Named/Typing/Unification.lean`), not with the measure. -/
+allocate metavariables (`Languages/Stlc/Named/Typing/Unification.lean`), not with the measure. -/
 
 /-- Total syntactic size of an equation set. -/
 def Equations.size {A α : Type} [Atom A] [Signature A α] (eqs : Equations α) : Nat :=

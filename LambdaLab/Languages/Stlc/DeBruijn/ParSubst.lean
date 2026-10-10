@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Substitution
+import LambdaLab.Languages.Stlc.DeBruijn.Substitution
 
 /-!
 # Parallel substitution
@@ -8,7 +8,7 @@ index. Applying a `Subst σ` to a term substitutes every free variable
 simultaneously, lifting `σ` when crossing a binder.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Definitions -/
 
@@ -119,4 +119,4 @@ theorem Term.psubst_lift_beta (e : Term) (σ : Subst) (v : Term) :
       simp only [Subst.lift, Subst.cons]
       exact Term.shift_subst_cancel (σ m) 0 v
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

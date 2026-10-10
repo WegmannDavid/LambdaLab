@@ -20,8 +20,8 @@ terms satisfy the elaboration interface, the stage exists**, with nothing furthe
 
 `Var D` is the language's variable alphabet, which is also its declaration-name alphabet, so the
 instance the front end needs is exactly the instance the object language would want anyway —
-`Stlc/Named/TypeSystem.lean` proves it once, generically in the name type, and this file consumes it
-at `Var stlcLanguage` without STLC knowing a parser exists.
+`Languages/Stlc/Named/TypeSystem.lean` proves it once, generically in the name type, and this file
+consumes it at `Var stlcLanguage` without STLC knowing a parser exists.
 
 ## What the stage abstracts onto
 

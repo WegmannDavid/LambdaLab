@@ -44,15 +44,15 @@ one may not, since the executables' import cone runs through here.
 `Stlc.Named.Term`, `Ctx`, `HasType` and `infer` are all parametric in `N`, and `Stlc.Named.Ctx N`
 is *definitionally* `TypeSystem.Named.Context N Ty` — which is what lets a parsed term, named by the
 tokens the grammar admits, be typed with no conversion at the interface boundary. The design fact
-this file set out to establish held up: **the interface is this small.** Across `Stlc/Named`,
-`String`-specific code is confined to one 30-line block — the fresh-name generator and its proof,
-now in `Nominal/Instances.lean`.
+this file set out to establish held up: **the interface is this small.** Across
+`Languages/Stlc/Named`, `String`-specific code is confined to one 30-line block — the fresh-name
+generator and its proof, now in `Nominal/Instances.lean`.
 
 Reduction, the de Bruijn translation and subject reduction were once *stated* at `String` even
 though nothing in them needed it; generalising them to an arbitrary `N` changed signatures and no
-proofs. That is the interface's real test, and it passed: `Stlc/Named/TypeSystem.lean`'s whole
-class tower is now parametric, which is what lets the vernacular — whose names are `VName`, not
-`String` — reach it. What remains at `String` is only what genuinely detours through de Bruijn
+proofs. That is the interface's real test, and it passed: `Languages/Stlc/Named/TypeSystem.lean`'s
+whole class tower is now parametric, which is what lets the vernacular — whose names are `VName`,
+not `String` — reach it. What remains at `String` is only what genuinely detours through de Bruijn
 *binder lists*: confluence, normalization, `eval`.
 -/
 

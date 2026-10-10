@@ -1,6 +1,6 @@
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.MStep
-import LambdaLab.Stlc.DeBruijn.Substitution
+import LambdaLab.Languages.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.MStep
+import LambdaLab.Languages.Stlc.DeBruijn.Substitution
 
 /-!
 # Confluence (Church-Rosser) via parallel reduction
@@ -13,7 +13,7 @@ Proof outline (Tait-Martin-Löf, Takahashi):
 5. Confluence of multi-step reduction follows by a strip lemma.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-! ## Parallel reduction -/
 
@@ -169,4 +169,4 @@ theorem MStep.confluent : ∀ {e e₁ e₂ : Term},
       have ⟨e', h_e1e', h_de'⟩ := ih h_emd
       exact ⟨e', h_e1e', h_e2d.toMStep.trans h_de'⟩
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

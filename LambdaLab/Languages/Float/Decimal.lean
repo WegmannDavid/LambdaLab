@@ -22,7 +22,7 @@ Arithmetic itself needs no proof: nothing downstream depends on what `2 + 3` is,
 that whatever it is, it is written as a literal that reads back as itself.
 -/
 
-namespace LambdaLab.Float
+namespace LambdaLab.Languages.Float
 
 open LambdaLab.Parser.IsoParser (isToken_iff)
 open LambdaLab.Parser.Numeral
@@ -212,4 +212,4 @@ theorem ofToken_toToken (d : Decimal) : ofToken (toToken d) = d.normalize := by
 
 end Decimal
 
-end LambdaLab.Float
+end LambdaLab.Languages.Float

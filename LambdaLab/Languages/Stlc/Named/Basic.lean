@@ -20,7 +20,7 @@ the α-renaming branch, we recurse on `body.rename y z` whose size equals
 `body.size` (proved by `Term.rename_size`).
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom freshFor freshFor_not_in)
 
@@ -146,13 +146,13 @@ def Term.subst (e : Term N) (x : N) (v : Term N) : Term N :=
     all_goals simp only [Term.size, Term.rename_size]
     all_goals omega
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named
 
 /-! ## Example terms -/
 
-namespace LambdaLab.Stlc.Named.Examples
+namespace LambdaLab.Languages.Stlc.Named.Examples
 
-open LambdaLab.Stlc.Named
+open LambdaLab.Languages.Stlc.Named
 
 /-- `λx:ι. x` -/
 def idBase : Term String := .lam "x" .base (.var "x")
@@ -163,4 +163,4 @@ def idArr : Term String := .lam "f" (.base ⇒ .base) (.var "f")
 /-- `(λf:ι⇒ι. f) (λx:ι. x)` -/
 def app1 : Term String := .app idArr idBase
 
-end LambdaLab.Stlc.Named.Examples
+end LambdaLab.Languages.Stlc.Named.Examples

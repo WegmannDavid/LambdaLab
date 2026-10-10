@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.Named.Basic
+import LambdaLab.Languages.Stlc.Named.Basic
 import LambdaLab.TypeSystem.Named.Basic
 
 /-!
@@ -9,7 +9,7 @@ variable explicitly: `(λx:τ. body) v ⟶ body[x := v]` using the naive
 substitution from `Basic.lean`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 inductive Step {N : Type} [LambdaLab.Nominal.Atom N] : Term N → Term N → Prop where
   | beta : Step (.app (.lam x τ body) v) (body.subst x v)
@@ -115,4 +115,4 @@ theorem Step.annotsGround {e e' : Term N} (s : Step e e') (he : e.AnnotsGround) 
       simp only [Term.AnnotsGround] at he ⊢
       exact ⟨he.1, ih he.2⟩
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

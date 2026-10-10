@@ -1,6 +1,6 @@
-import LambdaLab.Stlc.Named.Basic
-import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.TypeSystem
+import LambdaLab.Languages.Stlc.Named.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.TypeSystem
 import LambdaLab.Pipeline.Compose
 import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
@@ -29,7 +29,7 @@ belongs in a lossy layer above, whose annotation records which binders were elid
 
 ## The parser lands in `Term` itself
 
-There is no surface AST. `Term` is parametric in its atoms (`Stlc/Named/Basic.lean`), so
+There is no surface AST. `Term` is parametric in its atoms (`Languages/Stlc/Named/Basic.lean`), so
 terms parse into `Term VName`, named by the non-reserved tokens — and `VName` is `FreeName
 sReserved`, whose `Atom` instance `TypeSystem/Named/FreeName.lean` proves once for every
 language.
@@ -43,7 +43,7 @@ The grammar is a single three-entry grammar — terms, binders, types — so `pT
 same engine at different entries, and the binder's `: T` is an ordinary cross-entry hole.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Pipeline
 open LambdaLab.Parser.Truncation.Mixfix
@@ -346,7 +346,7 @@ judgement treats it as. The distinction matters: `HasType` has no rule mentionin
 the judgement `?0` is an atom equal to itself and nothing else — an extra base type, not a hole.
 Solving is what the elaborator adds on top.
 
-**Nothing to write here.** The whole front end comes from `Stlc/Named/TypeSystem.lean`'s
+**Nothing to write here.** The whole front end comes from `Languages/Stlc/Named/TypeSystem.lean`'s
 `instPrincipalElaborate`, built from theorems that predate the parser by a long way. This
 file's only contribution to elaboration is the observation that `Var stlcLanguage` *is* `VName`,
 so the generic instance applies at the name type the vernacular happens to use.
@@ -397,4 +397,4 @@ theorem stlcLanguage_pTm_exact : stlcLanguage.pTm.Exact :=
   Rules.truncateParser_exact sRules (fun _ => rfl)
     (LambdaLab.Parser.IsoParser.IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

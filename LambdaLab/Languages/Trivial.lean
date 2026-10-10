@@ -10,7 +10,9 @@ identifier. It exists to show what a language author actually has to supply — 
 parser, printer, and round-trip proof all come back **for free**.
 -/
 
-namespace LambdaLab.Pipeline
+namespace LambdaLab.Languages.Trivial
+
+open LambdaLab.Pipeline
 
 open LambdaLab.TypeSystem.Named (Context)
 
@@ -204,4 +206,4 @@ example (p : trivialLanguage.Elaborated) :
     trivialLanguage.elaborateFile (trivialLanguage.renderElaborated p) = some p :=
   trivialLanguage.elaborateFile_renderElaborated p
 
-end LambdaLab.Pipeline
+end LambdaLab.Languages.Trivial

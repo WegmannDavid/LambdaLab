@@ -18,7 +18,7 @@ on:
     paths:
       - 'LambdaLab/**'
       - 'Stlc.lean'
-      - 'Arith.lean'
+      - 'Float.lean'
       - 'lakefile.toml'
       - 'lake-manifest.json'
       - 'lean-toolchain'

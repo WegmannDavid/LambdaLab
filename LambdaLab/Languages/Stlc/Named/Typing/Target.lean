@@ -1,8 +1,8 @@
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
 import LambdaLab.Nominal.Unification.Soundness
-import LambdaLab.Stlc.Named.Typing.J
+import LambdaLab.Languages.Stlc.Named.Typing.J
 
 /-!
 # The formalization target, compactly
@@ -17,7 +17,7 @@ the live path. They now sit where they can be discharged: completeness as `JComp
 most-generality as `TypeSystem.Named.PrincipalElaborate`'s field.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -158,4 +158,4 @@ def GenerationComplete : Prop :=
     ∃ σ'', Subst.Unifies σ'' ((τg, τ) :: C) ∧
       ∀ u : Ty, freshIdx u ≤ n → HasSubst.pSubst u σ'' = HasSubst.pSubst u σ'
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

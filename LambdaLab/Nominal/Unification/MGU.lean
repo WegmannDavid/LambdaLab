@@ -144,10 +144,11 @@ bare class and `LawfulTypeSystem`. `SolutionProp` answers *whether* there is a s
 witness or a proof of absence; `MGUProp` additionally claims the witness is **most general**.
 Most-generality is a strictly harder obligation than the other two put together — for the STLC
 elaborator it took a file of its own and holds only *on the source* (`elabSubst_principal_below`;
-the unrestricted form is refuted in `Stlc/Named/Typing/Principality.lean`) — so demanding it in the
-same type would have made a decision procedure uninhabitable long after the decision itself was
-proved. Weaker type, no side conditions: a caller that only needs "is this typeable, and by what" asks for `SolutionProp`, and
-`PrincipalProp.toSolution` hands it one from anything stronger. -/
+the unrestricted form is refuted in `Languages/Stlc/Named/Typing/Principality.lean`) — so demanding
+it in the same type would have made a decision procedure uninhabitable long after the decision
+itself was proved. Weaker type, no side conditions: a caller that only needs "is this typeable, and
+by what" asks for `SolutionProp`, and `PrincipalProp.toSolution` hands it one from anything
+stronger. -/
 
 /-- A decision about `P` over substitutions, carrying evidence either way: a σ satisfying it, or a
 proof that none does — but saying nothing about how that σ compares to other solutions.
@@ -218,8 +219,8 @@ comparison here — `unify`'s answer is compared against other *unifiers of the 
 those speak about every variable the equations mention.
 
 An elaborator cannot ask for this: it draws variables its caller never mentioned, and a competing
-solution says nothing about them (`Stlc/Named/Typing/Principality.lean` proves the resulting
-statement false). That is why the comparison is a parameter and not baked in — see
+solution says nothing about them (`Languages/Stlc/Named/Typing/Principality.lean` proves the
+resulting statement false). That is why the comparison is a parameter and not baked in — see
 `TypeSystem.Named.PrincipalElaborate`, which instantiates it at `MoreGeneralOn`. -/
 abbrev MGUProp {A 𝕊 : Type} [Atom A] [HasSubst A 𝕊 𝕊] (P : Subst A 𝕊 → Prop) : Type :=
   PrincipalProp MoreGeneral P

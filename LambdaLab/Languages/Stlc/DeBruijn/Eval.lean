@@ -1,6 +1,6 @@
-import LambdaLab.Stlc.DeBruijn.Basic
-import LambdaLab.Stlc.DeBruijn.Step
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Languages.Stlc.DeBruijn.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.Reducibility
 
 /-!
 # Total normalizer (de Bruijn variant)
@@ -15,7 +15,7 @@ until the term is in normal form. Termination of the loop is certified
 by `SN`, packaged into a `WellFoundedRelation` on `SNTerm`.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-- Computable redex picker: leftmost-outermost. -/
 def Term.findReductStep : (e : Term) → Option ((e' : Term) ×' Step e e')
@@ -56,4 +56,4 @@ termination_by (⟨e, h⟩ : SNTerm)
 def HasType.eval {Γ : Ctx} {e : Term} {τ : Ty} (ht : HasType Γ e τ) : Term :=
   Term.eval e (HasType.sn ht)
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

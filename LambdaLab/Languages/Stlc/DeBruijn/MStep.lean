@@ -1,4 +1,4 @@
-import LambdaLab.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.Step
 import LambdaLab.Relation.Closure
 
 /-!
@@ -15,7 +15,7 @@ need neither: they map over the chain in either orientation, so they go by the d
 `tail` recursion.
 -/
 
-namespace LambdaLab.Stlc.DeBruijn
+namespace LambdaLab.Languages.Stlc.DeBruijn
 
 /-- Multi-step (full-beta) reduction: the reflexive-transitive closure of `Step`. -/
 abbrev MStep : Term → Term → Prop := RTC Step
@@ -44,4 +44,4 @@ theorem MStep.app (h₁ : MStep e₁ e₁') (h₂ : MStep e₂ e₂') :
     MStep (.app e₁ e₂) (.app e₁' e₂') :=
   (MStep.appL h₁).trans (MStep.appR h₂)
 
-end LambdaLab.Stlc.DeBruijn
+end LambdaLab.Languages.Stlc.DeBruijn

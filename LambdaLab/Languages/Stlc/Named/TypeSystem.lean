@@ -1,11 +1,11 @@
-import LambdaLab.Stlc.Named.Step.Confluence
-import LambdaLab.Stlc.Named.Step.Eval
+import LambdaLab.Languages.Stlc.Named.Step.Confluence
+import LambdaLab.Languages.Stlc.Named.Step.Eval
 import LambdaLab.TypeSystem.Named.Basic
-import LambdaLab.Stlc.Named.Alpha
-import LambdaLab.Stlc.Named.Typing.Preservation
-import LambdaLab.Stlc.Named.Typing.Normalization
-import LambdaLab.Stlc.Named.Typing.Unification
-import LambdaLab.Stlc.Named.Typing.JComplete
+import LambdaLab.Languages.Stlc.Named.Alpha
+import LambdaLab.Languages.Stlc.Named.Typing.Preservation
+import LambdaLab.Languages.Stlc.Named.Typing.Normalization
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.JComplete
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
@@ -36,8 +36,8 @@ proved here, which is the point — the interface asks for what the development 
   substitution — were already theorems here; neither needed a line of new proof.
 
 * `HasAlphaEq` is **not** here, for the reason `instHasType` is not: it sits beside the relation
-  it names, in `Stlc/Named/Alpha.lean`, so `≈α` reads from that file onwards. α-equality is
-  equality of de Bruijn erasures, so the instance is `Translation.lean`'s work under a new name —
+  it names, in `Languages/Stlc/Named/Alpha.lean`, so `≈α` reads from that file onwards. α-equality
+  is equality of de Bruijn erasures, so the instance is `Translation.lean`'s work under a new name —
   once again the interface asking for what the development already had. `LawfulAlphaEq` *is* here,
   since its law mentions the judgement: α-equal terms type alike, by the same round trip.
 
@@ -62,7 +62,7 @@ unconditionally (`elabSolution` is proved and still exported), and proves princi
 source* — the strongest form the unrestricted statement leaves available.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -118,8 +118,8 @@ instance instLawfulMVars : TypeSystem.Named.LawfulMVars N (Term N) Ty where
 and like them the proof is the translation's, not new work — α-equality *is* equality of de Bruijn
 erasures, so the law is `HasType.toDB` out and `HasType.fromDB` back.
 
-`HasAlphaEq` itself is supplied in `Stlc/Named/Alpha.lean`, beside the relation; this is only the
-law that ties it to the judgement. -/
+`HasAlphaEq` itself is supplied in `Languages/Stlc/Named/Alpha.lean`, beside the relation; this is
+only the law that ties it to the judgement. -/
 instance instLawfulAlphaEq : TypeSystem.Named.LawfulAlphaEq N (Term N) Ty where
   typing_respects h ht := Term.AlphaEq.hasType h ht
 
@@ -172,7 +172,7 @@ one the pipeline cannot call. What each class cost:
   never needed: `Term.step_reflect` lifts a de Bruijn step back to a named one (the erasure is
   shape-preserving, and the β case is `Term.toDB_subst` read right to left), `Term.mstep_reflect`
   iterates it, and `Term.alphaEq_of_toDB` turns the resulting agreement of erasures into `≈α`. All
-  three are in `Stlc/Named/Alpha.lean`.
+  three are in `Languages/Stlc/Named/Alpha.lean`.
 
 * **`HasEval` is `Step/Eval.lean`'s evaluator**, which already had the shape the class asks for:
   `HasType.eval` takes the derivation, not the bare term, so it is total with no error case to
@@ -199,11 +199,11 @@ way through `Atom.freshFor`, so two reduction paths from one term reach results 
 their bound names. Joining them on the nose is not merely unproved for this language, it is false.
 
 The proof is `MStep.confluent` — which converges only after translation to de Bruijn — plus the two
-halves that were missing until now, both in `Stlc/Named/Alpha.lean`: `Term.mstep_reflect` lifts each
-de Bruijn reduction back to a named one, and `Term.alphaEq_of_toDB` turns the resulting agreement of
-erasures into `≈α`. The context is `t.freeVars`, the smallest one `MStep.confluent` accepts, and
-reduction never introduces a free variable (`MStep.preserves_freeVars`), so it stays adequate all
-the way down. -/
+halves that were missing until now, both in `Languages/Stlc/Named/Alpha.lean`: `Term.mstep_reflect`
+lifts each de Bruijn reduction back to a named one, and `Term.alphaEq_of_toDB` turns the resulting
+agreement of erasures into `≈α`. The context is `t.freeVars`, the smallest one `MStep.confluent`
+accepts, and reduction never introduces a free variable (`MStep.preserves_freeVars`), so it stays
+adequate all the way down. -/
 instance instConfluent : TypeSystem.Named.Confluent N (Term N) Ty where
   Confluent {_Γ} {t t₁ t₂} {_τ} _ht h₁ h₂ := by
     obtain ⟨d, hd₁, hd₂⟩ := MStep.confluent t.freeVars (fun _ hw => hw) h₁ h₂
@@ -302,4 +302,4 @@ theorem sn_of_hasType {Γ : Ctx N} {e : Term N} {τ : Ty} :
     Γ ⊢ e : τ → SN e :=
   HasType.sn
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

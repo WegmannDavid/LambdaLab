@@ -1,5 +1,5 @@
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.Named.Typing.Unification
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.Named.Typing.Unification
 
 /-!
 # Generic properties of named-variable typing
@@ -8,7 +8,7 @@ These are utilities about `HasType` that don't depend on reduction or
 translation. They mirror similar facts on the de Bruijn side.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -177,4 +177,4 @@ theorem HasType.det {Γ : Ctx N} {e : Term N} {τ₁ τ₂ : Ty}
   | lam _ ih => cases h₂ with | lam hb₂ => rw [ih hb₂]
   | app _ _ ih₁ _ => cases h₂ with | app hf₂ _ => injection ih₁ hf₂
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

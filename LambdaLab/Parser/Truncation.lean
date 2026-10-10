@@ -22,9 +22,10 @@ Nobody writes the three arguments by hand for a mixfix grammar any more. `Parser
 generalizes them: a language states a `Rules` bundle — one clause per operator each way, plus which
 operator is the parenthesis — and the fold (`truncExpr`), the paren-inserting injection (`injC`) and
 the section law (`trunc_inj`) are all *derived*, packaged as `Rules.truncateParser`. The worked
-instance is `Float/Pipeline.lean`'s `fRules` over `FTm` (parens-free terms), plugged into
-`floatLanguage` so `( ( 7 ) )` parses to `7` and re-renders as `7`; `Stlc/Named/Pipeline.lean` does
-the same for `Term VName`. This file stays the general chain the derived one is built on.
+instance is `Languages/Float/Pipeline.lean`'s `fRules` over `FTm` (parens-free terms), plugged into
+`floatLanguage` so `( ( 7 ) )` parses to `7` and re-renders as `7`;
+`Languages/Stlc/Named/Pipeline.lean` does the same for `Term VName`. This file stays the general
+chain the derived one is built on.
 -/
 
 -- `p.truncate` dot-notation forces the declaration under `LambdaLab.Parser.IsoParser.IsoParser`.

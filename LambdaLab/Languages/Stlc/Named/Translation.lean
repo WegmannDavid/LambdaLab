@@ -1,9 +1,9 @@
-import LambdaLab.Stlc.Named.Step.MStep
-import LambdaLab.Stlc.Named.Typing.Basic
-import LambdaLab.Stlc.DeBruijn.MStep
-import LambdaLab.Stlc.DeBruijn.Substitution
-import LambdaLab.Stlc.DeBruijn.Typing
-import LambdaLab.Stlc.DeBruijn.Preservation
+import LambdaLab.Languages.Stlc.Named.Step.MStep
+import LambdaLab.Languages.Stlc.Named.Typing.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.MStep
+import LambdaLab.Languages.Stlc.DeBruijn.Substitution
+import LambdaLab.Languages.Stlc.DeBruijn.Typing
+import LambdaLab.Languages.Stlc.DeBruijn.Preservation
 
 /-!
 # Translation from named-variable to de Bruijn STLC
@@ -36,7 +36,7 @@ that are quotient-friendly (e.g. confluence, preservation up to α).
   lifts to a de Bruijn multi-step on the translated term.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom freshFor freshFor_not_in)
 
@@ -715,4 +715,4 @@ theorem Stlc.DeBruijn.MStep.preservation :
   | refl => exact ht
   | tail _ s ih => exact Stlc.DeBruijn.HasType.preservation ih s
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

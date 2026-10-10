@@ -1,5 +1,5 @@
-import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Stlc.Named.Translation
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Translation
 import LambdaLab.TypeSystem.Named.Basic
 
 /-!
@@ -47,14 +47,15 @@ little — `fun _ _ => True` is an equivalence relation too. It is proved from `
 
 That `≈α` is a congruence for `HasType` is here (`Term.AlphaEq.hasType`), and so is the machinery
 for reduction: `Term.step_reflect` supplies the direction `Translation.lean` never needed, lifting a
-de Bruijn step back to a named one. With it, `Stlc/Named/TypeSystem.lean` discharges `Confluent`.
+de Bruijn step back to a named one. With it, `Languages/Stlc/Named/TypeSystem.lean` discharges
+`Confluent`.
 
 Not here: the congruence itself, `t ≈α u → t ⟶ t' → ∃ u', u ⟶* u' ∧ t' ≈α u'`. It is now within
 reach rather than blocked — `step_reflect` is the piece it was waiting on — but it is not a field of
 `LawfulAlphaEq` and nothing yet asks for it.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -578,7 +579,7 @@ positive case computes the erasure. -/
 
 namespace AlphaExamples
 
-open LambdaLab.Stlc.Named
+open LambdaLab.Languages.Stlc.Named
 
 private def x : String := "x"
 private def y : String := "y"
@@ -635,4 +636,4 @@ example : (Term.lam x .base (.var x)).AlphaEq (Term.lam y .base ((Term.var x).re
 
 end AlphaExamples
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

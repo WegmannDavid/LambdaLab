@@ -1,4 +1,4 @@
-import LambdaLab.Float.Pipeline
+import LambdaLab.Languages.Float.Pipeline
 import LambdaLab.Pipeline.Cli
 
 /-!
@@ -15,7 +15,7 @@ carried through the declarations — and `floatChain` is that walk after the par
 `cli` is handed.
 -/
 
-open LambdaLab.Pipeline LambdaLab.Float
+open LambdaLab.Pipeline LambdaLab.Languages.Float
 
 def main (args : List String) : IO UInt32 :=
   cli "float" "float" (compile floatChain) args

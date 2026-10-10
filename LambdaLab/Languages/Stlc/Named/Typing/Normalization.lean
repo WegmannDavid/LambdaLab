@@ -1,7 +1,7 @@
 import LambdaLab.Nominal.Instances
-import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.Named.Typing.Properties
-import LambdaLab.Stlc.DeBruijn.Reducibility
+import LambdaLab.Languages.Stlc.Named.Translation
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.DeBruijn.Reducibility
 
 /-!
 # Strong normalization (named-variable variant), via the de Bruijn translation
@@ -23,7 +23,7 @@ The chain:
    (`Named.SN.fromDB`, the new transfer lemma).
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 /-! ## Named SN
 
@@ -129,4 +129,4 @@ theorem HasType.sn {N : Type} [LambdaLab.Nominal.Atom N] : ∀ {Γ : Ctx N} {e :
     Stlc.DeBruijn.HasType.sn hdb
   exact SN.fromDB e binders hfv hsn_db
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named

@@ -3,8 +3,8 @@
 
 `RTC r` is the reflexive-transitive closure of `r`, `TC r` the transitive one. Three
 developments in this repository need one of them — full-beta multi-step reduction in both
-STLC variants (`Stlc/DeBruijn/MStep.lean`, `Stlc/Named/Step/MStep.lean`) and the mixfix
-precedence order (`Parser/IsoParser/Mixfix/Basic.lean`) — and before this file each rolled
+STLC variants (`Languages/Stlc/DeBruijn/MStep.lean`, `Languages/Stlc/Named/Step/MStep.lean`) and the
+mixfix precedence order (`Parser/IsoParser/Mixfix/Basic.lean`) — and before this file each rolled
 its own.
 
 ## Why not `Mathlib.Logic.Relation`

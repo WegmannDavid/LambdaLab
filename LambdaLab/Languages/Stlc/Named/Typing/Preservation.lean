@@ -1,11 +1,11 @@
-import LambdaLab.Stlc.Named.Translation
-import LambdaLab.Stlc.Named.Typing.Properties
+import LambdaLab.Languages.Stlc.Named.Translation
+import LambdaLab.Languages.Stlc.Named.Typing.Properties
 
 /-!
 # Subject reduction (named-variable variant), via the de Bruijn translation
 
 We inherit subject reduction from the de Bruijn variant by chaining the
-translation lemmas in `LambdaLab.Stlc.Named.Translation`:
+translation lemmas in `LambdaLab.Languages.Stlc.Named.Translation`:
 
 1. **Forward typing translation** (`HasType.toDB`): `Γ ⊢ e : τ` ⟶
    `db_ctx ⊢ e.toDB binders : τ.toDB`.
@@ -17,7 +17,7 @@ translation lemmas in `LambdaLab.Stlc.Named.Translation`:
    which equals `τ` after `Ty.fromDB_toDB`.
 -/
 
-namespace LambdaLab.Stlc.Named
+namespace LambdaLab.Languages.Stlc.Named
 
 open LambdaLab.Nominal (Atom)
 
@@ -53,4 +53,4 @@ theorem HasType.preservation : ∀ {Γ : Ctx N} {e e' : (Term N)} {τ : Ty},
     HasType.fromDB e' binders db_ctx τ.toDB hfv' hcompat hdb'
   rwa [Ty.fromDB_toDB] at h_named
 
-end LambdaLab.Stlc.Named
+end LambdaLab.Languages.Stlc.Named
