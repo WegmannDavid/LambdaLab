@@ -69,6 +69,7 @@ import LambdaLab.TypeSystem.Named.Vernacular.Basic
 import LambdaLab.TypeSystem.Named.Vernacular.Typing
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 import LambdaLab.TypeSystem.Named.Vernacular.Evaluate
+import LambdaLab.Semantics.Walk
 import LambdaLab.Pipeline.Basic
 -- NB: `FreeName` lives in `TypeSystem/` but sits *above* `Pipeline.Basic`, since the atoms
 -- it constructs are carved out of the grammar's reserved `Token`s. It is the one place the two
