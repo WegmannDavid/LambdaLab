@@ -31,6 +31,10 @@ import LambdaLab.Languages.Stlc.Named.Typing.J
 import LambdaLab.Languages.Stlc.Named.Typing.D
 import LambdaLab.Languages.Stlc.Named.Typing.S
 import LambdaLab.Languages.Stlc.Named.Typing.Target
+import LambdaLab.Languages.SystemF.Syntax
+import LambdaLab.Languages.SystemF.Typing
+import LambdaLab.Languages.SystemF.Reduction
+import LambdaLab.Languages.SystemF.Normalization
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
