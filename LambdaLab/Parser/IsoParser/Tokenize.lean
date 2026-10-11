@@ -4,43 +4,37 @@ import LambdaLab.Parser.IsoParser.Basic
 /-!
 # The tokenizer — forward direction
 
-Splits a character stream on maximal runs of separators. Parameterised by `sep : Char → Bool` and
-nothing else — a tokenizer knows nothing about grammars.
-
-This is the salvaged core of the deleted `CBiparser/Tokenizer.lean`: the `tokens` function and its
-splitting laws only. The residual-tracking machinery (`dropToks`, `viaTokens`) that composed it
-with token-level biparsers is deliberately not ported — whole-artifact pipeline stages
-(`Abstraction/Tokenizer.lean`) compose by `Option.bind` and never need a replayable leftover.
+Splits a character stream into the tokens of a `Lexicon`: separators are skipped, a
+self-delimiting character is a token by itself, and a maximal run of word characters is one token.
+A tokenizer knows nothing about grammars.
 
 ## The seam
 
-`tokens (t.toList ++ tail) = t :: tokens tail` needs a side condition: **`tail` is empty, or begins
-with a separator** — else the continuation fuses onto the token. That condition is exactly
-`HeadIn (sep · = true)` from `IsoParser/Basic.lean` — the same predicate the token-level laws use
-for FOLLOW, now at the character level. It is vacuous at `[]`, so whole-input uses pay nothing.
+`tokens (t.toList ++ tail) = t :: tokens tail` needs a side condition, or the continuation fuses
+onto the token: **`t` is self-delimiting, or `tail` is empty or begins with a character that cannot
+continue a word** — a separator or a self-delimiting character. The second half is
+`HeadIn (word · = false)`, the same predicate the token-level laws use for FOLLOW, now at the
+character level. It is vacuous at `[]`, so whole-input uses pay nothing.
 
-Both invariants in the `Token` type get spent here: separator-freeness makes a token's characters
-split back off (`takeWhile_append_word`), non-emptiness stops a token from vanishing
-(`tokens_token`'s head case).
+The invariants in the `Token` type get spent here: a word token's characters split back off
+(`takeWhile_append_word`), a self-delimiting token is one character, and non-emptiness stops a token
+from vanishing.
 -/
 
 namespace LambdaLab.Parser.IsoParser
 
-variable {sep : Char → Bool}
+variable {lex : Lexicon}
 
 /-! ## Words -/
 
-/-- The characters of the next token: the maximal separator-free prefix. -/
-def word (sep : Char → Bool) (cs : List Char) : List Char :=
-  cs.takeWhile (fun c => !sep c)
+/-- The characters of the next word token: the maximal run of word characters. -/
+def word (lex : Lexicon) (cs : List Char) : List Char := cs.takeWhile lex.word
 
-/-- What follows the next token's characters. -/
-def afterWord (sep : Char → Bool) (cs : List Char) : List Char :=
-  cs.dropWhile (fun c => !sep c)
+/-- What follows the next word token's characters. -/
+def afterWord (lex : Lexicon) (cs : List Char) : List Char := cs.dropWhile lex.word
 
 /-- Skip a run of separators. -/
-def skipSep (sep : Char → Bool) (cs : List Char) : List Char :=
-  cs.dropWhile sep
+def skipSep (lex : Lexicon) (cs : List Char) : List Char := cs.dropWhile lex.sep
 
 /-- The head of a `dropWhile` fails the predicate. -/
 theorem dropWhile_head_false {α : Type} {p : α → Bool} :
@@ -76,124 +70,140 @@ theorem length_dropWhile_le {α : Type} (p : α → Bool) :
       · exact Nat.le_succ_of_le (length_dropWhile_le p as)
       · simp
 
-/-- Build a token from characters known to be separator-free and non-empty. -/
-def Token.ofChars (sep : Char → Bool) (w : List Char)
-    (h1 : ∀ c ∈ w, sep c = false) (h2 : w ≠ []) : Token sep :=
-  ⟨String.ofList w, isToken_iff.mpr (by rw [String.toList_ofList]; exact ⟨h1, h2⟩)⟩
-
-@[simp] theorem Token.ofChars_toList (sep : Char → Bool) (w : List Char)
-    (h1 : ∀ c ∈ w, sep c = false) (h2 : w ≠ []) :
-    (Token.ofChars sep w h1 h2).val.toList = w := by
-  simp [Token.ofChars, String.toList_ofList]
-
 /-! ## Tokenizing -/
 
-/-- **The tokenizer.** Split on maximal separator runs; every token is non-empty and
-separator-free *by construction*, so the invariant never has to be re-established.
-
-Recursing directly on characters (rather than on `skipSep`) is what makes `tokens_sep_cons` below
-a one-liner — and that lemma is used in every subsequent proof. -/
-def tokens (sep : Char → Bool) : List Char → List (Token sep)
+/-- **The tokenizer.** Skip separators; a self-delimiting character is a token by itself; otherwise
+take the maximal run of word characters. Every token is well-formed *by construction*. -/
+def tokens (lex : Lexicon) : List Char → List (Token lex)
   | [] => []
   | c :: cs =>
-      if h : sep c = true then
-        tokens sep cs
+      if hs : lex.sep c = true then
+        tokens lex cs
+      else if hp : lex.punct c = true then
+        Token.single c (by simpa using hs) :: tokens lex cs
       else
-        Token.ofChars sep (word sep (c :: cs))
-          (fun x hx => by simpa using mem_takeWhile (p := fun y => !sep y) hx)
-          (by simp [word, h]) ::
-        tokens sep (afterWord sep (c :: cs))
+        Token.ofWord (word lex (c :: cs)) (fun x hx => mem_takeWhile hx)
+          (by simp [word, Lexicon.word, show lex.sep c = false by simpa using hs,
+            show lex.punct c = false by simpa using hp]) ::
+        tokens lex (afterWord lex (c :: cs))
   termination_by cs => cs.length
   decreasing_by
     · simp
-    · have hc : sep c = false := by simpa using h
-      have := length_dropWhile_le (fun x => !sep x) cs
-      simp only [afterWord, List.dropWhile_cons, hc, Bool.not_false, if_pos, List.length_cons]
+    · simp
+    · have hw : lex.word c = true :=
+        Lexicon.word_of (by simpa using hs) (by simpa using hp)
+      have := length_dropWhile_le lex.word cs
+      simp only [afterWord, List.dropWhile_cons, hw, if_pos, List.length_cons]
       omega
 
-theorem tokens_nil : tokens sep [] = [] := by simp [tokens]
+theorem tokens_nil : tokens lex [] = [] := by simp [tokens]
 
 /-- A leading separator is skipped. -/
-@[simp] theorem tokens_sep_cons {c : Char} (hc : sep c = true) (cs : List Char) :
-    tokens sep (c :: cs) = tokens sep cs := by
+@[simp] theorem tokens_sep_cons {c : Char} (hc : lex.sep c = true) (cs : List Char) :
+    tokens lex (c :: cs) = tokens lex cs := by
   rw [tokens]; simp [hc]
 
+/-- A self-delimiting character is a token by itself. -/
+theorem tokens_punct_cons {c : Char} (hp : lex.punct c = true) (cs : List Char) :
+    tokens lex (c :: cs) =
+      Token.single c (by
+        cases h : lex.sep c with
+        | false => rfl
+        | true => rw [lex.sep_punct c h] at hp; cases hp) :: tokens lex cs := by
+  have hs : lex.sep c = false := by
+    cases h : lex.sep c with
+    | false => rfl
+    | true => rw [lex.sep_punct c h] at hp; cases hp
+  rw [tokens]
+  simp [hs, hp]
+
 /-- An all-separator string tokenizes to nothing. -/
-theorem tokens_all_sep {g : List Char} (h : ∀ c ∈ g, sep c = true) : tokens sep g = [] := by
+theorem tokens_all_sep {g : List Char} (h : ∀ c ∈ g, lex.sep c = true) : tokens lex g = [] := by
   induction g with
   | nil => exact tokens_nil
   | cons c g' ih =>
       rw [tokens_sep_cons (h c List.mem_cons_self)]
       exact ih (fun x hx => h x (List.mem_cons_of_mem _ hx))
 
-/-- An all-separator string satisfies the seam condition. -/
-theorem headIn_of_allSep {g : List Char} (h : ∀ c ∈ g, sep c = true) :
-    HeadIn (fun c => sep c = true) g := by
+/-- An all-separator string ends a word. -/
+theorem headIn_of_allSep {g : List Char} (h : ∀ c ∈ g, lex.sep c = true) :
+    HeadIn (fun c => lex.word c = false) g := by
   intro a ha
   cases g with
   | nil => simp at ha
   | cons c cs =>
       rw [List.head?_cons] at ha
-      simp only [Option.some.injEq] at ha; subst ha
-      exact h c List.mem_cons_self
+      have hca : c = a := Option.some.inj ha
+      have hc : lex.sep a = true := hca ▸ h c List.mem_cons_self
+      simp [Lexicon.word, hc]
 
-/-! ## The splitting lemmas
-
-A token's characters, followed by anything that begins with a separator, split back off cleanly.
-This is where non-emptiness and separator-freeness — both *in the type of `Token`* — get spent. -/
+/-! ## The splitting lemmas -/
 
 theorem takeWhile_append_word {w tail : List Char}
-    (hw : ∀ c ∈ w, sep c = false) (ht : HeadIn (fun c => sep c = true) tail) :
-    (w ++ tail).takeWhile (fun c => !sep c) = w := by
+    (hw : ∀ c ∈ w, lex.word c = true) (ht : HeadIn (fun c => lex.word c = false) tail) :
+    (w ++ tail).takeWhile lex.word = w := by
   induction w with
   | nil =>
       cases tail with
       | nil => rfl
       | cons a as =>
-          have : sep a = true := ht a rfl
+          have : lex.word a = false := ht a rfl
           simp [this]
   | cons c w' ih =>
-      have hc : sep c = false := hw c List.mem_cons_self
+      have hc : lex.word c = true := hw c List.mem_cons_self
       simp [hc, ih (fun x hx => hw x (List.mem_cons_of_mem _ hx))]
 
 theorem dropWhile_append_word {w tail : List Char}
-    (hw : ∀ c ∈ w, sep c = false) (ht : HeadIn (fun c => sep c = true) tail) :
-    (w ++ tail).dropWhile (fun c => !sep c) = tail := by
+    (hw : ∀ c ∈ w, lex.word c = true) (ht : HeadIn (fun c => lex.word c = false) tail) :
+    (w ++ tail).dropWhile lex.word = tail := by
   induction w with
   | nil =>
       cases tail with
       | nil => rfl
       | cons a as =>
-          have : sep a = true := ht a rfl
+          have : lex.word a = false := ht a rfl
           simp [this]
   | cons c w' ih =>
-      have hc : sep c = false := hw c List.mem_cons_self
+      have hc : lex.word c = true := hw c List.mem_cons_self
       simp [hc, ih (fun x hx => hw x (List.mem_cons_of_mem _ hx))]
 
-/-- **A rendered token splits back off.** -/
-theorem tokens_token (t : Token sep) {tail : List Char}
-    (ht : HeadIn (fun c => sep c = true) tail) :
-    tokens sep (t.val.toList ++ tail) = t :: tokens sep tail := by
-  cases hd : t.val.toList with
-  | nil => exact absurd hd t.toList_ne_nil
-  | cons c cs =>
-      have hc : sep c = false := t.no_sep c (by rw [hd]; exact List.mem_cons_self)
-      have hall : ∀ x ∈ t.val.toList, sep x = false := t.no_sep
-      rw [List.cons_append, tokens]
-      simp only [dif_neg (by simp [hc] : ¬ (sep c = true))]
-      have hw : word sep (c :: (cs ++ tail)) = t.val.toList := by
-        rw [word, ← List.cons_append, ← hd]
-        exact takeWhile_append_word hall ht
-      have haw : afterWord sep (c :: (cs ++ tail)) = tail := by
-        rw [afterWord, ← List.cons_append, ← hd]
-        exact dropWhile_append_word hall ht
-      rw [haw]
+/-- **A rendered token splits back off**, when it is self-delimiting or what follows cannot
+continue it. -/
+theorem tokens_token (t : Token lex) {tail : List Char}
+    (h : t.isPunct = true ∨ HeadIn (fun c => lex.word c = false) tail) :
+    tokens lex (t.val.toList ++ tail) = t :: tokens lex tail := by
+  cases hp : t.isPunct with
+  | true =>
+      obtain ⟨c, hc, hpc⟩ := Token.eq_single_of_isPunct hp
+      rw [hc, List.singleton_append, tokens_punct_cons hpc]
       congr 1
-      exact Token.eq_of_toList (by rw [Token.ofChars_toList, hw])
+      exact Token.eq_of_toList (by simp [hc])
+  | false =>
+      have ht : HeadIn (fun c => lex.word c = false) tail := by
+        rcases h with h | h
+        · rw [hp] at h; cases h
+        · exact h
+      have hw := Token.word_of_not_isPunct hp
+      cases hd : t.val.toList with
+      | nil => exact absurd hd t.toList_ne_nil
+      | cons c cs =>
+          have hcw : lex.word c = true := hw c (by rw [hd]; exact List.mem_cons_self)
+          rw [List.cons_append, tokens]
+          simp only [dif_neg (by simp [Lexicon.word_sep hcw] : ¬ (lex.sep c = true)),
+            dif_neg (by simp [Lexicon.word_punct hcw] : ¬ (lex.punct c = true))]
+          have hwd : word lex (c :: (cs ++ tail)) = t.val.toList := by
+            rw [word, ← List.cons_append, ← hd]
+            exact takeWhile_append_word hw ht
+          have haw : afterWord lex (c :: (cs ++ tail)) = tail := by
+            rw [afterWord, ← List.cons_append, ← hd]
+            exact dropWhile_append_word hw ht
+          rw [haw]
+          congr 1
+          exact Token.eq_of_toList (by rw [Token.ofWord_toList, hwd])
 
 /-- Tokenizing ignores a leading run of separators. -/
-theorem tokens_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, sep c = true) :
-    tokens sep (g ++ cs) = tokens sep cs := by
+theorem tokens_sep_prepend {g cs : List Char} (hg : ∀ c ∈ g, lex.sep c = true) :
+    tokens lex (g ++ cs) = tokens lex cs := by
   induction g with
   | nil => rfl
   | cons c g' ih =>

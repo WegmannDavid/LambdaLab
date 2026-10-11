@@ -16,7 +16,7 @@ A language with no type system: a file is a run of
 where a term is built from decimal literals and the names of **earlier** declarations with `+`
 and `*`, and parentheses to group them. Running a program replaces every term by its value:
 
-    float a := ( 1 + 2 ) * 3        ⟹     float a := 9
+    float a := (1 + 2) * 3          ⟹     float a := 9
     float b := a + 0.5              ⟹     float b := 9.5
 
 It is a `Language` written directly — one declaration form, keyword `float` — and not a
@@ -29,7 +29,7 @@ values.
 * **terms** come from the mixfix engine, as arithmetic does. The grammar's atoms are the literals
   and the names, which cannot be confused: a name is never a number (`isFName`). `*` binds tighter
   than `+`, both associate to the left. The parse tree still holds the parentheses; the `Rules`
-  bundle truncates it to `FTm`, which has none, so `( ( 7 ) )` is read as `7` and the parentheses
+  bundle truncates it to `FTm`, which has none, so `((7))` is read as `7` and the parentheses
   come back only where the grammar needs them.
 * **the declaration** is `NAME := TERM` after the keyword: a `gdo` block, like `def`'s body.
 * **evaluation** computes each term exactly (`Decimal`) in the state, records the declaration's
@@ -62,40 +62,55 @@ open LambdaLab.Parser.LossyParser (LossyParser)
 open LambdaLab.Parser.Truncation.Mixfix (Rules truncExpr)
 open LambdaLab.Semantics (Walk)
 
-/-- A token literal of the shared alphabet. -/
-def tkF (s : String) (h : isToken isSep s = true := by decide) : Token := ⟨s, h⟩
+/-! ## The lexicon
+
+Parentheses, `+` and `*` are self-delimiting, so `(1+2)*x` reads exactly as `( 1 + 2 ) * x` does,
+and the canonical printer hugs the parentheses and spaces the operators: `(1 + 2) * x`. Every other
+non-whitespace character is a word character — digits and `.` among them, so a literal is one token
+(`floatWords`), and so is `:=`. -/
+
+/-- What a token is, for `float`. -/
+abbrev floatLex : Lexicon := Lexicon.make ['('] [')'] ['+', '*']
+
+abbrev FTok : Type := Token floatLex
+
+/-- A decimal literal is a single word. -/
+theorem floatWords : Decimal.Words floatLex := ⟨Lexicon.make_digit_word, by decide⟩
+
+/-- A token literal. -/
+def tkF (s : String) (h : isToken floatLex s = true := by decide) : FTok := ⟨s, h⟩
 
 /-- The keyword that starts every declaration. -/
-def kwFloat : Token := tkF "float"
+def kwFloat : FTok := tkF "float"
 
 /-- The assignment between a declaration's name and its term. -/
-def assignTok : Token := tkF ":="
+def assignTok : FTok := tkF ":="
 
 /-! ## Names -/
 
 /-- The tokens a name may not be. -/
-def fReserved : List Token := [kwFloat, assignTok, tkF "(", tkF ")", tkF "+", tkF "*"]
+def fReserved : List FTok := [kwFloat, assignTok, tkF "(", tkF ")", tkF "+", tkF "*"]
 
 /-- A name is any token that is neither reserved nor a number. -/
-def isFName (t : Token) : Bool := isFree fReserved t && !Decimal.isDecimalTok t
+def isFName (t : FTok) : Bool := isFree fReserved t && !Decimal.isDecimalTok t
 
-abbrev FName : Type := { t : Token // isFName t = true }
+abbrev FName : Type := { t : FTok // isFName t = true }
 
-theorem not_decimal_of_name {t : Token} (h : isFName t = true) :
+theorem not_decimal_of_name {t : FTok} (h : isFName t = true) :
     ¬ Decimal.isDecimalTok t = true := by
   simp only [isFName, Bool.and_eq_true, Bool.not_eq_true'] at h
   simp [h.2]
 
 /-- The grammar's atoms: literals and names. -/
-def isAtom (t : Token) : Bool := Decimal.isDecimalTok t || isFName t
+def isAtom (t : FTok) : Bool := Decimal.isDecimalTok t || isFName t
 
-theorem isAtom_of_decimal {t : Token} (h : Decimal.isDecimalTok t = true) : isAtom t = true := by
+theorem isAtom_of_decimal {t : FTok} (h : Decimal.isDecimalTok t = true) : isAtom t = true := by
   simp [isAtom, h]
 
-theorem isAtom_of_name {t : Token} (h : isFName t = true) : isAtom t = true := by
+theorem isAtom_of_name {t : FTok} (h : isFName t = true) : isAtom t = true := by
   simp [isAtom, h]
 
-theorem isFName_of_atom {t : Token} (h : isAtom t = true) (hd : ¬ Decimal.isDecimalTok t = true) :
+theorem isFName_of_atom {t : FTok} (h : isAtom t = true) (hd : ¬ Decimal.isDecimalTok t = true) :
     isFName t = true := by
   simp only [isAtom, Bool.or_eq_true] at h
   exact h.resolve_left hd
@@ -114,13 +129,13 @@ def fTighter : FSym → List FSym
 def fRank : FSym → Nat
   | .paren => 0 | .times => 1 | .plus => 2
 
-def fOp : FSym → Operator Token Unit
+def fOp : FSym → Operator FTok Unit
   | .paren => .closed (.cons (tkF "(") () (.last (tkF ")")))
   | .times => .infxl (.last (tkF "*"))
   | .plus  => .infxl (.last (tkF "+"))
 
 /-- The term grammar's one entry. Its atoms are the literals and the names. -/
-def fEntry : Entry Token Unit where
+def fEntry : Entry FTok Unit where
   Op := FSym
   operator := fOp
   ops := [.paren, .times, .plus]
@@ -148,7 +163,7 @@ def fEntry : Entry Token Unit where
       first
         | (rcases ht with rfl | rfl <;> decide)
 
-def fGrammar : Grammar Token where
+def fGrammar : Grammar FTok where
   Ent := Unit
   entry := fun _ => fEntry
   interiorTerminates := by
@@ -166,7 +181,7 @@ theorem fUnambiguous : Unambiguous fGrammar := unambiguous fGrammar
 
 /-- A term: what `Expr fGrammar` is *about*, with the parentheses gone. -/
 inductive FTm where
-  | lit : (t : Token) → Decimal.isDecimalTok t = true → FTm
+  | lit : (t : FTok) → Decimal.isDecimalTok t = true → FTm
   | ref : FName → FTm
   | add : FTm → FTm → FTm
   | mul : FTm → FTm → FTm
@@ -228,7 +243,7 @@ abbrev FTm.Ann (x : FTm) : Type := { t : Expr fGrammar () .loosest // truncExpr 
 
 /-- **The term parser**: the mixfix parser truncated to `FTm`, its FOLLOW narrowed to the keyword
 — sound exactly because the keyword is in it (`follow_float`). -/
-def fTerm : LossyParser Token anyTok (· ∈ [kwFloat]) FTm FTm.Ann :=
+def fTerm : LossyParser FTok anyTok (· ∈ [kwFloat]) FTm FTm.Ann :=
   ((mixfix (G := fGrammar) () .loosest).weakenFollow
     (by
       intro t ht
@@ -253,7 +268,7 @@ abbrev FDecl.Ann (d : FDecl) : Type := FTm.Ann d.value
 
 /-- What follows `float`, at the `IsoParser` level: the **source is the annotated declaration**.
 FIRST is widened to `anyTok` (a name is what really starts it), and FOLLOW is the term's. -/
-def fBodyIso : IsoParser Token anyTok (· ∈ [kwFloat]) (Σ d : FDecl, d.Ann) FDecl :=
+def fBodyIso : IsoParser FTok anyTok (· ∈ [kwFloat]) (Σ d : FDecl, d.Ann) FDecl :=
   IsoParser.enlargeFirst (fun _ h => absurd trivial h) <| gdo
     let n ← comap (fun s => s.1.name) (sat isFName)
     let _a ← tok assignTok
@@ -265,11 +280,12 @@ theorem fBodyIso_echo : ∀ s : Σ d : FDecl, d.Ann, (fBodyIso.print s).1 = s.1
   | ⟨⟨_, _⟩, _⟩ => rfl
 
 /-- **The body, lossy**: value `FDecl`, annotation the term's spelling. -/
-def fBody : LossyParser Token anyTok (· ∈ [kwFloat]) FDecl FDecl.Ann :=
+def fBody : LossyParser FTok anyTok (· ∈ [kwFloat]) FDecl FDecl.Ann :=
   fBodyIso.toLossyParserSigma (fun {_} => fTerm.default) fBodyIso_echo
 
 /-- **The `float` language**: one form, keyword `float`. -/
 def floatLanguage : Language where
+  lex := floatLex
   Form := Unit
   forms := [()]
   forms_complete _ := List.mem_singleton.mpr rfl
@@ -326,7 +342,8 @@ theorem FTm.eval_normalize (s : FState) :
       · exact absurd h (by simp)
 
 /-- A value, written as a term: its literal. -/
-def Decimal.toLit (d : Decimal) : FTm := .lit d.toToken (Decimal.isDecimalTok_toToken d)
+def Decimal.toLit (d : Decimal) : FTm :=
+  .lit (d.toToken floatWords) (Decimal.isDecimalTok_toToken floatWords d)
 
 /-- A value's literal evaluates to the value, normalized, in any state. -/
 theorem Decimal.eval_toLit (d : Decimal) (s : FState) : d.toLit.eval s = some d.normalize := by

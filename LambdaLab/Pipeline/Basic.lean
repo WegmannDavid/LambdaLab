@@ -12,36 +12,23 @@ open LambdaLab (Iso)
 /-! ## Lexemes
 
 The parser's alphabet is *tokens*, but tokens are printed back as text, so the token type has
-to be narrow enough that printing one and re-lexing it gives that same token back. Two ways it
-could fail, and they are the same failure we keep meeting — a source wider than the printable
-set:
+to be narrow enough that printing one and re-lexing it gives that same token back. What counts as
+a token is each language's choice — its `Lexicon` (`IsoParser/Token.lean`): which characters
+separate, which are tokens on their own, and how the latter are spaced when printed. A language
+names its lexicon, and the tokenizer and the parser are both instantiated at it, so they agree by
+construction rather than by coincidence. -/
 
-* an **empty** token prints nothing, so it cannot be read back;
-* a token **containing a separator** prints as text that re-lexes into *two* tokens.
-
-So neither is representable. Which characters separate tokens is a parameter: `isSep`. -/
-
-/-- Which characters separate tokens. A token is a maximal run of non-separator characters. -/
-def isSep (c : Char) : Bool := c.isWhitespace
-
-/-- The parser's alphabet — **derived**, by instantiating `IsoParser.Token` at our separator.
-It is not a type of our own: the alphabet is fixed above the vernacular, in
-`IsoParser/Token.lean`, which knows nothing about this vernacular, so any tokenizer and this
-parser must agree by construction rather than by coincidence. By construction, printing a
-`Token` and re-lexing recovers it.
-
-`IsoParser.isToken` is a *decidable* `Bool`, which is why keyword literals can be discharged by
-`decide`. -/
-abbrev Token := _root_.LambdaLab.Parser.IsoParser.Token isSep
+variable {lex : Lexicon}
 
 /-- Tokens available as names: everything the given list has not reserved. The `Atom`
 instance for the resulting subtype lives in `TypeSystem/Named/FreeName.lean` (it needs a
 fresh-name generator); the definitions live here so that a language's name type can be stated in
 terms of them. -/
-def isFree (reserved : List Token) (t : Token) : Bool := decide (t ∉ reserved)
+def isFree (reserved : List (Token lex)) (t : Token lex) : Bool := decide (t ∉ reserved)
 
 /-- The atoms determined by a reserved list. -/
-abbrev FreeName (reserved : List Token) : Type := { t : Token // isFree reserved t = true }
+abbrev FreeName (reserved : List (Token lex)) : Type :=
+  { t : Token lex // isFree reserved t = true }
 
 /-! ## A language: declaration forms
 
@@ -72,7 +59,7 @@ keywords (`weakenFollow`, sound because the round trip is antitone in FOLLOW, `H
 are sound in exactly one direction, and that direction is the one needed. -/
 
 /-- FIRST is **unconstrained** for a body, so the interface allows everything. -/
-abbrev anyTok : Token → Prop := fun _ => True
+abbrev anyTok : Token lex → Prop := fun _ => True
 
 /-- A **pluggable language**: its declaration forms, each a keyword and a parser for what follows
 it. The file parser, its round trip, and the `Abs` morphism are *derived* (`Stages/Parse.lean`).
@@ -82,13 +69,15 @@ concern, supplied as walks over `Decl` (`Semantics/Walk.lean`); a language with 
 and pretty-prints. `Pipeline/Def.lean` builds the one-form language `def x : T := e` from a term
 and a type parser, which is how every language before this structure is expressed in it. -/
 structure Language where
+  /-- What a token is: separators, self-delimiting characters, and their printed spacing. -/
+  lex : Lexicon
   /-- The declaration forms. -/
   Form : Type
   /-- Every form, listed — so that the keywords form a finite list. -/
   forms : List Form
   forms_complete : ∀ f, f ∈ forms
   /-- The keyword that starts a declaration of form `f`. -/
-  head : Form → Token
+  head : Form → Token lex
   /-- **One keyword, one form.** This is what lets the file parser choose a form by reading one
   token. -/
   head_injective : ∀ f g, head f = head g → f = g
@@ -101,7 +90,7 @@ structure Language where
   annotated spelling, `default` being the canonical one. Its FOLLOW admits every keyword: the
   termination seam. -/
   body : (f : Form) →
-    LossyParser Token anyTok (fun t => t ∈ forms.map head) (Body f) (BodyAnn f)
+    LossyParser (Token lex) anyTok (fun t => t ∈ forms.map head) (Body f) (BodyAnn f)
   /-- The type a declaration is, for whatever walks over it. A language may take
   `Σ f, Body f` itself; one with its own inductive gives it here and relates the two by `decl`. -/
   Decl : Type
@@ -113,13 +102,13 @@ namespace Language
 variable (L : Language)
 
 /-- The keywords that start a declaration — what every body must stop in front of. -/
-def heads : List Token := L.forms.map L.head
+def heads : List (Token L.lex) := L.forms.map L.head
 
 theorem head_mem_heads (f : L.Form) : L.head f ∈ L.heads :=
   List.mem_map.mpr ⟨f, L.forms_complete f, rfl⟩
 
 /-- The form a keyword starts, if it starts one. -/
-def formOf (t : Token) : Option L.Form := L.forms.find? (fun f => L.head f == t)
+def formOf (t : Token L.lex) : Option L.Form := L.forms.find? (fun f => L.head f == t)
 
 theorem formOf_head (f : L.Form) : L.formOf (L.head f) = some f := by
   unfold formOf

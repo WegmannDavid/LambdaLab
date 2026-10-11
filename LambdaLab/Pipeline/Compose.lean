@@ -18,9 +18,10 @@ List Char  ⇝  List Token  ⇝  Program  ⇝  (a walk)  ⇝  (another walk)  �
 ```
 
 ① `Abstraction/Tokenizer.lean` — generic, shared by every language, so it has no file under
-  `Stages/`. Instantiated below at the shared separator (`isSep`, whitespace), so the alphabet
-  agreement between ① and ② is by construction rather than coincidence. It knows nothing of
-  declarations; the layout that puts one per line is imposed here, on the composite.
+  `Stages/`. Instantiated below at the language's own lexicon (`Language.lex`), the same one its
+  parser reads, so the alphabet agreement between ① and ② is by construction rather than
+  coincidence. It knows nothing of declarations; the layout that puts one per line is imposed
+  here, on the composite.
 ② `Stages/Parse.lean` — `Language.abstraction`, built from the language's declaration forms.
 ③, ④, … — whatever **walks** the language has (`Semantics/Walk.lean`): a state carried through the
   declarations, each one rewritten on the way. A walk becomes a stage with `Walk.stage` (the first)
@@ -51,14 +52,15 @@ below says that rendering an elaborated program and reading it back re-tokenizes
 re-elaborates to exactly what you started with. That theorem is one line, because composition did
 the work.
 
-Note the tokenizer is Agda-style: tokens must be whitespace-separated — write `( x )`, not `(x)`.
+Whether `(x)` needs to be written `( x )` is the lexicon's call: in a lexicon where the
+parentheses are self-delimiting both spellings read the same, and the canonical one hugs them.
 -/
 
 namespace LambdaLab.Pipeline
 
 open LambdaLab.Abstraction
 
-open LambdaLab.Parser.IsoParser (many1PrintOut)
+open LambdaLab.Parser.IsoParser (many1PrintOut Lexicon Token)
 open LambdaLab.Semantics (Walk)
 
 /-! ## The canonical layout
@@ -69,49 +71,50 @@ stage can state it alone — which is why it is not a stage, but a choice of `de
 composite (`withDefault`).
 
 The parser emits a declaration's tokens as a block and concatenates the blocks (`many1PrintOut`),
-so the gaps split the same way: `defaultInner ' '` inside a block, a newline at each seam
+so the gaps split the same way: `defaultInner` inside a block, a newline at each seam
 (`joinInner`). No keyword appears below — a line ends because a *declaration* ended.
 -/
 
 /-- The newline seam between two declarations. -/
-def nlSeam : NEGap isSep := scGap '\n' (by decide)
+def nlSeam (lex : Lexicon) : NEGap lex := scGap '\n' lex.newline_sep
 
 /-- Layout for the declarations after the first: mirrors `many1PrintOut`'s own recursion. -/
 def Language.layoutTail (L : Language) :
     (ds : List L.Decl) → (as : ListAnn L ds) →
-      Inner isSep (many1PrintOut L.declIso (zipAnnList L ds as))
+      Inner L.lex (many1PrintOut L.declIso (zipAnnList L ds as))
   | [], _ => PUnit.unit
   | d :: ds, (a, as) =>
-      joinInner nlSeam
-        (L.declIso.print ⟨d, a⟩).2 (defaultInner ' ' (by decide) _)
+      joinInner (nlSeam L.lex)
+        (L.declIso.print ⟨d, a⟩).2 (defaultInner L.lex _)
         (many1PrintOut L.declIso (zipAnnList L ds as)) (L.layoutTail ds as)
 
 /-- **The canonical layout of a program**: one declaration per line, single spaces within a
-declaration, no leading or trailing whitespace. An annotation of the composite's gap component, so
-it is a legal `default` and nothing about the morphism changes. -/
+declaration (none where the lexicon hugs a bracket), no leading or trailing whitespace. An
+annotation of the composite's gap component, so it is a legal `default` and nothing about the
+morphism changes. -/
 def Language.layout (L : Language) {prog : Program L} (ann : Program.Ann L prog) :
-    Gaps isSep (L.parser.print ann) :=
+    Gaps L.lex (L.parser.print ann) :=
   ⟨emptyRun,
-    joinInner nlSeam
-      (L.declIso.print ⟨prog.1, ann.1⟩).2 (defaultInner ' ' (by decide) _)
+    joinInner (nlSeam L.lex)
+      (L.declIso.print ⟨prog.1, ann.1⟩).2 (defaultInner L.lex _)
       (many1PrintOut L.declIso (zipAnnList L prog.2 ann.2)) (L.layoutTail prog.2 ann.2)⟩
 
 /-! ## ① ∘ ② — reading, no semantics required -/
 
 /-- ① as a 1-cell — the annotation family bundled in, so the stage can sit in a `Chain`. -/
-def tokenCell : OneCell (List Char) (List Token) :=
-  ⟨Gaps isSep, tokenizer (sep := isSep) ' ' (by decide)⟩
+def tokenCell (lex : Lexicon) : OneCell (List Char) (List (Token lex)) :=
+  ⟨Gaps lex, tokenizer lex⟩
 
 /-- ② as a 1-cell. -/
-def Language.parseCell (L : Language) : OneCell (List Token) (Program L) :=
+def Language.parseCell (L : Language) : OneCell (List (Token L.lex)) (Program L) :=
   ⟨Language.ParseAnn L, L.abstraction⟩
 
 /-- **Characters to program**, in `Abs`: the tokenizer composed with the language's parsing stage.
 Available for every `Language`, since neither stage knows what a program means. -/
 def Language.parsePipeline (L : Language) :
     Abstraction (List Char) (Program L)
-      (fun prog => Σ β : Language.ParseAnn L prog, Gaps isSep β.val) :=
-  (tokenCell.hom.comp L.abstraction).withDefault
+      (fun prog => Σ β : Language.ParseAnn L prog, Gaps L.lex β.val) :=
+  ((tokenCell L.lex).hom.comp L.abstraction).withDefault
     (fun {prog} => ⟨L.abstraction.default (a := prog), L.layout L.parser.default⟩)
 
 /-- Parse a source file into a program. Whole-input: leading/trailing whitespace is fine,
@@ -144,11 +147,12 @@ def sourceStage : Stage where
   name := "source"
   render := String.ofList
 
-/-- After ①: the token stream, shown re-rendered with single spaces. -/
-def tokenStage : Stage where
-  Carrier := List Token
+/-- After ①: the token stream, shown re-rendered with canonical spacing. -/
+def tokenStage (lex : Lexicon) : Stage where
+  Carrier := List (Token lex)
   name := "tokens"
-  render := fun ts => String.ofList (tokenCell.hom.realize (tokenCell.hom.default (a := ts)))
+  render := fun ts =>
+    String.ofList ((tokenCell lex).hom.realize ((tokenCell lex).hom.default (a := ts)))
 
 /-- After ②: the program, shown in its canonical layout. -/
 def Language.programStage (L : Language) : Stage where
@@ -158,7 +162,7 @@ def Language.programStage (L : Language) : Stage where
 
 /-- **Characters to program, stage by stage.** -/
 def Language.parseChain (L : Language) : Chain sourceStage L.programStage :=
-  Chain.cons (Y := tokenStage) (Chain.one tokenCell) L.parseCell
+  Chain.cons (Y := tokenStage L.lex) (Chain.one (tokenCell L.lex)) L.parseCell
 
 /-- Stepping through the stages reads a file exactly as collapsing them does. -/
 @[simp] theorem Language.parseChain_abstract (L : Language) (cs : List Char) :

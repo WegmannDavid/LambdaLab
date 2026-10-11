@@ -42,7 +42,7 @@ variable (L : Language)
 
 /-- One form: its keyword, then its body. The source is the annotated body. -/
 def Language.formIso (f : L.Form) :
-    IsoParser Token (· = L.head f) (fun t => t ∈ L.heads)
+    IsoParser (Token L.lex) (· = L.head f) (fun t => t ∈ L.heads)
       (Σ b : L.Body f, L.BodyAnn f b) (L.Body f) := gdo
   let _kw ← tok (L.head f)
   let b ← (L.body f).toIsoParser
@@ -50,14 +50,14 @@ def Language.formIso (f : L.Form) :
 
 /-- Any form, chosen by its keyword. -/
 def Language.formsIso :
-    IsoParser Token (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads)
+    IsoParser (Token L.lex) (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads)
       (Σ f, Σ b : L.Body f, L.BodyAnn f b) (Σ f, L.Body f) :=
   dispatch L.head L.formOf L.formOf_head L.formIso
 
 /-- **The declaration parser**: the source is the annotated declaration, read through `decl` as a
 form and an annotated body. -/
 def Language.declIso :
-    IsoParser Token (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads)
+    IsoParser (Token L.lex) (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads)
       (Σ d : L.Decl, L.DeclAnn d) L.Decl :=
   map L.decl.invFun
     (comap (fun s => ⟨(L.decl.toFun s.1).1, (L.decl.toFun s.1).2, s.2⟩) L.formsIso)
@@ -95,7 +95,8 @@ def zipAnnList : (ds : List L.Decl) → ListAnn L ds → List (Σ d : L.Decl, L.
 from `Σ prog, annotations` to `many1`'s list-of-`Σ`. A declaration's FIRST is the keywords and so
 is its FOLLOW, so the repetition obligation is that every FIRST token is a keyword. -/
 def Language.parserIso :
-    IsoParser Token (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads ∧ ¬ ∃ f, t = L.head f)
+    IsoParser (Token L.lex) (fun c => ∃ f, c = L.head f)
+      (fun t => t ∈ L.heads ∧ ¬ ∃ f, t = L.head f)
       (Σ prog : Program L, Program.Ann L prog) (NEList L.Decl) :=
   comap (fun s => (⟨s.1.1, s.2.1⟩, zipAnnList L s.1.2 s.2.2))
     (many1 L.declIso (by rintro c ⟨f, rfl⟩; exact L.head_mem_heads f))
@@ -117,7 +118,8 @@ theorem Language.parserIso_echo (s : Σ prog : Program L, Program.Ann L prog) :
 /-- **The file parser, lossy**: value `Program L`, annotation the full surface spelling. Canonical
 print = every declaration in canonical form. -/
 def Language.parser :
-    LossyParser Token (fun c => ∃ f, c = L.head f) (fun t => t ∈ L.heads ∧ ¬ ∃ f, t = L.head f)
+    LossyParser (Token L.lex) (fun c => ∃ f, c = L.head f)
+      (fun t => t ∈ L.heads ∧ ¬ ∃ f, t = L.head f)
       (Program L) (Program.Ann L) :=
   L.parserIso.toLossyParserSigma
     (fun {prog} => (L.defaultDeclAnn prog.1, defaultListAnn L prog.2))
@@ -140,12 +142,12 @@ complete without a proof, since an annotation *is* an accepted input.
 `Program.Ann` has not gone anywhere: it is still what `L.parser` prints from, and still what the
 layout in `Compose.lean` is written against. It is no longer what indexes the *morphism*. -/
 abbrev Language.ParseAnn (prog : Program L) : Type :=
-  { ts : List Token // L.parser.wholeInput ts = some prog }
+  { ts : List (Token L.lex) // L.parser.wholeInput ts = some prog }
 
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
 whose annotation is every token list the program can be written as. Composes with the tokenizer
 (`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
-def Language.abstraction : Abstraction (List Token) (Program L) (Language.ParseAnn L) :=
+def Language.abstraction : Abstraction (List (Token L.lex)) (Program L) (Language.ParseAnn L) :=
   L.parser.toAbstraction
 
 /-- **The parse stage forgets nothing** — a projection, not a theorem. What the structured family
@@ -153,7 +155,7 @@ def Language.abstraction : Abstraction (List Token) (Program L) (Language.ParseA
 combinator it is built from (`tok`, `bind`, `dispatch`, `comap`, `many1`); the tautological family
 reaches the same conclusion with none of it, and `LossyParser.toAbstractionOfExact` is waiting for
 the day those land. -/
-theorem Language.abstraction_lossless (ts : List Token) (prog : Program L)
+theorem Language.abstraction_lossless (ts : List (Token L.lex)) (prog : Program L)
     (h : L.abstraction.abstract ts = some prog) :
     ∃ ann : Language.ParseAnn L prog, L.abstraction.realize ann = ts :=
   L.abstraction.lossless ts prog h

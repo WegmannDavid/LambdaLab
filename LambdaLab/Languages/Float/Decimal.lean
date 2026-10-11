@@ -1,5 +1,4 @@
 import LambdaLab.Parser.Numeral
-import LambdaLab.Pipeline.Basic
 
 /-!
 # Exact decimals, and the literals that spell them
@@ -24,9 +23,8 @@ that whatever it is, it is written as a literal that reads back as itself.
 
 namespace LambdaLab.Languages.Float
 
-open LambdaLab.Parser.IsoParser (isToken_iff)
+open LambdaLab.Parser.IsoParser (Lexicon Token)
 open LambdaLab.Parser.Numeral
-open LambdaLab.Pipeline (Token)
 
 /-- A non-negative decimal: an integer part, and the digits after the point, most significant
 first. -/
@@ -171,44 +169,54 @@ theorem isDecimalChars_decimalChars (d : Decimal) : isDecimalChars (decimalChars
       obtain ⟨y, _, rfl⟩ := List.mem_map.mp hc
       exact (digitChar_spec y.isLt).2
 
-/-! ## Literal tokens -/
+/-! ## Literal tokens
+
+A literal is one token only in a lexicon where it is one run of word characters: digits and the
+point must not separate, nor stand alone. `Words lex` says so, and a language discharges it once
+for its lexicon. -/
+
+/-- In `lex`, a decimal literal is a single word: digits and `.` are word characters. -/
+structure Words (lex : Lexicon) : Prop where
+  digit : ∀ c, isDigitChar c = true → lex.word c = true
+  point : lex.word '.' = true
+
+variable {lex : Lexicon}
 
 /-- Is this token a decimal literal? -/
-def isDecimalTok (t : Token) : Bool := isDecimalChars t.val.toList
+def isDecimalTok (t : Token lex) : Bool := isDecimalChars t.val.toList
 
-theorem decimalChars_not_sep (d : Decimal) : ∀ c ∈ decimalChars d, c.isWhitespace = false := by
+theorem decimalChars_word (h : Words lex) (d : Decimal) :
+    ∀ c ∈ decimalChars d, lex.word c = true := by
   intro c hc
-  rcases List.mem_append.mp hc with h | h
-  · exact isDigitChar_not_whitespace ((natChars_spec d.int).2 c h)
+  rcases List.mem_append.mp hc with h' | h'
+  · exact h.digit c ((natChars_spec d.int).2 c h')
   · cases hf : d.frac with
-    | nil => rw [hf] at h; cases h
+    | nil => rw [hf] at h'; cases h'
     | cons x xs =>
-        rw [hf] at h
-        simp only [fracChars, List.mem_cons, List.mem_map] at h
-        rcases h with rfl | ⟨y, _, rfl⟩
-        · decide
-        · exact isDigitChar_not_whitespace (digitChar_spec y.isLt).2
+        rw [hf] at h'
+        simp only [fracChars, List.mem_cons, List.mem_map] at h'
+        rcases h' with rfl | ⟨y, _, rfl⟩
+        · exact h.point
+        · exact h.digit _ (digitChar_spec y.isLt).2
 
 /-- **A decimal's literal token.** -/
-def toToken (d : Decimal) : Token :=
-  ⟨String.ofList (decimalChars d), isToken_iff.mpr (by
-    rw [String.toList_ofList]
-    refine ⟨decimalChars_not_sep d, ?_⟩
-    intro h
-    have := (natChars_spec d.int).1
-    simp only [decimalChars, List.append_eq_nil_iff] at h
-    exact this h.1)⟩
+def toToken (h : Words lex) (d : Decimal) : Token lex :=
+  Token.ofWord (decimalChars d) (decimalChars_word h d) (by
+    intro he
+    simp only [decimalChars, List.append_eq_nil_iff] at he
+    exact (natChars_spec d.int).1 he.1)
 
-theorem isDecimalTok_toToken (d : Decimal) : isDecimalTok (toToken d) = true := by
-  simp only [isDecimalTok, toToken, String.toList_ofList]
+theorem isDecimalTok_toToken (h : Words lex) (d : Decimal) :
+    isDecimalTok (toToken h d) = true := by
+  simp only [isDecimalTok, toToken, Token.ofWord_toList]
   exact isDecimalChars_decimalChars d
 
 /-- The value a literal token spells, normalized. -/
-def ofToken (t : Token) : Decimal := (decimalOfChars t.val.toList).normalize
+def ofToken (t : Token lex) : Decimal := (decimalOfChars t.val.toList).normalize
 
 /-- Reading a value's literal gives the value back, normalized. -/
-theorem ofToken_toToken (d : Decimal) : ofToken (toToken d) = d.normalize := by
-  simp only [ofToken, toToken, String.toList_ofList, decimalOfChars_decimalChars]
+theorem ofToken_toToken (h : Words lex) (d : Decimal) : ofToken (toToken h d) = d.normalize := by
+  simp only [ofToken, toToken, Token.ofWord_toList, decimalOfChars_decimalChars]
 
 end Decimal
 

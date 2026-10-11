@@ -13,7 +13,8 @@ language — so it is discharged once, here, rather than per language.
 abbrev VName := FreeName sReserved      -- and the instance comes for free
 ```
 
-The fresh-name generator is the classic trick: a run of `'a'`s longer than every token in
+The fresh-name generator is the classic trick: a run of the lexicon's `fresh` character (a word
+character, so the run is one token) longer than every token in
 `used ++ reserved`. Length alone then settles both obligations — the result is absent from `used`
 (what `freshFor_not_in` asks) *and* absent from `reserved` (what makes it a `FreeName` at all).
 Working with lengths avoids having to reason about the reserved tokens' spellings.
@@ -38,28 +39,28 @@ open LambdaLab.Nominal (Atom freshFor freshFor_not_in le_foldr_max)
 
 /-! ## A supply of arbitrarily long tokens -/
 
-/-- `n+1` repetitions of `'a'` — non-empty and separator-free, so a genuine `Token`. -/
-private def aRun (n : Nat) : Token :=
-  ⟨String.ofList (List.replicate (n + 1) 'a'), isToken_iff.mpr (by
-    rw [String.toList_ofList]
-    refine ⟨?_, by simp⟩
-    intro c hc
-    rw [(List.mem_replicate.mp hc).2]
-    decide)⟩
+/-- `n+1` repetitions of the lexicon's fresh character — a non-empty run of word characters, so
+a genuine `Token`. -/
+private def aRun (lex : Lexicon) (n : Nat) : Token lex :=
+  Token.ofWord (List.replicate (n + 1) lex.fresh)
+    (fun c hc => by rw [(List.mem_replicate.mp hc).2]; exact lex.fresh_word) (by simp)
 
-private theorem aRun_length (n : Nat) : (aRun n).val.length = n + 1 := by
-  show (String.ofList (List.replicate (n + 1) 'a')).length = n + 1
+private theorem aRun_length (lex : Lexicon) (n : Nat) : (aRun lex n).val.length = n + 1 := by
+  show (String.ofList (List.replicate (n + 1) lex.fresh)).length = n + 1
   rw [String.length_ofList]
   exact List.length_replicate
 
-/-- The longest token in a list. -/
-private def maxLen (l : List Token) : Nat := (l.map (fun t => t.val.length)).foldr max 0
+variable {lex : Lexicon}
 
-private theorem le_maxLen {l : List Token} {t : Token} (h : t ∈ l) : t.val.length ≤ maxLen l :=
+/-- The longest token in a list. -/
+private def maxLen (l : List (Token lex)) : Nat := (l.map (fun t => t.val.length)).foldr max 0
+
+private theorem le_maxLen {l : List (Token lex)} {t : Token lex} (h : t ∈ l) :
+    t.val.length ≤ maxLen l :=
   le_foldr_max _ _ (List.mem_map.mpr ⟨t, h, rfl⟩)
 
 /-- A run longer than everything in `l` is not in `l`. -/
-private theorem aRun_maxLen_not_mem {l : List Token} : aRun (maxLen l) ∉ l := by
+private theorem aRun_maxLen_not_mem {l : List (Token lex)} : aRun lex (maxLen l) ∉ l := by
   intro h
   have hle := le_maxLen h
   rw [aRun_length] at hle
@@ -67,16 +68,16 @@ private theorem aRun_maxLen_not_mem {l : List Token} : aRun (maxLen l) ∉ l := 
 
 /-! ## The instance -/
 
-instance instAtomFreeName (reserved : List Token) : Atom (FreeName reserved) where
+instance instAtomFreeName (reserved : List (Token lex)) : Atom (FreeName reserved) where
   hash v := hash v.val.val
   decEq := inferInstance
   freshFor used :=
-    ⟨aRun (maxLen (used.map (fun v => v.val) ++ reserved)), by
+    ⟨aRun lex (maxLen (used.map (fun v => v.val) ++ reserved)), by
       simp only [isFree, decide_eq_true_eq]
       exact fun hmem => aRun_maxLen_not_mem (List.mem_append_right _ hmem)⟩
   freshFor_not_in used := by
     intro hmem
-    have hval : aRun (maxLen (used.map (fun v => v.val) ++ reserved))
+    have hval : aRun lex (maxLen (used.map (fun v => v.val) ++ reserved))
         ∈ used.map (fun v => v.val) :=
       List.mem_map.mpr ⟨_, hmem, rfl⟩
     exact aRun_maxLen_not_mem (List.mem_append_left _ hval)

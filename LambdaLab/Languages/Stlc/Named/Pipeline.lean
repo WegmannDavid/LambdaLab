@@ -49,31 +49,39 @@ open LambdaLab.Parser.IsoParser LambdaLab.Parser.IsoParser.Mixfix LambdaLab.Pipe
 open LambdaLab.Parser.Truncation.Mixfix
 open LambdaLab.Parser.Numeral (isDigitChar isNatTok natTok natOfTok)
 
-/-! ## The token alphabet -/
+/-! ## The token alphabet
 
-def tkS (s : String) (h : isToken isSep s = true := by decide) : Pipeline.Token := ⟨s, h⟩
+STLC's lexicon is `Lexicon.plain`: tokens are exactly the whitespace-separated words, so a
+parenthesis needs spaces around it — `( x )` — and is printed that way. Making the parentheses
+self-delimiting (`Lexicon.make ['('] [')'] []`) would let `(x)` read and print hugged; nothing
+else in this file would change. -/
+
+/-- What a token is, for STLC. -/
+abbrev stlcLex : Lexicon := Lexicon.plain
+
+def tkS (s : String) (h : isToken stlcLex s = true := by decide) : Token stlcLex := ⟨s, h⟩
 
 /-- Grammar name-parts and vernacular keywords: never variables. -/
-def sReserved : List Pipeline.Token :=
+def sReserved : List (Token stlcLex) :=
   [tkS "(", tkS ")", tkS "λ", tkS ".", tkS ":", tkS "→", tkS "⋆", tkS "def", tkS ":="]
 
-abbrev isVarTok (t : Pipeline.Token) : Bool := isFree sReserved t
+abbrev isVarTok (t : Token stlcLex) : Bool := isFree sReserved t
 
-/-- Digits are separator-free for this vernacular (`isSep` is whitespace). -/
-theorem digit_not_sep : ∀ c, isDigitChar c = true → isSep c = false :=
-  fun _ h => LambdaLab.Parser.Numeral.isDigitChar_not_whitespace h
+/-- Digits are word characters in this lexicon, so `?12` is one token. -/
+theorem digit_word : ∀ c, isDigitChar c = true → stlcLex.word c = true :=
+  Lexicon.make_digit_word
 
 /-- `?` followed by at least one decimal digit. -/
-def isMvarTok (t : Pipeline.Token) : Bool := isNatTok '?' t
+def isMvarTok (t : Token stlcLex) : Bool := isNatTok '?' t
 
 /-- Type atoms: the base type `⋆`, and metavariables `?n`. -/
-def isTyAtom (t : Pipeline.Token) : Bool := (t.val == "⋆") || isMvarTok t
+def isTyAtom (t : Token stlcLex) : Bool := (t.val == "⋆") || isMvarTok t
 
 /-- The token spelling `?n`. -/
-def mvarTok (n : Nat) : Pipeline.Token := natTok '?' (by decide) digit_not_sep n
+def mvarTok (n : Nat) : Token stlcLex := natTok '?' (by decide) digit_word n
 
 /-- Read the index back out of a `?n` token. -/
-def tokMvar (t : Pipeline.Token) : Nat := natOfTok t
+def tokMvar (t : Token stlcLex) : Nat := natOfTok t
 
 theorem tokMvar_mvarTok (n : Nat) : tokMvar (mvarTok n) = n :=
   LambdaLab.Parser.Numeral.natOfTok_natTok _ _ _ n
@@ -96,7 +104,7 @@ inductive BSym | paren
 inductive TSym | paren | arrow
   deriving DecidableEq, Repr
 
-def tmEntry : Entry Pipeline.Token SEnt where
+def tmEntry : Entry (Token stlcLex) SEnt where
   Op := SSym
   operator
     | .paren => .closed (.cons (tkS "(") .tm (.last (tkS ")")))
@@ -128,7 +136,7 @@ def tmEntry : Entry Pipeline.Token SEnt where
         | (rcases ht with rfl | rfl <;> decide)
         | (rcases ht with rfl | rfl | rfl <;> decide)
 
-def varEntry : Entry Pipeline.Token SEnt where
+def varEntry : Entry (Token stlcLex) SEnt where
   Op := BSym
   operator | .paren => .closed (.cons (tkS "(") .var (.last (tkS ")")))
   ops := [.paren]
@@ -154,7 +162,7 @@ def varEntry : Entry Pipeline.Token SEnt where
       List.mem_cons, List.not_mem_nil, or_false] at ht
     rcases ht with rfl | rfl <;> decide
 
-def tyEntry : Entry Pipeline.Token SEnt where
+def tyEntry : Entry (Token stlcLex) SEnt where
   Op := TSym
   operator
     | .paren => .closed (.cons (tkS "(") .ty (.last (tkS ")")))
@@ -183,7 +191,7 @@ def tyEntry : Entry Pipeline.Token SEnt where
         List.mem_cons, List.not_mem_nil, or_false] at ht <;>
       rcases ht with rfl | rfl <;> decide
 
-def stlcGrammar : Grammar Pipeline.Token where
+def stlcGrammar : Grammar (Token stlcLex) where
   Ent := SEnt
   entry | .tm => tmEntry | .var => varEntry | .ty => tyEntry
   interiorTerminates := by
@@ -313,6 +321,7 @@ The alternative — restating the instance at the projected types — needs its 
 argument to be the one `Var` supplies rather than the one `VName` does, and the two are equal only
 after the same unfolding. -/
 @[reducible] def stlcLanguage : DefLanguage where
+  lex := stlcLex
   Tm := Term VName
   Ty := Ty
   AnnTy := fun x => { t : Expr stlcGrammar SEnt.ty .loosest // truncExpr sRules t = x }
@@ -322,7 +331,7 @@ after the same unfolding. -/
     ((mixfix (G := stlcGrammar) SEnt.ty .loosest).weakenFollow
       (by
         intro t ht
-        have h : t = kwAssign := ht
+        have h : t = kwAssign stlcLex := ht
         subst h
         exact sFollow_assign) |> sRules.truncateParser) (fun _ => rfl)
 
@@ -333,7 +342,7 @@ after the same unfolding. -/
     ((mixfix (G := stlcGrammar) SEnt.tm .loosest).weakenFollow
       (by
         intro t ht
-        have h : t = kwDef := ht
+        have h : t = kwDef stlcLex := ht
         subst h
         exact sFollow_def) |> sRules.truncateParser) (fun _ => rfl)
 

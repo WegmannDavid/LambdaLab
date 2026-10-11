@@ -174,20 +174,21 @@ the redundant parens and the whitespace. -/
 
 section Demo
 
-def sepSp (c : Char) : Bool := c == ' '
+private abbrev demoLex : Parser.IsoParser.Lexicon := Parser.IsoParser.Lexicon.plain
 
-private def lpT : Parser.IsoParser.Token sepSp := ⟨"(", by decide⟩
-private def rpT : Parser.IsoParser.Token sepSp := ⟨")", by decide⟩
+private def lpT : Parser.IsoParser.Token demoLex := ⟨"(", by decide⟩
+private def rpT : Parser.IsoParser.Token demoLex := ⟨")", by decide⟩
 
-private def isVarT (t : Parser.IsoParser.Token sepSp) : Bool := decide (t ≠ lpT) && decide (t ≠ rpT)
+private def isVarT (t : Parser.IsoParser.Token demoLex) : Bool :=
+  decide (t ≠ lpT) && decide (t ≠ rpT)
 
 private theorem lp_ne_rp : lpT ≠ rpT := by decide
 
 /-- `List Char ⇝ {var}`: tokenize, then strip redundant parens around a variable. -/
 def parenVarPipeline :
-    Abstraction (List Char) { t : Parser.IsoParser.Token sepSp // isVarT t = true }
-      (fun v => Σ x : Nat × Unit, Gaps sepSp (wrap lpT rpT x.1 [v.1])) :=
-  (tokenizer ' ' rfl).comp
+    Abstraction (List Char) { t : Parser.IsoParser.Token demoLex // isVarT t = true }
+      (fun v => Σ x : Nat × Unit, Gaps demoLex (wrap lpT rpT x.1 [v.1])) :=
+  (tokenizer demoLex).comp
     ((atom isVarT).parens lpT rpT lp_ne_rp (atom_neverWrapped lp_ne_rp))
 
 end Demo

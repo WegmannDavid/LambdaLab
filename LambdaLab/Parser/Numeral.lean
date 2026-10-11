@@ -14,7 +14,7 @@ Two layers:
 * **characters** — `natChars`/`charsNat`, decimal, most-significant first, never empty
   (`charsNat_natChars`), on the digit pair `toDigits`/`ofDigits` proved inverse here.
 * **tokens** — `natTok pre …`/`natOfTok`, a prefix character followed by those digits, packaged as
-  an `IsoParser.Token sep`. Generic in the separator and the prefix, so `?0` (metavariables),
+  an `IsoParser.Token lex`. Generic in the lexicon and the prefix, so `?0` (metavariables),
   `#3` (levels) and friends are all instances.
 
 ## Why the digits are hand-rolled
@@ -136,40 +136,48 @@ theorem charsNat_natChars (n : Nat) : charsNat (natChars n) = n := by
 
 /-! ## Numeral tokens -/
 
-variable {sep : Char → Bool}
+variable {lex : Lexicon}
+
+/-- In a lexicon made from lists that contain no digit, digits are word characters. -/
+theorem _root_.LambdaLab.Parser.IsoParser.Lexicon.make_digit_word
+    {opens closes others : List Char} {h}
+    (hd : ∀ c ∈ opens ++ closes ++ others, isDigitChar c = false := by decide) :
+    ∀ c, isDigitChar c = true → (Lexicon.make opens closes others h).word c = true :=
+  fun c hc => Lexicon.make_word (isDigitChar_not_whitespace hc) (fun hm => by
+    have := hd c hm
+    rw [hc] at this
+    cases this)
 
 /-- Is `t` the prefix character `pre` followed by at least one decimal digit? -/
-def isNatTok (pre : Char) (t : Token sep) : Bool :=
+def isNatTok (pre : Char) (t : Token lex) : Bool :=
   match t.val.toList with
   | c :: ds => c == pre && !ds.isEmpty && ds.all isDigitChar
   | _ => false
 
 /-- The token spelling `pre` followed by `n` in decimal. The side conditions say the prefix and
-the digits are not separators — otherwise the "token" would re-lex as several. -/
-def natTok (pre : Char) (hpre : sep pre = false)
-    (hdig : ∀ c, isDigitChar c = true → sep c = false) (n : Nat) : Token sep :=
-  ⟨String.ofList (pre :: natChars n), isToken_iff.mpr (by
-    rw [String.toList_ofList]
-    refine ⟨?_, by simp⟩
-    intro c hc
-    rcases List.mem_cons.mp hc with rfl | hc'
-    · exact hpre
-    · exact hdig c ((natChars_spec n).2 c hc'))⟩
+the digits are word characters — otherwise the "token" would re-lex as several. -/
+def natTok (pre : Char) (hpre : lex.word pre = true)
+    (hdig : ∀ c, isDigitChar c = true → lex.word c = true) (n : Nat) : Token lex :=
+  Token.ofWord (pre :: natChars n) (fun c hc => by
+      rcases List.mem_cons.mp hc with rfl | hc'
+      · exact hpre
+      · exact hdig c ((natChars_spec n).2 c hc'))
+    (by simp)
 
 /-- Read the number back out (the prefix is dropped). -/
-def natOfTok (t : Token sep) : Nat := charsNat t.val.toList.tail
+def natOfTok (t : Token lex) : Nat := charsNat t.val.toList.tail
 
-theorem natOfTok_natTok (pre : Char) (hpre : sep pre = false)
-    (hdig : ∀ c, isDigitChar c = true → sep c = false) (n : Nat) :
+theorem natOfTok_natTok (pre : Char) (hpre : lex.word pre = true)
+    (hdig : ∀ c, isDigitChar c = true → lex.word c = true) (n : Nat) :
     natOfTok (natTok pre hpre hdig n) = n := by
-  simp only [natOfTok, natTok, String.toList_ofList, List.tail_cons]
+  simp only [natOfTok, natTok, Token.ofWord_toList, List.tail_cons]
   exact charsNat_natChars n
 
-theorem isNatTok_natTok (pre : Char) (hpre : sep pre = false)
-    (hdig : ∀ c, isDigitChar c = true → sep c = false) (n : Nat) :
+theorem isNatTok_natTok (pre : Char) (hpre : lex.word pre = true)
+    (hdig : ∀ c, isDigitChar c = true → lex.word c = true) (n : Nat) :
     isNatTok pre (natTok pre hpre hdig n) = true := by
   have hs := natChars_spec n
-  simp only [isNatTok, natTok, String.toList_ofList]
+  simp only [isNatTok, natTok, Token.ofWord_toList]
   simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true, beq_self_eq_true, true_and]
   refine ⟨?_, fun c hc => hs.2 c hc⟩
   cases hh : natChars n with

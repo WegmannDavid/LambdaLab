@@ -173,22 +173,22 @@ theorem elabTm_eq_toDB : ∀ (t : STm) (tyB tmB : List SName) (t' : Tm),
 
 /-! ## Canonical names -/
 
-theorem sf_digit_not_sep : ∀ c, isDigitChar c = true → isSep c = false :=
-  fun _ h => LambdaLab.Parser.Numeral.isDigitChar_not_whitespace h
+theorem sf_digit_word : ∀ c, isDigitChar c = true → sfLex.word c = true :=
+  LambdaLab.Parser.IsoParser.Lexicon.make_digit_word
 
 /-- A generated name: a prefix character and a number. Never reserved, because no reserved token
 has that shape. -/
-def genName (pre : Char) (hpre : isSep pre = false)
+def genName (pre : Char) (hpre : sfLex.word pre = true)
     (hres : ∀ r ∈ sfReserved, isNatTok pre r = false) (k : Nat) : SName :=
-  ⟨natTok pre hpre sf_digit_not_sep k, by
-    show decide (natTok pre hpre sf_digit_not_sep k ∉ sfReserved) = true
+  ⟨natTok pre hpre sf_digit_word k, by
+    show decide (natTok pre hpre sf_digit_word k ∉ sfReserved) = true
     rw [decide_eq_true_eq]
     intro hmem
     have h1 := hres _ hmem
     rw [LambdaLab.Parser.Numeral.isNatTok_natTok] at h1
     cases h1⟩
 
-theorem genName_inj {pre : Char} {hpre : isSep pre = false}
+theorem genName_inj {pre : Char} {hpre : sfLex.word pre = true}
     {hres : ∀ r ∈ sfReserved, isNatTok pre r = false} {j k : Nat}
     (h : genName pre hpre hres j = genName pre hpre hres k) : j = k := by
   have := congrArg (fun n : SName => natOfTok n.val) h

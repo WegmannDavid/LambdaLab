@@ -15,8 +15,8 @@ What a programmer writes: named variables, and two declaration forms.
     type NAME := TYPE
     def NAME : TYPE := TERM
 
-    TYPE ::= NAME | TYPE → TYPE | ∀ NAME . TYPE | ( TYPE )
-    TERM ::= NAME | λ NAME : TYPE . TERM | TERM TERM | Λ NAME . TERM | TERM [ TYPE ] | ( TERM )
+    TYPE ::= NAME | TYPE → TYPE | ∀ NAME . TYPE | (TYPE)
+    TERM ::= NAME | λ NAME : TYPE . TERM | TERM TERM | Λ NAME . TERM | TERM [TYPE] | (TERM)
 
 A `type` declaration is an abbreviation: later types may name it, and it means its definition.
 A `def` declaration names a term at a declared type; later terms may name it.
@@ -29,11 +29,11 @@ parsed; `Pipeline.lean` translates it into the de Bruijn core to check and run i
 ## Precedence
 
 Binders (`λ`, `Λ`, `∀`) are loosest, then application, then type application, then parentheses:
-`n [ α ] f x` is `((n [α]) f) x`. The engine parses a prefix operator's body, and a postfix
+`n [α] f x` is `((n [α]) f) x`. The engine parses a prefix operator's body, and a postfix
 operator's operand, strictly tighter than the operator itself, so a binder directly inside a
 binder's body, or a type application of a type application, needs parentheses:
-`Λ α . ( λ x : α . x )`, `( f [ A ] ) [ B ]`. For the same reason a `∀` to the right of an arrow
-does: `( ∀ α . α ) → ( ∀ α . α )`. The canonical print puts them back where needed.
+`Λ α . (λ x : α . x)`, `(f [A]) [B]`. For the same reason a `∀` to the right of an arrow
+does: `(∀ α . α) → (∀ α . α)`. The canonical print puts them back where needed.
 -/
 
 namespace LambdaLab.Languages.SystemF
@@ -43,23 +43,35 @@ open LambdaLab.Parser.LossyParser (LossyParser)
 open LambdaLab.Parser.Truncation.Mixfix (Rules truncExpr)
 open LambdaLab.Parser.Numeral (isDigitChar natTok natOfTok isNatTok)
 
+/-! ## The lexicon
+
+The brackets and the binder symbols are self-delimiting: `Λa. λx : a. f [a] x` reads as
+`Λ a . λ x : a . f [ a ] x` does. The canonical printer hugs the brackets and spaces everything
+else — `Λ a . λ x : a . f [a] x`. `:` is not self-delimiting, because `:=` is one token; so
+`x : a` keeps its spaces. -/
+
+/-- What a token is, for System F. -/
+abbrev sfLex : Lexicon := Lexicon.make ['(', '['] [')', ']'] ['λ', 'Λ', '∀', '.', '→']
+
+abbrev SFTok : Type := Token sfLex
+
 /-! ## Tokens and names -/
 
-/-- A token literal of the shared alphabet. -/
-def tkSF (s : String) (h : isToken isSep s = true := by decide) : Token := ⟨s, h⟩
+/-- A token literal. -/
+def tkSF (s : String) (h : isToken sfLex s = true := by decide) : SFTok := ⟨s, h⟩
 
-def kwDefF : Token := tkSF "def"
-def kwTypeF : Token := tkSF "type"
-def kwAssignF : Token := tkSF ":="
+def kwDefF : SFTok := tkSF "def"
+def kwTypeF : SFTok := tkSF "type"
+def kwAssignF : SFTok := tkSF ":="
 
 /-- Grammar name-parts and declaration keywords: never names. -/
-def sfReserved : List Token :=
+def sfReserved : List SFTok :=
   [tkSF "(", tkSF ")", tkSF "λ", tkSF "Λ", tkSF "∀", tkSF ".", tkSF ":", tkSF "→", tkSF "[",
     tkSF "]", kwDefF, kwTypeF, kwAssignF]
 
 /-- A name is any token that is not reserved — type variables, term variables and declared names
 alike. -/
-abbrev isSFName (t : Token) : Bool := isFree sfReserved t
+abbrev isSFName (t : SFTok) : Bool := isFree sfReserved t
 
 abbrev SName : Type := FreeName sfReserved
 
@@ -75,7 +87,7 @@ inductive VarSym | paren
 inductive TySym | paren | arrow | all
   deriving DecidableEq, Repr
 
-def sfTmEntry : Entry Token SFEnt where
+def sfTmEntry : Entry SFTok SFEnt where
   Op := TmSym
   operator
     | .paren => .closed (.cons (tkSF "(") .tm (.last (tkSF ")")))
@@ -109,7 +121,7 @@ def sfTmEntry : Entry Token SFEnt where
         | (rcases ht with rfl | rfl <;> decide)
         | (rcases ht with rfl | rfl | rfl <;> decide)
 
-def sfVarEntry : Entry Token SFEnt where
+def sfVarEntry : Entry SFTok SFEnt where
   Op := VarSym
   operator | .paren => .closed (.cons (tkSF "(") .var (.last (tkSF ")")))
   ops := [.paren]
@@ -134,7 +146,7 @@ def sfVarEntry : Entry Token SFEnt where
       List.mem_cons, List.not_mem_nil, or_false] at ht
     rcases ht with rfl | rfl <;> decide
 
-def sfTyEntry : Entry Token SFEnt where
+def sfTyEntry : Entry SFTok SFEnt where
   Op := TySym
   operator
     | .paren => .closed (.cons (tkSF "(") .ty (.last (tkSF ")")))
@@ -166,7 +178,7 @@ def sfTyEntry : Entry Token SFEnt where
         | (rcases ht with rfl | rfl <;> decide)
         | (rcases ht with rfl | rfl | rfl <;> decide)
 
-def sfGrammar : Grammar Token where
+def sfGrammar : Grammar SFTok where
   Ent := SFEnt
   entry | .tm => sfTmEntry | .var => sfVarEntry | .ty => sfTyEntry
   interiorTerminates := by
@@ -314,11 +326,11 @@ abbrev STy.Ann (x : STy) : Type := { t : Expr sfGrammar SFEnt.ty .loosest // tru
 /-- Every spelling of a term. -/
 abbrev STm.Ann (x : STm) : Type := { t : Expr sfGrammar SFEnt.tm .loosest // truncExpr sfRules t = x }
 
-def sfTy : LossyParser Token anyTok (· ∈ [kwAssignF, kwDefF, kwTypeF]) STy STy.Ann :=
+def sfTy : LossyParser SFTok anyTok (· ∈ [kwAssignF, kwDefF, kwTypeF]) STy STy.Ann :=
   ((mixfix (G := sfGrammar) SFEnt.ty .loosest).weakenFollow sfFollow_ty
     |> sfRules.truncateParser) (fun _ => rfl)
 
-def sfTm : LossyParser Token anyTok (· ∈ [kwDefF, kwTypeF]) STm STm.Ann :=
+def sfTm : LossyParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) STm STm.Ann :=
   ((mixfix (G := sfGrammar) SFEnt.tm .loosest).weakenFollow sfFollow_tm
     |> sfRules.truncateParser) (fun _ => rfl)
 
@@ -357,7 +369,7 @@ abbrev TypeBody.Ann (b : TypeBody) : Type := b.ty.Ann
 
 /-- What follows `def`. -/
 def defBodyIso :
-    IsoParser Token anyTok (· ∈ [kwDefF, kwTypeF]) (Σ b : DefBody, b.Ann) DefBody :=
+    IsoParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) (Σ b : DefBody, b.Ann) DefBody :=
   IsoParser.enlargeFirst (fun _ h => absurd trivial h) <| gdo
     let n ← comap (fun s => s.1.name) (sat isSFName)
     let _c ← tok (tkSF ":")
@@ -369,13 +381,13 @@ def defBodyIso :
 theorem defBodyIso_echo : ∀ s : Σ b : DefBody, b.Ann, (defBodyIso.print s).1 = s.1
   | ⟨⟨_, _, _⟩, _⟩ => rfl
 
-def defBody : LossyParser Token anyTok (· ∈ [kwDefF, kwTypeF]) DefBody DefBody.Ann :=
+def defBody : LossyParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) DefBody DefBody.Ann :=
   defBodyIso.toLossyParserSigma (fun {_} => (sfTy.default, sfTm.default)) defBodyIso_echo
 
 /-- What follows `type`. A type there ends the declaration, so its FOLLOW is narrowed to the
 keywords. -/
 def typeBodyIso :
-    IsoParser Token anyTok (· ∈ [kwDefF, kwTypeF]) (Σ b : TypeBody, b.Ann) TypeBody :=
+    IsoParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) (Σ b : TypeBody, b.Ann) TypeBody :=
   IsoParser.enlargeFirst (fun _ h => absurd trivial h) <| gdo
     let n ← comap (fun s => s.1.name) (sat isSFName)
     let _a ← tok kwAssignF
@@ -388,10 +400,10 @@ def typeBodyIso :
 theorem typeBodyIso_echo : ∀ s : Σ b : TypeBody, b.Ann, (typeBodyIso.print s).1 = s.1
   | ⟨⟨_, _⟩, _⟩ => rfl
 
-def typeBody : LossyParser Token anyTok (· ∈ [kwDefF, kwTypeF]) TypeBody TypeBody.Ann :=
+def typeBody : LossyParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) TypeBody TypeBody.Ann :=
   typeBodyIso.toLossyParserSigma (fun {_} => sfTy.default) typeBodyIso_echo
 
-def SFForm.head : SFForm → Token
+def SFForm.head : SFForm → SFTok
   | .defn => kwDefF
   | .tydef => kwTypeF
 
@@ -404,7 +416,7 @@ def SFForm.BodyAnn : (f : SFForm) → f.Body → Type
   | .tydef => TypeBody.Ann
 
 def SFForm.body : (f : SFForm) →
-    LossyParser Token anyTok (· ∈ [kwDefF, kwTypeF]) f.Body f.BodyAnn
+    LossyParser SFTok anyTok (· ∈ [kwDefF, kwTypeF]) f.Body f.BodyAnn
   | .defn => defBody
   | .tydef => typeBody
 
@@ -418,6 +430,7 @@ def SDecl.ofSigma : (Σ f : SFForm, f.Body) → SDecl
 
 /-- **The System F language**: two forms, `def` and `type`. -/
 def systemFLanguage : Language where
+  lex := sfLex
   Form := SFForm
   forms := [.defn, .tydef]
   forms_complete f := by cases f <;> decide

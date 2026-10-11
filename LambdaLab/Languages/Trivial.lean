@@ -18,27 +18,31 @@ open LambdaLab.TypeSystem.Named (Context)
 
 open LambdaLab.Parser.IsoParser
 
+/-- The names: every whitespace-separated word but the `def` form's three keywords. -/
+abbrev TName : Type := Name Lexicon.plain
+
 /-- Terms and types are both a bare identifier.
 
-`sat isName`'s real indices are FIRST = `isName`, FOLLOW = ⊤ (a single token is self-delimiting,
-so anything may follow). Adapt both to what the interface asks for: `enlargeFirst` widens FIRST
-up to `anyTok` (sound: `firstOk` is a negative claim); `weakenFollow` narrows FOLLOW down to the
-key token (sound: the round-trip is antitone in FOLLOW).
+`sat (isName Lexicon.plain)`'s real indices are FIRST = `isName`, FOLLOW = ⊤ (a single token
+is self-delimiting, so anything may follow). Adapt both to what the interface asks for:
+`enlargeFirst` widens FIRST up to `anyTok` (sound: `firstOk` is a negative claim); `weakenFollow`
+narrows FOLLOW down to the key token (sound: the round-trip is antitone in FOLLOW).
 
 `reducible` for the reason `stlcLanguage` is: instance search has to see through the definition to
 find the `PrincipalElaborate` instance at `Var trivialLanguage`. -/
 @[reducible] def trivialLanguage : DefLanguage where
-  Tm := Name
-  Ty := Name
+  lex := Lexicon.plain
+  Tm := TName
+  Ty := TName
   AnnTy := fun _ => Unit
   AnnTm := fun _ => Unit
-  -- Variables are any non-keyword lexeme — the same `Name` the terms themselves are.
-  isVarName := isName
+  -- Variables are any non-keyword lexeme — the same `TName` the terms themselves are.
+  isVarName := isName Lexicon.plain
   varAtom := inferInstance
 
-  pTy := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
+  pTy := (((sat (isName Lexicon.plain)).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
-  pTm := (((sat isName).weakenFollow (fun _ _ => trivial)).enlargeFirst
+  pTm := (((sat (isName Lexicon.plain)).weakenFollow (fun _ _ => trivial)).enlargeFirst
     (fun _ hf => absurd trivial hf)).toLossyParserUnit (fun _ => rfl)
 
 /-- `def x : A := e` — one declaration. -/
@@ -51,7 +55,7 @@ def prog2 : Program trivialLanguage.toLanguage :=
    [Command.decl ⟨⟨"y", by decide⟩, by decide⟩ ⟨⟨"B", by decide⟩, by decide⟩ ⟨⟨"f", by decide⟩, by decide⟩])
 
 /-- The canonical spelling of a program — `print` at the `default` annotation. -/
-def canonPrint (p : Program trivialLanguage.toLanguage) : List Token :=
+def canonPrint (p : Program trivialLanguage.toLanguage) : List (Token Lexicon.plain) :=
   trivialLanguage.toLanguage.parser.print (trivialLanguage.toLanguage.parser.default (v := p))
 
 /-- The round-trip, instantiated: **free**, inherited from the framework — now for *any*
@@ -98,29 +102,29 @@ Names carry no metavariables, so substitution is the identity and every law abou
 That is not a cheat — it is what a language with no inference looks like, and it is exactly the
 degenerate case the interface has to admit if the general one is to mean anything. -/
 
-/-! Terms and types are the same type here, so `Name` must have `HasVars` — and that makes the
-*key-aware* `HashMap` substitution instance apply to `Context Name Name` and outrank the
+/-! Terms and types are the same type here, so `TName` must have `HasVars` — and that makes the
+*key-aware* `HashMap` substitution instance apply to `Context TName TName` and outrank the
 context-specific one, which is deliberately `low`. The generic vernacular code was elaborated
 where no `HasVars Nat N` was in scope, so its goals carry the context instance; raising its priority
 here makes the concrete lemmas below talk about the same `pSubst` those goals do. -/
 
 attribute [local instance 2000] LambdaLab.TypeSystem.Named.instHasSubstContext
 
-instance : HasVars Nat Name := HasVars.ofNoAtoms Nat Name
+instance : HasVars Nat TName := HasVars.ofNoAtoms Nat TName
 
-instance : HasSubst Nat Name Name where
+instance : HasSubst Nat TName TName where
   pSubst t _ := t
 
-instance : GroundStable Nat Name Name where pSubst_ground _ _ := rfl
-instance : LawfulComp Nat Name Name where pSubst_comp _ _ _ := rfl
-instance : LawfulRestrict Nat Name Name where pSubst_restrictTo _ _ _ _ := rfl
+instance : GroundStable Nat TName TName where pSubst_ground _ _ := rfl
+instance : LawfulComp Nat TName TName where pSubst_comp _ _ _ := rfl
+instance : LawfulRestrict Nat TName TName where pSubst_restrictTo _ _ _ _ := rfl
 
 /-- Nothing is ever free, so everything is ground — decidably. -/
-instance : DecidablePred (HasVars.Ground (A := Nat) : Name → Prop) :=
+instance : DecidablePred (HasVars.Ground (A := Nat) : TName → Prop) :=
   fun _ => isTrue (fun _ h => h)
 
 /-- `t` may be used at `τ`: either it is unbound, or it was declared at `τ`. -/
-def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
+def declaredAt (Γ : Context TName TName) (t τ : TName) : Bool :=
   match Γ.get? t with
   | none => true
   | some σ => σ == τ
@@ -128,30 +132,30 @@ def declaredAt (Γ : Context Name Name) (t τ : Name) : Bool :=
 /-- Substituting a context cannot change what it says, since substitution fixes every value.
 Stated at `declaredAt` rather than as `pSubst Γ σ = Γ`, which `Std.HashMap` does not let anyone
 prove — the same reason `LawfulTypeSystem.cong` exists. -/
-theorem declaredAt_pSubst (Γ : Context Name Name) (σ : Subst Nat Name) (t τ : Name) :
+theorem declaredAt_pSubst (Γ : Context TName TName) (σ : Subst Nat TName) (t τ : TName) :
     declaredAt (HasSubst.pSubst Γ σ) t τ = declaredAt Γ t τ := by
   rw [declaredAt, declaredAt, Context.pSubst_get?]
   cases Γ.get? t <;> rfl
 
-instance : TypeSystem.Named.HasType Name Name Name where
+instance : TypeSystem.Named.HasType TName TName TName where
   HasType Γ t τ := declaredAt Γ t τ = true
 
 /-- Nothing reduces, so preservation is vacuous. -/
-instance : TypeSystem.Named.Step Name where Step _ _ := False
+instance : TypeSystem.Named.Step TName where Step _ _ := False
 
-instance : TypeSystem.Named.TypeSystem Name Name Name where
-instance : TypeSystem.Named.LawfulTypeSystem Name Name Name where
+instance : TypeSystem.Named.TypeSystem TName TName TName where
+instance : TypeSystem.Named.LawfulTypeSystem TName TName TName where
   Preservation _ hs := hs.elim
   cong h ht := by
     show declaredAt _ _ _ = true
     rw [declaredAt, ← h]
     exact ht
 
-instance : TypeSystem.Named.MVars Name Name Name where
+instance : TypeSystem.Named.MVars TName TName TName where
   tmSubst := inferInstance
   tySubst := inferInstance
 
-instance : TypeSystem.Named.LawfulMVars Name Name Name where
+instance : TypeSystem.Named.LawfulMVars TName TName TName where
   Stability := by
     intro Γ t τ σ ht
     show declaredAt (HasSubst.pSubst Γ σ) t τ = true
@@ -166,13 +170,13 @@ instance : TypeSystem.Named.LawfulMVars Name Name Name where
 
 /-- The decision procedure. `declaredAt` is a `Bool`, and substitution changes nothing, so all
 three obligations are immediate — the negative one is a genuine proof that *no* substitution helps
-rather than a report of a failed search, and most-generality is free: substitution on `Name` is the
+rather than a report of a failed search, and most-generality is free: substitution on `TName` is the
 identity, so the empty answer is at least as general as anything with the empty witness.
 
 Worth noting against STLC, where the same field takes a whole file (`Typing/JComplete.lean`) and
 only holds *on the source* — the unrestricted form is refuted in `Typing/Principality.lean`.
 Most-generality is only hard when there is inference to be most general *about*. -/
-instance : TypeSystem.Named.PrincipalElaborate Name Name Name where
+instance : TypeSystem.Named.PrincipalElaborate TName TName TName where
   -- this language draws no metavariables of its own, so the principality claim is unrestricted
   sourceSupp _ _ _ := []
   tyGroundDec := inferInstance
@@ -181,7 +185,7 @@ instance : TypeSystem.Named.PrincipalElaborate Name Name Name where
     if h : declaredAt Γ t τ = true then
       .mgu ∅
         (by
-          show declaredAt (HasSubst.pSubst Γ (∅ : Subst Nat Name)) t τ = true
+          show declaredAt (HasSubst.pSubst Γ (∅ : Subst Nat TName)) t τ = true
           rw [declaredAt_pSubst]; exact h)
         (fun _ _ => ⟨∅, fun _ _ => rfl⟩)
     else
