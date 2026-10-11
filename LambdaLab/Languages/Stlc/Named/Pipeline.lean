@@ -51,13 +51,12 @@ open LambdaLab.Parser.Numeral (isDigitChar isNatTok natTok natOfTok)
 
 /-! ## The token alphabet
 
-STLC's lexicon is `Lexicon.plain`: tokens are exactly the whitespace-separated words, so a
-parenthesis needs spaces around it — `( x )` — and is printed that way. Making the parentheses
-self-delimiting (`Lexicon.make ['('] [')'] []`) would let `(x)` read and print hugged; nothing
-else in this file would change. -/
+The parentheses, `λ`, `.` and `→` are self-delimiting, so `(λx : ⋆. x) y` reads exactly as
+`( λ x : ⋆ . x ) y` does; the canonical printer hugs the parentheses and spaces everything else —
+`(λ x : ⋆ . x) y`. `:` is not self-delimiting, because `:=` is one token. -/
 
 /-- What a token is, for STLC. -/
-abbrev stlcLex : Lexicon := Lexicon.plain
+abbrev stlcLex : Lexicon := Lexicon.make ['('] [')'] ['λ', '.', '→']
 
 def tkS (s : String) (h : isToken stlcLex s = true := by decide) : Token stlcLex := ⟨s, h⟩
 
