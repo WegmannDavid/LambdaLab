@@ -55,6 +55,13 @@ import LambdaLab.Languages.CoC.DeBruijn.Classification
 import LambdaLab.Languages.CoC.DeBruijn.Normalization
 import LambdaLab.Languages.CoC.DeBruijn.Eval
 import LambdaLab.Languages.CoC.DeBruijn.Check
+import LambdaLab.Languages.CoC.DeBruijn.Scope
+import LambdaLab.Languages.CoC.Named.Basic
+import LambdaLab.Languages.CoC.Named.Translation
+import LambdaLab.Languages.CoC.Named.Step
+import LambdaLab.Languages.CoC.Named.Typing
+import LambdaLab.Languages.CoC.Named.Alpha
+import LambdaLab.Languages.CoC.Named.Eval
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
