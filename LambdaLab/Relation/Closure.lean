@@ -15,10 +15,10 @@ inside the `stlc`/`float` executables' import cone, and `Mathlib.Logic.Relation`
 imports `Mathlib.Init`, which pulls in `Lean.Linter.Sets`, `ImportGraph.Tools` and
 `Batteries.Tactic.Lint` — i.e. the Lean elaborator and tactic frontend. Only 57 Mathlib
 modules end up in the closure, but linking them took `stlc` from 4.9 MB to 154 MB (113.7 MB
-stripped), and invalidated the premise `.github/workflows/publish.yml` is built on, that
-nothing in the executables' cone imports Mathlib. Neither call site can be moved out of that
-cone: `MStep` arrives through the `Preservation` field of `LawfulTypeSystem`, which is a
-field precisely so it cannot be skipped, and `Tighter` is the parser's own precedence order.
+stripped), and broke the invariant that nothing in the executables' cone imports Mathlib.
+Neither call site can be moved out of that cone: `MStep` arrives through the `Preservation`
+field of `LawfulTypeSystem`, which is a field precisely so it cannot be skipped, and `Tighter`
+is the parser's own precedence order.
 
 The definitions below therefore deliberately mirror Mathlib's names and constructor shapes,
 so that a call site reads the same either way and switching back is a change of prefix.
