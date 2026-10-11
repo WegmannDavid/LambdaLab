@@ -62,6 +62,8 @@ import LambdaLab.Languages.CoC.Named.Step
 import LambdaLab.Languages.CoC.Named.Typing
 import LambdaLab.Languages.CoC.Named.Alpha
 import LambdaLab.Languages.CoC.Named.Eval
+import LambdaLab.Languages.CoC.Surface
+import LambdaLab.Languages.CoC.Pipeline
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
