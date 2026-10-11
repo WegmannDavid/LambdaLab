@@ -108,7 +108,7 @@ def tmEntry : Entry (Token stlcLex) SEnt where
   operator
     | .paren => .closed (.cons (tkS "(") .tm (.last (tkS ")")))
     | .app   => .juxt
-    | .lam   => .prefx (.cons (tkS "λ") .var (.cons (tkS ":") .ty (.last (tkS "."))))
+    | .lam   => .binder (.cons (tkS "λ") .var (.cons (tkS ":") .ty (.last (tkS "."))))
   ops := [.paren, .app, .lam]
   ops_complete := by intro o; cases o <;> decide
   loosest := [.lam]

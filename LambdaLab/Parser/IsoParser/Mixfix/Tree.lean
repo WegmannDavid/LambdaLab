@@ -53,6 +53,7 @@ def Operator.body {G : Grammar Tok} (e : G.Ent) (o : (G.entry e).Op) : List (Par
   match (G.entry e).operator o with
   | .closed n => Notation.toParts n
   | .prefx  n => Notation.toParts n ++ [.hole e (.tighterEq o)]
+  | .binder n => Notation.toParts n ++ [.hole e .loosest]
   | .infx   n => [.hole e (.tighter o)] ++ Notation.toParts n ++ [.hole e (.tighter o)]
   | .infxl  n => [.hole e (.tighterEq o)] ++ Notation.toParts n ++ [.hole e (.tighter o)]
   | .infxr  n => [.hole e (.tighter o)] ++ Notation.toParts n ++ [.hole e (.tighterEq o)]

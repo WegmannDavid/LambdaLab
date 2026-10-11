@@ -48,7 +48,7 @@ variable {Tok : Type} [DecidableEq Tok] {G : Grammar Tok}
 /-! ## FOLLOW — the tokens at which the parser provably stops -/
 
 /-- Can this token **start an operand** of entry `e`? A variable can, as can the leading token of
-an operator that does not begin with a hole (`closed`/`prefx`). -/
+an operator that does not begin with a hole (`closed`/`prefx`/`binder`). -/
 def startsOperand (e : G.Ent) (t : Tok) : Bool :=
   (G.entry e).isVar t ||
     (G.entry e).ops.any (fun o =>
@@ -291,6 +291,12 @@ theorem seamed_body {e : G.Ent} (a : (G.entry e).Op)
   | prefx n =>
       have hb : Operator.body e a
           = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq a)] := by
+        unfold Operator.body; rw [hop]
+      rw [hb]
+      exact seamed_toParts_append (G := G) n _ (hint n (by rw [hop]; rfl)) trivial
+  | binder n =>
+      have hb : Operator.body e a
+          = Notation.toParts (G := G) n ++ [Part.hole e Level.loosest] := by
         unfold Operator.body; rw [hop]
       rw [hb]
       exact seamed_toParts_append (G := G) n _ (hint n (by rw [hop]; rfl)) trivial
@@ -621,6 +627,11 @@ theorem body_head {e : G.Ent} (o : (G.entry e).Op) :
   | prefx n =>
       obtain ⟨ps, hps⟩ := toParts_head (G := G) n
       refine Or.inl ⟨n.firstTok, ps ++ [Part.hole e (Level.tighterEq o)], ?_, ?_, rfl⟩
+      · unfold Operator.body; rw [hop]; dsimp only; rw [hps]; rfl
+      · simp only [Operator.headTok?, Operator.nameTokens]; exact headTok?_toTokens n
+  | binder n =>
+      obtain ⟨ps, hps⟩ := toParts_head (G := G) n
+      refine Or.inl ⟨n.firstTok, ps ++ [Part.hole e Level.loosest], ?_, ?_, rfl⟩
       · unfold Operator.body; rw [hop]; dsimp only; rw [hps]; rfl
       · simp only [Operator.headTok?, Operator.nameTokens]; exact headTok?_toTokens n
   | infx n   => exact Or.inr ⟨Level.tighter o, _, by unfold Operator.body; rw [hop]; try dsimp only; try rfl⟩

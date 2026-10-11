@@ -169,6 +169,7 @@ theorem body_tail_ne_nil {e : G.Ent} {o : (G.entry e).Op}
       rw [hb]; simp
   | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | binder n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr

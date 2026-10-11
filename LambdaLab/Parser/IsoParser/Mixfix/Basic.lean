@@ -43,13 +43,17 @@ def Notation.holeFollowers {Tok Ent : Type} : Notation Tok Ent → List (Ent × 
   | .last _         => []
   | .cons _ e' rest => (e', rest.firstTok) :: rest.holeFollowers
 
-/-! ## Operators (the six fixities plus juxtaposition) -/
+/-! ## Operators (the seven fixities plus juxtaposition) -/
 
 inductive Operator (Tok Ent : Type) where
   | closed : Notation Tok Ent → Operator Tok Ent
   /-- Prefix (`- x`, `λ x . b`): the operand chains (`tighterEq`), so `λ x . λ y . b` needs no
   parentheses. Right-recursive like `infxr`'s right operand — the name tokens come first. -/
   | prefx  : Notation Tok Ent → Operator Tok Ent
+  /-- A **binder** (`λ x . b`, `∀ α . τ`): prefix, but its operand is the whole entry — it runs as
+  far right as it can and may be anything, another binder of any kind included. Sound only for an
+  operator nothing can continue past its body (`Entry.binderScope`). -/
+  | binder : Notation Tok Ent → Operator Tok Ent
   /-- Non-associative infix: both operands strictly tighter. -/
   | infx   : Notation Tok Ent → Operator Tok Ent
   /-- Left-associative infix (`a∘b∘c = (a∘b)∘c`): left operand chains (`tighterEq`), right strictly
@@ -67,6 +71,7 @@ inductive Operator (Tok Ent : Type) where
 def Operator.nameTokens {Tok Ent : Type} : Operator Tok Ent → List Tok
   | .closed n => n.toTokens
   | .prefx n  => n.toTokens
+  | .binder n => n.toTokens
   | .infx n   => n.toTokens
   | .infxl n  => n.toTokens
   | .infxr n  => n.toTokens
@@ -77,11 +82,13 @@ def Operator.nameTokens {Tok Ent : Type} : Operator Tok Ent → List Tok
 def Operator.headTok? {Tok Ent : Type} (o : Operator Tok Ent) : Option Tok :=
   o.nameTokens.head?
 
-/-- Does this operator begin with a **hole** (take a left operand)? `closed`/`prefx` do not — their
-leading token *starts* an operand; every other fixity's leading token *continues* an expression. -/
+/-- Does this operator begin with a **hole** (take a left operand)? `closed`/`prefx`/`binder` do
+not — their leading token *starts* an operand; every other fixity's leading token *continues* an
+expression. -/
 def Operator.startsWithHole {Tok Ent : Type} : Operator Tok Ent → Bool
   | .closed _ => false
   | .prefx _  => false
+  | .binder _ => false
   | .infx _   => true
   | .infxl _  => true
   | .infxr _  => true
@@ -92,11 +99,16 @@ def Operator.startsWithHole {Tok Ent : Type} : Operator Tok Ent → Bool
 def Operator.holeFollowers {Tok Ent : Type} : Operator Tok Ent → List (Ent × Tok)
   | .closed n => n.holeFollowers
   | .prefx n  => n.holeFollowers
+  | .binder n => n.holeFollowers
   | .infx n   => n.holeFollowers
   | .infxl n  => n.holeFollowers
   | .infxr n  => n.holeFollowers
   | .postfx n => n.holeFollowers
   | .juxt     => []
+
+def Operator.isBinder {Tok Ent : Type} : Operator Tok Ent → Bool
+  | .binder _ => true
+  | _         => false
 
 /-! ## Precedence order (reachability through `tighter`) -/
 
@@ -133,6 +145,27 @@ theorem TighterEq.toTighterOrEq {Op : Type} {t : Op → List Op} {a b : Op}
 
 theorem Tighter.ofMemTighterEq {Op : Type} {t : Op → List Op} {a b o : Op}
     (hmem : b ∈ t a) (h : TighterEq t b o) : Tighter t a o := TC.ofMemRTC hmem h
+
+/-- Fuel-bounded reachability: `a = b`, or a `tighter` step then recurse. Fuel rather than
+well-founded recursion so the kernel can evaluate it — grammar side conditions are `decide`d. -/
+def teqFuel {Op : Type} [DecidableEq Op] (t : Op → List Op) : Nat → Op → Op → Bool
+  | 0, a, b => a == b
+  | n + 1, a, b => a == b || (t a).any fun c => teqFuel t n c b
+
+theorem teqFuel_sound {Op : Type} [DecidableEq Op] {t : Op → List Op} :
+    ∀ {n : Nat} {a b : Op}, teqFuel t n a b = true → TighterEq t a b := by
+  intro n
+  induction n with
+  | zero =>
+      intro a b h
+      rw [teqFuel, beq_iff_eq] at h
+      exact h ▸ .refl
+  | succ n ih =>
+      intro a b h
+      rw [teqFuel, Bool.or_eq_true, beq_iff_eq, List.any_eq_true] at h
+      rcases h with rfl | ⟨c, hc, hrec⟩
+      · exact .refl
+      · exact .step hc (ih hrec)
 
 /-! ## Entries and grammars -/
 
@@ -181,6 +214,21 @@ structure Entry (Tok Ent : Type) where
   determinism, so a token cannot be read as both a leaf and (part of) an operator. Ranges over the
   operator's finite name-part list, so a concrete grammar discharges it by `decide`. -/
   varDisjoint : ∀ (o : Op) (t : Tok), t ∈ (operator o).nameTokens → isVar t = false
+  /-- How to compare operators — found by instance search; `binderScope` is decided with it. -/
+  decEq : DecidableEq Op := by infer_instance
+  /-- **Nothing continues a binder's body that would not continue the binder.** A binder's body is
+  the whole entry, so whatever could extend an expression at the top level could extend the body;
+  if it could not equally extend the binder where it stands, `λ x . y : T` (with a sibling
+  `_ : _` beside `λ`) would have two parses. So every hole-led operator reachable from the top
+  must be reachable from each binder.
+
+  Stated over the fuel-bounded search, so the default `decide` discharges it for a concrete entry
+  — and it is vacuous for an entry without binders. -/
+  binderScope : ∀ u ∈ ops, (operator u).isBinder = true →
+    ∀ w ∈ ops, (operator w).startsWithHole = true →
+      loosest.any (fun a => @teqFuel Op decEq tighter topRank a w) = true →
+        @teqFuel Op decEq tighter topRank u w = true := by
+    decide
 
 /-- A grammar: a family of entries over a shared token alphabet. -/
 structure Grammar (Tok : Type) where
@@ -206,29 +254,8 @@ structure Grammar (Tok : Type) where
 
 /-! ## Decidability of the precedence relations
 
-Reachability through `tighter`, decided by a **fuel-based** search (fuel = the rank, which
-strictly decreases along `tighter`) — fuel rather than well-founded recursion so the kernel can
-evaluate it, i.e. so grammar-shaped side conditions are dischargeable `by decide`. -/
-
-/-- Fuel-bounded reachability: `a = b`, or a `tighter` step then recurse. -/
-def teqFuel {Op : Type} [DecidableEq Op] (t : Op → List Op) : Nat → Op → Op → Bool
-  | 0, a, b => a == b
-  | n + 1, a, b => a == b || (t a).any fun c => teqFuel t n c b
-
-theorem teqFuel_sound {Op : Type} [DecidableEq Op] {t : Op → List Op} :
-    ∀ {n : Nat} {a b : Op}, teqFuel t n a b = true → TighterEq t a b := by
-  intro n
-  induction n with
-  | zero =>
-      intro a b h
-      rw [teqFuel, beq_iff_eq] at h
-      exact h ▸ .refl
-  | succ n ih =>
-      intro a b h
-      rw [teqFuel, Bool.or_eq_true, beq_iff_eq, List.any_eq_true] at h
-      rcases h with rfl | ⟨c, hc, hrec⟩
-      · exact .refl
-      · exact .step hc (ih hrec)
+Reachability through `tighter`, decided by the **fuel-based** search `teqFuel` (fuel = the rank,
+which strictly decreases along `tighter`), defined above `Entry` so `binderScope` can use it. -/
 
 theorem teqFuel_complete {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] :
     ∀ {a b : E.Op}, TighterEq E.tighter a b →
@@ -257,5 +284,17 @@ theorem tighter_iff {Op : Type} {t : Op → List Op} {a b : Op} :
 instance {Ent : Type} (E : Entry Tok Ent) [DecidableEq E.Op] (a b : E.Op) :
     Decidable (Tighter E.tighter a b) :=
   decidable_of_iff (∃ c ∈ E.tighter a, TighterEq E.tighter c b) tighter_iff.symm
+
+/-- **`binderScope`, as reachability**: a hole-led operator reachable from the top is reachable
+from every binder. -/
+theorem Entry.binder_reaches {Ent : Type} (E : Entry Tok Ent) {u w : E.Op}
+    (hu : (E.operator u).isBinder = true) (hw : (E.operator w).startsWithHole = true)
+    (hl : ∃ a, a ∈ E.loosest ∧ TighterEq E.tighter a w) : TighterEq E.tighter u w := by
+  letI := E.decEq
+  obtain ⟨a, ha, hr⟩ := hl
+  refine teqFuel_sound (n := E.topRank)
+    (E.binderScope u (E.ops_complete u) hu w (E.ops_complete w) hw ?_)
+  rw [List.any_eq_true]
+  exact ⟨a, ha, teqFuel_complete E hr (Nat.le_of_lt (E.rank_lt_topRank a))⟩
 
 end LambdaLab.Parser.IsoParser.Mixfix

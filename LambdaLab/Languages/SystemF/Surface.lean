@@ -28,12 +28,11 @@ parsed; `Pipeline.lean` translates it into the de Bruijn core to check and run i
 
 ## Precedence
 
-Binders are loosest — `Λ` loosest of all, then `λ` — then application, then type application,
-then parentheses: `n [α] f x` is `((n [α]) f) x`. A binder's body runs as far right as it can and
-may be another binder at least as tight: `Λ α . λ x : α . x`, `λ x : A . λ y : B . x`,
-`∀ α . ∀ β . α → β`. The exception is a `Λ` directly in a `λ`'s body — of two binders only one
-can be the tighter — so `λ n : N . (Λ α . …)` keeps its parentheses; `Λ` outside `λ` is the
-common shape, so it is the one that reads bare.
+Binders (`λ`, `Λ`, `∀`) are loosest, then application, then type application, then parentheses:
+`n [α] f x` is `((n [α]) f) x`. A binder's body runs as far right as it can and may be anything,
+another binder of either kind included: `Λ α . λ x : α . x`, `λ n : N . Λ α . n [α]`,
+`∀ α . ∀ β . α → β`. A binder anywhere else is parenthesized — as an applied function
+`(λ x : A . x) y`, as an argument `f (λ x : A . x)`.
 
 A postfix operator's operand is strictly tighter than the operator, so a type application of a
 type application needs parentheses: `(f [A]) [B]`. So does a `∀` as an arrow's operand, since
@@ -98,14 +97,14 @@ def sfTmEntry : Entry SFTok SFEnt where
     | .paren => .closed (.cons (tkSF "(") .tm (.last (tkSF ")")))
     | .app   => .juxt
     | .tapp  => .postfx (.cons (tkSF "[") .ty (.last (tkSF "]")))
-    | .lam   => .prefx (.cons (tkSF "λ") .var (.cons (tkSF ":") .ty (.last (tkSF "."))))
-    | .tlam  => .prefx (.cons (tkSF "Λ") .var (.last (tkSF ".")))
+    | .lam   => .binder (.cons (tkSF "λ") .var (.cons (tkSF ":") .ty (.last (tkSF "."))))
+    | .tlam  => .binder (.cons (tkSF "Λ") .var (.last (tkSF ".")))
   ops := [.paren, .app, .tapp, .lam, .tlam]
   ops_complete := by intro o; cases o <;> decide
-  loosest := [.tlam]
-  tighter | .tlam => [.lam] | .lam => [.app] | .app => [.tapp] | .tapp => [.paren] | .paren => []
-  rank | .paren => 0 | .tapp => 1 | .app => 2 | .lam => 3 | .tlam => 4
-  topRank := 5
+  loosest := [.lam, .tlam]
+  tighter | .lam => [.app] | .tlam => [.app] | .app => [.tapp] | .tapp => [.paren] | .paren => []
+  rank | .paren => 0 | .tapp => 1 | .app => 2 | .lam => 3 | .tlam => 3
+  topRank := 4
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isSFName
@@ -156,7 +155,7 @@ def sfTyEntry : Entry SFTok SFEnt where
   operator
     | .paren => .closed (.cons (tkSF "(") .ty (.last (tkSF ")")))
     | .arrow => .infxr (.last (tkSF "→"))
-    | .all   => .prefx (.cons (tkSF "∀") .var (.last (tkSF ".")))
+    | .all   => .binder (.cons (tkSF "∀") .var (.last (tkSF ".")))
   ops := [.paren, .arrow, .all]
   ops_complete := by intro o; cases o <;> decide
   loosest := [.all]

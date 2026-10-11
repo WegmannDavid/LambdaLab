@@ -109,6 +109,10 @@ theorem partsMeasure_parts_lt {G : Grammar Tok} (e : G.Ent) (a : (G.entry e).Op)
       have hz : partsMeasure (Notation.toParts (G := G) n ++ [.hole e (.tighterEq a)]) = 0 := by
         cases n <;> rfl
       rw [hz]; simp only [Level.measure]; omega
+  | binder n =>
+      have hz : partsMeasure (Notation.toParts (G := G) n ++ [.hole e .loosest]) = 0 := by
+        cases n <;> rfl
+      rw [hz]; simp only [Level.measure]; omega
   | infx n => simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]; omega
   | infxl n => rw [h, Operator.leftRec] at hne; exact absurd hne (by simp)
   | infxr n => simp only [List.cons_append, List.nil_append, partsMeasure, Level.measure]; omega

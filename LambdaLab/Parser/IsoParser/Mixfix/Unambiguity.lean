@@ -87,10 +87,10 @@ tree — this file's ancestor carried its own copies, which the port drops. -/
 
 /-! ## The shape of an operator body, and the first token of a tree
 
-An operator body starts either with the operator's own **head token** (`closed`, `prefx`) or with a
-**hole at the host entry** (the left operand of `infx`/`infxl`/`infxr`/`postfx`/`juxt`). The second
-half matters: the leading hole is at `e` itself, never at some other entry, so the recursion below
-stays inside one entry. -/
+An operator body starts either with the operator's own **head token** (`closed`, `prefx`,
+`binder`) or with a **hole at the host entry** (the left operand of
+`infx`/`infxl`/`infxr`/`postfx`/`juxt`). The second half matters: the leading hole is at `e`
+itself, never at some other entry, so the recursion below stays inside one entry. -/
 
 theorem Notation.toParts_cons (n : Notation Tok G.Ent) :
     Notation.toParts (G := G) n = .namePart n.firstTok :: (Notation.toParts (G := G) n).tail := by
@@ -119,6 +119,10 @@ theorem body_cons_namePart {e : G.Ent} (o : (G.entry e).Op)
       exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail ++ [.hole e (.tighterEq o)],
         Notation.toParts_append_cons n _,
         by simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]⟩
+  | binder n =>
+      exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail ++ [.hole e .loosest],
+        Notation.toParts_append_cons n _,
+        by simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]⟩
   | infx n   => rw [hop] at h; simp [Operator.startsWithHole] at h
   | infxl n  => rw [hop] at h; simp [Operator.startsWithHole] at h
   | infxr n  => rw [hop] at h; simp [Operator.startsWithHole] at h
@@ -133,6 +137,7 @@ theorem body_cons_hole {e : G.Ent} (o : (G.entry e).Op)
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at h; simp [Operator.startsWithHole] at h
   | prefx n  => rw [hop] at h; simp [Operator.startsWithHole] at h
+  | binder n => rw [hop] at h; simp [Operator.startsWithHole] at h
   | infx n   => exact ⟨.tighter o, _, rfl⟩
   | infxl n  => exact ⟨.tighterEq o, _, rfl⟩
   | infxr n  => exact ⟨.tighter o, _, rfl⟩
@@ -286,6 +291,7 @@ theorem Operator.mem_tail_nameTokens {Ent : Type} (o : Operator Tok Ent)
   cases o with
   | closed n => exact Notation.mem_tail_toTokens n h
   | prefx n  => exact Notation.mem_tail_toTokens n h
+  | binder n => exact Notation.mem_tail_toTokens n h
   | infx n   => exact Notation.mem_tail_toTokens n h
   | infxl n  => exact Notation.mem_tail_toTokens n h
   | infxr n  => exact Notation.mem_tail_toTokens n h
@@ -311,9 +317,10 @@ at **the hole's entry**, which is where the sub-tree comparison actually happens
 
 /-! ## ⚠ Where the left-recursive fixities bite
 
-For a `closed`/`prefx`/`infx`/`postfx` operator every hole's continuation begins with either a
-name token of the operator (an interior seam — stopped by `follow_of_interior`) or the ambient
-leftover (stopped by `FollowAt.tighten`). The induction walks the body front-to-back and every operand
+For a `closed`/`prefx`/`binder`/`infx`/`postfx` operator every hole's continuation begins with
+either a name token of the operator (an interior seam — stopped by `follow_of_interior`) or the
+ambient leftover (stopped by `FollowAt.tighten`, or for a binder's body by
+`FollowAt.loosest_of_binder`). The induction walks the body front-to-back and every operand
 is bounded. That is the `NonAssoc` fragment the earlier stack proved.
 
 `infxl`, `infxr` and `juxt` are different, and the difference is not incidental — it *is*
@@ -435,6 +442,7 @@ theorem body_leftRec_cons {e : G.Ent} {o : (G.entry e).Op}
   | juxt    => unfold Operator.body; rw [hop]; rfl
   | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | binder n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
@@ -793,6 +801,7 @@ theorem holeLed_split {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | binder n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | infx n =>
       refine holeLed_split_named hc hh (L := Level.tighter o) (n := n)
         (suffix := [.hole e (Level.tighter o)]) ?_ ?_ (condition_up_tighter hc)
@@ -963,8 +972,51 @@ theorem partsFollow_toParts_append (n : Notation Tok G.Ent)
       rw [hps] at this
       exact this
 
+omit [DecidableEq Tok] in
+/-- A binder leads with its own token. -/
+theorem Operator.startsWithHole_of_isBinder {Ent : Type} {op : Operator Tok Ent}
+    (h : op.isBinder = true) : op.startsWithHole = false := by
+  cases op <;> simp_all [Operator.isBinder, Operator.startsWithHole]
+
+/-- **What continues the whole entry continues wherever a binder stands**: a hole-led operator
+applicable at the top is reachable from the binder (`binderScope`), so it is applicable at any
+level the binder is. This is what lets a binder's body sit at `.loosest`. -/
+theorem continuesAt_of_loosest_binder {e : G.Ent} {l : Level (G.entry e)} {u : (G.entry e).Op}
+    (hc : Level.condition l u) (hu : ((G.entry e).operator u).isBinder = true) {t : Tok}
+    (h : ContinuesAt e Level.loosest t) : ContinuesAt e l t := by
+  rcases h with ⟨w, hw, hh, hhead⟩ | ⟨j, hj, hjx, hs⟩
+  · exact .inl ⟨w, Level.condition_up hc ((G.entry e).binder_reaches hu hh hw), hh, hhead⟩
+  · have hjh : ((G.entry e).operator j).startsWithHole = true := by rw [hjx]; rfl
+    exact .inr ⟨j, Level.condition_up hc ((G.entry e).binder_reaches hu hjh hj), hjx, hs⟩
+
+/-- …and even one level below the binder, since the binder itself continues nothing. -/
+theorem continuesAt_tighter_of_loosest_binder {e : G.Ent} {u : (G.entry e).Op}
+    (hu : ((G.entry e).operator u).isBinder = true) {t : Tok}
+    (h : ContinuesAt e Level.loosest t) : ContinuesAt e (Level.tighter u) t := by
+  have key : ∀ w, ((G.entry e).operator w).startsWithHole = true →
+      Level.condition Level.loosest w → Tighter (G.entry e).tighter u w := by
+    intro w hh hw
+    rcases TighterEq.toTighterOrEq ((G.entry e).binder_reaches hu hh hw) with rfl | ht
+    · rw [Operator.startsWithHole_of_isBinder hu] at hh; cases hh
+    · exact ht
+  rcases h with ⟨w, hw, hh, hhead⟩ | ⟨j, hj, hjx, hs⟩
+  · exact .inl ⟨w, key w hh hw, hh, hhead⟩
+  · exact .inr ⟨j, key j (by rw [hjx]; rfl) hj, hjx, hs⟩
+
+/-- So a binder's body is stopped by whatever stops the binder. -/
+theorem FollowAt.loosest_of_binder {e : G.Ent} {l : Level (G.entry e)} {u : (G.entry e).Op}
+    (hc : Level.condition l u) (hu : ((G.entry e).operator u).isBinder = true) {s : List Tok}
+    (hs : FollowAt e l s) : FollowAt e Level.loosest s :=
+  fun t ht hcon => hs t ht (continuesAt_of_loosest_binder hc hu hcon)
+
+theorem FollowAt.loosest_of_binder_tokenLed {e : G.Ent} {u : (G.entry e).Op}
+    (hu : ((G.entry e).operator u).isBinder = true) {s : List Tok}
+    (hs : FollowAt e (Level.tighter u) s) : FollowAt e Level.loosest s :=
+  fun t ht hcon => hs t ht (continuesAt_tighter_of_loosest_binder hu hcon)
+
 /-- **A body constrains its continuation only through a trailing operand hole**, and that hole is
-never looser than the operator, so the ambient `FollowAt` tightens onto it. Left-recursive
+never looser than the operator — or, for a binder, is the whole entry, which `binderScope` makes
+stop wherever the binder stops — so the ambient `FollowAt` carries onto it. Left-recursive
 operators are excluded — they are handled by the spine, not by `udParts`. -/
 theorem partsFollow_body {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op}
     (hc : Level.condition l o) (hnl : ((G.entry e).operator o).leftRec = false)
@@ -983,6 +1035,12 @@ theorem partsFollow_body {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op
           = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
         unfold Operator.body; rw [hop]
       rw [hb]; exact partsFollow_toParts_append n _ hteq
+  | binder n =>
+      have hb : Operator.body e o
+          = Notation.toParts (G := G) n ++ [Part.hole e Level.loosest] := by
+        unfold Operator.body; rw [hop]
+      rw [hb]
+      exact partsFollow_toParts_append n _ (FollowAt.loosest_of_binder hc (by rw [hop]; rfl) hs)
   | infx n =>
       have hb : Operator.body e o = Part.hole e (Level.tighter o) ::
           (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)]) := by
@@ -1043,8 +1101,10 @@ theorem FollowAt.tighterEq_of_tokenLed {e : G.Ent} {o : (G.entry e).Op}
 /-- `partsFollow_body` for a **token-led** operator, which needs only the `.tighter o` half: a
 `closed` body ends in a name part and constrains nothing, a `prefx` body in its single operand
 hole — at `.tighterEq o`, which for a token-led `o` stops what `.tighter o` stops
-(`FollowAt.tighterEq_of_tokenLed`). Stated over that half alone because the mixed case of
-`topOp_unique` has exactly it and not the ambient `FollowAt` it would otherwise be derived from. -/
+(`FollowAt.tighterEq_of_tokenLed`) — and a `binder` body in its operand at `.loosest`, which
+`binderScope` makes stop the same (`FollowAt.loosest_of_binder_tokenLed`). Stated over that half
+alone because the mixed case of `topOp_unique` has exactly it and not the ambient `FollowAt` it
+would otherwise be derived from. -/
 theorem partsFollow_body_tokenLed {e : G.Ent} {o : (G.entry e).Op}
     (hnh : ((G.entry e).operator o).startsWithHole = false) {s : List Tok}
     (hs : FollowAt e (Level.tighter o) s) : PartsFollow (Operator.body e o) s := by
@@ -1059,6 +1119,13 @@ theorem partsFollow_body_tokenLed {e : G.Ent} {o : (G.entry e).Op}
           = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
         unfold Operator.body; rw [hop]
       rw [hb]; exact partsFollow_toParts_append n _ hteq
+  | binder n =>
+      have hb : Operator.body e o
+          = Notation.toParts (G := G) n ++ [Part.hole e Level.loosest] := by
+        unfold Operator.body; rw [hop]
+      rw [hb]
+      exact partsFollow_toParts_append n _
+        (FollowAt.loosest_of_binder_tokenLed (by rw [hop]; rfl) hs)
   | infx n   => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh
   | infxl n  => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh
   | infxr n  => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh
@@ -1223,6 +1290,7 @@ theorem leftRec_tail_head {e : G.Ent} {o : (G.entry e).Op}
           rw [← Parts.flatten_cast hb T, hq, Parts.flatten, hxr]; simp
   | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | binder n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
@@ -1262,6 +1330,7 @@ theorem partsFollow_body_tail {e : G.Ent} {o : (G.entry e).Op}
       rw [hb]; exact hs
   | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | binder n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
@@ -1279,6 +1348,7 @@ theorem seamed_body_tail_leftRec {e : G.Ent} {o : (G.entry e).Op}
       rw [hb]; exact trivial
   | closed n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | prefx n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
+  | binder n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infx n   => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | infxr n  => rw [hop] at hlr; simp [Operator.leftRec] at hlr
   | postfx n => rw [hop] at hlr; simp [Operator.leftRec] at hlr
@@ -1480,6 +1550,7 @@ theorem body_holeLed_cons {e : G.Ent} {o : (G.entry e).Op}
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | binder n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | infx n   => rfl
   | infxl n  => rfl
   | infxr n  => rfl
@@ -1606,6 +1677,7 @@ theorem holeLed_tail_head {e : G.Ent} {o : (G.entry e).Op}
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | binder n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | infx n =>
       rw [← hop]
       exact holeLed_tail_head_named hh (suffix := [Part.hole e (Level.tighter o)])
@@ -1647,6 +1719,7 @@ theorem seamed_body_tail_holeLed {e : G.Ent} {o : (G.entry e).Op}
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | binder n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | infx n =>
       have hb : (Operator.body e o).tail
           = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
@@ -1682,6 +1755,7 @@ theorem partsFollow_body_tail_holeLed {e : G.Ent} {o : (G.entry e).Op}
   cases hop : (G.entry e).operator o with
   | closed n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | prefx n  => rw [hop] at hh; simp [Operator.startsWithHole] at hh
+  | binder n => rw [hop] at hh; simp [Operator.startsWithHole] at hh
   | infx n =>
       have hb : (Operator.body e o).tail
           = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
