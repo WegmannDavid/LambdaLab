@@ -47,6 +47,8 @@ def Notation.holeFollowers {Tok Ent : Type} : Notation Tok Ent → List (Ent × 
 
 inductive Operator (Tok Ent : Type) where
   | closed : Notation Tok Ent → Operator Tok Ent
+  /-- Prefix (`- x`, `λ x . b`): the operand chains (`tighterEq`), so `λ x . λ y . b` needs no
+  parentheses. Right-recursive like `infxr`'s right operand — the name tokens come first. -/
   | prefx  : Notation Tok Ent → Operator Tok Ent
   /-- Non-associative infix: both operands strictly tighter. -/
   | infx   : Notation Tok Ent → Operator Tok Ent
@@ -55,6 +57,8 @@ inductive Operator (Tok Ent : Type) where
   | infxl  : Notation Tok Ent → Operator Tok Ent
   /-- Right-associative infix (`a∘b∘c = a∘(b∘c)`): right operand chains, left strictly tighter. -/
   | infxr  : Notation Tok Ent → Operator Tok Ent
+  /-- Postfix: the operand is strictly tighter. Chaining it would make the body left-recursive
+  (`x ! !`), which only `infxl` and `juxt` are parsed as. -/
   | postfx : Notation Tok Ent → Operator Tok Ent
   /-- Juxtaposition: a tokenless, left-associative, tightest-binding operator. -/
   | juxt   : Operator Tok Ent

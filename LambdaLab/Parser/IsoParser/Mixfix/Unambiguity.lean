@@ -116,7 +116,7 @@ theorem body_cons_namePart {e : G.Ent} (o : (G.entry e).Op)
       exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail, Notation.toParts_cons n,
         by simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]⟩
   | prefx n =>
-      exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail ++ [.hole e (.tighter o)],
+      exact ⟨n.firstTok, (Notation.toParts (G := G) n).tail ++ [.hole e (.tighterEq o)],
         Notation.toParts_append_cons n _,
         by simp [Operator.headTok?, Operator.nameTokens, Notation.head?_toTokens]⟩
   | infx n   => rw [hop] at h; simp [Operator.startsWithHole] at h
@@ -980,9 +980,9 @@ theorem partsFollow_body {e : G.Ent} {l : Level (G.entry e)} {o : (G.entry e).Op
       rw [hb]; exact partsFollow_toParts_append n [] trivial
   | prefx n =>
       have hb : Operator.body e o
-          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
         unfold Operator.body; rw [hop]
-      rw [hb]; exact partsFollow_toParts_append n _ htight
+      rw [hb]; exact partsFollow_toParts_append n _ hteq
   | infx n =>
       have hb : Operator.body e o = Part.hole e (Level.tighter o) ::
           (Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)]) := by
@@ -1020,13 +1020,35 @@ theorem Operator.leftRec_of_not_startsWithHole {Ent : Type} {op : Operator Tok E
     (h : op.startsWithHole = false) : op.leftRec = false := by
   cases op <;> simp_all [Operator.startsWithHole, Operator.leftRec]
 
+/-- **A token-led operator continues nothing**, so at its own `.tighterEq` level exactly the
+tokens continue that continue one level down: the one operator the two levels differ by is `o`
+itself, and continuing takes a hole-led operator or juxtaposition. -/
+theorem continuesAt_tighter_of_tighterEq_tokenLed {e : G.Ent} {o : (G.entry e).Op}
+    (hnh : ((G.entry e).operator o).startsWithHole = false) {t : Tok}
+    (h : ContinuesAt e (Level.tighterEq o) t) : ContinuesAt e (Level.tighter o) t := by
+  rcases h with ⟨w, hc, hh, hhead⟩ | ⟨j, hc, hj, hs⟩
+  · rcases TighterEq.toTighterOrEq (show TighterEq (G.entry e).tighter o w from hc) with rfl | ht
+    · rw [hnh] at hh; cases hh
+    · exact .inl ⟨w, ht, hh, hhead⟩
+  · rcases TighterEq.toTighterOrEq (show TighterEq (G.entry e).tighter o j from hc) with rfl | ht
+    · rw [hj] at hnh; simp [Operator.startsWithHole] at hnh
+    · exact .inr ⟨j, ht, hj, hs⟩
+
+/-- So for a token-led operator, stopping `.tighter o` stops `.tighterEq o`. -/
+theorem FollowAt.tighterEq_of_tokenLed {e : G.Ent} {o : (G.entry e).Op}
+    (hnh : ((G.entry e).operator o).startsWithHole = false) {s : List Tok}
+    (hs : FollowAt e (Level.tighter o) s) : FollowAt e (Level.tighterEq o) s :=
+  fun t ht hc => hs t ht (continuesAt_tighter_of_tighterEq_tokenLed hnh hc)
+
 /-- `partsFollow_body` for a **token-led** operator, which needs only the `.tighter o` half: a
 `closed` body ends in a name part and constrains nothing, a `prefx` body in its single operand
-hole. Stated over that half alone because the mixed case of `topOp_unique` has exactly it and not
-the ambient `FollowAt` it would otherwise be derived from. -/
+hole — at `.tighterEq o`, which for a token-led `o` stops what `.tighter o` stops
+(`FollowAt.tighterEq_of_tokenLed`). Stated over that half alone because the mixed case of
+`topOp_unique` has exactly it and not the ambient `FollowAt` it would otherwise be derived from. -/
 theorem partsFollow_body_tokenLed {e : G.Ent} {o : (G.entry e).Op}
     (hnh : ((G.entry e).operator o).startsWithHole = false) {s : List Tok}
     (hs : FollowAt e (Level.tighter o) s) : PartsFollow (Operator.body e o) s := by
+  have hteq : FollowAt e (Level.tighterEq o) s := FollowAt.tighterEq_of_tokenLed hnh hs
   cases hop : (G.entry e).operator o with
   | closed n =>
       have hb : Operator.body e o = Notation.toParts (G := G) n ++ [] := by
@@ -1034,9 +1056,9 @@ theorem partsFollow_body_tokenLed {e : G.Ent} {o : (G.entry e).Op}
       rw [hb]; exact partsFollow_toParts_append (s := s) n [] trivial
   | prefx n =>
       have hb : Operator.body e o
-          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighter o)] := by
+          = Notation.toParts (G := G) n ++ [Part.hole e (Level.tighterEq o)] := by
         unfold Operator.body; rw [hop]
-      rw [hb]; exact partsFollow_toParts_append n _ hs
+      rw [hb]; exact partsFollow_toParts_append n _ hteq
   | infx n   => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh
   | infxl n  => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh
   | infxr n  => rw [hop] at hnh; simp [Operator.startsWithHole] at hnh

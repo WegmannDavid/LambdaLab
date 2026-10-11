@@ -28,12 +28,17 @@ parsed; `Pipeline.lean` translates it into the de Bruijn core to check and run i
 
 ## Precedence
 
-Binders (`λ`, `Λ`, `∀`) are loosest, then application, then type application, then parentheses:
-`n [α] f x` is `((n [α]) f) x`. The engine parses a prefix operator's body, and a postfix
-operator's operand, strictly tighter than the operator itself, so a binder directly inside a
-binder's body, or a type application of a type application, needs parentheses:
-`Λ α . (λ x : α . x)`, `(f [A]) [B]`. For the same reason a `∀` to the right of an arrow
-does: `(∀ α . α) → (∀ α . α)`. The canonical print puts them back where needed.
+Binders are loosest — `Λ` loosest of all, then `λ` — then application, then type application,
+then parentheses: `n [α] f x` is `((n [α]) f) x`. A binder's body runs as far right as it can and
+may be another binder at least as tight: `Λ α . λ x : α . x`, `λ x : A . λ y : B . x`,
+`∀ α . ∀ β . α → β`. The exception is a `Λ` directly in a `λ`'s body — of two binders only one
+can be the tighter — so `λ n : N . (Λ α . …)` keeps its parentheses; `Λ` outside `λ` is the
+common shape, so it is the one that reads bare.
+
+A postfix operator's operand is strictly tighter than the operator, so a type application of a
+type application needs parentheses: `(f [A]) [B]`. So does a `∀` as an arrow's operand, since
+arrows bind tighter: `(∀ α . α) → (∀ α . α)`. The canonical print puts them back exactly where
+needed.
 -/
 
 namespace LambdaLab.Languages.SystemF
@@ -97,10 +102,10 @@ def sfTmEntry : Entry SFTok SFEnt where
     | .tlam  => .prefx (.cons (tkSF "Λ") .var (.last (tkSF ".")))
   ops := [.paren, .app, .tapp, .lam, .tlam]
   ops_complete := by intro o; cases o <;> decide
-  loosest := [.lam, .tlam]
-  tighter | .lam => [.app] | .tlam => [.app] | .app => [.tapp] | .tapp => [.paren] | .paren => []
-  rank | .paren => 0 | .tapp => 1 | .app => 2 | .lam => 3 | .tlam => 3
-  topRank := 4
+  loosest := [.tlam]
+  tighter | .tlam => [.lam] | .lam => [.app] | .app => [.tapp] | .tapp => [.paren] | .paren => []
+  rank | .paren => 0 | .tapp => 1 | .app => 2 | .lam => 3 | .tlam => 4
+  topRank := 5
   rank_tighter := by intro a b h; cases a <;> cases b <;> simp_all
   rank_lt_topRank := by intro o; cases o <;> decide
   isVar := isSFName
