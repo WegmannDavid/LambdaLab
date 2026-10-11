@@ -45,6 +45,14 @@ import LambdaLab.Languages.SystemF.Named.Alpha
 import LambdaLab.Languages.SystemF.Named.Eval
 import LambdaLab.Languages.SystemF.Surface
 import LambdaLab.Languages.SystemF.Pipeline
+import LambdaLab.Languages.CoC.DeBruijn.Syntax
+import LambdaLab.Languages.CoC.DeBruijn.Reduction
+import LambdaLab.Languages.CoC.DeBruijn.Confluence
+import LambdaLab.Languages.CoC.DeBruijn.Typing
+import LambdaLab.Languages.CoC.DeBruijn.Inversion
+import LambdaLab.Languages.CoC.DeBruijn.Preservation
+import LambdaLab.Languages.CoC.DeBruijn.Classification
+import LambdaLab.Languages.CoC.DeBruijn.Normalization
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
