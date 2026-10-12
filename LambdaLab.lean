@@ -75,14 +75,6 @@ import LambdaLab.Languages.CoIC.DeBruijn.Normalization
 import LambdaLab.Languages.CoIC.DeBruijn.Eval
 import LambdaLab.Languages.CoIC.DeBruijn.Check
 import LambdaLab.Languages.CoIC.DeBruijn.Scope
-import LambdaLab.Languages.CoIC.Named.Basic
-import LambdaLab.Languages.CoIC.Named.Translation
-import LambdaLab.Languages.CoIC.Named.Step
-import LambdaLab.Languages.CoIC.Named.Typing
-import LambdaLab.Languages.CoIC.Named.Alpha
-import LambdaLab.Languages.CoIC.Named.Eval
-import LambdaLab.Languages.CoIC.Surface
-import LambdaLab.Languages.CoIC.Pipeline
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.

@@ -1,7 +1,7 @@
 import LambdaLab.Languages.CoIC.DeBruijn.Normalization
 
 /-!
-# CoC — the normalizer, and deciding conversion
+# CoC with inductive types — the normalizer, and deciding conversion
 
 `Tm.eval t h` reduces `t` to its normal form, given a proof `h` that `t` is strongly normalizing;
 for a well-typed term that proof is `HasType.sn`. `findStep` picks a redex, leftmost-outermost,
@@ -17,7 +17,17 @@ whatever is convertible to a sort normalizes to it (`Tm.eval_sort`).
 
 namespace LambdaLab.Languages.CoIC.DeBruijn
 
+variable {sg : Sig}
+
 open LambdaLab (SN RTC)
+
+/-- A ι-redex at the top of a recursor, if there is one. -/
+def iotaStep? (i : Nat) (C bs : Tm) : (t : Tm) → Option ((t' : Tm) ×' Step (.elim i C bs t) t')
+  | .ctor i' k mask as =>
+      if h : i' = i ∧ bs.isList = true ∧ as.isList = true then
+        some ⟨Tm.iotaRhs i C bs k mask as, by obtain ⟨rfl, hb, ha⟩ := h; exact .iota hb ha⟩
+      else none
+  | _ => none
 
 /-- **Find a redex**, leftmost-outermost, and contract it. -/
 def Tm.findStep : (t : Tm) → Option ((t' : Tm) ×' Step t t')
@@ -44,6 +54,32 @@ def Tm.findStep : (t : Tm) → Option ((t' : Tm) ×' Step t t')
       | none =>
           match u.findStep with
           | some ⟨u', s⟩ => some ⟨.app t u', .appR s⟩
+          | none => none
+  | .ind _ => none
+  | .ctor i k mask as =>
+      match as.findStep with
+      | some ⟨as', s⟩ => some ⟨.ctor i k mask as', .ctorA s⟩
+      | none => none
+  | .elim i C bs t =>
+      match iotaStep? i C bs t with
+      | some p => some p
+      | none =>
+          match C.findStep with
+          | some ⟨C', s⟩ => some ⟨.elim i C' bs t, .elimC s⟩
+          | none =>
+              match bs.findStep with
+              | some ⟨bs', s⟩ => some ⟨.elim i C bs' t, .elimB s⟩
+              | none =>
+                  match t.findStep with
+                  | some ⟨t', s⟩ => some ⟨.elim i C bs t', .elimT s⟩
+                  | none => none
+  | .tnil => none
+  | .tcons a l =>
+      match a.findStep with
+      | some ⟨a', s⟩ => some ⟨.tcons a' l, .consH s⟩
+      | none =>
+          match l.findStep with
+          | some ⟨l', s⟩ => some ⟨.tcons a l', .consT s⟩
           | none => none
 
 /-- A term is **normal** when it has no reduct. -/
@@ -107,6 +143,60 @@ theorem Step.findStep_isSome {t w : Tm} (h : Step t w) : t.findStep.isSome := by
       | some p => rfl
       | none =>
           cases hf' : B.findStep with
+          | none => rw [hf'] at ih; cases ih
+          | some p => rfl
+  | @iota i k mask C bs as hb ha =>
+      simp only [Tm.findStep, iotaStep?, hb, ha, and_self, dite_true]
+      rfl
+  | @ctorA i k mask as as' _ ih =>
+      simp only [Tm.findStep]
+      cases hf : as.findStep with
+      | none => rw [hf] at ih; cases ih
+      | some p => rfl
+  | @elimC i C C' bs t _ ih =>
+      simp only [Tm.findStep]
+      cases iotaStep? i C bs t with
+      | some p => rfl
+      | none =>
+          cases hf : C.findStep with
+          | none => rw [hf] at ih; cases ih
+          | some p => rfl
+  | @elimB i C bs bs' t _ ih =>
+      simp only [Tm.findStep]
+      cases iotaStep? i C bs t with
+      | some p => rfl
+      | none =>
+          cases hf : C.findStep with
+          | some p => rfl
+          | none =>
+              cases hf' : bs.findStep with
+              | none => rw [hf'] at ih; cases ih
+              | some p => rfl
+  | @elimT i C bs t t' _ ih =>
+      simp only [Tm.findStep]
+      cases iotaStep? i C bs t with
+      | some p => rfl
+      | none =>
+          cases hf : C.findStep with
+          | some p => rfl
+          | none =>
+              cases hf' : bs.findStep with
+              | some p => rfl
+              | none =>
+                  cases hf'' : t.findStep with
+                  | none => rw [hf''] at ih; cases ih
+                  | some p => rfl
+  | @consH a a' l _ ih =>
+      simp only [Tm.findStep]
+      cases hf : a.findStep with
+      | none => rw [hf] at ih; cases ih
+      | some p => rfl
+  | @consT a l l' _ ih =>
+      simp only [Tm.findStep]
+      cases hf : a.findStep with
+      | some p => rfl
+      | none =>
+          cases hf' : l.findStep with
           | none => rw [hf'] at ih; cases ih
           | some p => rfl
 
@@ -207,13 +297,14 @@ theorem Tm.eval_pi {t A B : Tm} (h : SN Step t) (hc : Conv t (.pi A B)) :
 /-! ## On well-typed terms -/
 
 /-- A well-typed term's normal form. -/
-def HasType.eval {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ) : Tm :=
-  t.eval (h.sn hΓ)
+def HasType.eval {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hsg : WfSig sg) (hΓ : Wf sg Γ) :
+    Tm :=
+  t.eval (h.sn hsg hΓ)
 
 /-- The normal form keeps the type. -/
-theorem HasType.eval_typed {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ) :
-    HasType Γ (h.eval hΓ) T :=
-  h.preservation_red hΓ (Tm.eval_spec (h.sn hΓ)).1
+theorem HasType.eval_typed {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hsg : WfSig sg)
+    (hΓ : Wf sg Γ) : HasType sg Γ (h.eval hsg hΓ) T :=
+  h.preservation_red hΓ (Tm.eval_spec (h.sn hsg hΓ)).1
 
 /-- `eval` depends only on the term. -/
 theorem Tm.eval_congr {t u : Tm} (e : t = u) (h : SN Step t) (h' : SN Step u) :

@@ -1,7 +1,7 @@
 import LambdaLab.Languages.CoIC.DeBruijn.Preservation
 
 /-!
-# CoC — kinds, constructors, objects
+# CoC with inductive types — kinds, constructors, objects
 
 A well-typed term of CoC lives at exactly one of three levels:
 
@@ -37,6 +37,8 @@ or in its sub-kinds — so convertible kinds have equal skeletons (`HasType.kind
 
 namespace LambdaLab.Languages.CoIC.DeBruijn
 
+variable {sg : Sig}
+
 /-! ## Skeletons: the kinds of Fω -/
 
 /-- A kind's shape: `*`, or an arrow between shapes. -/
@@ -65,6 +67,11 @@ theorem skel_of_not_isKind : ∀ {t : Tm}, t.isKind = false → t.skel = .star
   | pi A B, h => by simp only [isKind] at h; simp [skel, h]
   | lam _ _, _ => rfl
   | app _ _, _ => rfl
+  | ind _, _ => rfl
+  | ctor _ _ _ _, _ => rfl
+  | elim _ _ _ _, _ => rfl
+  | tnil, _ => rfl
+  | tcons _ _, _ => rfl
 
 theorem isKind_ren : ∀ (t : Tm) (ξ : Nat → Nat), (t.ren ξ).isKind = t.isKind
   | var _, _ => rfl
@@ -72,6 +79,11 @@ theorem isKind_ren : ∀ (t : Tm) (ξ : Nat → Nat), (t.ren ξ).isKind = t.isKi
   | pi _ B, ξ => by simp only [ren, isKind, isKind_ren B]
   | lam _ _, _ => rfl
   | app _ _, _ => rfl
+  | ind _, _ => rfl
+  | ctor _ _ _ _, _ => rfl
+  | elim _ _ _ _, _ => rfl
+  | tnil, _ => rfl
+  | tcons _ _, _ => rfl
 
 theorem skel_ren : ∀ (t : Tm) (ξ : Nat → Nat), (t.ren ξ).skel = t.skel
   | var _, _ => rfl
@@ -79,6 +91,11 @@ theorem skel_ren : ∀ (t : Tm) (ξ : Nat → Nat), (t.ren ξ).skel = t.skel
   | pi A B, ξ => by simp only [ren, skel, isKind_ren, skel_ren A, skel_ren B]
   | lam _ _, _ => rfl
   | app _ _, _ => rfl
+  | ind _, _ => rfl
+  | ctor _ _ _ _, _ => rfl
+  | elim _ _ _ _, _ => rfl
+  | tnil, _ => rfl
+  | tcons _ _, _ => rfl
 
 theorem isKind_subst {σ : Nat → Tm} (hσ : ∀ n, (σ n).isKind = false) :
     ∀ t : Tm, (t.subst σ).isKind = t.isKind
@@ -92,6 +109,11 @@ theorem isKind_subst {σ : Nat → Tm} (hσ : ∀ n, (σ n).isKind = false) :
         | succ n => simp only [up_succ, isKind_ren, hσ n]) B
   | lam _ _ => rfl
   | app _ _ => rfl
+  | ind _ => rfl
+  | ctor _ _ _ _ => rfl
+  | elim _ _ _ _ => rfl
+  | tnil => rfl
+  | tcons _ _ => rfl
 
 theorem up_not_kind {σ : Nat → Tm} (hσ : ∀ n, (σ n).isKind = false) :
     ∀ n, (up σ n).isKind = false
@@ -107,6 +129,11 @@ theorem skel_subst {σ : Nat → Tm} (hσ : ∀ n, (σ n).isKind = false) :
         skel_subst (up_not_kind hσ) B]
   | lam _ _ => rfl
   | app _ _ => rfl
+  | ind _ => rfl
+  | ctor _ _ _ _ => rfl
+  | elim _ _ _ _ => rfl
+  | tnil => rfl
+  | tcons _ _ => rfl
 
 theorem scons_not_kind {u : Tm} (hu : u.isKind = false) : ∀ n, (scons u var n).isKind = false
   | 0 => hu
@@ -117,7 +144,7 @@ end Tm
 /-! ## Kinds are what `□` types -/
 
 /-- A kind's only types are `□`. -/
-theorem HasType.box_of_isKind {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.box_of_isKind {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hk : t.isKind = true) : T = .sort .box := by
   induction h with
   | sort => rfl
@@ -130,9 +157,12 @@ theorem HasType.box_of_isKind {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : 
   | conv _ hB hc iht _ =>
       rw [iht hΓ hk] at hc
       exact (hB.conv_box_eq hΓ hc).elim
+  | ind => simp [Tm.isKind] at hk
+  | ctor => simp [Tm.isKind] at hk
+  | elim => simp [Tm.isKind] at hk
 
 /-- What `□` types is a kind. -/
-theorem HasType.isKind_of_box {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.isKind_of_box {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hT : T = .sort .box) : t.isKind = true := by
   induction h with
   | sort => rfl
@@ -151,40 +181,45 @@ theorem HasType.isKind_of_box {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : 
   | conv _ hB _ _ _ =>
       subst hT
       exact (hB.ne_box rfl).elim
+  | ind => cases hT
+  | ctor => cases hT
+  | elim _ hC =>
+      subst hT
+      exact (hC.ne_box rfl).elim
 
 /-- **For a well-typed term, being a kind is being typed by `□`.** -/
-theorem HasType.isKind_iff {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ) :
+theorem HasType.isKind_iff {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ) :
     t.isKind = true ↔ T = .sort .box :=
   ⟨h.box_of_isKind hΓ, h.isKind_of_box hΓ⟩
 
 /-- A sorted term is a kind exactly when its sort is `□`. -/
-theorem HasType.sort_box_iff {Γ : Ctx} {T : Tm} {s : Srt} (h : HasType Γ T (.sort s))
-    (hΓ : Wf Γ) : s = .box ↔ T.isKind = true := by
+theorem HasType.sort_box_iff {Γ : Ctx} {T : Tm} {s : Srt} (h : HasType sg Γ T (.sort s))
+    (hΓ : Wf sg Γ) : s = .box ↔ T.isKind = true := by
   rw [h.isKind_iff hΓ]
   exact ⟨fun h => by rw [h], fun h => by cases h; rfl⟩
 
 /-- A term whose type is not `□` is not a kind. -/
-theorem HasType.not_kind {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.not_kind {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hT : T ≠ .sort .box) : t.isKind = false := by
   cases hk : t.isKind with
   | false => rfl
   | true => exact (hT (h.box_of_isKind hΓ hk)).elim
 
 /-- A term typed by a sorted type is not a kind. -/
-theorem HasType.not_kind_of_sorted {Γ : Ctx} {t T : Tm} {s : Srt} (h : HasType Γ t T)
-    (hT : HasType Γ T (.sort s)) (hΓ : Wf Γ) : t.isKind = false :=
+theorem HasType.not_kind_of_sorted {Γ : Ctx} {t T : Tm} {s : Srt} (h : HasType sg Γ t T)
+    (hT : HasType sg Γ T (.sort s)) (hΓ : Wf sg Γ) : t.isKind = false :=
   h.not_kind hΓ (fun e => hT.ne_box e)
 
 /-- A well-typed substitution substitutes no kind. -/
-theorem SubstOk.not_kind {σ : Nat → Tm} {Γ Δ : Ctx} (hσ : SubstOk σ Γ Δ) (hΓ : Wf Γ)
-    (hΔ : Wf Δ) {n : Nat} {A : Tm} (hn : Γ.lookup n = some A) : (σ n).isKind = false := by
+theorem SubstOk.not_kind {σ : Nat → Tm} {Γ Δ : Ctx} (hσ : SubstOk sg σ Γ Δ) (hΓ : Wf sg Γ)
+    (hΔ : Wf sg Δ) {n : Nat} {A : Tm} (hn : Γ.lookup n = some A) : (σ n).isKind = false := by
   obtain ⟨s, hs⟩ := hΓ.lookup hn
   exact (hσ n A hn).not_kind_of_sorted (hs.subst hσ) hΔ
 
 /-! ## Stability under reduction and conversion -/
 
 /-- **Being a kind is stable under well-typed reduction.** -/
-theorem HasType.isKind_step {Γ : Ctx} {t t' T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.isKind_step {Γ : Ctx} {t t' T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hs : Step t t') : t'.isKind = t.isKind := by
   have h' := h.preservation hΓ hs
   cases hk : t.isKind with
@@ -198,7 +233,7 @@ theorem HasType.isKind_step {Γ : Ctx} {t t' T : Tm} (h : HasType Γ t T) (hΓ :
           cases hk
 
 /-- **A kind's skeleton is stable under well-typed reduction.** -/
-theorem HasType.skel_step {Γ : Ctx} {K K' : Tm} (h : HasType Γ K (.sort .box)) (hΓ : Wf Γ)
+theorem HasType.skel_step {Γ : Ctx} {K K' : Tm} (h : HasType sg Γ K (.sort .box)) (hΓ : Wf sg Γ)
     (hs : Step K K') : K'.skel = K.skel := by
   induction hs generalizing Γ with
   | @piA A A' B hA ihA =>
@@ -223,22 +258,29 @@ theorem HasType.skel_step {Γ : Ctx} {K K' : Tm} (h : HasType Γ K (.sort .box))
   | appR => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
   | lamA => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
   | lamB => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | iota => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | ctorA => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | elimC => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | elimB => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | elimT => exact absurd (h.isKind_of_box hΓ rfl) (by simp [Tm.isKind])
+  | consH => exact (h.not_list.2 _ _ rfl).elim
+  | consT => exact (h.not_list.2 _ _ rfl).elim
 
-theorem HasType.isKind_red {Γ : Ctx} {t t' T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.isKind_red {Γ : Ctx} {t t' T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hr : Red t t') : t'.isKind = t.isKind := by
   induction hr with
   | refl => rfl
   | tail hr hs ih => exact ((h.preservation_red hΓ hr).isKind_step hΓ hs).trans ih
 
-theorem HasType.skel_red {Γ : Ctx} {K K' : Tm} (h : HasType Γ K (.sort .box)) (hΓ : Wf Γ)
+theorem HasType.skel_red {Γ : Ctx} {K K' : Tm} (h : HasType sg Γ K (.sort .box)) (hΓ : Wf sg Γ)
     (hr : Red K K') : K'.skel = K.skel := by
   induction hr with
   | refl => rfl
   | tail hr hs ih => exact ((h.preservation_red hΓ hr).skel_step hΓ hs).trans ih
 
 /-- **Convertible sorted terms have the same sort, and — if kinds — the same skeleton.** -/
-theorem HasType.kind_conv {Γ : Ctx} {A B : Tm} {s s' : Srt} (hA : HasType Γ A (.sort s))
-    (hB : HasType Γ B (.sort s')) (hΓ : Wf Γ) (hc : Conv A B) :
+theorem HasType.kind_conv {Γ : Ctx} {A B : Tm} {s s' : Srt} (hA : HasType sg Γ A (.sort s))
+    (hB : HasType sg Γ B (.sort s')) (hΓ : Wf sg Γ) (hc : Conv A B) :
     s = s' ∧ (s = .box → A.skel = B.skel) := by
   obtain ⟨C, hAC, hBC⟩ := hc
   have hk : A.isKind = B.isKind := (hA.isKind_red hΓ hAC).symm.trans (hB.isKind_red hΓ hBC)
@@ -291,6 +333,8 @@ def cls (ρ : Nat → Option SK) : Tm → Option SK
           | some (.arr _ b) => some b
           | _ => none
       | none => cls ρ t
+  | .ind _ => some .star
+  | _ => none
 
 theorem cls_ren : ∀ (t : Tm) (ρ : Nat → Option SK) (ξ : Nat → Nat),
     cls ρ (t.ren ξ) = cls (ρ ∘ ξ) t
@@ -302,10 +346,15 @@ theorem cls_ren : ∀ (t : Tm) (ρ : Nat → Option SK) (ξ : Nat → Nat),
         funext n; cases n <;> rfl
       simp only [cls, Tm.ren, Tm.isKind_ren, Tm.skel_ren, cls_ren t, e]
   | .app t u, ρ, ξ => by simp only [cls, Tm.ren, cls_ren t, cls_ren u]
+  | .ind _, _, _ => rfl
+  | .ctor _ _ _ _, _, _ => rfl
+  | .elim _ _ _ _, _, _ => rfl
+  | .tnil, _, _ => rfl
+  | .tcons _ _, _, _ => rfl
 
 /-- **On a well-typed term the class is what typing says**: the skeleton of its kind for a
 constructor, `none` for an object. -/
-theorem HasType.cls_eq {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
+theorem HasType.cls_eq {Γ : Ctx} {t T : Tm} (h : HasType sg Γ t T) (hΓ : Wf sg Γ)
     (hT : T ≠ .sort .box) : cls Γ.shape t = T.cls₀ := by
   induction h with
   | sort => exact (hT rfl).elim
@@ -345,5 +394,10 @@ theorem HasType.cls_eq {Γ : Ctx} {t T : Tm} (h : HasType Γ t T) (hΓ : Wf Γ)
       | true =>
           have : s' = .box := (hB.sort_box_iff hΓ).mpr hBk
           rw [hsk this]
+  | ind => rfl
+  | ctor => rfl
+  | elim _ hC =>
+      simp only [cls, Tm.cls₀, hC.not_kind_of_sorted .sort hΓ]
+      rfl
 
 end LambdaLab.Languages.CoIC.DeBruijn
