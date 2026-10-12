@@ -1,7 +1,7 @@
 import LambdaLab.Languages.CoIC.Named.Typing
 
 /-!
-# CoC, named — α-equivalence
+# CoIC, named — α-equivalence
 
 Two named terms are **α-equivalent** when they differ only in the names of their bound
 variables: when they translate to the same de Bruijn term, against every list of binders. That is
@@ -21,7 +21,7 @@ namespace LambdaLab.Languages.CoIC.Named
 
 open LambdaLab.Nominal (Atom)
 
-variable {N : Type} [Atom N]
+variable {N : Type} [Atom N] {sg : DeBruijn.Sig}
 
 /-- **α-equivalent terms**: the same up to the names of their bound variables. -/
 def Tm.AlphaEq (t u : Tm N) : Prop := ∀ ns : List N, t.toDB ns = u.toDB ns
@@ -32,15 +32,15 @@ theorem Tm.AlphaEq.trans {t u v : Tm N} (h₁ : t.AlphaEq u) (h₂ : u.AlphaEq v
   fun ns => (h₁ ns).trans (h₂ ns)
 
 /-- **Typing does not see bound names**, of the term… -/
-theorem HasType.alpha_tm {Γ : Ctx N} {t u T : Tm N} (h : HasType Γ t T) (hΓ : Ctx.Wf Γ)
-    (htu : t.AlphaEq u) : HasType Γ u T := by
+theorem HasType.alpha_tm {Γ : Ctx N} {t u T : Tm N} (h : HasType sg Γ t T) (hΓ : Ctx.Wf sg Γ)
+    (htu : t.AlphaEq u) : HasType sg Γ u T := by
   have hd := h.toDB hΓ
   rw [htu Γ.names] at hd
   exact (hasType_iff_toDB hΓ).mpr hd
 
 /-- …nor of the type. -/
-theorem HasType.alpha_ty {Γ : Ctx N} {t A B : Tm N} (h : HasType Γ t A) (hAB : A.AlphaEq B) :
-    HasType Γ t B :=
+theorem HasType.alpha_ty {Γ : Ctx N} {t A B : Tm N} (h : HasType sg Γ t A) (hAB : A.AlphaEq B) :
+    HasType sg Γ t B :=
   .alpha h (hAB Γ.names)
 
 /-- **Reduction does not see bound names**: what one α-variant reduces to, the other reduces to up

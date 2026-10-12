@@ -2,7 +2,7 @@ import LambdaLab.Languages.CoIC.Named.Basic
 import LambdaLab.Languages.CoIC.DeBruijn.Scope
 
 /-!
-# CoC, named — the translation to de Bruijn, and back
+# CoIC, named — the translation to de Bruijn, and back
 
 `Tm.toDB ns` replaces each variable by its position in a list of binder names, innermost first
 (`lookupVar`; a name absent from the list goes to the list's length). α-equivalent terms translate
@@ -92,6 +92,11 @@ def Tm.toDB : List N → Tm N → DeBruijn.Tm
   | ns, .pi x A B => .pi (A.toDB ns) (B.toDB (x :: ns))
   | ns, .lam x A t => .lam (A.toDB ns) (t.toDB (x :: ns))
   | ns, .app t u => .app (t.toDB ns) (u.toDB ns)
+  | _, .ind i => .ind i
+  | ns, .ctor i k m as => .ctor i k m (as.toDB ns)
+  | ns, .elim i C bs t => .elim i (C.toDB ns) (bs.toDB ns) (t.toDB ns)
+  | _, .tnil => .tnil
+  | ns, .tcons a l => .tcons (a.toDB ns) (l.toDB ns)
 
 /-! ## Renaming -/
 
@@ -124,6 +129,20 @@ theorem Tm.toDB_ren : ∀ (t : Tm N) (ns ns' : List N) (ξ : Nat → Nat),
       simp only [Tm.toDB, DeBruijn.Tm.ren]
       rw [Tm.toDB_ren t ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy])),
         Tm.toDB_ren u ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .ind _, _, _, _, _ => rfl
+  | .ctor _ _ _ as, ns, ns', ξ, h => by
+      simp only [Tm.toDB, DeBruijn.Tm.ren]
+      rw [Tm.toDB_ren as ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .elim _ C bs t, ns, ns', ξ, h => by
+      simp only [Tm.toDB, DeBruijn.Tm.ren]
+      rw [Tm.toDB_ren C ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_ren bs ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_ren t ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .tnil, _, _, _, _ => rfl
+  | .tcons a l, ns, ns', ξ, h => by
+      simp only [Tm.toDB, DeBruijn.Tm.ren]
+      rw [Tm.toDB_ren a ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_ren l ns ns' ξ (fun y hy => h y (by simp [Tm.fv, hy]))]
 
 /-- A term does not notice a binder it does not mention. -/
 theorem Tm.toDB_insert {t : Tm N} {z : N} (ns : List N) (h : z ∉ t.fv) :
@@ -173,6 +192,20 @@ theorem Tm.toDB_subst : ∀ (t : Tm N) (ns ns' : List N) (τ : N → Tm N) (γ :
       simp only [Tm.subst, Tm.toDB, DeBruijn.Tm.subst]
       rw [Tm.toDB_subst t ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy])),
         Tm.toDB_subst u ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .ind _, _, _, _, _, _ => rfl
+  | .ctor _ _ _ as, ns, ns', τ, γ, h => by
+      simp only [Tm.subst, Tm.toDB, DeBruijn.Tm.subst]
+      rw [Tm.toDB_subst as ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .elim _ C bs t, ns, ns', τ, γ, h => by
+      simp only [Tm.subst, Tm.toDB, DeBruijn.Tm.subst]
+      rw [Tm.toDB_subst C ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_subst bs ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_subst t ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy]))]
+  | .tnil, _, _, _, _, _ => rfl
+  | .tcons a l, ns, ns', τ, γ, h => by
+      simp only [Tm.subst, Tm.toDB, DeBruijn.Tm.subst]
+      rw [Tm.toDB_subst a ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy])),
+        Tm.toDB_subst l ns ns' τ γ (fun y hy => h y (by simp [Tm.fv, hy]))]
 
 /-- **β commutes with the translation.** -/
 theorem Tm.toDB_inst (b : Tm N) (x : N) (u : Tm N) (ns : List N) :
@@ -194,6 +227,66 @@ theorem Tm.toDB_rename (b : Tm N) {x z : N} (ns : List N) (hz : z ∉ b.fv.filte
         rw [upd_ne _ _ h]
         simp only [Tm.toDB, lookupVar_cons_ne _ h, lookupVar_cons_ne _ hne]),
     DeBruijn.Tm.subst_var]
+
+/-! ## Argument lists and the ι contractum -/
+
+theorem Tm.toList_toDB : ∀ (l : Tm N) (ns : List N),
+    (l.toDB ns).toList = l.toList.map (·.toDB ns)
+  | .tcons a l, ns => by
+      simp only [Tm.toDB, DeBruijn.Tm.toList, Tm.toList, Tm.toList_toDB l ns, List.map_cons]
+  | .var _, _ => rfl
+  | .sort _, _ => rfl
+  | .pi _ _ _, _ => rfl
+  | .lam _ _ _, _ => rfl
+  | .app _ _, _ => rfl
+  | .ind _, _ => rfl
+  | .ctor _ _ _ _, _ => rfl
+  | .elim _ _ _ _, _ => rfl
+  | .tnil, _ => rfl
+
+theorem Tm.isList_toDB : ∀ (l : Tm N) (ns : List N), (l.toDB ns).isList = l.isList
+  | .tcons _ l, ns => Tm.isList_toDB l ns
+  | .var _, _ => rfl
+  | .sort _, _ => rfl
+  | .pi _ _ _, _ => rfl
+  | .lam _ _ _, _ => rfl
+  | .app _ _, _ => rfl
+  | .ind _, _ => rfl
+  | .ctor _ _ _ _, _ => rfl
+  | .elim _ _ _ _, _ => rfl
+  | .tnil, _ => rfl
+
+theorem Tm.nth_toDB (l : Tm N) (ns : List N) (k : Nat) :
+    (l.toDB ns).nth k = (l.nth k).toDB ns := by
+  simp only [DeBruijn.Tm.nth, Tm.nth, Tm.toList_toDB]
+  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases l.toList[k]? <;> rfl
+
+theorem Tm.apps_toDB : ∀ (h : Tm N) (as : List (Tm N)) (ns : List N),
+    (Tm.apps h as).toDB ns = DeBruijn.Tm.apps (h.toDB ns) (as.map (·.toDB ns))
+  | _, [], _ => rfl
+  | h, a :: as, ns => by
+      simp only [Tm.apps, Tm.apps_toDB (.app h a) as ns, Tm.toDB, List.map_cons,
+        DeBruijn.Tm.apps]
+
+theorem Tm.recCalls_toDB (i : Nat) (C bs : Tm N) (ns : List N) :
+    ∀ (as : List (Tm N)) (mask : List Bool),
+      (Tm.recCalls i C bs as mask).map (·.toDB ns) =
+        DeBruijn.Tm.recCalls i (C.toDB ns) (bs.toDB ns) (as.map (·.toDB ns)) mask
+  | [], _ => rfl
+  | _ :: _, [] => rfl
+  | a :: as, r :: mask => by
+      have ih := Tm.recCalls_toDB i C bs ns as mask
+      simp only [Tm.recCalls, DeBruijn.Tm.recCalls, List.zip_cons_cons, List.filterMap_cons]
+        at ih ⊢
+      cases r <;> simp [ih, Tm.toDB]
+
+theorem Tm.iotaRhs_toDB (i : Nat) (C bs : Tm N) (k : Nat) (mask : List Bool) (as : Tm N)
+    (ns : List N) :
+    (Tm.iotaRhs i C bs k mask as).toDB ns =
+      DeBruijn.Tm.iotaRhs i (C.toDB ns) (bs.toDB ns) k mask (as.toDB ns) := by
+  simp only [Tm.iotaRhs, DeBruijn.Tm.iotaRhs, Tm.apps_toDB, Tm.nth_toDB, List.map_append,
+    Tm.toList_toDB, Tm.recCalls_toDB]
 
 /-! ## Scoping -/
 
@@ -222,6 +315,22 @@ theorem Tm.fv_of_scoped : ∀ (t : Tm N) (ns : List N), (t.toDB ns).Scoped ns.le
       rcases hy with hy | hy
       · exact Tm.fv_of_scoped t ns ht y hy
       · exact Tm.fv_of_scoped u ns hu y hy
+  | .ind _, _, _, _, hy => by simp [Tm.fv] at hy
+  | .ctor _ _ _ as, ns, h, y, hy => by
+      simp only [Tm.fv] at hy
+      exact Tm.fv_of_scoped as ns h y hy
+  | .elim _ C bs t, ns, ⟨hC, hbs, ht⟩, y, hy => by
+      simp only [Tm.fv, List.mem_append] at hy
+      rcases hy with (hy | hy) | hy
+      · exact Tm.fv_of_scoped C ns hC y hy
+      · exact Tm.fv_of_scoped bs ns hbs y hy
+      · exact Tm.fv_of_scoped t ns ht y hy
+  | .tnil, _, _, _, hy => by simp [Tm.fv] at hy
+  | .tcons a l, ns, ⟨ha, hl⟩, y, hy => by
+      simp only [Tm.fv, List.mem_append] at hy
+      rcases hy with hy | hy
+      · exact Tm.fv_of_scoped a ns ha y hy
+      · exact Tm.fv_of_scoped l ns hl y hy
 
 /-! ## Reading back -/
 
@@ -232,6 +341,11 @@ def fromDB : List N → DeBruijn.Tm → Tm N
   | ns, .pi A B => .pi (freshFor ns) (fromDB ns A) (fromDB (freshFor ns :: ns) B)
   | ns, .lam A t => .lam (freshFor ns) (fromDB ns A) (fromDB (freshFor ns :: ns) t)
   | ns, .app t u => .app (fromDB ns t) (fromDB ns u)
+  | _, .ind i => .ind i
+  | ns, .ctor i k m as => .ctor i k m (fromDB ns as)
+  | ns, .elim i C bs t => .elim i (fromDB ns C) (fromDB ns bs) (fromDB ns t)
+  | _, .tnil => .tnil
+  | ns, .tcons a l => .tcons (fromDB ns a) (fromDB ns l)
 
 /-- **Reading back and translating gives the term back**, for a scoped term and names without
 repetitions. -/
@@ -249,5 +363,29 @@ theorem Tm.toDB_fromDB : ∀ (t : DeBruijn.Tm) (ns : List N), ns.Nodup → t.Sco
         Tm.toDB_fromDB t _ hnd' (by simpa using ht)]
   | .app t u, ns, hnd, ⟨ht, hu⟩ => by
       simp only [fromDB, Tm.toDB, Tm.toDB_fromDB t ns hnd ht, Tm.toDB_fromDB u ns hnd hu]
+  | .ind _, _, _, _ => rfl
+  | .ctor _ _ _ as, ns, hnd, h => by simp only [fromDB, Tm.toDB, Tm.toDB_fromDB as ns hnd h]
+  | .elim _ C bs t, ns, hnd, ⟨hC, hbs, ht⟩ => by
+      simp only [fromDB, Tm.toDB, Tm.toDB_fromDB C ns hnd hC, Tm.toDB_fromDB bs ns hnd hbs,
+        Tm.toDB_fromDB t ns hnd ht]
+  | .tnil, _, _, _ => rfl
+  | .tcons a l, ns, hnd, ⟨ha, hl⟩ => by
+      simp only [fromDB, Tm.toDB, Tm.toDB_fromDB a ns hnd ha, Tm.toDB_fromDB l ns hnd hl]
+
+/-- A closed term translates the same against any binders. -/
+theorem Tm.toDB_closed {t : Tm N} (h : t.fv = []) (ns : List N) : t.toDB ns = t.toDB [] := by
+  rw [Tm.toDB_ren t [] ns id (fun x hx => by simp [h] at hx), DeBruijn.Tm.ren_id]
+
+/-- Every scoped de Bruijn term is a translation. -/
+theorem exists_toDB {X : DeBruijn.Tm} {ns : List N} (hnd : ns.Nodup) (h : X.Scoped ns.length) :
+    ∃ A : Tm N, A.toDB ns = X :=
+  ⟨_, Tm.toDB_fromDB X ns hnd h⟩
+
+/-- Every closed de Bruijn term is a closed translation: the same against any binders. -/
+theorem exists_closed {X : DeBruijn.Tm} (h : X.Scoped 0) : ∃ A : Tm N, ∀ ns, A.toDB ns = X := by
+  have e := Tm.toDB_fromDB (N := N) X [] List.nodup_nil h
+  have hfv : (fromDB [] X : Tm N).fv = [] := List.eq_nil_iff_forall_not_mem.mpr fun y hy => by
+    simpa using Tm.fv_of_scoped (fromDB [] X) [] (by rw [e]; exact h) y hy
+  exact ⟨fromDB [] X, fun ns => by rw [Tm.toDB_closed hfv ns, e]⟩
 
 end LambdaLab.Languages.CoIC.Named

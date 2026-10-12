@@ -2,12 +2,13 @@ import LambdaLab.Nominal.Atom
 import LambdaLab.Languages.CoIC.DeBruijn.Syntax
 
 /-!
-# CoC, named — syntax and capture-avoiding substitution
+# CoIC, named — syntax and capture-avoiding substitution
 
 The same calculus as `DeBruijn/Syntax.lean`, with names:
 
     s    ::= * | □
     t, A ::= x | s | Π x : A . B | λ x : A . t | t u
+           | Ind_i | c_{i,k} ts | elim_i C bs t        (saturated, as there)
 
 Names come from any `Atom N` — the development only decides their equality and draws fresh ones —
 so a parser can use a name type whose values are already valid tokens.
@@ -39,6 +40,14 @@ inductive Tm (N : Type) where
   | pi : N → Tm N → Tm N → Tm N
   | lam : N → Tm N → Tm N → Tm N
   | app : Tm N → Tm N → Tm N
+  /-- The `i`-th inductive type of the signature. -/
+  | ind : Nat → Tm N
+  /-- A constructor applied to all its arguments (`DeBruijn/Syntax.lean`). -/
+  | ctor : Nat → Nat → List Bool → Tm N → Tm N
+  /-- A recursor applied to its motive, branches and target. -/
+  | elim : Nat → Tm N → Tm N → Tm N → Tm N
+  | tnil : Tm N
+  | tcons : Tm N → Tm N → Tm N
   deriving Repr
 
 variable {N : Type} [Atom N]
@@ -52,6 +61,11 @@ def Tm.fv : Tm N → List N
   | .pi x A B => A.fv ++ B.fv.filter (· ≠ x)
   | .lam x A t => A.fv ++ t.fv.filter (· ≠ x)
   | .app t u => t.fv ++ u.fv
+  | .ind _ => []
+  | .ctor _ _ _ as => as.fv
+  | .elim _ C bs t => C.fv ++ bs.fv ++ t.fv
+  | .tnil => []
+  | .tcons a l => a.fv ++ l.fv
 
 /-- The size of the tree, every constructor counting one. -/
 def Tm.size : Tm N → Nat
@@ -60,6 +74,11 @@ def Tm.size : Tm N → Nat
   | .pi _ A B => A.size + B.size + 1
   | .lam _ A t => A.size + t.size + 1
   | .app t u => t.size + u.size + 1
+  | .ind _ => 1
+  | .ctor _ _ _ as => as.size + 1
+  | .elim _ C bs t => C.size + bs.size + t.size + 1
+  | .tnil => 1
+  | .tcons a l => a.size + l.size + 1
 
 /-! ## Substitution -/
 
@@ -98,6 +117,11 @@ def Tm.subst (τ : N → Tm N) : Tm N → Tm N
       let z := pick x (avoidFor τ x t)
       .lam z (A.subst τ) (t.subst (upd τ x (.var z)))
   | .app t u => .app (t.subst τ) (u.subst τ)
+  | .ind i => .ind i
+  | .ctor i k m as => .ctor i k m (as.subst τ)
+  | .elim i C bs t => .elim i (C.subst τ) (bs.subst τ) (t.subst τ)
+  | .tnil => .tnil
+  | .tcons a l => .tcons (a.subst τ) (l.subst τ)
 
 /-- `b[x := u]` — β. -/
 def Tm.inst (b : Tm N) (x : N) (u : Tm N) : Tm N := b.subst (upd Tm.var x u)
@@ -123,8 +147,50 @@ theorem Tm.size_subst : ∀ (t : Tm N) (τ : N → Tm N), (∀ y, (τ y).size = 
         · exact h y
       simp only [Tm.subst, Tm.size, Tm.size_subst A τ h, Tm.size_subst t _ (h' _)]
   | .app t u, τ, h => by simp only [Tm.subst, Tm.size, Tm.size_subst t τ h, Tm.size_subst u τ h]
+  | .ind _, _, _ => rfl
+  | .ctor _ _ _ as, τ, h => by simp only [Tm.subst, Tm.size, Tm.size_subst as τ h]
+  | .elim _ C bs t, τ, h => by
+      simp only [Tm.subst, Tm.size, Tm.size_subst C τ h, Tm.size_subst bs τ h, Tm.size_subst t τ h]
+  | .tnil, _, _ => rfl
+  | .tcons a l, τ, h => by simp only [Tm.subst, Tm.size, Tm.size_subst a τ h, Tm.size_subst l τ h]
 
 theorem Tm.size_rename (b : Tm N) (x z : N) : (b.rename x z).size = b.size :=
   Tm.size_subst b _ (fun y => by unfold upd; split <;> rfl)
+
+/-! ## Argument lists and the ι contractum
+
+As in `DeBruijn/Syntax.lean`; `Translation.lean` shows the translation commutes with each. -/
+
+/-- The elements of an argument list (junk past a non-list tail). -/
+def Tm.toList : Tm N → List (Tm N)
+  | .tcons a l => a :: l.toList
+  | _ => []
+
+/-- Is this a well-formed argument list? -/
+def Tm.isList : Tm N → Bool
+  | .tnil => true
+  | .tcons _ l => l.isList
+  | _ => false
+
+/-- An argument list from a list. -/
+def Tm.ofList : List (Tm N) → Tm N
+  | [] => .tnil
+  | a :: as => .tcons a (Tm.ofList as)
+
+/-- The `k`-th element (junk past the end). -/
+def Tm.nth (l : Tm N) (k : Nat) : Tm N := l.toList.getD k (.sort .star)
+
+/-- Apply a term to a list of arguments, left to right. -/
+def Tm.apps (h : Tm N) : List (Tm N) → Tm N
+  | [] => h
+  | a :: as => Tm.apps (.app h a) as
+
+/-- One recursive call per argument the mask marks as recursive. -/
+def Tm.recCalls (i : Nat) (C bs : Tm N) (as : List (Tm N)) (mask : List Bool) : List (Tm N) :=
+  (as.zip mask).filterMap fun p => if p.2 then some (.elim i C bs p.1) else none
+
+/-- **The ι contractum**: the `k`-th branch, applied to the arguments and the recursive calls. -/
+def Tm.iotaRhs (i : Nat) (C bs : Tm N) (k : Nat) (mask : List Bool) (as : Tm N) : Tm N :=
+  Tm.apps (bs.nth k) (as.toList ++ Tm.recCalls i C bs as.toList mask)
 
 end LambdaLab.Languages.CoIC.Named
