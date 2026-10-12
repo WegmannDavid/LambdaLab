@@ -8,19 +8,23 @@ import LambdaLab.Parser.IsoParser.Adapters
 import LambdaLab.Parser.Truncation.Mixfix
 
 /-!
-# The Calculus of Constructions — the surface language
+# CoIC — the surface language
 
-What a programmer writes: a run of definitions,
+What a programmer writes: a run of declarations,
 
     def NAME : TERM := TERM
+    inductive NAME := CTOR | CTOR | …          CTOR ::= NAME TERM*  (as an application)
 
     TERM ::= NAME | * | □ | Π NAME : TERM . TERM | λ NAME : TERM . TERM | TERM → TERM
            | TERM TERM | (TERM)
 
-Types are terms, so one entry of the grammar covers both; a second entry holds binder names. The
-parser lands in the **named calculus** (`Named/`): `STm` is `Named.Tm SName`, parentheses truncated
-away, so everything `Named/` proves is about what was parsed. `Pipeline.lean` translates it into
-the de Bruijn core to check and run it.
+Types are terms, so one entry of the grammar covers both; a second entry holds binder names. A
+constructor is written as the application of its name to its argument types —
+`cons Nat List` — and parsed as a term; `Pipeline.lean` takes it apart.
+
+The parser lands in `STm`, the CoC fragment of the named calculus (`STm.toNamed`): inductive types,
+constructors and recursors are *names* here, and only the elaborator (`Pipeline.lean`) turns them
+into the core's saturated nodes.
 
 ## Precedence
 
@@ -32,12 +36,12 @@ applied function `(λ x : A . x) y`, as an argument `f (λ x : A . x)`, as an ar
 
 ## The arrow
 
-`A → B` is a product whose binder `B` does not mention. The named calculus has no arrow of its
-own, so the parser reads `A → B` as `Π z : A . B` with `z` a name fresh for `B` — the name
-`freshFor B.fv`, deterministically — and the printer writes a product as an arrow exactly when its
-binder is that name. So printing and parsing are inverse on every term: a product the programmer
-wrote as `Π y : A . B` with an unused `y` keeps its spelling and its name, and what evaluation
-reads back as an arrow (`Pipeline.lean` names unused binders that way) prints as one.
+`A → B` is a product whose binder `B` does not mention. The parser reads `A → B` as `Π z : A . B`
+with `z` a name fresh for `B` — the name `freshFor B.fv`, deterministically — and the printer
+writes a product as an arrow exactly when its binder is that name. So printing and parsing are
+inverse on every term: a product the programmer wrote as `Π y : A . B` with an unused `y` keeps
+its spelling and its name, and what evaluation reads back as an arrow (`Pipeline.lean` names unused
+binders that way) prints as one.
 -/
 
 namespace LambdaLab.Languages.CoIC
@@ -50,32 +54,34 @@ open LambdaLab.Languages.CoIC.DeBruijn (Srt)
 
 /-! ## The lexicon
 
-The parentheses, the binder symbols, `.`, `→` and the two sorts are self-delimiting:
+The parentheses, the binder symbols, `.`, `→`, `|` and the two sorts are self-delimiting:
 `λx : *. x→x` reads as `λ x : * . x → x` does. The canonical printer hugs the parentheses and spaces
 everything else. `:` is not self-delimiting, because `:=` is one token. -/
 
-/-- What a token is, for CoC. -/
-abbrev cocLex : Lexicon := Lexicon.make ['('] [')'] ['λ', 'Π', '.', '→', '*', '□']
+/-- What a token is, for CoIC. -/
+abbrev coicLex : Lexicon := Lexicon.make ['('] [')'] ['λ', 'Π', '.', '→', '*', '□', '|']
 
-abbrev CTok : Type := Token cocLex
+abbrev CTok : Type := Token coicLex
 
 /-! ## Tokens and names -/
 
 /-- A token literal. -/
-def tkC (s : String) (h : isToken cocLex s = true := by decide) : CTok := ⟨s, h⟩
+def tkC (s : String) (h : isToken coicLex s = true := by decide) : CTok := ⟨s, h⟩
 
 def kwDefC : CTok := tkC "def"
+def kwIndC : CTok := tkC "inductive"
 def kwAssignC : CTok := tkC ":="
+def barC : CTok := tkC "|"
 
 /-- Grammar name-parts and declaration keywords: never names. -/
-def cocReserved : List CTok :=
+def coicReserved : List CTok :=
   [tkC "(", tkC ")", tkC "λ", tkC "Π", tkC ".", tkC ":", tkC "→", tkC "*", tkC "□", kwDefC,
-    kwAssignC]
+    kwIndC, kwAssignC, barC]
 
 /-- A name is any token that is not reserved. -/
-abbrev isCName (t : CTok) : Bool := isFree cocReserved t
+abbrev isCName (t : CTok) : Bool := isFree coicReserved t
 
-abbrev SName : Type := FreeName cocReserved
+abbrev SName : Type := FreeName coicReserved
 
 /-! ## The grammar: terms, binder names -/
 
@@ -87,7 +93,7 @@ inductive TmSym | paren | star | box | app | arrow | lam | pi
 inductive VarSym | paren
   deriving DecidableEq, Repr
 
-def cocTmEntry : Entry CTok CEnt where
+def coicTmEntry : Entry CTok CEnt where
   Op := TmSym
   operator
     | .paren => .closed (.cons (tkC "(") .tm (.last (tkC ")")))
@@ -127,7 +133,7 @@ def cocTmEntry : Entry CTok CEnt where
         | (rcases ht with rfl | rfl <;> decide)
         | (rcases ht with rfl | rfl | rfl <;> decide)
 
-def cocVarEntry : Entry CTok CEnt where
+def coicVarEntry : Entry CTok CEnt where
   Op := VarSym
   operator | .paren => .closed (.cons (tkC "(") .var (.last (tkC ")")))
   ops := [.paren]
@@ -152,13 +158,13 @@ def cocVarEntry : Entry CTok CEnt where
       List.mem_cons, List.not_mem_nil, or_false] at ht
     rcases ht with rfl | rfl <;> decide
 
-def cocGrammar : Grammar CTok where
+def coicGrammar : Grammar CTok where
   Ent := CEnt
-  entry | .tm => cocTmEntry | .var => cocVarEntry
+  entry | .tm => coicTmEntry | .var => coicVarEntry
   interiorTerminates := by
     intro e o e' t h
     cases e <;> cases e' <;> cases o <;>
-      simp only [cocTmEntry, cocVarEntry, Operator.holeFollowers, Notation.holeFollowers,
+      simp only [coicTmEntry, coicVarEntry, Operator.holeFollowers, Notation.holeFollowers,
         Notation.firstTok] at h <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq, reduceCtorEq,
         false_and, false_or, or_false, true_and] at h <;>
@@ -166,17 +172,43 @@ def cocGrammar : Grammar CTok where
         | exact h.elim
         | (subst h; exact ⟨by decide, by intro o'; cases o' <;> decide⟩)
 
-instance : ∀ e : cocGrammar.Ent, DecidableEq (cocGrammar.entry e).Op
+instance : ∀ e : coicGrammar.Ent, DecidableEq (coicGrammar.entry e).Op
   | .tm => inferInstanceAs (DecidableEq TmSym)
   | .var => inferInstanceAs (DecidableEq VarSym)
 
 /-- The grammar is unambiguous — derived from its lexical fields, not assumed. -/
-theorem cocUnambiguous : Unambiguous cocGrammar := unambiguous cocGrammar
+theorem coicUnambiguous : Unambiguous coicGrammar := unambiguous coicGrammar
 
 /-! ## The named syntax tree -/
 
-/-- A term as written: a named CoC term. The parser lands in the named calculus itself. -/
-abbrev STm : Type := Named.Tm SName
+/-- A term as written: the CoC fragment of the named calculus, over names. -/
+inductive STm where
+  | var : SName → STm
+  | sort : Srt → STm
+  | pi : SName → STm → STm → STm
+  | lam : SName → STm → STm → STm
+  | app : STm → STm → STm
+
+/-- **What was written, in the named calculus.** -/
+def STm.toNamed : STm → Named.Tm SName
+  | .var x => .var x
+  | .sort s => .sort s
+  | .pi x A B => .pi x A.toNamed B.toNamed
+  | .lam x A b => .lam x A.toNamed b.toNamed
+  | .app f a => .app f.toNamed a.toNamed
+
+/-- The free names. -/
+def STm.fv : STm → List SName
+  | .var x => [x]
+  | .sort _ => []
+  | .pi x A B => A.fv ++ B.fv.filter (· ≠ x)
+  | .lam x A b => A.fv ++ b.fv.filter (· ≠ x)
+  | .app f a => f.fv ++ a.fv
+
+/-- Apply a term to arguments, left to right. -/
+def STm.apps (h : STm) : List STm → STm
+  | [] => h
+  | a :: as => STm.apps (.app h a) as
 
 /-- The size of a term as written, annotations counted — the measure the truncation needs. -/
 def STm.size : STm → Nat
@@ -203,10 +235,10 @@ def CC : CEnt → Type
 
 /-- The truncation instructions: parentheses vanish, `A → B` is a product over a fresh name, and
 a product over that name is printed as an arrow. -/
-def cocRules : Rules cocGrammar CC where
+def coicRules : Rules coicGrammar CC where
   var {e} t h :=
     match e, h with
-    | .tm, h => Named.Tm.var ⟨t, h⟩
+    | .tm, h => STm.var ⟨t, h⟩
     | .var, h => ⟨t, h⟩
   op {e} o vs :=
     match e, o, vs with
@@ -220,12 +252,12 @@ def cocRules : Rules cocGrammar CC where
     | .var, .paren, (x, _)      => x
   dest {e} x :=
     match e, x with
-    | .tm, Named.Tm.var x       => .var x.1 x.2
-    | .tm, Named.Tm.sort .star  => .node .star PUnit.unit
-    | .tm, Named.Tm.sort .box   => .node .box PUnit.unit
-    | .tm, Named.Tm.app f a     => .node .app (f, a, PUnit.unit)
-    | .tm, Named.Tm.lam x A b   => .node .lam (x, A, b, PUnit.unit)
-    | .tm, Named.Tm.pi x A B    =>
+    | .tm, STm.var x       => .var x.1 x.2
+    | .tm, STm.sort .star  => .node .star PUnit.unit
+    | .tm, STm.sort .box   => .node .box PUnit.unit
+    | .tm, STm.app f a     => .node .app (f, a, PUnit.unit)
+    | .tm, STm.lam x A b   => .node .lam (x, A, b, PUnit.unit)
+    | .tm, STm.pi x A B    =>
         if x = arrowName B then .node .arrow (A, B, PUnit.unit) else .node .pi (x, A, B, PUnit.unit)
     | .var, x => .var x.1 x.2
   parenOp | .tm => TmSym.paren | .var => VarSym.paren
@@ -281,63 +313,168 @@ def cocRules : Rules cocGrammar CC where
 
 /-! ## The term parser -/
 
-/-- A term must stop at `:=` (a declaration's type) and at the next declaration's keyword. -/
-theorem cocFollow : ∀ t ∈ [kwAssignC, kwDefC], follow (G := cocGrammar) CEnt.tm t = true := by
+/-- Where a term may stop: before `:=` (a definition's type), `|` (a constructor), or the next
+declaration's keyword. -/
+@[simp] def coicStops : List CTok := [kwAssignC, kwDefC, kwIndC, barC]
+
+theorem coicFollow : ∀ t ∈ coicStops, follow (G := coicGrammar) CEnt.tm t = true := by
   decide
 
 /-- Every spelling of a term. -/
 abbrev STm.Ann (x : STm) : Type :=
-  { t : Expr cocGrammar CEnt.tm .loosest // truncExpr cocRules t = x }
+  { t : Expr coicGrammar CEnt.tm .loosest // truncExpr coicRules t = x }
 
-def cocTm : LossyParser CTok anyTok (· ∈ [kwAssignC, kwDefC]) STm STm.Ann :=
-  ((mixfix (G := cocGrammar) CEnt.tm .loosest).weakenFollow cocFollow
-    |> cocRules.truncateParser) (fun _ => rfl)
+def coicTm : LossyParser CTok anyTok (· ∈ coicStops) STm STm.Ann :=
+  ((mixfix (G := coicGrammar) CEnt.tm .loosest).weakenFollow coicFollow
+    |> coicRules.truncateParser) (fun _ => rfl)
 
-theorem cocTm_exact : cocTm.Exact :=
-  Rules.truncateParser_exact cocRules (fun _ => rfl)
+theorem coicTm_exact : coicTm.Exact :=
+  Rules.truncateParser_exact coicRules (fun _ => rfl)
     (IsoParser.weakenFollow_exact _ (mixfix_exact _ _))
 
-/-! ## Declarations: `def NAME : TERM := TERM` -/
+/-! ## Declarations -/
 
-/-- A definition. -/
-structure CDecl where
+/-- The two declaration forms. -/
+inductive CForm | defn | ind
+  deriving DecidableEq, Repr
+
+/-- `def NAME : TERM := TERM`. -/
+structure DefBody where
   name : SName
   ty : STm
   tm : STm
 
-abbrev CDecl.Ann (d : CDecl) : Type := d.ty.Ann × d.tm.Ann
+/-- `inductive NAME := CTOR | … | CTOR`: at least one constructor, each an application of its
+name to its argument types. -/
+structure IndBody where
+  name : SName
+  first : STm
+  rest : List STm
+
+/-- The constructors, in order. -/
+def IndBody.ctors (b : IndBody) : List STm := b.first :: b.rest
+
+/-- A declaration. -/
+inductive CDecl where
+  | defn : DefBody → CDecl
+  | ind : IndBody → CDecl
+
+abbrev DefBody.Ann (b : DefBody) : Type := b.ty.Ann × b.tm.Ann
+
+/-- A spelling for each term of a list. -/
+def STm.AnnList : List STm → Type
+  | [] => Unit
+  | x :: xs => x.Ann × STm.AnnList xs
+
+def STm.AnnList.default : (xs : List STm) → STm.AnnList xs
+  | [] => ()
+  | _ :: xs => (coicTm.default, STm.AnnList.default xs)
+
+/-- The terms paired with their spellings. -/
+def STm.AnnList.pairs : (xs : List STm) → STm.AnnList xs → List (Σ x : STm, x.Ann)
+  | [], _ => []
+  | x :: xs, (a, as) => ⟨x, a⟩ :: STm.AnnList.pairs xs as
+
+abbrev IndBody.Ann (b : IndBody) : Type := b.first.Ann × STm.AnnList b.rest
 
 /-- What follows `def`. -/
-def cocBodyIso : IsoParser CTok anyTok (· ∈ [kwDefC]) (Σ d : CDecl, d.Ann) CDecl :=
+def defBodyIso :
+    IsoParser CTok anyTok (· ∈ [kwDefC, kwIndC]) (Σ b : DefBody, b.Ann) DefBody :=
   IsoParser.enlargeFirst (fun _ h => absurd trivial h) <| gdo
     let n ← comap (fun s => s.1.name) (sat isCName)
     let _c ← tok (tkC ":")
-    let A ← comap (fun s => ⟨s.1.ty, s.2.1⟩) cocTm.toIsoParser
+    let A ← comap (fun s => ⟨s.1.ty, s.2.1⟩) coicTm.toIsoParser
     let _a ← tok kwAssignC
     let t ← comap (fun s => ⟨s.1.tm, s.2.2⟩)
-      (cocTm.toIsoParser.weakenFollow (fun c hc => by
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hc ⊢
-        exact .inr hc))
-    return CDecl.mk n A t
+      (coicTm.toIsoParser.weakenFollow (fun c hc => by
+        simp only [coicStops, List.mem_cons, List.not_mem_nil, or_false] at hc ⊢
+        rcases hc with rfl | rfl <;> simp))
+    return DefBody.mk n A t
 
-theorem cocBodyIso_echo : ∀ s : Σ d : CDecl, d.Ann, (cocBodyIso.print s).1 = s.1
+theorem defBodyIso_echo : ∀ s : Σ b : DefBody, b.Ann, (defBodyIso.print s).1 = s.1
   | ⟨⟨_, _, _⟩, _⟩ => rfl
 
-def cocBody : LossyParser CTok anyTok (· ∈ [kwDefC]) CDecl CDecl.Ann :=
-  cocBodyIso.toLossyParserSigma (fun {_} => (cocTm.default, cocTm.default)) cocBodyIso_echo
+def defBody : LossyParser CTok anyTok (· ∈ [kwDefC, kwIndC]) DefBody DefBody.Ann :=
+  defBodyIso.toLossyParserSigma (fun {_} => (coicTm.default, coicTm.default)) defBodyIso_echo
 
-/-- **The CoC language**: one form, `def`. -/
-def cocLanguage : Language where
-  lex := cocLex
-  Form := Unit
-  forms := [()]
-  forms_complete _ := List.mem_singleton.mpr rfl
-  head _ := kwDefC
-  head_injective _ _ _ := rfl
-  Body _ := CDecl
-  BodyAnn _ := CDecl.Ann
-  body _ := cocBody
+/-- `| CTOR`. -/
+def ctorStep : IsoParser CTok (· = barC) (· ∈ coicStops) (Σ x : STm, x.Ann) STm := gdo
+  let _b ← tok barC
+  let c ← coicTm.toIsoParser
+  return c
+
+/-- `CTOR | … | CTOR`. -/
+def ctorsIso := chainl coicTm.toIsoParser ctorStep (fun c hc => by
+  subst hc; decide)
+
+theorem ctorsIso_rest : ∀ (xs : List STm) (as : STm.AnnList xs),
+    many1PrintV ctorStep (STm.AnnList.pairs xs as) = xs
+  | [], _ => rfl
+  | _ :: xs, (_, as) => by
+      show (ctorStep.print _).1 :: many1PrintV ctorStep (STm.AnnList.pairs xs as) = _
+      rw [ctorsIso_rest xs as]
+      rfl
+
+/-- What follows `inductive`. -/
+def indBodyIso :
+    IsoParser CTok anyTok (· ∈ [kwDefC, kwIndC]) (Σ b : IndBody, b.Ann) IndBody :=
+  IsoParser.enlargeFirst (fun _ h => absurd trivial h) <| gdo
+    let n ← comap (fun s => s.1.name) (sat isCName)
+    let _a ← tok kwAssignC
+    let cs ← comap (fun s => (⟨s.1.first, s.2.1⟩, STm.AnnList.pairs s.1.rest s.2.2))
+      (ctorsIso.weakenFollow (fun c hc => by
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+        rcases hc with rfl | rfl <;> decide))
+    return IndBody.mk n cs.1 cs.2
+
+theorem indBodyIso_echo : ∀ s : Σ b : IndBody, b.Ann, (indBodyIso.print s).1 = s.1
+  | ⟨⟨n, f, rest⟩, (a, as)⟩ => by
+      show IndBody.mk n f (many1PrintV ctorStep (STm.AnnList.pairs rest as)) = _
+      rw [ctorsIso_rest]
+
+def indBody : LossyParser CTok anyTok (· ∈ [kwDefC, kwIndC]) IndBody IndBody.Ann :=
+  indBodyIso.toLossyParserSigma (fun {b} => (coicTm.default, STm.AnnList.default b.rest))
+    indBodyIso_echo
+
+def CForm.head : CForm → CTok
+  | .defn => kwDefC
+  | .ind => kwIndC
+
+def CForm.Body : CForm → Type
+  | .defn => DefBody
+  | .ind => IndBody
+
+def CForm.BodyAnn : (f : CForm) → f.Body → Type
+  | .defn => DefBody.Ann
+  | .ind => IndBody.Ann
+
+def CForm.body : (f : CForm) →
+    LossyParser CTok anyTok (· ∈ [kwDefC, kwIndC]) f.Body f.BodyAnn
+  | .defn => defBody
+  | .ind => indBody
+
+def CDecl.toSigma : CDecl → Σ f : CForm, f.Body
+  | .defn b => ⟨.defn, b⟩
+  | .ind b => ⟨.ind, b⟩
+
+def CDecl.ofSigma : (Σ f : CForm, f.Body) → CDecl
+  | ⟨.defn, b⟩ => .defn b
+  | ⟨.ind, b⟩ => .ind b
+
+/-- **The CoIC language**: two forms, `def` and `inductive`. -/
+def coicLanguage : Language where
+  lex := coicLex
+  Form := CForm
+  forms := [.defn, .ind]
+  forms_complete f := by cases f <;> decide
+  head := CForm.head
+  head_injective f g h := by
+    cases f <;> cases g <;> first | rfl | exact absurd h (by decide)
+  Body := CForm.Body
+  BodyAnn := CForm.BodyAnn
+  body := CForm.body
   Decl := CDecl
-  decl := ⟨fun d => ⟨(), d⟩, fun s => s.2, fun _ => rfl, fun _ => rfl⟩
+  decl := ⟨CDecl.toSigma, CDecl.ofSigma, by intro d; cases d <;> rfl,
+    by rintro ⟨f, b⟩; cases f <;> rfl⟩
 
 end LambdaLab.Languages.CoIC

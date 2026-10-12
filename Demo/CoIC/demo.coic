@@ -1,0 +1,27 @@
+inductive Bool := true | false
+inductive Nat := zero | succ Nat
+inductive List := nil | cons Nat List
+inductive Tree := leaf | node Tree Nat Tree
+
+def not : Bool → Bool := λ b : Bool . Bool_rec Bool false true b
+def nt : Bool := not true
+def plus : Nat → Nat → Nat := λ m : Nat . λ n : Nat . Nat_rec Nat n (λ p : Nat . λ r : Nat . succ r) m
+def times : Nat → Nat → Nat := λ m : Nat . λ n : Nat . Nat_rec Nat zero (λ p : Nat . λ r : Nat . plus n r) m
+def isZero : Nat → Bool := Nat_rec Bool true (λ p : Nat . λ r : Bool . false)
+def two : Nat := succ (succ zero)
+def four : Nat := times two two
+def length : List → Nat := List_rec Nat zero (λ x : Nat . λ xs : List . λ r : Nat . succ r)
+def sum : List → Nat := List_rec Nat zero (λ x : Nat . λ xs : List . λ r : Nat . plus x r)
+def xs : List := cons two (cons four (cons zero nil))
+def len : Nat := length xs
+def total : Nat := sum xs
+def size : Tree → Nat := Tree_rec Nat zero (λ l : Tree . λ x : Nat . λ r : Tree . λ a : Nat . λ b : Nat . succ (plus a b))
+def t : Tree := node (node leaf two leaf) four leaf
+def tsize : Nat := size t
+def addTwo : Nat → Nat := plus two
+def pred : Nat → Nat := Nat_rec Nat zero (λ p : Nat . λ r : Nat . p)
+def ack : Nat → Nat → Nat := λ m : Nat . Nat_rec (Nat → Nat) succ (λ p : Nat . λ f : Nat → Nat . λ n : Nat . Nat_rec Nat (f (succ zero)) (λ q : Nat . λ r : Nat . f r) n) m
+def ack22 : Nat := ack two two
+def mkSucc : Nat → Nat := succ
+def polyId : Π A : * . A → A := λ A : * . λ x : A . x
+def idNat : Nat → Nat := polyId Nat

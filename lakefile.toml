@@ -21,6 +21,10 @@ root = "SystemF"
 name = "coc"
 root = "CoC"
 
+[[lean_exe]]
+name = "coic"
+root = "CoIC"
+
 [[require]]
 name = "mathlib"
 git = "https://github.com/leanprover-community/mathlib4.git"
