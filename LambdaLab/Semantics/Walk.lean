@@ -53,169 +53,184 @@ namespace LambdaLab.Semantics
 open LambdaLab (Abstraction)
 
 /-- **A semantics, as a walk**: a state, where it starts, and what one declaration does to it —
-reject it, or rewrite it and hand on the next state. -/
+reject it, saying why, or rewrite it and hand on the next state. -/
 structure Walk (D : Type) where
   /-- What is carried from one declaration to the next. -/
   State : Type
   /-- The state before the first declaration. -/
   init : State
-  /-- Process one declaration. -/
-  step : State → D → Option (D × State)
+  /-- Process one declaration. A rejection's message is informal: no law mentions it. -/
+  step : State → D → Except String (D × State)
 
 namespace Walk
 
 variable {D : Type} (w : Walk D)
 
-/-- Run the walk over a list of declarations from a given state. -/
-def runFrom : w.State → List D → Option (List D)
-  | _, [] => some []
+/-- Run the walk over a list of declarations from a given state. A rejection says which
+declaration of the list was rejected, and why. -/
+def runFrom : w.State → List D → Except (Nat × String) (List D)
+  | _, [] => .ok []
   | s, d :: ds =>
       match w.step s d with
-      | none => none
-      | some (d', s') => (runFrom s' ds).map (d' :: ·)
+      | .error m => .error (0, m)
+      | .ok (d', s') =>
+          match runFrom s' ds with
+          | .error (i, m) => .error (i + 1, m)
+          | .ok ds' => .ok (d' :: ds')
 
-/-- **Run the walk over a program**, from `init`. -/
-def run (p : NEList D) : Option (NEList D) :=
-  match w.step w.init p.1 with
-  | none => none
-  | some (d', s') => (w.runFrom s' p.2).map (d', ·)
+/-- **Run the walk over a program**, from `init`. A rejection points at the declaration. -/
+def run (p : NEList D) : Except Diag (NEList D) :=
+  match w.runFrom w.init p.toList with
+  | .error (i, m) => .error { msg := m, loc := .decl i }
+  | .ok [] => .error { msg := "a walk dropped every declaration" }
+  | .ok (d :: ds) => .ok (d, ds)
 
-/-- Running a program is running its declarations as a list. -/
-theorem run_toList (p : NEList D) :
-    (w.run p).map NEList.toList = w.runFrom w.init p.toList := by
-  obtain ⟨d, ds⟩ := p
-  simp only [run, NEList.toList, runFrom]
-  cases w.step w.init d with
-  | none => rfl
-  | some r =>
-      obtain ⟨d', s'⟩ := r
-      simp only
-      cases w.runFrom s' ds <;> rfl
+theorem runFrom_length : ∀ (s : w.State) (ds ds' : List D), w.runFrom s ds = .ok ds' →
+    ds'.length = ds.length
+  | _, [], ds', h => by simp only [runFrom, Except.ok.injEq] at h; subst h; rfl
+  | s, d :: ds, ds', h => by
+      simp only [runFrom] at h
+      split at h
+      · cases h
+      · rename_i d' s' _
+        split at h
+        · cases h
+        · rename_i rest hrest
+          cases h
+          simp [runFrom_length s' ds rest hrest]
 
-theorem run_eq_some {p q : NEList D} :
-    w.run p = some q ↔ w.runFrom w.init p.toList = some q.toList := by
-  rw [← run_toList]
-  constructor
-  · intro h; rw [h]; rfl
-  · intro h
-    cases hr : w.run p with
-    | none => rw [hr] at h; exact absurd h (by simp)
-    | some q' =>
-        rw [hr, Option.map_some, Option.some.injEq] at h
-        obtain ⟨a, as⟩ := q'
-        obtain ⟨b, bs⟩ := q
-        simp only [NEList.toList, List.cons.injEq] at h
-        rw [h.1, h.2]
+theorem run_eq_ok {p q : NEList D} :
+    w.run p = .ok q ↔ w.runFrom w.init p.toList = .ok q.toList := by
+  unfold run
+  split
+  · rename_i h; simp [h]
+  · rename_i h
+    have := runFrom_length w _ _ _ h
+    simp [NEList.toList] at this
+  · rename_i d ds h
+    rw [h]
+    obtain ⟨a, as⟩ := q
+    simp [NEList.toList]
 
 /-! ## Idempotence -/
 
 /-- **The law**: running the walk on its own output changes nothing. -/
-def Idempotent : Prop := ∀ p q, w.run p = some q → w.run q = some q
+def Idempotent : Prop := ∀ p q, w.run p = .ok q → w.run q = .ok q
 
 /-- **Idempotence a step at a time**: handed its own output in the state it was in, a step gives
 that output back and moves to the same state. -/
 def StepIdempotent : Prop :=
-  ∀ s d d' s', w.step s d = some (d', s') → w.step s d' = some (d', s')
+  ∀ s d d' s', w.step s d = .ok (d', s') → w.step s d' = .ok (d', s')
+
+theorem runFrom_cons_ok {s : w.State} {d : D} {ds : List D} {out : List D}
+    (h : w.runFrom s (d :: ds) = .ok out) :
+    ∃ d' s' rest, w.step s d = .ok (d', s') ∧ w.runFrom s' ds = .ok rest ∧ out = d' :: rest := by
+  simp only [runFrom] at h
+  split at h
+  · cases h
+  · rename_i d' s' hs
+    split at h
+    · cases h
+    · rename_i rest hrest
+      cases h
+      exact ⟨d', s', rest, hs, hrest, rfl⟩
+
+theorem runFrom_cons_of {s : w.State} {d d' : D} {s' : w.State} {ds rest : List D}
+    (hs : w.step s d = .ok (d', s')) (hr : w.runFrom s' ds = .ok rest) :
+    w.runFrom s (d :: ds) = .ok (d' :: rest) := by
+  simp only [runFrom, hs, hr]
+
+/-- **Simulation**: if whatever `w` does to a declaration, `v` accepts the result in the
+corresponding state, moving to the corresponding state, then `v` accepts `w`'s output whole. -/
+theorem runFrom_sim (v : Walk D) (π : w.State → v.State)
+    (hsim : ∀ s d d' s', w.step s d = .ok (d', s') → v.step (π s) d' = .ok (d', π s')) :
+    ∀ (s : w.State) (ds out : List D), w.runFrom s ds = .ok out → v.runFrom (π s) out = .ok out
+  | _, [], out, h => by simp only [runFrom, Except.ok.injEq] at h; subst h; rfl
+  | s, d :: ds, out, h => by
+      obtain ⟨d', s', rest, hs, hr, rfl⟩ := w.runFrom_cons_ok h
+      exact v.runFrom_cons_of (hsim s d d' s' hs) (runFrom_sim v π hsim s' ds rest hr)
 
 theorem runFrom_idempotent (h : w.StepIdempotent) :
-    ∀ (s : w.State) (ds ds' : List D), w.runFrom s ds = some ds' → w.runFrom s ds' = some ds'
-  | s, [], ds', hr => by
-      simp only [runFrom, Option.some.injEq] at hr
-      subst hr; rfl
-  | s, d :: ds, ds', hr => by
-      simp only [runFrom] at hr
-      cases hs : w.step s d with
-      | none => rw [hs] at hr; exact absurd hr (by simp)
-      | some r =>
-          obtain ⟨d', s'⟩ := r
-          rw [hs] at hr
-          cases hrest : w.runFrom s' ds with
-          | none => simp [hrest] at hr
-          | some rest =>
-              simp only [hrest, Option.map_some, Option.some.injEq] at hr
-              subst hr
-              simp only [runFrom, h s d d' s' hs, runFrom_idempotent h s' ds rest hrest]
-              rfl
+    ∀ (s : w.State) (ds ds' : List D), w.runFrom s ds = .ok ds' → w.runFrom s ds' = .ok ds' :=
+  w.runFrom_sim w id h
 
 /-- Step-wise idempotence is enough for the law. -/
 theorem idempotent_of_step (h : w.StepIdempotent) : w.Idempotent := by
   intro p q hpq
-  rw [run_eq_some] at hpq ⊢
+  rw [run_eq_ok] at hpq ⊢
   exact w.runFrom_idempotent h _ _ _ hpq
 
 /-- **The law, for a walk run after another stage**: on programs satisfying `P` (what the earlier
 stage guarantees) the walk keeps `P` and is idempotent. -/
 structure LawfulOn (P : NEList D → Prop) : Prop where
   /-- What the walk produces from a `P`-program is a `P`-program. -/
-  preserve : ∀ p q, P p → w.run p = some q → P q
+  preserve : ∀ p q, P p → w.run p = .ok q → P q
   /-- …and running the walk on it changes nothing. -/
-  idem : ∀ p q, P p → w.run p = some q → w.run q = some q
+  idem : ∀ p q, P p → w.run p = .ok q → w.run q = .ok q
 
 /-! ## The stage -/
 
 /-- **What the walk produces**: the programs it leaves unchanged. For an idempotent walk this is
 exactly its image. -/
-def Fixed : Type := { q : NEList D // w.run q = some q }
+def Fixed : Type := { q : NEList D // w.run q = .ok q }
 
 /-- The walk, landing in what it produces. -/
-def toFixed (h : w.Idempotent) (p : NEList D) : Option w.Fixed :=
+def toFixed (h : w.Idempotent) (p : NEList D) : Except Diag w.Fixed :=
   match hp : w.run p with
-  | none => none
-  | some q => some ⟨q, h p q hp⟩
+  | .error d => .error d
+  | .ok q => .ok ⟨q, h p q hp⟩
 
-theorem toFixed_eq_some (h : w.Idempotent) {p : NEList D} {q : w.Fixed} :
-    w.toFixed h p = some q ↔ w.run p = some q.val := by
+theorem toFixed_eq_ok (h : w.Idempotent) {p : NEList D} {q : w.Fixed} :
+    w.toFixed h p = .ok q ↔ w.run p = .ok q.val := by
   unfold toFixed
   split
   · rename_i hp
     constructor
-    · intro e; exact absurd e (by simp)
-    · intro e; rw [hp] at e; exact absurd e (by simp)
+    · intro e; cases e
+    · intro e; rw [hp] at e; cases e
   · rename_i q' hp
-    rw [Option.some.injEq]
     constructor
-    · intro e; subst e; exact hp
-    · intro e; rw [hp] at e; exact Subtype.ext (Option.some.inj e)
+    · intro e; cases e; exact hp
+    · intro e; rw [hp] at e; cases e; rfl
 
 /-- **A walk as a stage**: programs to the programs the walk leaves unchanged. Each output is its
 own canonical source — the walk changes nothing about it — and the annotation over an output is
 every program the walk takes there, so the stage is complete by construction
 (`Abstraction.ofFibers`). -/
 def stage (h : w.Idempotent) :
-    Abstraction (NEList D) w.Fixed (fun q => { p : NEList D // w.toFixed h p = some q }) :=
-  Abstraction.ofFibers (w.toFixed h) (fun q => ⟨q.val, (w.toFixed_eq_some h).mpr q.property⟩)
+    Abstraction (NEList D) w.Fixed (fun q => { p : NEList D // w.toFixed h p = .ok q }) :=
+  Abstraction.ofFibers (w.toFixed h) (fun q => ⟨q.val, (w.toFixed_eq_ok h).mpr q.property⟩)
 
 /-- What the walk produces from `P`-programs: those it leaves unchanged that still satisfy `P`. -/
-def FixedOn (P : NEList D → Prop) : Type := { q : NEList D // P q ∧ w.run q = some q }
+def FixedOn (P : NEList D → Prop) : Type := { q : NEList D // P q ∧ w.run q = .ok q }
 
 /-- The walk on a `P`-program, landing in what it produces. -/
 def toFixedOn {P : NEList D → Prop} (h : w.LawfulOn P) (p : { p : NEList D // P p }) :
-    Option (w.FixedOn P) :=
+    Except Diag (w.FixedOn P) :=
   match hp : w.run p.val with
-  | none => none
-  | some q => some ⟨q, h.preserve p.val q p.property hp, h.idem p.val q p.property hp⟩
+  | .error d => .error d
+  | .ok q => .ok ⟨q, h.preserve p.val q p.property hp, h.idem p.val q p.property hp⟩
 
-theorem toFixedOn_eq_some {P : NEList D → Prop} (h : w.LawfulOn P) {p : { p : NEList D // P p }}
-    {q : w.FixedOn P} : w.toFixedOn h p = some q ↔ w.run p.val = some q.val := by
+theorem toFixedOn_eq_ok {P : NEList D → Prop} (h : w.LawfulOn P) {p : { p : NEList D // P p }}
+    {q : w.FixedOn P} : w.toFixedOn h p = .ok q ↔ w.run p.val = .ok q.val := by
   unfold toFixedOn
   split
   · rename_i hp
     constructor
-    · intro e; exact absurd e (by simp)
-    · intro e; rw [hp] at e; exact absurd e (by simp)
+    · intro e; cases e
+    · intro e; rw [hp] at e; cases e
   · rename_i q' hp
-    rw [Option.some.injEq]
     constructor
-    · intro e; subst e; exact hp
-    · intro e; rw [hp] at e; exact Subtype.ext (Option.some.inj e)
+    · intro e; cases e; exact hp
+    · intro e; rw [hp] at e; cases e; rfl
 
 /-- **A walk as a later stage**: from the `P`-programs an earlier stage produces, to what this walk
 makes of them. The same construction as `stage`. -/
 def stageOn {P : NEList D → Prop} (h : w.LawfulOn P) :
     Abstraction { p : NEList D // P p } (w.FixedOn P)
-      (fun q => { p : { p : NEList D // P p } // w.toFixedOn h p = some q }) :=
+      (fun q => { p : { p : NEList D // P p } // w.toFixedOn h p = .ok q }) :=
   Abstraction.ofFibers (w.toFixedOn h)
-    (fun q => ⟨⟨q.val, q.property.1⟩, (w.toFixedOn_eq_some h).mpr q.property.2⟩)
+    (fun q => ⟨⟨q.val, q.property.1⟩, (w.toFixedOn_eq_ok h).mpr q.property.2⟩)
 
 end Walk
 

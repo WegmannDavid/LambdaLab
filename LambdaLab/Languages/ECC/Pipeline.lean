@@ -470,14 +470,23 @@ theorem elab_rb_closed {t : Tm} (h : t.Scoped 0) (gl : List (SName × Tm)) :
 /-- What checking carries: each earlier definition's name and translated value. -/
 abbrev CState := List (SName × Tm)
 
+/-- The diagnostic for a definition whose term does not have its type. -/
+def illTypedMsg : String := "this definition does not have its declared type"
+
+/-- The diagnostic for a definition that does not translate: its type, or else its term, names
+something neither bound nor defined before it. -/
+def unknownNameMsg (inType : Bool) : String :=
+  s!"{if inType then "the declared type" else "the term"} mentions a name that is neither \
+    bound nor an earlier definition"
+
 /-- **Check one definition.** It rewrites nothing. -/
-def checkStep (s : CState) (d : CDecl) : Option (CDecl × CState) :=
+def checkStep (s : CState) (d : CDecl) : Except String (CDecl × CState) :=
   match elabTm [] s d.ty, elabTm [] s d.tm with
   | some T', some e' =>
       match check [] Wf.nil e' T' with
-      | some _ => some (d, (d.name, e') :: s)
-      | none => none
-  | _, _ => none
+      | some _ => .ok (d, (d.name, e') :: s)
+      | none => .error illTypedMsg
+  | T', _ => .error (unknownNameMsg T'.isNone)
 
 /-- **The checker**, as a walk. -/
 def checkWalk : Walk CDecl where
@@ -487,7 +496,7 @@ def checkWalk : Walk CDecl where
 
 /-- What an accepted step did: nothing to the definition, and its value pushed. -/
 theorem checkStep_spec {s : CState} {d d' : CDecl} {s' : CState}
-    (h : checkStep s d = some (d', s')) :
+    (h : checkStep s d = .ok (d', s')) :
     ∃ T' e', elabTm [] s d.ty = some T' ∧ elabTm [] s d.tm = some e' ∧
       (check [] Wf.nil e' T').isSome ∧ d' = d ∧ s' = (d.name, e') :: s := by
   simp only [checkStep] at h
@@ -502,7 +511,7 @@ theorem checkStep_spec {s : CState} {d d' : CDecl} {s' : CState}
 
 theorem checkWalk_stepIdempotent : checkWalk.StepIdempotent := by
   intro s d d' s' h
-  have h' : checkStep s d = some (d', s') := h
+  have h' : checkStep s d = .ok (d', s') := h
   obtain ⟨_, _, _, _, _, rfl, _⟩ := checkStep_spec h'
   exact h
 
@@ -510,9 +519,9 @@ theorem checkWalk_idempotent : checkWalk.Idempotent :=
   checkWalk.idempotent_of_step checkWalk_stepIdempotent
 
 /-- **What the checker accepts is well typed**: its translation, at its translated type. -/
-theorem checkStep_sound {s : CState} {d : CDecl} (h : (checkStep s d).isSome) :
+theorem checkStep_sound {s : CState} {d : CDecl} (h : ∃ r, checkStep s d = .ok r) :
     ∃ T' e', elabTm [] s d.ty = some T' ∧ elabTm [] s d.tm = some e' ∧ HasType [] e' T' := by
-  obtain ⟨⟨d', s'⟩, hs⟩ := Option.isSome_iff_exists.mp h
+  obtain ⟨⟨d', s'⟩, hs⟩ := h
   obtain ⟨T', e', hT, he, hc, _, _⟩ := checkStep_spec hs
   obtain ⟨⟨p⟩, _⟩ := Option.isSome_iff_exists.mp hc
   exact ⟨T', e', hT, he, p⟩
@@ -520,14 +529,14 @@ theorem checkStep_sound {s : CState} {d : CDecl} (h : (checkStep s d).isSome) :
 /-- **If ECC normalizes, the checker accepts every well-typed definition.** -/
 theorem checkStep_complete (hsn : Normalizing) {s : CState} {d : CDecl} {T' e' : Tm}
     (hT : elabTm [] s d.ty = some T') (he : elabTm [] s d.tm = some e') (h : HasType [] e' T') :
-    (checkStep s d).isSome := by
+    ∃ r, checkStep s d = .ok r := by
   obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp (check_complete hsn Wf.nil h)
   simp only [checkStep, hT, he, hp]
-  rfl
+  exact ⟨_, rfl⟩
 
 /-- **With nothing defined before it, a definition the checker accepts is well typed in the named
 calculus** — the parsed term at the parsed type, no translation in sight. -/
-theorem checkStep_named {d : CDecl} (h : (checkStep [] d).isSome) :
+theorem checkStep_named {d : CDecl} (h : ∃ r, checkStep [] d = .ok r) :
     Named.HasType [] d.tm.toNamed d.ty.toNamed := by
   obtain ⟨T', e', hT, he, hty⟩ := checkStep_sound h
   have e₁ := elab_eq_toDB d.ty [] T' hT
@@ -560,7 +569,7 @@ def EState.proj (s : EState) : CState := s.map (fun e => (e.name, e.val))
 
 /-- **Evaluate one definition**: translate and check it, normalize it, write it back with
 generated names — and check what is written back before accepting it. -/
-def evalStep (s : EState) (d : CDecl) : Option (CDecl × EState) :=
+def evalStep (s : EState) (d : CDecl) : Except String (CDecl × EState) :=
   match elabTm [] s.proj d.ty, elabTm [] s.proj d.tm with
   | some T', some e' =>
       match check [] Wf.nil e' T' with
@@ -568,13 +577,13 @@ def evalStep (s : EState) (d : CDecl) : Option (CDecl × EState) :=
           match hv : e'.eval with
           | some v =>
               match checkStep s.proj ⟨d.name, d.ty, rb [] v⟩ with
-              | some _ =>
-                  some (⟨d.name, d.ty, rb [] v⟩,
+              | .ok _ =>
+                  .ok (⟨d.name, d.ty, rb [] v⟩,
                     ⟨d.name, T', v, h.eval_typed Wf.nil hv, (Tm.eval_sound hv).2⟩ :: s)
-              | none => none
-          | none => none
-      | none => none
-  | _, _ => none
+              | .error m => .error s!"the normal form of this definition does not check: {m}"
+          | none => .error "this definition has no normal form"
+      | none => .error illTypedMsg
+  | T', _ => .error (unknownNameMsg T'.isNone)
 
 /-- **The evaluator**, as a walk. -/
 def evalWalk : Walk CDecl where
@@ -585,9 +594,9 @@ def evalWalk : Walk CDecl where
 /-- What one evaluation step does: a definition comes out as its value's readback, which the
 checker accepts, the value pushed. -/
 theorem evalStep_sound {s : EState} {d d' : CDecl} {s' : EState}
-    (h : evalStep s d = some (d', s')) :
+    (h : evalStep s d = .ok (d', s')) :
     ∃ e : EEntry, d' = ⟨e.name, d.ty, rb [] e.val⟩ ∧ e.name = d.name ∧
-      elabTm [] s.proj d.ty = some e.ty ∧ s' = e :: s ∧ (checkStep s.proj d').isSome := by
+      elabTm [] s.proj d.ty = some e.ty ∧ s' = e :: s ∧ ∃ r, checkStep s.proj d' = .ok r := by
   simp only [evalStep] at h
   split at h
   · rename_i T' e' hT he
@@ -596,7 +605,7 @@ theorem evalStep_sound {s : EState} {d d' : CDecl} {s' : EState}
       · split at h
         · rename_i hc
           cases h
-          exact ⟨_, rfl, rfl, hT, rfl, by rw [hc]; rfl⟩
+          exact ⟨_, rfl, rfl, hT, rfl, _, hc⟩
         · cases h
       · cases h
     · cases h
@@ -606,18 +615,17 @@ theorem evalStep_sound {s : EState} {d d' : CDecl} {s' : EState}
 the checker accepted, which is normal — so every computation repeats one that succeeded. -/
 theorem evalStep_reduced (s : EState) (T : STm) (e : EEntry)
     (hT : elabTm [] s.proj T = some e.ty)
-    (hc : (checkStep s.proj ⟨e.name, T, rb [] e.val⟩).isSome) :
-    evalStep s ⟨e.name, T, rb [] e.val⟩ = some (⟨e.name, T, rb [] e.val⟩, e :: s) := by
+    (hc : ∃ r, checkStep s.proj ⟨e.name, T, rb [] e.val⟩ = .ok r) :
+    evalStep s ⟨e.name, T, rb [] e.val⟩ = .ok (⟨e.name, T, rb [] e.val⟩, e :: s) := by
   have hr : elabTm [] s.proj (rb [] e.val) = some e.val :=
     elab_rb_closed (by simpa using e.typed.scoped) _
-  obtain ⟨T'', e'', hT'', he'', hcheck, _, _⟩ :=
-    checkStep_spec (Option.get_mem hc : checkStep _ _ = some _)
+  obtain ⟨⟨d₁, s₁⟩, hd⟩ := hc
+  obtain ⟨T'', e'', hT'', he'', hcheck, _, _⟩ := checkStep_spec hd
   rw [hT] at hT''
   cases hT''
   rw [hr] at he''
   cases he''
   obtain ⟨⟨p⟩, hp⟩ := Option.isSome_iff_exists.mp hcheck
-  obtain ⟨⟨d₁, s₁⟩, hd⟩ := Option.isSome_iff_exists.mp hc
   simp only [evalStep, hT, hr, hp]
   split
   · rename_i v hv
@@ -631,16 +639,16 @@ theorem evalStep_reduced (s : EState) (T : STm) (e : EEntry)
 /-- **Idempotence, a step at a time** — with no normalization assumed. -/
 theorem evalWalk_stepIdempotent : evalWalk.StepIdempotent := by
   intro s d d' s' h
-  have h' : evalStep s d = some (d', s') := h
+  have h' : evalStep s d = .ok (d', s') := h
   obtain ⟨e, rfl, _, hT, rfl, hc⟩ := evalStep_sound h'
-  show evalStep s ⟨e.name, d.ty, rb [] e.val⟩ = some _
+  show evalStep s ⟨e.name, d.ty, rb [] e.val⟩ = .ok _
   exact evalStep_reduced s d.ty e hT hc
 
 /-- **Evaluation's output checks**, a step at a time, in the corresponding state. -/
 theorem evalStep_check {s : EState} {d d' : CDecl} {s' : EState}
-    (h : evalStep s d = some (d', s')) : checkStep s.proj d' = some (d', s'.proj) := by
+    (h : evalStep s d = .ok (d', s')) : checkStep s.proj d' = .ok (d', s'.proj) := by
   obtain ⟨e, rfl, _, _, rfl, hc⟩ := evalStep_sound h
-  obtain ⟨⟨d₁, s₁⟩, hd⟩ := Option.isSome_iff_exists.mp hc
+  obtain ⟨⟨d₁, s₁⟩, hd⟩ := hc
   obtain ⟨_, e', _, he', _, rfl, rfl⟩ := checkStep_spec hd
   have hr : elabTm [] s.proj (rb [] e.val) = some e.val :=
     elab_rb_closed (by simpa using e.typed.scoped) _
@@ -648,34 +656,15 @@ theorem evalStep_check {s : EState} {d d' : CDecl} {s' : EState}
   cases he'
   exact hd
 
-theorem evalRunFrom_check : ∀ (s : EState) (ds out : List CDecl),
-    evalWalk.runFrom s ds = some out → checkWalk.runFrom s.proj out = some out
-  | s, [], out, h => by
-      simp only [Walk.runFrom, Option.some.injEq] at h
-      subst h
-      rfl
-  | s, d :: ds, out, h => by
-      simp only [Walk.runFrom] at h
-      cases hs : evalWalk.step s d with
-      | none => rw [hs] at h; exact absurd h (by simp)
-      | some r =>
-          obtain ⟨d', s'⟩ := r
-          rw [hs] at h
-          cases hr : evalWalk.runFrom s' ds with
-          | none => simp [hr] at h
-          | some rest =>
-              simp only [hr, Option.map_some, Option.some.injEq] at h
-              subst h
-              have hc : checkWalk.step s.proj d' = some (d', s'.proj) := evalStep_check hs
-              simp only [Walk.runFrom, hc, evalRunFrom_check s' ds rest hr, Option.map_some]
-
-/-- **What evaluation produces still checks.** -/
-theorem evalRun_check {p q : Program eccLanguage} (h : evalWalk.run p = some q) :
-    checkWalk.run q = some q :=
-  (Walk.run_eq_some _).mpr (evalRunFrom_check evalWalk.init _ _ ((Walk.run_eq_some _).mp h))
+/-- **What evaluation produces still checks**: checking accepts evaluation's output a step at a
+time (`evalStep_check`), so it accepts it whole (`Walk.runFrom_sim`). -/
+theorem evalRun_check {p q : Program eccLanguage} (h : evalWalk.run p = .ok q) :
+    checkWalk.run q = .ok q :=
+  (Walk.run_eq_ok _).mpr (evalWalk.runFrom_sim checkWalk EState.proj
+    (fun _ _ _ _ hs => evalStep_check hs) _ _ _ ((Walk.run_eq_ok _).mp h))
 
 /-- **The law, as the stage after checking.** -/
-theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = some p) where
+theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = .ok p) where
   preserve _ _ _ h := evalRun_check h
   idem p q _ h := evalWalk.idempotent_of_step evalWalk_stepIdempotent p q h
 
@@ -683,7 +672,7 @@ theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = some p
 
 /-- After evaluation: every definition's term in normal form. -/
 abbrev evaluatedStage : LambdaLab.Abstraction.Stage :=
-  eccLanguage.walkStageOn "evaluated program" evalWalk (fun p => checkWalk.run p = some p)
+  eccLanguage.walkStageOn "evaluated program" evalWalk (fun p => checkWalk.run p = .ok p)
 
 /-- **The whole front end, stage by stage**: source, tokens, program, checked program, evaluated
 program. -/
@@ -697,19 +686,19 @@ def evalPipeline :=
     (evalWalk.stageOn evalWalk_lawfulOn)
 
 /-- Read, check and evaluate a source file. -/
-def evaluateFile (s : String) : Option (evalWalk.FixedOn (fun p => checkWalk.run p = some p)) :=
+def evaluateFile (s : String) : Except Diag (evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) :=
   evalPipeline.abstract s.toList
 
 /-- Render an evaluated program canonically. -/
-def renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = some p)) : String :=
+def renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) : String :=
   String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))
 
 /-- **The front end round-trips**: rendering an evaluated program and reading it back
 re-tokenizes, re-parses, re-checks and re-evaluates to exactly what you started with. -/
-theorem evaluateFile_renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = some p)) :
-    evaluateFile (renderEvaluated q) = some q := by
+theorem evaluateFile_renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) :
+    evaluateFile (renderEvaluated q) = .ok q := by
   show evalPipeline.abstract
-    (String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))).toList = some q
+    (String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))).toList = .ok q
   rw [String.toList_ofList]
   exact evalPipeline.abstract_realize q evalPipeline.default
 

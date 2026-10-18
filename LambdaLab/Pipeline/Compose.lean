@@ -45,7 +45,7 @@ neither of the last two: `Float` has one walk of its own, evaluation, and is a `
 
 ## What composition buys
 
-`abstract` is the file reader (whole input, `none` on any error), `realize` re-renders any recorded
+`abstract` is the file reader (whole input, a diagnostic on any error), `realize` re-renders any recorded
 spelling, and `realize ∘ default` is the canonical printer. Because the *composite* is a single
 `Abs` morphism, its round-trip law covers every stage at once: `elaborateFile_renderElaborated`
 below says that rendering an elaborated program and reading it back re-tokenizes, re-parses **and**
@@ -119,7 +119,7 @@ def Language.parsePipeline (L : Language) :
 
 /-- Parse a source file into a program. Whole-input: leading/trailing whitespace is fine,
 anything unconsumed is not. -/
-def Language.parseFile (L : Language) (s : String) : Option (Program L) :=
+def Language.parseFile (L : Language) (s : String) : Except Diag (Program L) :=
   L.parsePipeline.abstract s.toList
 
 /-- Render a program canonically: every declaration in its canonical spelling, one per line. -/
@@ -167,15 +167,21 @@ def Language.parseChain (L : Language) : Chain sourceStage L.programStage :=
 /-- Stepping through the stages reads a file exactly as collapsing them does. -/
 @[simp] theorem Language.parseChain_abstract (L : Language) (cs : List Char) :
     L.parseChain.compose.hom.abstract cs = L.parsePipeline.abstract cs := by
+  rw [parseChain, Chain.compose_cons, Chain.compose_one, OneCell.hcomp_abstract]
+  simp only [parsePipeline, Abstraction.withDefault_abstract, Abstraction.comp, parseCell]
+  rfl
+
+/-- …and points its diagnostics the same way. -/
+theorem Language.parseChain_locate (L : Language) (cs : List Char) :
+    L.parseChain.compose.hom.locate cs = L.parsePipeline.locate cs := by
   rw [parseChain, Chain.compose_cons, Chain.compose_one]
-  simp only [parsePipeline, parseCell, Abstraction.comp, Abstraction.withDefault_abstract,
-    OneCell.hcomp_abstract]
+  simp only [parsePipeline, OneCell.hcomp, Abstraction.withDefault, Abstraction.comp, parseCell]
   rfl
 
 /-- What the driver relies on: running the chain over a file agrees with `parseFile`. -/
 theorem Language.parseChain_run (L : Language) (s : String) :
-    (L.parseChain.run s.toList).2.toOption = L.parseFile s :=
-  (L.parseChain.run_eq_abstract _).trans (L.parseChain_abstract _)
+    ((L.parseChain.run s.toList).2.map Prod.fst).toOption = (L.parseFile s).toOption :=
+  (L.parseChain.run_eq_abstract _).trans (congrArg Except.toOption (L.parseChain_abstract _))
 
 /-! ## Walks, as stages
 
@@ -225,7 +231,7 @@ the round-trip law covers both. -/
 def Language.walkPipeline := L.parsePipeline.comp (w.stage h)
 
 /-- Read a source file and run the walk over it. -/
-def Language.walkFile (s : String) : Option w.Fixed := (L.walkPipeline w h).abstract s.toList
+def Language.walkFile (s : String) : Except Diag w.Fixed := (L.walkPipeline w h).abstract s.toList
 
 /-- Render what the walk produced canonically: one declaration per line, each in its canonical
 spelling. -/
@@ -235,9 +241,9 @@ def Language.renderWalked (q : w.Fixed) : String :=
 /-- **The front end round-trips.** Render what the walk produced and read it back, and the walk
 returns it — tokenizing, parsing and the walk at once. -/
 theorem Language.walkFile_renderWalked (q : w.Fixed) :
-    L.walkFile w h (L.renderWalked w h q) = some q := by
+    L.walkFile w h (L.renderWalked w h q) = .ok q := by
   show (L.walkPipeline w h).abstract (String.ofList
-    ((L.walkPipeline w h).realize ((L.walkPipeline w h).default (a := q)))).toList = some q
+    ((L.walkPipeline w h).realize ((L.walkPipeline w h).default (a := q)))).toList = .ok q
   rw [String.toList_ofList]
   exact (L.walkPipeline w h).abstract_realize q (L.walkPipeline w h).default
 
@@ -248,14 +254,24 @@ def Language.walkChain (name : String) : Chain sourceStage (L.walkStage name w) 
 /-- Stepping through the stages agrees with collapsing them. -/
 @[simp] theorem Language.walkChain_abstract (name : String) (cs : List Char) :
     (L.walkChain w h name).compose.hom.abstract cs = (L.walkPipeline w h).abstract cs := by
-  rw [walkChain, Chain.compose_cons, OneCell.hcomp_abstract, L.parseChain_abstract]
-  simp only [walkPipeline, walkCell, Abstraction.comp]
+  rw [walkChain, Chain.compose_cons, OneCell.hcomp_abstract]
+  simp only [walkPipeline, Abstraction.comp, walkCell]
+  exact Abstraction.compAbstract_congr _ _ _ _ _ (L.parseChain_abstract cs)
+    (L.parseChain_locate cs) rfl
+
+/-- …and points its diagnostics the same way. -/
+theorem Language.walkChain_locate (name : String) (cs : List Char) :
+    (L.walkChain w h name).compose.hom.locate cs = (L.walkPipeline w h).locate cs := by
+  rw [walkChain, Chain.compose_cons]
+  simp only [walkPipeline, OneCell.hcomp, Abstraction.comp, walkCell]
+  rw [L.parseChain_abstract cs, L.parseChain_locate cs]
   rfl
 
 /-- What the driver relies on: running the chain over a file agrees with `walkFile`. -/
 theorem Language.walkChain_run (name : String) (s : String) :
-    ((L.walkChain w h name).run s.toList).2.toOption = L.walkFile w h s :=
-  ((L.walkChain w h name).run_eq_abstract _).trans (L.walkChain_abstract w h name _)
+    (((L.walkChain w h name).run s.toList).2.map Prod.fst).toOption = (L.walkFile w h s).toOption :=
+  ((L.walkChain w h name).run_eq_abstract _).trans
+    (congrArg Except.toOption (L.walkChain_abstract w h name _))
 
 end OneWalk
 
@@ -281,7 +297,7 @@ abbrev DefLanguage.elabPipeline :=
   D.toLanguage.walkPipeline D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent
 
 /-- Parse *and* elaborate a source file. -/
-abbrev DefLanguage.elaborateFile (s : String) : Option D.Elaborated :=
+abbrev DefLanguage.elaborateFile (s : String) : Except Diag D.Elaborated :=
   D.toLanguage.walkFile D.elabWalk TypeSystem.Named.Vernacular.elabWalk_idempotent s
 
 /-- Render an elaborated program canonically: every declaration on its own line, in its canonical
@@ -293,7 +309,7 @@ abbrev DefLanguage.renderElaborated (p : D.Elaborated) : String :=
 returns it — the canonical-print guarantee, covering tokenizing, parsing and type checking at
 once. -/
 theorem DefLanguage.elaborateFile_renderElaborated (p : D.Elaborated) :
-    D.elaborateFile (D.renderElaborated p) = some p :=
+    D.elaborateFile (D.renderElaborated p) = .ok p :=
   D.toLanguage.walkFile_renderWalked _ _ p
 
 /-! ### All three stages, uncollapsed -/
@@ -317,7 +333,7 @@ theorem DefLanguage.elabChain_abstract (cs : List Char) :
 
 /-- What the driver relies on: running the chain over a file agrees with `elaborateFile`. -/
 theorem DefLanguage.elabChain_run (s : String) :
-    (D.elabChain.run s.toList).2.toOption = D.elaborateFile s :=
+    ((D.elabChain.run s.toList).2.map Prod.fst).toOption = (D.elaborateFile s).toOption :=
   D.toLanguage.walkChain_run _ _ _ s
 
 end Elaborating
@@ -340,7 +356,7 @@ once, for the reason it covered three: it is one morphism. -/
 def DefLanguage.evalPipeline := D.elabPipeline.comp D.evalStage
 
 /-- Parse, elaborate *and* run a source file. -/
-def DefLanguage.evaluateFile (s : String) : Option D.Evaluated :=
+def DefLanguage.evaluateFile (s : String) : Except Diag D.Evaluated :=
   D.evalPipeline.abstract s.toList
 
 /-- Render a normalized program canonically. -/
@@ -351,9 +367,9 @@ def DefLanguage.renderEvaluated (q : D.Evaluated) : String :=
 reading it back re-tokenizes, re-parses, re-elaborates *and* re-runs to exactly what you started
 with — the last step because evaluation leaves a normalized program unchanged. -/
 theorem DefLanguage.evaluateFile_renderEvaluated (q : D.Evaluated) :
-    D.evaluateFile (D.renderEvaluated q) = some q := by
+    D.evaluateFile (D.renderEvaluated q) = .ok q := by
   show D.evalPipeline.abstract (String.ofList
-    (D.evalPipeline.realize (D.evalPipeline.default (a := q)))).toList = some q
+    (D.evalPipeline.realize (D.evalPipeline.default (a := q)))).toList = .ok q
   rw [String.toList_ofList]
   exact D.evalPipeline.abstract_realize q D.evalPipeline.default
 
@@ -361,7 +377,7 @@ theorem DefLanguage.evaluateFile_renderEvaluated (q : D.Evaluated) :
 
 /-- After ④: the program with every redex gone. -/
 def DefLanguage.evaluatedStage : Stage :=
-  D.toLanguage.walkStageOn "evaluated program" D.evalWalk (fun p => D.elabWalk.run p = some p)
+  D.toLanguage.walkStageOn "evaluated program" D.evalWalk (fun p => D.elabWalk.run p = .ok p)
 
 /-- **The whole front end, stage by stage.** `elabChain` with evaluation on the end. -/
 def DefLanguage.evalChain : Chain sourceStage D.evaluatedStage :=
@@ -371,14 +387,15 @@ def DefLanguage.evalChain : Chain sourceStage D.evaluatedStage :=
 /-- Stepping through all four stages agrees with collapsing them. -/
 @[simp] theorem DefLanguage.evalChain_abstract (cs : List Char) :
     D.evalChain.compose.hom.abstract cs = D.evalPipeline.abstract cs := by
-  rw [evalChain, Chain.compose_cons, OneCell.hcomp_abstract, D.elabChain_abstract]
-  simp only [evalPipeline, Language.walkCellOn, evalStage, Abstraction.comp]
-  rfl
+  rw [evalChain, Chain.compose_cons, OneCell.hcomp_abstract]
+  simp only [evalPipeline, Abstraction.comp, Language.walkCellOn, evalStage]
+  exact Abstraction.compAbstract_congr _ _ _ _ _ (D.elabChain_abstract cs)
+    (D.toLanguage.walkChain_locate _ _ _ cs) rfl
 
 /-- What the driver relies on: running the chain over a file agrees with `evaluateFile`. -/
 theorem DefLanguage.evalChain_run (s : String) :
-    (D.evalChain.run s.toList).2.toOption = D.evaluateFile s :=
-  (D.evalChain.run_eq_abstract _).trans (D.evalChain_abstract _)
+    ((D.evalChain.run s.toList).2.map Prod.fst).toOption = (D.evaluateFile s).toOption :=
+  (D.evalChain.run_eq_abstract _).trans (congrArg Except.toOption (D.evalChain_abstract _))
 
 end Running
 

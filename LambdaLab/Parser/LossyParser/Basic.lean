@@ -102,6 +102,19 @@ theorem wholeInput_print (p : LossyParser α fst fol V Ann) (v : V) (ann : Ann v
   rw [p.roundtrip v ann]
   rfl
 
+/-- Whole-input reading, saying why not with `err` — a diagnostic, informal, computed from the
+rejected input however the caller likes. -/
+def wholeInputE (p : LossyParser α fst fol V Ann) (err : List α → Diag) (cs : List α) :
+    Except Diag V :=
+  match p.wholeInput cs with
+  | some v => .ok v
+  | none => .error (err cs)
+
+theorem wholeInputE_eq_ok {p : LossyParser α fst fol V Ann} {err : List α → Diag} {cs : List α}
+    {v : V} : p.wholeInputE err cs = .ok v ↔ p.wholeInput cs = some v := by
+  unfold wholeInputE
+  split <;> rename_i h <;> simp [h]
+
 /-- **Whole-input use of a lossy parser as an `Abs` morphism**, on the *tautological* annotation
 family: an annotation of `v` is an input that reads back as `v`.
 
@@ -112,10 +125,14 @@ covers them by construction, and `default` is still the canonical print, so noth
 do with the structured version is lost — only the *description* is coarser.
 
 `toAbstractionOfExact` below is the structured version, for a parser that has earned it. -/
-def toAbstraction (p : LossyParser α fst fol V Ann) :
-    Abstraction (List α) V (fun v => { cs : List α // p.wholeInput cs = some v }) :=
-  Abstraction.ofFibers p.wholeInput
-    (fun v => ⟨p.print (p.default (v := v)), p.wholeInput_print v p.default⟩)
+def toAbstraction (p : LossyParser α fst fol V Ann)
+    (err : List α → Diag := fun _ => { msg := "syntax error" }) :
+    Abstraction (List α) V (fun v => { cs : List α // p.wholeInput cs = some v }) where
+  abstract := p.wholeInputE err
+  realize ann := ann.val
+  default {v} := ⟨p.print (p.default (v := v)), p.wholeInput_print v p.default⟩
+  abstract_realize _ ann := wholeInputE_eq_ok.mpr ann.property
+  lossless c _ h := ⟨⟨c, wholeInputE_eq_ok.mp h⟩, rfl⟩
 
 /-! ## Exactness, and the structured conversion it earns -/
 
@@ -129,14 +146,16 @@ def Exact (p : LossyParser α fst fol V Ann) : Prop :=
 /-- **An exact parser converts on its own annotation family.** The structured spellings do cover
 the fibers, so they satisfy the law and `Ann` may index the morphism directly — which is what
 `toAbstraction` cannot assume. -/
-def toAbstractionOfExact (p : LossyParser α fst fol V Ann) (hp : p.Exact) :
+def toAbstractionOfExact (p : LossyParser α fst fol V Ann) (hp : p.Exact)
+    (err : List α → Diag := fun _ => { msg := "syntax error" }) :
     Abstraction (List α) V Ann where
-  abstract := p.wholeInput
+  abstract := p.wholeInputE err
   realize := p.print
   default := p.default
-  abstract_realize v ann := p.wholeInput_print v ann
+  abstract_realize v ann := wholeInputE_eq_ok.mpr (p.wholeInput_print v ann)
   lossless cs v h := by
-    have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v := h
+    have h' : (p.run cs).bind (fun z => if z.2.isEmpty then some z.1 else none) = some v :=
+      wholeInputE_eq_ok.mp h
     cases hrun : p.run cs with
     | none => rw [hrun] at h'; simp at h'
     | some z =>

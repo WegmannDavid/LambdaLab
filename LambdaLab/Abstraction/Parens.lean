@@ -39,9 +39,9 @@ variable {Tok V : Type} {Ann : V → Type}
 /-- The single-token reading, named so that `atom`'s own completeness proof can unfold it — a
 field cannot mention the definition it is a field of. -/
 def atomAbstract (isVar : Tok → Bool) :
-    List Tok → Option { t : Tok // isVar t = true }
-  | [t] => if h : isVar t = true then some ⟨t, h⟩ else none
-  | _ => none
+    List Tok → Except Diag { t : Tok // isVar t = true }
+  | [t] => if h : isVar t = true then .ok ⟨t, h⟩ else .error { msg := "not a variable" }
+  | _ => .error { msg := "expected exactly one token" }
 
 /-- Exactly one token satisfying `isVar`. `Unit` annotation — nothing is forgotten. -/
 def atom (isVar : Tok → Bool) :
@@ -140,7 +140,7 @@ def _root_.LambdaLab.Abstraction.parens [DecidableEq Tok] (p : Abstraction (List
   realize x := wrap lp rp x.1 (p.realize x.2)
   default := (0, p.default)
   abstract_realize v x := by
-    show p.abstract (strip lp rp (wrap lp rp x.1 (p.realize x.2))).2 = some v
+    show p.abstract (strip lp rp (wrap lp rp x.1 (p.realize x.2))).2 = .ok v
     rw [strip_wrap (hp v x.2)]
     exact p.abstract_realize v x.2
   -- Completeness is inherited: the depth measured by `strip` plus the inner annotation realize

@@ -179,15 +179,16 @@ theorem typed_of_solution (ρ : Env N Tm Ty) {t : Tm} {τ : Ty} (ht : Ground t) 
 
 /-- **Reduce one declaration**: check it in the context the environment stands for, inline the
 environment into it, and normalize. -/
-def evalStep (ρ : Env N Tm Ty) : Command N Tm Ty → Option (Command N Tm Ty × Env N Tm Ty)
+def evalStep (ρ : Env N Tm Ty) :
+    Command N Tm Ty → Except String (Command N Tm Ty × Env N Tm Ty)
   | .decl x τ t =>
       if hg : Ground τ ∧ Ground t then
         match PrincipalElaborate.elaborate (envCtx ρ) t τ with
-        | .impossible _ => none
+        | .impossible _ => .error "this declaration does not have its declared type"
         | .mgu _ hσ _ =>
-            some (.decl x τ (reduce ρ x τ (typed_of_solution ρ hg.2 hg.1 hσ) hg.2 hg.1).value,
+            .ok (.decl x τ (reduce ρ x τ (typed_of_solution ρ hg.2 hg.1 hσ) hg.2 hg.1).value,
               reduce ρ x τ (typed_of_solution ρ hg.2 hg.1 hσ) hg.2 hg.1 :: ρ)
-      else none
+      else .error "this declaration still has metavariables: it is not elaborated"
 
 /-- **The evaluator**: the walk from the empty environment. -/
 def evalWalk : Walk (Command N Tm Ty) where
@@ -198,23 +199,23 @@ def evalWalk : Walk (Command N Tm Ty) where
 /-- What one step produces: the declaration with its body replaced by an entry's value, that entry
 pushed on the environment — named and typed as the declaration was, and normal. -/
 theorem evalStep_sound {ρ : Env N Tm Ty} {x : N} {τ : Ty} {t : Tm} {d : Command N Tm Ty}
-    {ρ' : Env N Tm Ty} (h : evalStep ρ (.decl x τ t) = some (d, ρ')) :
+    {ρ' : Env N Tm Ty} (h : evalStep ρ (.decl x τ t) = .ok (d, ρ')) :
     ∃ e : EnvEntry N Tm Ty, e.name = x ∧ e.ty = τ ∧ d = .decl x τ e.value ∧ ρ' = e :: ρ ∧
       NormalForm e.value := by
   simp only [evalStep] at h
   split at h
   · split at h
-    · exact absurd h (by simp)
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    · cases h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       exact ⟨_, rfl, rfl, rfl, rfl, reduce_normal _ _ _ _ _ _⟩
-  · exact absurd h (by simp)
+  · cases h
 
 /-- **A reduced declaration steps to itself**, with the same entry. The check succeeds because the
 value is closed and typed (`weaken_closed`), and re-reducing it changes nothing
 (`reduce_of_reduced`). -/
 theorem evalStep_reduced (ρ : Env N Tm Ty) (e : EnvEntry N Tm Ty) (hn : NormalForm e.value) :
-    evalStep ρ (.decl e.name e.ty e.value) = some (.decl e.name e.ty e.value, e :: ρ) := by
+    evalStep ρ (.decl e.name e.ty e.value) = .ok (.decl e.name e.ty e.value, e :: ρ) := by
   simp only [evalStep]
   rw [dif_pos ⟨e.tyGround, e.ground⟩]
   split
@@ -237,32 +238,22 @@ theorem evalWalk_stepIdempotent : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).Step
 /-! ## What the walk produces -/
 
 theorem evalRunFrom_sound : ∀ (ρ : Env N Tm Ty) (cs cs' : List (Command N Tm Ty)),
-    (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs = some cs' →
+    (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs = .ok cs' →
       HasTypeGround (envCtx ρ) cs'
   | ρ, [], cs', h => by
-      simp only [Walk.runFrom, Option.some.injEq] at h
+      simp only [Walk.runFrom, Except.ok.injEq] at h
       subst h
       exact .nil (envCtx_ground ρ)
   | ρ, .decl x τ t :: cs, cs', h => by
-      simp only [Walk.runFrom] at h
-      cases hs : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).step ρ (.decl x τ t) with
-      | none => rw [hs] at h; exact absurd h (by simp)
-      | some r =>
-          obtain ⟨d, ρ'⟩ := r
-          rw [hs] at h
-          cases hr : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ' cs with
-          | none => simp [hr] at h
-          | some rest =>
-              simp only [hr, Option.map_some, Option.some.injEq] at h
-              subst h
-              obtain ⟨e, rfl, rfl, rfl, rfl, _⟩ := evalStep_sound hs
-              exact .decl (HasTermSubst.weaken_closed e.typed) e.tyGround e.ground
-                (evalRunFrom_sound (e :: ρ) cs rest hr)
+      obtain ⟨d, ρ', rest, hs, hr, rfl⟩ := Walk.runFrom_cons_ok _ h
+      obtain ⟨e, rfl, rfl, rfl, rfl, _⟩ := evalStep_sound hs
+      exact .decl (HasTermSubst.weaken_closed e.typed) e.tyGround e.ground
+        (evalRunFrom_sound (e :: ρ) cs rest hr)
 
 /-- **The result is still a well-typed program.** -/
 theorem evalWalk_sound {p q : Program N Tm Ty}
-    (h : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = some q) : HasType q :=
-  evalRunFrom_sound [] _ _ ((Walk.run_eq_some _).mp h)
+    (h : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = .ok q) : HasType q :=
+  evalRunFrom_sound [] _ _ ((Walk.run_eq_ok _).mp h)
 
 /-- Every declaration body is **closed and normal**: no redex left, and no earlier declaration
 mentioned.
@@ -275,37 +266,27 @@ def Reduced : List (Command N Tm Ty) → Prop
 
 /-- **The result is fully reduced.** -/
 theorem evalRunFrom_reduced : ∀ (ρ : Env N Tm Ty) (cs cs' : List (Command N Tm Ty)),
-    (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs = some cs' → Reduced cs'
+    (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs = .ok cs' → Reduced cs'
   | ρ, [], cs', h => by
-      simp only [Walk.runFrom, Option.some.injEq] at h
+      simp only [Walk.runFrom, Except.ok.injEq] at h
       subst h
       trivial
   | ρ, .decl x τ t :: cs, cs', h => by
-      simp only [Walk.runFrom] at h
-      cases hs : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).step ρ (.decl x τ t) with
-      | none => rw [hs] at h; exact absurd h (by simp)
-      | some r =>
-          obtain ⟨d, ρ'⟩ := r
-          rw [hs] at h
-          cases hr : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ' cs with
-          | none => simp [hr] at h
-          | some rest =>
-              simp only [hr, Option.map_some, Option.some.injEq] at h
-              subst h
-              obtain ⟨e, rfl, rfl, rfl, rfl, hn⟩ := evalStep_sound hs
-              exact ⟨hn, e.typed, evalRunFrom_reduced (e :: ρ) cs rest hr⟩
+      obtain ⟨d, ρ', rest, hs, hr, rfl⟩ := Walk.runFrom_cons_ok _ h
+      obtain ⟨e, rfl, rfl, rfl, rfl, hn⟩ := evalStep_sound hs
+      exact ⟨hn, e.typed, evalRunFrom_reduced (e :: ρ) cs rest hr⟩
 
 /-! ## It never rejects an elaborated program -/
 
-theorem evalRunFrom_isSome : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty)),
+theorem evalRunFrom_ok : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty)),
     HasTypeGround (envCtx ρ) cs →
-      ((evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs).isSome
-  | _, [], _ => rfl
+      ∃ out, (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom ρ cs = .ok out
+  | _, [], _ => ⟨[], rfl⟩
   | ρ, .decl x τ t :: cs, h => by
       cases h with
       | decl hty hτ ht hrest =>
           have hstep : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).step ρ (.decl x τ t)
-              = some (.decl x τ (reduce ρ x τ hty ht hτ).value, reduce ρ x τ hty ht hτ :: ρ) := by
+              = .ok (.decl x τ (reduce ρ x τ hty ht hτ).value, reduce ρ x τ hty ht hτ :: ρ) := by
             show evalStep ρ (.decl x τ t) = _
             simp only [evalStep]
             rw [dif_pos ⟨hτ, ht⟩]
@@ -318,24 +299,18 @@ theorem evalRunFrom_isSome : ∀ (ρ : Env N Tm Ty) (cs : List (Command N Tm Ty)
                 (fun y => (Context.pSubst_get?_of_ground (envCtx ρ) ∅ (envCtx_ground ρ) y).symm)
                 hty
             · rfl
-          have hrec := evalRunFrom_isSome (reduce ρ x τ hty ht hτ :: ρ) cs hrest
-          simp only [Walk.runFrom, hstep]
-          cases hr : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom
-              (reduce ρ x τ hty ht hτ :: ρ) cs with
-          | none => rw [hr] at hrec; exact absurd hrec (by simp)
-          | some _ => rfl
+          obtain ⟨rest, hr⟩ := evalRunFrom_ok (reduce ρ x τ hty ht hτ :: ρ) cs hrest
+          exact ⟨_, Walk.runFrom_cons_of _ hstep hr⟩
 
 /-- **Evaluation never rejects a well-typed program** — strong normalization, reached through
 `LawfulHasEval`, and the check passing on what elaboration produced. -/
-theorem evalWalk_run_isSome {p : Program N Tm Ty} (h : HasType p) :
-    ((evalWalk (N := N) (Tm := Tm) (Ty := Ty)).run p).isSome := by
-  have hs : ((evalWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom
-      (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).init p.toList).isSome :=
-    evalRunFrom_isSome [] p.toList h
-  rw [← Walk.run_toList] at hs
-  cases hr : (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).run p with
-  | none => rw [hr] at hs; exact absurd hs (by simp)
-  | some _ => rfl
+theorem evalWalk_run_ok {p : Program N Tm Ty} (h : HasType p) :
+    ∃ q, (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = .ok q := by
+  obtain ⟨out, hout⟩ := evalRunFrom_ok [] p.toList h
+  have hlen := Walk.runFrom_length _ _ _ _ hout
+  match out, hout, hlen with
+  | d :: ds, hout, _ => exact ⟨(d, ds), (Walk.run_eq_ok _).mpr hout⟩
+  | [], _, hlen => simp [NEList.toList] at hlen
 
 /-! ## After elaboration -/
 
@@ -344,7 +319,7 @@ evaluator produces programs elaboration leaves unchanged — they are well-typed
 there, as it is everywhere. -/
 theorem evalWalk_lawfulOn :
     (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).LawfulOn
-      (fun p => (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = some p) where
+      (fun p => (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = .ok p) where
   preserve _ _ _ h := elabWalk_self (evalWalk_sound h)
   idem p q _ h := Walk.idempotent_of_step _ evalWalk_stepIdempotent p q h
 

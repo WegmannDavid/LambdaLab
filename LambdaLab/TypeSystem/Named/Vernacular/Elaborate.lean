@@ -80,19 +80,21 @@ structure ElabState (N Ty : Type) [Atom N] where
 
 /-- **Elaborate one declaration**: apply what is already solved, elaborate against the context,
 and keep the answer only if it leaves nothing unsolved. -/
-def elabStep (s : ElabState N Ty) : Command N Tm Ty → Option (Command N Tm Ty × ElabState N Ty)
+def elabStep (s : ElabState N Ty) :
+    Command N Tm Ty → Except String (Command N Tm Ty × ElabState N Ty)
   | .decl x τ t =>
       match PrincipalElaborate.elaborate s.ctx (HasSubst.pSubst t s.solved)
           (HasSubst.pSubst τ s.solved) with
-      | .impossible _ => none
+      | .impossible _ => .error "this declaration does not have its declared type"
       | .mgu σ _ _ =>
           if Ground (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ) ∧
               Ground (HasSubst.pSubst (HasSubst.pSubst t s.solved) σ) then
-            some (.decl x (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ)
+            .ok (.decl x (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ)
                 (HasSubst.pSubst (HasSubst.pSubst t s.solved) σ),
               ⟨s.ctx.cons x (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ),
                 Subst.comp σ s.solved⟩)
-          else none
+          else .error "this declaration's types are not all determined: a metavariable is left \
+            unsolved"
 
 /-- **The program elaborator**: the walk from the empty context, nothing solved. -/
 def elabWalk : Walk (Command N Tm Ty) where
@@ -106,47 +108,37 @@ def elabWalk : Walk (Command N Tm Ty) where
 the next context is that one extended with it. -/
 theorem elabStep_sound {s : ElabState N Ty} {x : N} {τ : Ty} {t : Tm}
     {d : Command N Tm Ty} {s' : ElabState N Ty} (hΓ : CtxGround s.ctx)
-    (h : elabStep s (.decl x τ t) = some (d, s')) :
+    (h : elabStep s (.decl x τ t) = .ok (d, s')) :
     ∃ τ' t', d = .decl x τ' t' ∧ s'.ctx = s.ctx.cons x τ' ∧ (s.ctx ⊢ t' : τ') ∧
       Ground τ' ∧ Ground t' := by
   simp only [elabStep] at h
   split at h
-  · exact absurd h (by simp)
+  · cases h
   · rename_i σ hσ _ _
     split at h
     · rename_i hg
-      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       exact ⟨_, _, rfl, rfl, hasType_of_solution hΓ hσ, hg.1, hg.2⟩
-    · exact absurd h (by simp)
+    · cases h
 
 theorem elabRunFrom_sound : ∀ (s : ElabState N Ty) (cs cs' : List (Command N Tm Ty)),
-    CtxGround s.ctx → (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom s cs = some cs' →
+    CtxGround s.ctx → (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom s cs = .ok cs' →
       HasTypeGround s.ctx cs'
   | s, [], cs', hΓ, h => by
-      simp only [Walk.runFrom, Option.some.injEq] at h
+      simp only [Walk.runFrom, Except.ok.injEq] at h
       subst h
       exact .nil hΓ
   | s, .decl x τ t :: cs, cs', hΓ, h => by
-      simp only [Walk.runFrom] at h
-      cases hs : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).step s (.decl x τ t) with
-      | none => rw [hs] at h; exact absurd h (by simp)
-      | some r =>
-          obtain ⟨d, s'⟩ := r
-          rw [hs] at h
-          cases hr : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom s' cs with
-          | none => simp [hr] at h
-          | some rest =>
-              simp only [hr, Option.map_some, Option.some.injEq] at h
-              subst h
-              obtain ⟨τ', t', rfl, hctx, hty, hτ', ht'⟩ := elabStep_sound hΓ hs
-              have hrest := elabRunFrom_sound s' cs rest (hctx ▸ hΓ.cons hτ') hr
-              exact .decl hty hτ' ht' (hctx ▸ hrest)
+      obtain ⟨d, s', rest, hs, hr, rfl⟩ := Walk.runFrom_cons_ok _ h
+      obtain ⟨τ', t', rfl, hctx, hty, hτ', ht'⟩ := elabStep_sound hΓ hs
+      have hrest := elabRunFrom_sound s' cs rest (hctx ▸ hΓ.cons hτ') hr
+      exact .decl hty hτ' ht' (hctx ▸ hrest)
 
 /-- **Soundness**: whatever the walk produces is a well-typed, fully resolved program. -/
 theorem elabWalk_sound {p q : Program N Tm Ty}
-    (h : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = some q) : HasType q :=
-  elabRunFrom_sound _ _ _ CtxGround.empty ((Walk.run_eq_some _).mp h)
+    (h : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = .ok q) : HasType q :=
+  elabRunFrom_sound _ _ _ CtxGround.empty ((Walk.run_eq_ok _).mp h)
 
 /-! ## A well-typed program is a fixed point -/
 
@@ -157,7 +149,7 @@ at `∅` and stripping the substitutions off contradicts the derivation — the 
 checks, and leaves the declaration as it was. -/
 theorem elabStep_self {s : ElabState N Ty} {x : N} {τ : Ty} {t : Tm}
     (hΓ : CtxGround s.ctx) (hty : s.ctx ⊢ t : τ) (hτ : Ground τ) (ht : Ground t) :
-    ∃ s', elabStep s (.decl x τ t) = some (.decl x τ t, s') ∧ s'.ctx = s.ctx.cons x τ := by
+    ∃ s', elabStep s (.decl x τ t) = .ok (.decl x τ t, s') ∧ s'.ctx = s.ctx.cons x τ := by
   have eτ : HasSubst.pSubst τ s.solved = τ := GroundStable.pSubst_ground s.solved hτ
   have et : HasSubst.pSubst t s.solved = t := GroundStable.pSubst_ground s.solved ht
   simp only [elabStep]
@@ -177,23 +169,23 @@ theorem elabStep_self {s : ElabState N Ty} {x : N} {τ : Ty} {t : Tm}
 
 theorem elabRunFrom_self : ∀ (s : ElabState N Ty) (cs : List (Command N Tm Ty)),
     CtxGround s.ctx → HasTypeGround s.ctx cs →
-      (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom s cs = some cs
+      (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).runFrom s cs = .ok cs
   | _, [], _, _ => rfl
   | s, .decl x τ t :: cs, hΓ, h => by
       cases h with
       | decl hty hτ ht hrest =>
           obtain ⟨s', hstep, hctx⟩ := elabStep_self (x := x) hΓ hty hτ ht
           have hstep' : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).step s (.decl x τ t)
-              = some (.decl x τ t, s') := hstep
+              = .ok (.decl x τ t, s') := hstep
           have hΓ' : CtxGround s'.ctx := hctx ▸ hΓ.cons hτ
           have hrest' : HasTypeGround s'.ctx cs := hctx ▸ hrest
-          simp only [Walk.runFrom, hstep', elabRunFrom_self s' cs hΓ' hrest', Option.map_some]
+          exact Walk.runFrom_cons_of _ hstep' (elabRunFrom_self s' cs hΓ' hrest')
 
 /-- **An elaborated program re-elaborates to itself.** The canonical surface form of a well-typed
 program is the program, which is what gives a front end a printer whose output re-reads. -/
 theorem elabWalk_self {q : Program N Tm Ty} (h : HasType q) :
-    (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run q = some q :=
-  (Walk.run_eq_some _).mpr (elabRunFrom_self _ _ CtxGround.empty h)
+    (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run q = .ok q :=
+  (Walk.run_eq_ok _).mpr (elabRunFrom_self _ _ CtxGround.empty h)
 
 /-- **The law.** -/
 theorem elabWalk_idempotent : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).Idempotent :=
@@ -202,7 +194,7 @@ theorem elabWalk_idempotent : (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).Idempote
 /-- **What elaboration produces is exactly the well-typed programs**: its fixed points are those,
 and nothing else. -/
 theorem elabWalk_fixed_iff {q : Program N Tm Ty} :
-    (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run q = some q ↔ HasType q :=
+    (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run q = .ok q ↔ HasType q :=
   ⟨elabWalk_sound, elabWalk_self⟩
 
 end LambdaLab.TypeSystem.Named.Vernacular

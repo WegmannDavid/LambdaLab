@@ -6,7 +6,7 @@ import LambdaLab.Abstraction.Basic
 
 Partiality of `abstract` costs nothing here by design: the whole 2-cell layer —
 `TwoCell`, whiskerings, associator, coherence — lives on the annotation/`realize`
-side and never mentions `abstract`, so `comp`'s `Option.bind` is absorbed entirely
+side and never mentions `abstract`, so `comp`'s sequencing of `Except` is absorbed entirely
 in `Basic.lean`.
 
 The identity 1-cell is the

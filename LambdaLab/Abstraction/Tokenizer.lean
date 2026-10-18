@@ -297,23 +297,56 @@ theorem realize_complete_aux (cs : List Char) :
       have h3 : (skipSep lex cs).length ≤ cs.length := length_dropWhile_le _ _
       omega
 
+/-! ## Where the tokens are
+
+For diagnostics only: the character span of each token, found the way `tokens` finds the tokens.
+Nothing is proved about it — a diagnostic's location is informal — but it is the same scan. -/
+
+/-- The character span `[lo, hi)` of each token of `cs`, offsets counted from `i`. -/
+def tokenSpans (lex : Lexicon) : List Char → Nat → List (Nat × Nat)
+  | [], _ => []
+  | c :: cs, i =>
+      if lex.sep c then tokenSpans lex cs (i + 1)
+      else if lex.punct c then (i, i + 1) :: tokenSpans lex cs (i + 1)
+      else
+        let n := (cs.takeWhile lex.word).length + 1
+        (i, i + n) :: tokenSpans lex (cs.dropWhile lex.word) (i + n)
+  termination_by cs => cs.length
+  decreasing_by
+    all_goals simp only [List.length_cons]
+    · omega
+    · omega
+    · have := length_dropWhile_le lex.word cs
+      omega
+
+/-- Pull a token span back to a character span of `cs`; a span past the last token points at the
+end of the input. -/
+def locateChars (lex : Lexicon) (cs : List Char) : Loc → Loc
+  | .tokens lo hi =>
+      let sp := tokenSpans lex cs 0
+      let start := (sp[lo]?.map (·.1)).getD cs.length
+      let stop := if hi ≤ lo then start else (sp[hi - 1]?.map (·.2)).getD cs.length
+      .chars start stop
+  | l => l
+
 /-! ## The tokenizer as a morphism of `Abs` -/
 
 /-- **The tokenizer of a lexicon**, as an abstraction `List Char ⇝ List Token`, whose annotation
 over `ts` is exactly the gaps `Gaps lex ts`. Its canonical print spaces the tokens as the lexicon
 asks. Tokenizing is total, so `abstract` never fails. -/
 def tokenizer (lex : Lexicon) : Abstraction (List Char) (List (Token lex)) (Gaps lex) where
-  abstract cs := some (tokens lex cs)
+  abstract cs := .ok (tokens lex cs)
+  locate := locateChars lex
   realize := Gaps.realize
   default := ⟨emptyRun, defaultInner lex _⟩
   abstract_realize := fun ts g => by
-    show some (tokens lex (g.leading.val ++ realizeInner lex ts g.inner)) = some ts
+    show Except.ok (tokens lex (g.leading.val ++ realizeInner lex ts g.inner)) = .ok ts
     rw [tokens_sep_prepend g.leading.2, tokens_realizeInner ts g.inner]
   -- **The tokenizer forgets only the gaps**: every string is the realization of the gaps read off
   -- it, and the reason `Gaps` is the annotation family: it is the fiber, spelled structurally
   -- rather than tautologically.
   lossless := fun cs ts h => by
-    have hts : tokens lex cs = ts := Option.some.inj h
+    have hts : tokens lex cs = ts := Except.ok.inj h
     subst hts
     exact realize_complete_aux cs
 

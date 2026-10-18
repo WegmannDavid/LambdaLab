@@ -50,7 +50,7 @@ abbrev DefLanguage.evalWalk : Walk (Command D) := TypeSystem.Named.Vernacular.ev
 /-- The **evaluated programs** of `D`: elaborated, and left unchanged by evaluation — every body
 closed and normal. -/
 abbrev DefLanguage.Evaluated : Type :=
-  D.evalWalk.FixedOn (fun p => D.elabWalk.run p = some p)
+  D.evalWalk.FixedOn (fun p => D.elabWalk.run p = .ok p)
 
 /-- **Evaluation as an `Abs` morphism**, from the elaborated programs. `abstract` reduces every
 body; the annotation over an evaluated program records an elaborated program that runs to it, and

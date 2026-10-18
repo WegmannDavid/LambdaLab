@@ -381,7 +381,7 @@ of elaboration are theorems.
 instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
 
 /-- Parse a source file and elaborate it, rendering the result. -/
-def elaborateSource (src : String) : Option String :=
+def elaborateSource (src : String) : Except Diag String :=
   (stlcLanguage.elaborateFile src).map stlcLanguage.renderElaborated
 
 /-! ## The reverse direction

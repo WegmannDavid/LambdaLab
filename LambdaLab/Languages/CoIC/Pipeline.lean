@@ -1046,48 +1046,61 @@ def STm.isName (x : SName) : STm → Bool
 abbrev ArgOk (sg : Sig) (o : Option Tm) : Prop :=
   ∀ A, o = some A → HasType sg [] A (.sort .star) ∧ A.indsLt sg.length
 
-/-- **Check one argument type.** -/
-def checkArg (env : Env) (gl : List (SName × Tm)) (self : SName) (a : STm) :
-    Option {o : Option Tm // ArgOk env.sg o} :=
-  if a.isName self then some ⟨none, fun _ h => by cases h⟩
+/-- **Check one argument type**, the `k`-th of constructor `c`. -/
+def checkArg (env : Env) (gl : List (SName × Tm)) (self c : SName) (k : Nat) (a : STm) :
+    Except String {o : Option Tm // ArgOk env.sg o} :=
+  if a.isName self then .ok ⟨none, fun _ h => by cases h⟩
   else
     match elabTm env.sg env.tbl [] gl a with
     | some A =>
         match decHasType env.hsg [] Wf.nil A (.sort .star), Tm.decIndsLt env.sg.length A with
-        | isTrue h₁, isTrue h₂ => some ⟨some A, fun _ e => by cases e; exact ⟨h₁, h₂⟩⟩
-        | _, _ => none
-    | none => none
+        | isTrue h₁, isTrue h₂ => .ok ⟨some A, fun _ e => by cases e; exact ⟨h₁, h₂⟩⟩
+        | isFalse _, _ => .error s!"argument {k + 1} of `{c.val.val}` is not a type in `*`"
+        | _, isFalse _ =>
+            .error s!"argument {k + 1} of `{c.val.val}` mentions an inductive type declared later"
+    | none =>
+        if self ∈ a.fv then
+          .error s!"argument {k + 1} of `{c.val.val}` mentions `{self.val.val}` inside another \
+            type: the type being declared may only be a whole argument"
+        else .error s!"argument {k + 1} of `{c.val.val}` mentions a name that is not declared"
 
-/-- Check a constructor's argument types. -/
-def checkArgs (env : Env) (gl : List (SName × Tm)) (self : SName) :
-    List STm → Option {c : CtorSpec // ∀ A, some A ∈ c →
+/-- Check a constructor's argument types, from the `k`-th on. -/
+def checkArgs (env : Env) (gl : List (SName × Tm)) (self c : SName) :
+    Nat → List STm → Except String {cs : CtorSpec // ∀ A, some A ∈ cs →
       HasType env.sg [] A (.sort .star) ∧ A.indsLt env.sg.length}
-  | [] => some ⟨[], fun _ h => by simp at h⟩
-  | a :: as =>
-      match checkArg env gl self a, checkArgs env gl self as with
-      | some ⟨o, ho⟩, some ⟨c, hc⟩ =>
-          some ⟨o :: c, fun A hA => by
-            rcases List.mem_cons.mp hA with e | e
-            · exact ho A e.symm
-            · exact hc A e⟩
-      | _, _ => none
+  | _, [] => .ok ⟨[], fun _ h => by simp at h⟩
+  | k, a :: as =>
+      match checkArg env gl self c k a with
+      | .error m => .error m
+      | .ok ⟨o, ho⟩ =>
+          match checkArgs env gl self c (k + 1) as with
+          | .error m => .error m
+          | .ok ⟨cs, hc⟩ =>
+              .ok ⟨o :: cs, fun A hA => by
+                rcases List.mem_cons.mp hA with e | e
+                · exact ho A e.symm
+                · exact hc A e⟩
 
-/-- Check the constructors: each a name applied to its argument types. -/
+/-- Check the constructors, in order: each a name applied to its argument types. -/
 def checkCtors (env : Env) (gl : List (SName × Tm)) (self : SName) :
-    List STm → Option {p : List SName × List CtorSpec //
+    List STm → Except String {p : List SName × List CtorSpec //
       p.1.length = p.2.length ∧ ArgsOk env.sg p.2}
-  | [] => some ⟨([], []), rfl, fun _ h => by simp at h⟩
+  | [] => .ok ⟨([], []), rfl, fun _ h => by simp at h⟩
   | t :: ts =>
-      match t.spine, checkCtors env gl self ts with
-      | (.var c, args), some ⟨(cs, specs), hlen, hok⟩ =>
-          match checkArgs env gl self args with
-          | some ⟨spec, hspec⟩ =>
-              some ⟨(c :: cs, spec :: specs), by simp [hlen], fun c' hc' => by
-                rcases List.mem_cons.mp hc' with rfl | hc'
-                · exact hspec
-                · exact hok c' hc'⟩
-          | none => none
-      | _, _ => none
+      match t.spine with
+      | (.var c, args) =>
+          match checkArgs env gl self c 0 args with
+          | .error m => .error m
+          | .ok ⟨spec, hspec⟩ =>
+              match checkCtors env gl self ts with
+              | .error m => .error m
+              | .ok ⟨(cs, specs), hlen, hok⟩ =>
+                  .ok ⟨(c :: cs, spec :: specs), by simp [hlen], fun c' hc' => by
+                    rcases List.mem_cons.mp hc' with rfl | hc'
+                    · exact hspec
+                    · exact hok c' hc'⟩
+      | _ => .error "a constructor is written as its name applied to its argument types, like \
+          `cons Nat List`"
 
 /-- The recursor's name: the type's, with `_rec` after it. -/
 def recNameOf (n : SName) : Option SName :=
@@ -1099,27 +1112,46 @@ def recNameOf (n : SName) : Option SName :=
 /-- Is a name unused by the definitions? -/
 def notDefined (gl : List (SName × Tm)) (x : SName) : Bool := !(gl.any (fun p => p.1 == x))
 
+/-- Why the names of an inductive declaration are not fresh. -/
+def staleNameMsg (env : Env) (gl : List (SName × Tm)) (e : IndNames) : String :=
+  let names := e.ty :: e.elim :: e.ctors
+  match names.find? (fun x => isNatTok 'x' x.val) with
+  | some x => s!"`{x.val.val}` has the shape of a name readback generates (`x0`, `x1`, …): \
+      choose another"
+  | none =>
+      match names.find? (fun x => (resolve x env.tbl 0).isSome || !notDefined gl x) with
+      | some x => s!"`{x.val.val}` is already declared"
+      | none =>
+          match names.find? (fun x => names.count x > 1) with
+          | some x => s!"`{x.val.val}` is declared twice"
+          | none => "the names of this declaration are not fresh"
+
 /-- **Declare an inductive**: check its constructors over the current signature, name its
 recursor, and add it — if its names are new. -/
-def addInd (env : Env) (gl : List (SName × Tm)) (b : IndBody) : Option Env :=
-  match checkCtors env gl b.name b.ctors, recNameOf b.name with
-  | some p, some r =>
-      let e : IndNames := ⟨b.name, p.1.1, r⟩
-      if hf : NamesFresh env.tbl e ∧ (e.ty :: e.elim :: e.ctors).all (notDefined gl) = true then
-        some ⟨env.sg ++ [IndSpec.ofArgsOk p.1.2 p.2.2], env.hsg.snoc p.2.2, env.tbl ++ [e],
-          env.htbl.snoc hf.1 p.2.2 p.2.1⟩
-      else none
-  | _, _ => none
+def addInd (env : Env) (gl : List (SName × Tm)) (b : IndBody) : Except String Env :=
+  match checkCtors env gl b.name b.ctors with
+  | .error m => .error m
+  | .ok p =>
+      match recNameOf b.name with
+      | none => .error s!"`{b.name.val.val}_rec`, the recursor's name, is not a valid name"
+      | some r =>
+          let e : IndNames := ⟨b.name, p.1.1, r⟩
+          if hf : NamesFresh env.tbl e ∧ (e.ty :: e.elim :: e.ctors).all (notDefined gl) = true then
+            .ok ⟨env.sg ++ [IndSpec.ofArgsOk p.1.2 p.2.2], env.hsg.snoc p.2.2, env.tbl ++ [e],
+              env.htbl.snoc hf.1 p.2.2 p.2.1⟩
+          else .error (staleNameMsg env gl e)
 
 /-- Declaring only extends the signature. -/
 theorem addInd_extends {env env' : Env} {gl : List (SName × Tm)} {b : IndBody}
-    (h : addInd env gl b = some env') : ∃ sg', env'.sg = env.sg ++ sg' := by
+    (h : addInd env gl b = .ok env') : ∃ sg', env'.sg = env.sg ++ sg' := by
   simp only [addInd] at h
   split at h
-  · split at h
-    · cases h; exact ⟨_, rfl⟩
-    · cases h
   · cases h
+  · split at h
+    · cases h
+    · split at h
+      · cases h; exact ⟨_, rfl⟩
+      · cases h
 
 /-! ## Checking -/
 
@@ -1127,22 +1159,30 @@ theorem addInd_extends {env env' : Env} {gl : List (SName × Tm)} {b : IndBody}
 def nameFree (env : Env) (gl : List (SName × Tm)) (x : SName) : Bool :=
   (resolve x env.tbl 0).isNone && notDefined gl x
 
+/-- The diagnostic for a definition whose term does not have its type. -/
+def illTypedMsg : String := "this definition does not have its declared type"
+
+/-- The diagnostic for a definition that does not translate: its type, or else its term, names
+something not declared before it. -/
+def unknownNameMsg (inType : Bool) : String :=
+  s!"{if inType then "the declared type" else "the term"} mentions a name that is not declared"
+
 /-- **Check a definition**: its translated value, if it is well typed. -/
-def checkDef (env : Env) (gl : List (SName × Tm)) (b : DefBody) : Option Tm :=
+def checkDef (env : Env) (gl : List (SName × Tm)) (b : DefBody) : Except String Tm :=
   if nameFree env gl b.name then
     match elabTm env.sg env.tbl [] gl b.ty, elabTm env.sg env.tbl [] gl b.tm with
     | some T', some e' =>
         match decHasType env.hsg [] Wf.nil e' T' with
-        | isTrue _ => some e'
-        | isFalse _ => none
-    | _, _ => none
-  else none
+        | isTrue _ => .ok e'
+        | isFalse _ => .error illTypedMsg
+    | T', _ => .error (unknownNameMsg T'.isNone)
+  else .error s!"`{b.name.val.val}` is already declared"
 
 /-- What checking carries: the inductives, and each earlier definition's name and value. -/
 abbrev CState := Env × List (SName × Tm)
 
 /-- **Check one declaration.** It rewrites nothing. -/
-def checkStep (s : CState) : CDecl → Option (CDecl × CState)
+def checkStep (s : CState) : CDecl → Except String (CDecl × CState)
   | .defn b => (checkDef s.1 s.2 b).map fun e' => (.defn b, (s.1, (b.name, e') :: s.2))
   | .ind b => (addInd s.1 s.2 b).map fun env => (.ind b, (env, s.2))
 
@@ -1153,20 +1193,20 @@ def checkWalk : Walk CDecl where
   step := checkStep
 
 theorem checkStep_out {s : CState} {d d' : CDecl} {s' : CState}
-    (h : checkStep s d = some (d', s')) : d' = d := by
+    (h : checkStep s d = .ok (d', s')) : d' = d := by
   cases d with
   | defn b =>
-      simp only [checkStep, Option.map_eq_some_iff] at h
+      simp only [checkStep, Except.map_eq_ok_iff] at h
       obtain ⟨_, _, he⟩ := h
       cases he; rfl
   | ind b =>
-      simp only [checkStep, Option.map_eq_some_iff] at h
+      simp only [checkStep, Except.map_eq_ok_iff] at h
       obtain ⟨_, _, he⟩ := h
       cases he; rfl
 
 theorem checkWalk_stepIdempotent : checkWalk.StepIdempotent := by
   intro s d d' s' h
-  have h' : checkStep s d = some (d', s') := h
+  have h' : checkStep s d = .ok (d', s') := h
   have := checkStep_out h'
   subst this
   exact h
@@ -1177,12 +1217,12 @@ theorem checkWalk_idempotent : checkWalk.Idempotent :=
 /-- **A definition is accepted exactly when its name is free and its translation is well
 typed.** -/
 theorem checkDef_iff (env : Env) (gl : List (SName × Tm)) (b : DefBody) :
-    (checkDef env gl b).isSome ↔ nameFree env gl b.name = true ∧
+    (∃ v, checkDef env gl b = .ok v) ↔ nameFree env gl b.name = true ∧
       ∃ T' e', elabTm env.sg env.tbl [] gl b.ty = some T' ∧
         elabTm env.sg env.tbl [] gl b.tm = some e' ∧ HasType env.sg [] e' T' := by
   simp only [checkDef]
   constructor
-  · intro h
+  · rintro ⟨v, h⟩
     split at h
     · rename_i hfree
       refine ⟨hfree, ?_⟩
@@ -1197,12 +1237,12 @@ theorem checkDef_iff (env : Env) (gl : List (SName × Tm)) (b : DefBody) :
   · rintro ⟨hfree, T', e', hT, he, hty⟩
     simp only [hfree, if_true, hT, he]
     split
-    · rfl
+    · exact ⟨_, rfl⟩
     · rename_i hn _; exact absurd hty hn
 
 /-- **With nothing declared before it, a definition the checker accepts is well typed in the named
 calculus** — the parsed term at the parsed type, no translation in sight. -/
-theorem checkDef_named {b : DefBody} (h : (checkDef Env.empty [] b).isSome) :
+theorem checkDef_named {b : DefBody} (h : ∃ v, checkDef Env.empty [] b = .ok v) :
     Named.HasType [] [] b.tm.toNamed b.ty.toNamed := by
   obtain ⟨_, T', e', hT, he, hty⟩ := (checkDef_iff Env.empty [] b).mp h
   have e₁ := elab_eq_toDB [] b.ty [] T' hT
@@ -1244,35 +1284,35 @@ def EState.gl (s : EState) : List (SName × Tm) := s.vals.map (fun e => (e.name,
 
 /-- **Evaluate a definition**: translate it with the earlier values inlined, check it, normalize
 it — total, the closed term being well typed — and write it back with generated names. -/
-def evalDef (s : EState) (b : DefBody) : Option (CDecl × EState) :=
+def evalDef (s : EState) (b : DefBody) : Except String (CDecl × EState) :=
   if nameFree s.env s.gl b.name then
     match elabTm s.env.sg s.env.tbl [] s.gl b.ty, elabTm s.env.sg s.env.tbl [] s.gl b.tm with
     | some T', some e' =>
         match decHasType s.env.hsg [] Wf.nil e' T' with
         | isTrue h =>
-            some (.defn ⟨b.name, b.ty, rb s.env.tbl [] (h.eval s.env.hsg Wf.nil)⟩,
+            .ok (.defn ⟨b.name, b.ty, rb s.env.tbl [] (h.eval s.env.hsg Wf.nil)⟩,
               ⟨s.env, ⟨b.name, T', h.eval s.env.hsg Wf.nil,
                 (Tm.eval_spec (h.sn s.env.hsg Wf.nil)).2⟩ :: s.vals, fun e he => by
                   rcases List.mem_cons.mp he with rfl | he
                   · exact h.eval_typed s.env.hsg Wf.nil
                   · exact s.typed e he⟩)
-        | isFalse _ => none
-    | _, _ => none
-  else none
+        | isFalse _ => .error illTypedMsg
+    | T', _ => .error (unknownNameMsg T'.isNone)
+  else .error s!"`{b.name.val.val}` is already declared"
 
 /-- **Declare an inductive while evaluating**: as checking does; the values stay typed over the
 longer signature. -/
-def evalInd (s : EState) (b : IndBody) : Option (CDecl × EState) :=
+def evalInd (s : EState) (b : IndBody) : Except String (CDecl × EState) :=
   match h : addInd s.env s.gl b with
-  | some env' =>
-      some (.ind b, ⟨env', s.vals, fun e he => by
+  | .ok env' =>
+      .ok (.ind b, ⟨env', s.vals, fun e he => by
         obtain ⟨sg', hsg'⟩ := addInd_extends h
         rw [hsg']
         exact (s.typed e he).extend sg'⟩)
-  | none => none
+  | .error m => .error m
 
 /-- **Evaluate one declaration.** -/
-def evalStep (s : EState) : CDecl → Option (CDecl × EState)
+def evalStep (s : EState) : CDecl → Except String (CDecl × EState)
   | .defn b => evalDef s b
   | .ind b => evalInd s b
 
@@ -1284,7 +1324,7 @@ def evalWalk : Walk CDecl where
 
 /-- What evaluating a definition does: it comes out as its value's readback, the value pushed. -/
 theorem evalDef_sound {s : EState} {b : DefBody} {d' : CDecl} {s' : EState}
-    (h : evalDef s b = some (d', s')) :
+    (h : evalDef s b = .ok (d', s')) :
     ∃ e : EEntry, d' = .defn ⟨e.name, b.ty, rb s.env.tbl [] e.val⟩ ∧ e.name = b.name ∧
       nameFree s.env s.gl b.name = true ∧
       elabTm s.env.sg s.env.tbl [] s.gl b.ty = some e.ty ∧ s'.env = s.env ∧
@@ -1308,7 +1348,7 @@ theorem evalDef_reduced (s : EState) (T : STm) (e : EEntry)
     (hT : elabTm s.env.sg s.env.tbl [] s.gl T = some e.ty)
     (hty : HasType s.env.sg [] e.val e.ty) :
     ∃ s', evalDef s ⟨e.name, T, rb s.env.tbl [] e.val⟩ =
-      some (.defn ⟨e.name, T, rb s.env.tbl [] e.val⟩, s') ∧ s'.env = s.env ∧
+      .ok (.defn ⟨e.name, T, rb s.env.tbl [] e.val⟩, s') ∧ s'.env = s.env ∧
       s'.vals = e :: s.vals := by
   have hr : elabTm s.env.sg s.env.tbl [] s.gl (rb s.env.tbl [] e.val) = some e.val :=
     elab_rb_closed s.env.htbl hty.ok hty.scoped _
@@ -1320,7 +1360,7 @@ theorem evalDef_reduced (s : EState) (T : STm) (e : EEntry)
   split
   · rename_i h _
     have hv : h.eval s.env.hsg Wf.nil = e.val := Tm.eval_of_normal _ e.normal
-    refine congrArg some (Prod.ext ?_ (EState.ext rfl ?_))
+    refine congrArg Except.ok (Prod.ext ?_ (EState.ext rfl ?_))
     · dsimp only
       rw [hv]
     · exact congrArg (· :: s.vals) (EEntry.ext rfl rfl hv)
@@ -1330,8 +1370,8 @@ theorem evalDef_reduced (s : EState) (T : STm) (e : EEntry)
 /-- **Idempotence, a step at a time.** -/
 theorem evalWalk_stepIdempotent : evalWalk.StepIdempotent := by
   intro s d d' s' h
-  have h' : evalStep s d = some (d', s') := h
-  show evalStep s d' = some (d', s')
+  have h' : evalStep s d = .ok (d', s') := h
+  show evalStep s d' = .ok (d', s')
   cases d with
   | ind b =>
       have : d' = .ind b := by
@@ -1355,14 +1395,14 @@ def EState.proj (s : EState) : CState := (s.env, s.gl)
 
 /-- **Evaluation's output checks**, a step at a time, in the corresponding state. -/
 theorem evalStep_check {s : EState} {d d' : CDecl} {s' : EState}
-    (h : evalStep s d = some (d', s')) : checkStep s.proj d' = some (d', s'.proj) := by
+    (h : evalStep s d = .ok (d', s')) : checkStep s.proj d' = .ok (d', s'.proj) := by
   cases d with
   | ind b =>
       simp only [evalStep, evalInd] at h
       split at h
       · rename_i env' hadd
         cases h
-        simp only [checkStep, EState.proj, hadd, Option.map_some]
+        simp only [checkStep, EState.proj, hadd, Except.map_ok_eq]
         rfl
       · cases h
   | defn b =>
@@ -1376,40 +1416,21 @@ theorem evalStep_check {s : EState} {d d' : CDecl} {s' : EState}
       rw [hn]
       simp only [hfree, if_true, hT, hr]
       split
-      · simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq, true_and]
+      · simp only [Except.map_ok_eq, Except.ok.injEq, Prod.mk.injEq, true_and]
         rw [henv]
         simp [EState.gl, hvals, hn]
       · rename_i hn' _
         exact absurd hty hn'
 
-theorem evalRunFrom_check : ∀ (s : EState) (ds out : List CDecl),
-    evalWalk.runFrom s ds = some out → checkWalk.runFrom s.proj out = some out
-  | s, [], out, h => by
-      simp only [Walk.runFrom, Option.some.injEq] at h
-      subst h
-      rfl
-  | s, d :: ds, out, h => by
-      simp only [Walk.runFrom] at h
-      cases hs : evalWalk.step s d with
-      | none => rw [hs] at h; exact absurd h (by simp)
-      | some r =>
-          obtain ⟨d', s'⟩ := r
-          rw [hs] at h
-          cases hr : evalWalk.runFrom s' ds with
-          | none => simp [hr] at h
-          | some rest =>
-              simp only [hr, Option.map_some, Option.some.injEq] at h
-              subst h
-              have hc : checkWalk.step s.proj d' = some (d', s'.proj) := evalStep_check hs
-              simp only [Walk.runFrom, hc, evalRunFrom_check s' ds rest hr, Option.map_some]
-
-/-- **What evaluation produces still checks.** -/
-theorem evalRun_check {p q : Program coicLanguage} (h : evalWalk.run p = some q) :
-    checkWalk.run q = some q :=
-  (Walk.run_eq_some _).mpr (evalRunFrom_check evalWalk.init _ _ ((Walk.run_eq_some _).mp h))
+/-- **What evaluation produces still checks**: checking accepts evaluation's output a step at a
+time (`evalStep_check`), so it accepts it whole (`Walk.runFrom_sim`). -/
+theorem evalRun_check {p q : Program coicLanguage} (h : evalWalk.run p = .ok q) :
+    checkWalk.run q = .ok q :=
+  (Walk.run_eq_ok _).mpr (evalWalk.runFrom_sim checkWalk EState.proj
+    (fun _ _ _ _ hs => evalStep_check hs) _ _ _ ((Walk.run_eq_ok _).mp h))
 
 /-- **The law, as the stage after checking.** -/
-theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = some p) where
+theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = .ok p) where
   preserve _ _ _ h := evalRun_check h
   idem p q _ h := evalWalk.idempotent_of_step evalWalk_stepIdempotent p q h
 
@@ -1417,7 +1438,7 @@ theorem evalWalk_lawfulOn : evalWalk.LawfulOn (fun p => checkWalk.run p = some p
 
 /-- After evaluation: every definition's term in normal form. -/
 abbrev evaluatedStage : LambdaLab.Abstraction.Stage :=
-  coicLanguage.walkStageOn "evaluated program" evalWalk (fun p => checkWalk.run p = some p)
+  coicLanguage.walkStageOn "evaluated program" evalWalk (fun p => checkWalk.run p = .ok p)
 
 /-- **The whole front end, stage by stage**: source, tokens, program, checked program, evaluated
 program. -/
@@ -1431,19 +1452,19 @@ def evalPipeline :=
     (evalWalk.stageOn evalWalk_lawfulOn)
 
 /-- Read, check and evaluate a source file. -/
-def evaluateFile (s : String) : Option (evalWalk.FixedOn (fun p => checkWalk.run p = some p)) :=
+def evaluateFile (s : String) : Except Diag (evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) :=
   evalPipeline.abstract s.toList
 
 /-- Render an evaluated program canonically. -/
-def renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = some p)) : String :=
+def renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) : String :=
   String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))
 
 /-- **The front end round-trips**: rendering an evaluated program and reading it back
 re-tokenizes, re-parses, re-checks and re-evaluates to exactly what you started with. -/
-theorem evaluateFile_renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = some p)) :
-    evaluateFile (renderEvaluated q) = some q := by
+theorem evaluateFile_renderEvaluated (q : evalWalk.FixedOn (fun p => checkWalk.run p = .ok p)) :
+    evaluateFile (renderEvaluated q) = .ok q := by
   show evalPipeline.abstract
-    (String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))).toList = some q
+    (String.ofList (evalPipeline.realize (evalPipeline.default (a := q)))).toList = .ok q
   rw [String.toList_ofList]
   exact evalPipeline.abstract_realize q evalPipeline.default
 

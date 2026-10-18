@@ -144,11 +144,66 @@ layout in `Compose.lean` is written against. It is no longer what indexes the *m
 abbrev Language.ParseAnn (prog : Program L) : Type :=
   { ts : List (Token L.lex) // L.parser.wholeInput ts = some prog }
 
+/-! ## Where the declarations are
+
+For diagnostics only. A declaration starts with its form's keyword, and a keyword is no name, so
+the keywords in a token stream are where its declarations start. That locates a later stage's
+complaint about the `i`-th declaration (`declLocate`), and a parse failure at the first
+declaration that does not parse on its own (`parseError`). Informal, like every diagnostic. -/
+
+/-- The positions of the keywords: where each declaration starts. -/
+def Language.declStarts (ts : List (Token L.lex)) : List Nat :=
+  (List.range ts.length).filter fun i =>
+    match ts[i]? with
+    | some t => (L.formOf t).isSome
+    | none => false
+
+/-- The token span of the `i`-th declaration. -/
+def Language.declSpan (ts : List (Token L.lex)) (i : Nat) : Option (Nat × Nat) :=
+  let starts := L.declStarts ts
+  (starts[i]?).map fun lo => (lo, (starts[i + 1]?).getD ts.length)
+
+/-- Point at the `i`-th declaration's tokens. -/
+def Language.declLocate (ts : List (Token L.lex)) : Loc → Loc
+  | .decl i =>
+      match L.declSpan ts i with
+      | some (lo, hi) => .tokens lo hi
+      | none => .unknown
+  | l => l
+
+/-- Does this run of tokens parse as one declaration, all of it? -/
+def Language.declParses (ts : List (Token L.lex)) : Bool :=
+  match L.declIso.parse ts with
+  | some (_, r) => r.val.isEmpty
+  | none => false
+
+/-- The keywords, for a message. -/
+def Language.keywordList : String :=
+  ", ".intercalate (L.heads.map fun t => s!"`{t.val}`")
+
+/-- **Why a token stream is not a program**: no declaration at the start, or the first declaration
+that does not parse on its own. -/
+def Language.parseError (ts : List (Token L.lex)) : Diag :=
+  match ts with
+  | [] => { msg := s!"expected a declaration ({L.keywordList}), found nothing", loc := .tokens 0 0 }
+  | t :: _ =>
+      if (L.formOf t).isNone then
+        { msg := s!"expected a declaration ({L.keywordList}), found `{t.val}`", loc := .tokens 0 1 }
+      else
+        let starts := L.declStarts ts
+        let bad := (List.range starts.length).find? fun i =>
+          match L.declSpan ts i with
+          | some (lo, hi) => !L.declParses ((ts.drop lo).take (hi - lo))
+          | none => false
+        match bad.bind (L.declSpan ts) with
+        | some (lo, hi) => { msg := "this declaration does not parse", loc := .tokens lo hi }
+        | none => { msg := "syntax error" }
+
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
 whose annotation is every token list the program can be written as. Composes with the tokenizer
 (`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
 def Language.abstraction : Abstraction (List (Token L.lex)) (Program L) (Language.ParseAnn L) :=
-  L.parser.toAbstraction
+  { L.parser.toAbstraction L.parseError with locate := L.declLocate }
 
 /-- **The parse stage forgets nothing** — a projection, not a theorem. What the structured family
 `Program.Ann` would have cost is `Exact` for `L.parser`, and through it exactness for every
@@ -156,7 +211,7 @@ combinator it is built from (`tok`, `bind`, `dispatch`, `comap`, `many1`); the t
 reaches the same conclusion with none of it, and `LossyParser.toAbstractionOfExact` is waiting for
 the day those land. -/
 theorem Language.abstraction_lossless (ts : List (Token L.lex)) (prog : Program L)
-    (h : L.abstraction.abstract ts = some prog) :
+    (h : L.abstraction.abstract ts = .ok prog) :
     ∃ ann : Language.ParseAnn L prog, L.abstraction.realize ann = ts :=
   L.abstraction.lossless ts prog h
 

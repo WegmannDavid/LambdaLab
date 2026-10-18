@@ -10,8 +10,8 @@ with a single round-trip law. But a compiler needs the factorization back:
 
 * to **show its work** (`--stages`: the token stream, then the parsed program, then the
   elaborated one), rather than only the last thing it produced;
-* to **say what failed**. A composite's `abstract` returns `none`; the `Option.bind` in
-  `Abstraction.comp` has erased which stage produced it.
+* to **say what failed**: which stage rejected the input, with that stage's diagnostic, pointed
+  back at the input of the whole pipeline.
 
 So a pipeline is stored as the chain and *collapsed on demand*, rather than stored collapsed.
 `Chain X Y` is a list of composable 1-cells with composability enforced by the indexing — the
@@ -71,6 +71,14 @@ structure Step where
   /-- Its rendering, via that stage's `render`. -/
   text : String
 
+/-- A rejection: the stage that was not reached, and the diagnostic of the stage that refused to
+produce it — its location pulled back into the pipeline's input. -/
+structure Failure where
+  /-- The stage that was not reached. -/
+  stage : String
+  /-- What went wrong, and where in the pipeline's input. -/
+  diag : Diag
+
 /-- A pipeline from `X` to `Y`: a non-empty list of 1-cells whose endpoints line up, with the
 lining-up enforced by the type. Left-nested, so `cons` appends a stage on the end. -/
 inductive Chain : Stage → Stage → Type 1
@@ -106,53 +114,69 @@ def comp : {X Y Z : Stage} → Chain X Y → Chain Y Z → Chain X Z
 /-- **Run the pipeline one stage at a time**, recording what arrived at each.
 
 The first `Step` is the input itself, so a successful run of an `n`-stage chain reports `n + 1`
-entries — a compiler that shows its work should show what it was given. On rejection the steps
-gathered so far are still returned, and the error names the stage that was not reached: this is
-the information `compose`'s `Option.bind` erases. -/
-def run : {X Y : Stage} → Chain X Y → X.Carrier → List Step × Except String Y.Carrier
+entries — a compiler that shows its work should show what it was given. A success also returns how
+to pull a location in the output back into the input, the stages' `locate`s composed. On rejection
+the steps gathered so far are still returned, and the failure names the stage that was not
+reached, with the rejecting stage's diagnostic pulled back the same way. -/
+def run : {X Y : Stage} → Chain X Y → X.Carrier →
+    List Step × Except Failure (Y.Carrier × (Loc → Loc))
   | X, Y, .one e, x =>
       match e.hom.abstract x with
-      | none => ([⟨X.name, X.render x⟩], .error Y.name)
-      | some y => ([⟨X.name, X.render x⟩, ⟨Y.name, Y.render y⟩], .ok y)
+      | .error d => ([⟨X.name, X.render x⟩], .error ⟨Y.name, d⟩)
+      | .ok y => ([⟨X.name, X.render x⟩, ⟨Y.name, Y.render y⟩], .ok (y, e.hom.locate x))
   | _, Z, .cons p e, x =>
       match p.run x with
-      | (steps, .error stage) => (steps, .error stage)
-      | (steps, .ok y) =>
+      | (steps, .error f) => (steps, .error f)
+      | (steps, .ok (y, back)) =>
           match e.hom.abstract y with
-          | none => (steps, .error Z.name)
-          | some z => (steps ++ [⟨Z.name, Z.render z⟩], .ok z)
+          | .error d => (steps, .error ⟨Z.name, { d with loc := back d.loc }⟩)
+          | .ok z => (steps ++ [⟨Z.name, Z.render z⟩], .ok (z, back ∘ e.hom.locate y))
 
-/-- **What a driver prints.** With `showStages := false` this is the finished value rendered —
-the very string the collapsed pipeline would have produced, by `run_eq_abstract`. With `true` it
-is every stage the input passed through, each under its own name. A rejection names the stage that
-was not reached, which is exactly the information `compose`'s `Option.bind` erases. -/
-def report (c : Chain X Y) (showStages : Bool) (x : X.Carrier) : Except String String :=
+/-- **What a driver prints.** On success, with `showStages := false` the finished value rendered —
+the very string the collapsed pipeline would have produced, by `run_eq_abstract`; with `true`, every
+stage the input passed through, each under its own name. On rejection, the failure, and the stages
+reached before it. -/
+def report (c : Chain X Y) (showStages : Bool) (x : X.Carrier) :
+    Except (List Step × Failure) String :=
   match c.run x with
-  | (_, Except.error stage) => Except.error s!"error: rejected while producing the {stage}"
-  | (steps, Except.ok y) =>
+  | (steps, .error f) => .error (steps, f)
+  | (steps, .ok (y, _)) =>
       if showStages then
-        Except.ok (String.intercalate "\n" (steps.map fun s => s!"== {s.stage} ==\n{s.text}"))
+        .ok (String.intercalate "\n" (steps.map fun s => s!"== {s.stage} ==\n{s.text}"))
       else
-        Except.ok (Y.render y)
+        .ok (Y.render y)
 
-/-- **Stepping agrees with collapsing.** Walking the stages and asking the composite are the same
-question; the chain is a finer *presentation* of the pipeline, never a different pipeline. This is
-what lets `Compose.lean` keep proving its round-trip law about the composite while the driver runs
-the chain. -/
+/-- **Stepping agrees with collapsing**, on what is produced. Walking the stages and asking the
+composite accept the same inputs and produce the same values; the chain is a finer
+*presentation* of the pipeline, never a different pipeline. (What they *say* on rejection is not
+compared: diagnostics are informal.) -/
 theorem run_eq_abstract (c : Chain X Y) (x : X.Carrier) :
-    (c.run x).2.toOption = c.compose.hom.abstract x := by
+    ((c.run x).2.map Prod.fst).toOption = (c.compose.hom.abstract x).toOption := by
   induction c with
   | one e =>
       rw [compose_one]
-      cases h : e.hom.abstract x <;> simp [run, h, Except.toOption]
+      cases h : e.hom.abstract x <;> simp [run, h, Except.toOption, Except.map]
   | cons p e ih =>
-      rw [compose_cons, OneCell.hcomp_abstract, ← ih]
+      rw [compose_cons, OneCell.hcomp_abstract]
       simp only [run]
+      unfold Abstraction.compAbstract
       cases hr : p.run x with
       | mk steps r =>
+          rw [hr] at ih
           cases r with
-          | error => rfl
-          | ok y => cases h : e.hom.abstract y <;> simp [h, Except.toOption]
+          | error f =>
+              cases hc : p.compose.hom.abstract x with
+              | error => rfl
+              | ok y => rw [hc] at ih; simp [Except.map, Except.toOption] at ih
+          | ok yb =>
+              obtain ⟨y, back⟩ := yb
+              cases hc : p.compose.hom.abstract x with
+              | error => rw [hc] at ih; simp [Except.map, Except.toOption] at ih
+              | ok y' =>
+                  rw [hc] at ih
+                  simp only [Except.map, Except.toOption, Option.some.injEq] at ih
+                  subst ih
+                  cases h : e.hom.abstract y <;> simp [h, Except.toOption, Except.map]
 
 /-! ## Losslessness
 

@@ -6,9 +6,10 @@ tokenize → parse → elaborate.
 
 Two decisions, both forced by that pipeline:
 
-* **`abstract` is partial** (`Option`). A parser rejects `["(", "("]`, a type checker
-  rejects ill-typed terms — the total version cannot host either stage. (`Except ε`
-  for diagnostics is a compatible upgrade; the theory is unchanged. Undecided.)
+* **`abstract` is partial** (`Except Diag`). A parser rejects `["(", "("]`, a type checker
+  rejects ill-typed terms — the total version cannot host either stage. A rejection carries a
+  diagnostic, and **no law mentions it**: error reports are an informal convention between a
+  stage and its user, and only success is formalized. The laws below are stated at `.ok`.
 
 * **Both directions are laws.** Soundness — realize an annotation, re-abstract, land on its
   index — and completeness, `lossless`: every accepted concrete is `realize` of some annotation.
@@ -48,6 +49,18 @@ is `LambdaLab.Abstraction` and its API below lands in the namespace of the same 
 `Nat` and `Finset` have. Declaring it inside `LambdaLab.Abstraction` would name it
 `LambdaLab.Abstraction.Abstraction` and stutter through every projection. -/
 
+/-! `Except.map` on a known constructor, which core Lean leaves to unfolding. -/
+
+@[simp] theorem Except.map_ok_eq {ε α β : Type} (f : α → β) (a : α) :
+    (Except.ok a : Except ε α).map f = .ok (f a) := rfl
+
+@[simp] theorem Except.map_error_eq {ε α β : Type} (f : α → β) (e : ε) :
+    (Except.error e : Except ε α).map f = .error e := rfl
+
+theorem Except.map_eq_ok_iff {ε α β : Type} {f : α → β} {x : Except ε α} {b : β} :
+    x.map f = .ok b ↔ ∃ a, x = .ok a ∧ f a = b := by
+  cases x <;> simp [Except.map]
+
 namespace LambdaLab
 
 /-- A bijection, with both round-trips as fields.
@@ -79,6 +92,30 @@ def symm (e : Iso α β) : Iso β α := ⟨e.invFun, e.toFun, e.right_inv, e.lef
 
 end Iso
 
+/-! ## Diagnostics
+
+What a rejection says. A diagnostic points into the input of the stage that raised it; `locate`
+(below) pulls a location in a stage's output back into its input, so a pipeline can point a late
+stage's diagnostic at the source text. Both are informal: nothing is proved about them. -/
+
+/-- Where a diagnostic points. -/
+inductive Loc where
+  /-- Nowhere in particular. -/
+  | unknown
+  /-- Characters `lo` up to (not including) `hi` of a character stream. -/
+  | chars (lo hi : Nat)
+  /-- Tokens `lo` up to (not including) `hi` of a token stream. -/
+  | tokens (lo hi : Nat)
+  /-- The `i`-th declaration of a program, counting from `0`. -/
+  | decl (i : Nat)
+  deriving Repr, Inhabited, DecidableEq
+
+/-- **A diagnostic**: what went wrong, and where. -/
+structure Diag where
+  msg : String
+  loc : Loc := .unknown
+  deriving Repr, Inhabited
+
 /-- A lossy-but-annotated map from `Concrete` to `Abstract`: `abstract` (partial —
 not every concrete is meaningful) together with, for each abstract value, a family
 `Ann a` of concrete *re-presentations* and their realization back into `Concrete`.
@@ -87,17 +124,20 @@ is the `lossless` law. Where a structured family covers the fiber it may serve (
 tokenizer); where none does, the fiber itself always works (`ofFibers`). -/
 structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   /-- The forward (lossy, partial) direction — the algorithm: tokenize, parse, elaborate. -/
-  abstract : Concrete → Option Abstract
+  abstract : Concrete → Except Diag Abstract
   /-- Realize an annotated abstract value as a concrete one — the printer family. -/
   realize : ∀ {a : Abstract}, Ann a → Concrete
   /-- A canonical annotation: `realize default` is the pretty-printer. -/
   default : ∀ {a : Abstract}, Ann a
   /-- **Soundness**: anything realized re-abstracts to exactly its index. At `default`
   this is the canonical-print round trip. -/
-  abstract_realize : ∀ (a : Abstract) (ann : Ann a), abstract (realize ann) = some a
+  abstract_realize : ∀ (a : Abstract) (ann : Ann a), abstract (realize ann) = .ok a
   /-- **Completeness**: anything accepted was realized. The reverse direction — without it a
   morphism may take your concrete and hand back something unrelated to it, and be well-formed. -/
-  lossless : ∀ (c : Concrete) (a : Abstract), abstract c = some a → ∃ ann : Ann a, realize ann = c
+  lossless : ∀ (c : Concrete) (a : Abstract), abstract c = .ok a → ∃ ann : Ann a, realize ann = c
+  /-- **Where an output location came from** in the input `c`: how a later stage's diagnostic is
+  pointed back at this stage's input. Informal, like the diagnostics; by default the identity. -/
+  locate : Concrete → Loc → Loc := fun _ l => l
 
 namespace Abstraction
 
@@ -105,34 +145,67 @@ variable {A B C : Type} {F : B → Type} {G : C → Type} {F' : B → Type}
 
 /-- The identity abstraction: nothing forgotten, `Unit` annotation. -/
 def id (A : Type) : Abstraction A A (fun _ => Unit) where
-  abstract := some
+  abstract := .ok
   realize {a} _ := a
   default := ()
   abstract_realize _ _ := rfl
-  lossless _ _ h := ⟨(), (Option.some.inj h).symm⟩
+  lossless _ _ h := ⟨(), (Except.ok.inj h).symm⟩
+
+/-- Run `g` on what `f` made of `a`, pointing a rejection by `g` back into `a` with `f.locate`. -/
+def compAbstract (f : Abstraction A B F) (g : Abstraction B C G) (a : A) : Except Diag C :=
+  match f.abstract a with
+  | .error d => .error d
+  | .ok b =>
+      match g.abstract b with
+      | .error d => .error { d with loc := f.locate a d.loc }
+      | .ok c => .ok c
+
+theorem compAbstract_ok (f : Abstraction A B F) (g : Abstraction B C G) {a : A} {b : B}
+    (h : f.abstract a = .ok b) : compAbstract f g a = (g.abstract b).mapError
+      (fun d => { d with loc := f.locate a d.loc }) := by
+  unfold compAbstract
+  rw [h]
+  dsimp only
+  cases g.abstract b <;> rfl
+
+/-- `compAbstract` sees only `f`'s algorithm and locations, not its printers. -/
+theorem compAbstract_congr {F' : B → Type} {G' : C → Type} (f : Abstraction A B F)
+    (f' : Abstraction A B F') (g : Abstraction B C G) (g' : Abstraction B C G') (a : A)
+    (ha : f.abstract a = f'.abstract a) (hl : f.locate a = f'.locate a)
+    (hg : g.abstract = g'.abstract) :
+    compAbstract f g a = compAbstract f' g' a := by
+  unfold compAbstract
+  rw [ha, hl, hg]
 
 /-- Composition (diagrammatic: first `f`, then `g`). The composite annotation is the
 dependent sum: an outer `G`-annotation `β` picks the intermediate `g.realize β : B`,
-and an inner `F`-annotation of *that* recovers the concrete. -/
+and an inner `F`-annotation of *that* recovers the concrete. A diagnostic of `g` is pointed back
+into the composite's input. -/
 def comp (f : Abstraction A B F) (g : Abstraction B C G) :
     Abstraction A C (fun c => Σ β : G c, F (g.realize β)) where
-  abstract a := (f.abstract a).bind g.abstract
+  abstract := compAbstract f g
   realize γ := f.realize γ.2
   default := ⟨g.default, f.default⟩
   abstract_realize c γ := by
-    show (f.abstract (f.realize γ.2)).bind g.abstract = some c
-    rw [f.abstract_realize (g.realize γ.1) γ.2]
-    exact g.abstract_realize c γ.1
+    rw [compAbstract_ok f g (f.abstract_realize (g.realize γ.1) γ.2), g.abstract_realize c γ.1]
+    rfl
   lossless x z h := by
-    have h' : (f.abstract x).bind g.abstract = some z := h
-    cases hfx : f.abstract x with
-    | none => rw [hfx] at h'; simp at h'
-    | some y =>
-        have hgy : g.abstract y = some z := by rw [hfx] at h'; exact h'
-        obtain ⟨β, hβ⟩ := g.lossless y z hgy
+    unfold compAbstract at h
+    split at h
+    · cases h
+    · rename_i y hfx
+      split at h
+      · cases h
+      · rename_i z' hgy
+        cases h
+        obtain ⟨β, hβ⟩ := g.lossless y _ hgy
         subst hβ
         obtain ⟨α, hα⟩ := f.lossless x (g.realize β) hfx
         exact ⟨⟨β, α⟩, hα⟩
+  locate a l :=
+    match f.abstract a with
+    | .ok b => f.locate a (g.locate b l)
+    | .error _ => f.locate a l
 
 /-- Re-choose the canonical annotation, keeping the morphism itself. Legitimate because
 `default` carries **no law of its own**: `abstract_realize` is quantified over *every*
@@ -162,6 +235,7 @@ swap an unwieldy annotation type (e.g. the `Σ`-nest a composite produces) for a
 hand-rolled presentation of the same data. -/
 def reindex (f : Abstraction A B F) (e : ∀ b, Iso (F b) (F' b)) : Abstraction A B F' where
   abstract := f.abstract
+  locate := f.locate
   realize {b} ann' := f.realize ((e b).symm ann')
   default {b} := e b f.default
   abstract_realize b ann' := f.abstract_realize b ((e b).symm ann')
@@ -186,16 +260,16 @@ what you get here. It is the right trade wherever the structure was serving only
 
 /-- **The tautological morphism**: over `b`, an annotation *is* a concrete that abstracts to `b`.
 `canon` picks the canonical one, and both laws are then projections. -/
-def ofFibers (abstract : A → Option B) (canon : ∀ b : B, { c : A // abstract c = some b }) :
-    Abstraction A B (fun b => { c : A // abstract c = some b }) where
+def ofFibers (abstract : A → Except Diag B) (canon : ∀ b : B, { c : A // abstract c = .ok b }) :
+    Abstraction A B (fun b => { c : A // abstract c = .ok b }) where
   abstract := abstract
   realize ann := ann.val
   default {b} := canon b
   abstract_realize _ ann := ann.property
   lossless c _ h := ⟨⟨c, h⟩, rfl⟩
 
-@[simp] theorem ofFibers_abstract (abstract : A → Option B)
-    (canon : ∀ b : B, { c : A // abstract c = some b }) :
+@[simp] theorem ofFibers_abstract (abstract : A → Except Diag B)
+    (canon : ∀ b : B, { c : A // abstract c = .ok b }) :
     (ofFibers abstract canon).abstract = abstract := rfl
 
 /-! ## Bundling the annotation family
@@ -230,7 +304,7 @@ def OneCell.hcomp {A B C : Type} (f : OneCell A B) (g : OneCell B C) : OneCell A
 
 /-- The forward map of a composite, unbundled. -/
 @[simp] theorem OneCell.hcomp_abstract (f : OneCell A B) (g : OneCell B C) (a : A) :
-    (f.hcomp g).hom.abstract a = (f.hom.abstract a).bind g.hom.abstract := rfl
+    (f.hcomp g).hom.abstract a = Abstraction.compAbstract f.hom g.hom a := rfl
 
 end Abstraction
 

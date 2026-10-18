@@ -349,13 +349,23 @@ def Decimal.toLit (d : Decimal) : FTm :=
 theorem Decimal.eval_toLit (d : Decimal) (s : FState) : d.toLit.eval s = some d.normalize := by
   simp only [Decimal.toLit, FTm.eval, Decimal.ofToken_toToken]
 
+/-- The first name a term mentions that the state does not hold — for a diagnostic. -/
+def FTm.unknownName (s : FState) : FTm → Option String
+  | .lit _ _ => none
+  | .ref x => if s.contains x.val.val then none else some x.val.val
+  | .add a b => (a.unknownName s).or (b.unknownName s)
+  | .mul a b => (a.unknownName s).or (b.unknownName s)
+
 /-- **Evaluate one declaration**: compute its term in the state as it stands — which holds only the
 declarations before this one — record the value under the declaration's name, and write the value
 back as a literal. A term naming anything the state does not hold is rejected. -/
-def evalStep (s : FState) (d : FDecl) : Option (FDecl × FState) :=
+def evalStep (s : FState) (d : FDecl) : Except String (FDecl × FState) :=
   match d.value.eval s with
-  | some v => some (⟨d.name, v.toLit⟩, s.insert d.name.val.val v)
-  | none => none
+  | some v => .ok (⟨d.name, v.toLit⟩, s.insert d.name.val.val v)
+  | none =>
+      .error <| match d.value.unknownName s with
+        | some x => s!"unknown name `{x}`: it is not declared before this declaration"
+        | none => "this declaration cannot be evaluated"
 
 /-- **The evaluator**: the walk from the empty map. -/
 def evalWalk : Walk FDecl where
@@ -368,15 +378,15 @@ evaluates to the value it spells without consulting the state — so the declara
 itself, and records the same value under the same name. -/
 theorem evalWalk_stepIdempotent : evalWalk.StepIdempotent := by
   rintro s ⟨x, e⟩ d' s' h
-  change evalStep s ⟨x, e⟩ = some (d', s') at h
+  change evalStep s ⟨x, e⟩ = .ok (d', s') at h
   simp only [evalStep] at h
   split at h
   · rename_i v he
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
     have hv : v.normalize = v := FTm.eval_normalize s he
-    show evalStep s ⟨x, v.toLit⟩ = some (⟨x, v.toLit⟩, s.insert x.val.val v)
+    show evalStep s ⟨x, v.toLit⟩ = .ok (⟨x, v.toLit⟩, s.insert x.val.val v)
     simp only [evalStep, Decimal.eval_toLit, hv]
-  · exact absurd h (by simp)
+  · cases h
 
 theorem evalWalk_idempotent : evalWalk.Idempotent :=
   evalWalk.idempotent_of_step evalWalk_stepIdempotent
@@ -384,7 +394,7 @@ theorem evalWalk_idempotent : evalWalk.Idempotent :=
 /-! ## The front end -/
 
 /-- Read a file and evaluate it. -/
-def evaluateFile (s : String) : Option evalWalk.Fixed :=
+def evaluateFile (s : String) : Except Diag evalWalk.Fixed :=
   floatLanguage.walkFile evalWalk evalWalk_idempotent s
 
 /-- Render an evaluated program: every declaration on its own line, its term a literal. -/
@@ -394,7 +404,7 @@ def renderEvaluated (q : evalWalk.Fixed) : String :=
 /-- **The front end round-trips.** Render an evaluated program and read it back, and evaluation
 returns it. -/
 theorem evaluateFile_renderEvaluated (q : evalWalk.Fixed) :
-    evaluateFile (renderEvaluated q) = some q :=
+    evaluateFile (renderEvaluated q) = .ok q :=
   floatLanguage.walkFile_renderWalked _ _ q
 
 /-- **The whole front end, stage by stage**: source, tokens, program, evaluated program. -/

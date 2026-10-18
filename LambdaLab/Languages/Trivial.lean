@@ -72,11 +72,11 @@ framework — one `Abs` morphism from raw characters to parsed declarations. Sin
 is sorry-free, the whole pipeline is too. -/
 
 /-- Parse a file, print the declared names. -/
-def parseNames (s : String) : Option (List String) :=
+def parseNames (s : String) : Except Diag (List String) :=
   (trivialLanguage.toLanguage.parseFile s).map fun p => p.toList.map (fun c => c.name.val.val)
 
 /-- Parse a file, re-render it canonically (single spaces, canonical spellings). -/
-def reprint (s : String) : Option String :=
+def reprint (s : String) : Except Diag String :=
   (trivialLanguage.toLanguage.parseFile s).map trivialLanguage.toLanguage.renderProgram
 
 /-! ## Giving it a semantics
@@ -199,7 +199,7 @@ instance : TypeSystem.Named.PrincipalElaborate TName TName TName where
 from characters to a *well-typed* program. -/
 
 /-- Parse and elaborate, reporting the declared names of the elaborated program. -/
-def checkNames (s : String) : Option (List String) :=
+def checkNames (s : String) : Except Diag (List String) :=
   (trivialLanguage.elaborateFile s).map fun p =>
     p.val.toList.map (fun c => c.name.val.val)
 
@@ -207,7 +207,7 @@ def checkNames (s : String) : Option (List String) :=
 and you land on exactly the program you started from — parsing and type checking together. Free,
 as before. -/
 example (p : trivialLanguage.Elaborated) :
-    trivialLanguage.elaborateFile (trivialLanguage.renderElaborated p) = some p :=
+    trivialLanguage.elaborateFile (trivialLanguage.renderElaborated p) = .ok p :=
   trivialLanguage.elaborateFile_renderElaborated p
 
 end LambdaLab.Languages.Trivial
