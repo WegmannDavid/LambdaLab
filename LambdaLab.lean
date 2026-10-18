@@ -84,6 +84,24 @@ import LambdaLab.Languages.CoIC.Named.Alpha
 import LambdaLab.Languages.CoIC.Named.Eval
 import LambdaLab.Languages.CoIC.Surface
 import LambdaLab.Languages.CoIC.Pipeline
+import LambdaLab.Languages.ECC.DeBruijn.Syntax
+import LambdaLab.Languages.ECC.DeBruijn.Reduction
+import LambdaLab.Languages.ECC.DeBruijn.Confluence
+import LambdaLab.Languages.ECC.DeBruijn.Subtyping
+import LambdaLab.Languages.ECC.DeBruijn.Typing
+import LambdaLab.Languages.ECC.DeBruijn.Inversion
+import LambdaLab.Languages.ECC.DeBruijn.Preservation
+import LambdaLab.Languages.ECC.DeBruijn.Scope
+import LambdaLab.Languages.ECC.DeBruijn.Eval
+import LambdaLab.Languages.ECC.DeBruijn.Check
+import LambdaLab.Languages.ECC.Named.Basic
+import LambdaLab.Languages.ECC.Named.Translation
+import LambdaLab.Languages.ECC.Named.Step
+import LambdaLab.Languages.ECC.Named.Typing
+import LambdaLab.Languages.ECC.Named.Alpha
+import LambdaLab.Languages.ECC.Named.Eval
+import LambdaLab.Languages.ECC.Surface
+import LambdaLab.Languages.ECC.Pipeline
 
 
 -- The parser stack, the categorical layer, the vernacular and the example languages.
