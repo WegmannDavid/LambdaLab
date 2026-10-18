@@ -45,8 +45,8 @@ neither of the last two: `Float` has one walk of its own, evaluation, and is a `
 
 ## What composition buys
 
-`abstract` is the file reader (whole input, a diagnostic on any error), `realize` re-renders any recorded
-spelling, and `realize ∘ default` is the canonical printer. Because the *composite* is a single
+`abstract` is the file reader (whole input, a diagnostic on any error), `realize` re-renders any
+recorded spelling, and `realize ∘ default` is the canonical printer. Because the *composite* is a single
 `Abs` morphism, its round-trip law covers every stage at once: `elaborateFile_renderElaborated`
 below says that rendering an elaborated program and reading it back re-tokenizes, re-parses **and**
 re-elaborates to exactly what you started with. That theorem is one line, because composition did
@@ -398,5 +398,137 @@ theorem DefLanguage.evalChain_run (s : String) :
   (D.evalChain.run_eq_abstract _).trans (congrArg Except.toOption (D.evalChain_abstract _))
 
 end Running
+
+/-! ## A preparation step before elaboration
+
+Some languages want a program rewritten before it is elaborated: STLC numbers its anonymous
+metavariables `_` apart (`Languages/Stlc/Named/Holes.lean`). Any idempotent function on programs
+is a stage (`Abstraction.ofIdempotent`), onto what it leaves unchanged; elaboration and evaluation
+then run on those programs (`Walk.stageOn`). All the language must show is that the function is
+idempotent and leaves alone what elaboration and evaluation produce — well-typed programs. -/
+
+section Prepared
+
+variable (D : DefLanguage) [TypeSystem.Named.Runnable (Var D) D.Tm D.Ty]
+  (f : Program D.toLanguage → Program D.toLanguage)
+
+/-- Elaboration, on prepared programs: what it produces is well typed, so still prepared. -/
+theorem DefLanguage.elab_lawfulOn_prepared
+    (htyped : ∀ q, TypeSystem.Named.Vernacular.HasType q → f q = q) :
+    D.elabWalk.LawfulOn (fun p => f p = p) where
+  preserve _ q _ h := htyped q (TypeSystem.Named.Vernacular.elabWalk_sound h)
+  idem p q _ h := TypeSystem.Named.Vernacular.elabWalk_idempotent p q h
+
+/-- Evaluation, on elaborated prepared programs: what it produces is well typed, so prepared and
+elaborated. -/
+theorem DefLanguage.eval_lawfulOn_prepared
+    (htyped : ∀ q, TypeSystem.Named.Vernacular.HasType q → f q = q) :
+    D.evalWalk.LawfulOn (fun p => f p = p ∧ D.elabWalk.run p = .ok p) where
+  preserve _ q _ h :=
+    have hq := TypeSystem.Named.Vernacular.evalWalk_sound h
+    ⟨htyped q hq, TypeSystem.Named.Vernacular.elabWalk_self hq⟩
+  idem p q _ h :=
+    Walk.idempotent_of_step _ TypeSystem.Named.Vernacular.evalWalk_stepIdempotent p q h
+
+variable (hidem : ∀ p, f (f p) = f p)
+  (htyped : ∀ q, TypeSystem.Named.Vernacular.HasType q → f q = q)
+
+/-- After preparation. -/
+def DefLanguage.preparedStage (name : String) : Stage where
+  Carrier := { p : Program D.toLanguage // f p = p }
+  name := name
+  render p := D.toLanguage.renderProgram p.val
+
+/-- After elaboration, of prepared programs. -/
+abbrev DefLanguage.elaboratedStageOn : Stage :=
+  D.toLanguage.walkStageOn "elaborated program" D.elabWalk (fun p => f p = p)
+
+/-- After evaluation, of elaborated prepared programs. -/
+abbrev DefLanguage.evaluatedStageOn : Stage :=
+  D.toLanguage.walkStageOn "evaluated program" D.evalWalk
+    (fun p => f p = p ∧ D.elabWalk.run p = .ok p)
+
+/-- **The front end, stage by stage, with the preparation step**: source, tokens, program,
+prepared program, elaborated program, evaluated program. -/
+def DefLanguage.evalChainVia (name : String) : Chain sourceStage (D.evaluatedStageOn f) :=
+  have := hidem; have := htyped
+  ((D.toLanguage.parseChain.cons (Z := D.preparedStage f name)
+      ⟨_, Abstraction.ofIdempotent f hidem⟩).cons (Z := D.elaboratedStageOn f)
+      (D.toLanguage.walkCellOn D.elabWalk (D.elab_lawfulOn_prepared f htyped))).cons
+    (Z := D.evaluatedStageOn f)
+    (D.toLanguage.walkCellOn D.evalWalk (D.eval_lawfulOn_prepared f htyped))
+
+/-- **Characters to an evaluated program, with the preparation step**, in `Abs`: one morphism,
+so one round-trip law. -/
+def DefLanguage.evalPipelineVia :=
+  ((D.toLanguage.parsePipeline.comp (Abstraction.ofIdempotent f hidem)).comp
+    (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped))).comp
+    (D.evalWalk.stageOn (D.eval_lawfulOn_prepared f htyped))
+
+/-- Read, prepare, elaborate and run a source file. -/
+def DefLanguage.evaluateFileVia (s : String) : Except Diag (D.evaluatedStageOn f).Carrier :=
+  (D.evalPipelineVia f hidem htyped).abstract s.toList
+
+/-- Render an evaluated program canonically. -/
+def DefLanguage.renderEvaluatedVia (q : (D.evaluatedStageOn f).Carrier) : String :=
+  String.ofList ((D.evalPipelineVia f hidem htyped).realize
+    ((D.evalPipelineVia f hidem htyped).default (a := q)))
+
+/-- **The whole front end round-trips, preparation included.** -/
+theorem DefLanguage.evaluateFileVia_renderEvaluatedVia (q : (D.evaluatedStageOn f).Carrier) :
+    D.evaluateFileVia f hidem htyped (D.renderEvaluatedVia f hidem htyped q) = .ok q := by
+  show (D.evalPipelineVia f hidem htyped).abstract (String.ofList
+    ((D.evalPipelineVia f hidem htyped).realize
+      ((D.evalPipelineVia f hidem htyped).default (a := q)))).toList = .ok q
+  rw [String.toList_ofList]
+  exact (D.evalPipelineVia f hidem htyped).abstract_realize q _
+
+/-- Stepping through the stages reads a file exactly as collapsing them does. -/
+theorem DefLanguage.evalChainVia_abstract (name : String) (cs : List Char) :
+    (D.evalChainVia f hidem htyped name).compose.hom.abstract cs =
+      (D.evalPipelineVia f hidem htyped).abstract cs := by
+  have h1a : ((D.toLanguage.parseChain.cons (Z := D.preparedStage f name)
+      ⟨_, Abstraction.ofIdempotent f hidem⟩).compose.hom.abstract cs) =
+      (D.toLanguage.parsePipeline.comp (Abstraction.ofIdempotent f hidem)).abstract cs := by
+    rw [Chain.compose_cons, OneCell.hcomp_abstract]
+    exact Abstraction.compAbstract_congr _ _ _ _ _ (D.toLanguage.parseChain_abstract cs)
+      (D.toLanguage.parseChain_locate cs) rfl
+  have h1l : ((D.toLanguage.parseChain.cons (Z := D.preparedStage f name)
+      ⟨_, Abstraction.ofIdempotent f hidem⟩).compose.hom.locate cs) =
+      (D.toLanguage.parsePipeline.comp (Abstraction.ofIdempotent f hidem)).locate cs := by
+    rw [Chain.compose_cons]
+    exact Abstraction.comp_locate_congr _ _ _ _ _ (D.toLanguage.parseChain_abstract cs)
+      (D.toLanguage.parseChain_locate cs) rfl
+  have h2a := Abstraction.compAbstract_congr _ _
+    (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped))
+    (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped)) cs h1a h1l rfl
+  have h2l := Abstraction.comp_locate_congr _ _
+    (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped))
+    (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped)) cs h1a h1l rfl
+  have h2a' : (((D.toLanguage.parseChain.cons (Z := D.preparedStage f name)
+      ⟨_, Abstraction.ofIdempotent f hidem⟩).cons (Z := D.elaboratedStageOn f)
+      (D.toLanguage.walkCellOn D.elabWalk (D.elab_lawfulOn_prepared f htyped))).compose.hom.abstract
+        cs) = ((D.toLanguage.parsePipeline.comp (Abstraction.ofIdempotent f hidem)).comp
+          (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped))).abstract cs := by
+    rw [Chain.compose_cons, OneCell.hcomp_abstract]
+    exact h2a
+  have h2l' : (((D.toLanguage.parseChain.cons (Z := D.preparedStage f name)
+      ⟨_, Abstraction.ofIdempotent f hidem⟩).cons (Z := D.elaboratedStageOn f)
+      (D.toLanguage.walkCellOn D.elabWalk (D.elab_lawfulOn_prepared f htyped))).compose.hom.locate
+        cs) = ((D.toLanguage.parsePipeline.comp (Abstraction.ofIdempotent f hidem)).comp
+          (D.elabWalk.stageOn (D.elab_lawfulOn_prepared f htyped))).locate cs := by
+    rw [Chain.compose_cons]
+    exact h2l
+  rw [evalChainVia, Chain.compose_cons, OneCell.hcomp_abstract]
+  exact Abstraction.compAbstract_congr _ _ _ _ _ h2a' h2l' rfl
+
+/-- What the driver relies on: running the chain over a file agrees with `evaluateFileVia`. -/
+theorem DefLanguage.evalChainVia_run (name : String) (s : String) :
+    (((D.evalChainVia f hidem htyped name).run s.toList).2.map Prod.fst).toOption =
+      (D.evaluateFileVia f hidem htyped s).toOption :=
+  ((D.evalChainVia f hidem htyped name).run_eq_abstract _).trans
+    (congrArg Except.toOption (D.evalChainVia_abstract f hidem htyped name _))
+
+end Prepared
 
 end LambdaLab.Pipeline

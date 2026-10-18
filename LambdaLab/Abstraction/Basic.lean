@@ -216,6 +216,15 @@ def comp (f : Abstraction A B F) (g : Abstraction B C G) :
     | .ok b => f.locate a (g.locate b l)
     | .error _ => f.locate a l
 
+/-- A composite's `locate` sees only its components' algorithms and locations. -/
+theorem comp_locate_congr {F' : B → Type} {G' : C → Type} (f : Abstraction A B F)
+    (f' : Abstraction A B F') (g : Abstraction B C G) (g' : Abstraction B C G') (a : A)
+    (ha : f.abstract a = f'.abstract a) (hl : f.locate a = f'.locate a)
+    (hg : g.locate = g'.locate) :
+    (f.comp g).locate a = (f'.comp g').locate a := by
+  simp only [comp]
+  rw [ha, hl, hg]
+
 /-- Re-choose the canonical annotation, keeping the morphism itself. Legitimate because
 `default` carries **no law of its own**: `abstract_realize` is quantified over *every*
 annotation, so any element of the family may serve as the canonical one and this leaves the
@@ -276,6 +285,19 @@ def ofFibers (abstract : A → Except Diag B) (canon : ∀ b : B, { c : A // abs
   default {b} := canon b
   abstract_realize _ ann := ann.property
   lossless c _ h := ⟨⟨c, h⟩, rfl⟩
+
+/-- **An idempotent function, as a stage**: onto what it leaves unchanged, which is its image. Total,
+so it never rejects; the annotation over an output is everything that maps to it, and its
+canonical member is the output itself — which is where idempotence is needed. -/
+def ofIdempotent (f : A → A) (h : ∀ a, f (f a) = f a) :
+    Abstraction A { b : A // f b = b } (fun b => { a : A // f a = b.val }) where
+  abstract a := .ok ⟨f a, h a⟩
+  realize ann := ann.val
+  default {b} := ⟨b.val, b.property⟩
+  abstract_realize b ann := by
+    show Except.ok ⟨f ann.val, h ann.val⟩ = Except.ok b
+    exact congrArg Except.ok (Subtype.ext ann.property)
+  lossless c b hc := ⟨⟨c, by cases hc; rfl⟩, rfl⟩
 
 @[simp] theorem ofFibers_abstract (abstract : A → Except Diag B)
     (canon : ∀ b : B, { c : A // abstract c = .ok b }) :

@@ -1,6 +1,7 @@
 import LambdaLab.Languages.Stlc.Named.Basic
 import LambdaLab.Languages.Stlc.Named.Typing.Unification
 import LambdaLab.Languages.Stlc.Named.TypeSystem
+import LambdaLab.Languages.Stlc.Named.Holes
 import LambdaLab.Pipeline.Compose
 import LambdaLab.TypeSystem.Named.FreeName
 import LambdaLab.Parser.IsoParser.Mixfix.Biparser
@@ -15,17 +16,18 @@ import LambdaLab.Parser.Numeral
 The lambda-calculus instance. Two things make the surface *complete* for the semantic types,
 which is what lets the type parser produce `Stlc.Ty` itself rather than a syntax tree:
 
-* **metavariables are writable** — `?0`, `?7` denote `Ty.mvar 0`, `Ty.mvar 7`. Together with `⋆`
-  (`Ty.base`) and `→` (`Ty.arrow`) the surface reaches *every* constructor of `Ty`, which is
-  exactly the condition `Rules.alg_dest` needs: destructing a value and rebuilding it from its
-  spelling must be the identity, so no constructor may be unspellable.
+* **metavariables are writable** — `_` denotes `Ty.mvar 0`, and `?0`, `?7` denote `Ty.mvar 1`,
+  `Ty.mvar 8`. Together with `⋆` (`Ty.base`) and `→` (`Ty.arrow`) the surface reaches *every*
+  constructor of `Ty`, which is exactly the condition `Rules.alg_dest` needs: destructing a value
+  and rebuilding it from its spelling must be the identity, so no constructor may be unspellable.
 * **binder annotations are mandatory** — `λ x : T . e`. The surface therefore determines the
   annotation, instead of the parser having to invent one.
 
-Nobody writes `?7` by hand; the intended surface for "infer this" is `_`, which is deliberately
-*not* here yet. `_` cannot join the lossless core — it does not determine an index — so it
-belongs in a lossy layer above, whose annotation records which binders were elided — an
-`annotated | infer` split, with the elision living in the annotation rather than the value.
+Nobody writes `?7` by hand; the surface for "infer this" is `_`, as in Lean. Every `_` parses to
+the same reserved metavariable `0`, so the parser stays exact; making them *different*
+metavariables is a stage of its own, between parsing and elaboration (`Holes.lean`): it numbers
+each `_` apart, above every metavariable the program mentions. `stlcChain` is the front end with
+that stage in it.
 
 ## The parser lands in `Term` itself
 
@@ -74,7 +76,7 @@ theorem digit_word : ∀ c, isDigitChar c = true → stlcLex.word c = true :=
 def isMvarTok (t : Token stlcLex) : Bool := isNatTok '?' t
 
 /-- Type atoms: the base type `⋆`, and metavariables `?n`. -/
-def isTyAtom (t : Token stlcLex) : Bool := (t.val == "⋆") || isMvarTok t
+def isTyAtom (t : Token stlcLex) : Bool := (t.val == "⋆") || (t.val == "_") || isMvarTok t
 
 /-- The token spelling `?n`. -/
 def mvarTok (n : Nat) : Token stlcLex := natTok '?' (by decide) digit_word n
@@ -87,6 +89,15 @@ theorem tokMvar_mvarTok (n : Nat) : tokMvar (mvarTok n) = n :=
 
 theorem isMvarTok_mvarTok (n : Nat) : isMvarTok (mvarTok n) = true :=
   LambdaLab.Parser.Numeral.isNatTok_natTok _ _ _ n
+
+/-- `_`, the anonymous metavariable. -/
+def holeTok : Token stlcLex := tkS "_"
+
+theorem mvarTok_ne_holeTok (n : Nat) : (mvarTok n).val ≠ "_" := by
+  intro e
+  have h := isMvarTok_mvarTok n
+  rw [show mvarTok n = holeTok from Subtype.ext e] at h
+  exact absurd h (by decide)
 
 theorem isTyAtom_mvarTok (n : Nat) : isTyAtom (mvarTok n) = true := by
   simp [isTyAtom, isMvarTok_mvarTok n]
@@ -236,14 +247,15 @@ def CS : SEnt → Type
   | .var => VName
   | .ty => Ty
 
-/-- The truncation instructions. Parentheses vanish in all three entries; `?n` and `⋆` decode to
-`Ty.mvar`/`Ty.base`, and re-encode on the way out. -/
+/-- The truncation instructions. Parentheses vanish in all three entries; `⋆` decodes to `Ty.base`,
+`_` to `Ty.mvar 0` and `?k` to `Ty.mvar (k + 1)`, and they re-encode on the way out. -/
 def sRules : Rules stlcGrammar CS where
   var {e} t h :=
     match e, h with
     | .tm, h => Term.var ⟨t, h⟩
     | .var, h => ⟨t, h⟩
-    | .ty, _ => if isMvarTok t then Ty.mvar (tokMvar t) else Ty.base
+    | .ty, _ =>
+        if t.val == "_" then Ty.mvar 0 else if isMvarTok t then Ty.mvar (tokMvar t + 1) else Ty.base
   op {e} o vs :=
     match e, o, vs with
     | .tm, .paren, (t, _)       => t
@@ -259,7 +271,8 @@ def sRules : Rules stlcGrammar CS where
     | .tm, Term.lam x τ b => .node .lam (x, τ, b, PUnit.unit)
     | .var, x => .var x.1 x.2
     | .ty, Ty.base      => .var (tkS "⋆") (by decide)
-    | .ty, Ty.mvar n    => .var (mvarTok n) (isTyAtom_mvarTok n)
+    | .ty, Ty.mvar 0    => .var holeTok (by decide)
+    | .ty, Ty.mvar (n + 1) => .var (mvarTok n) (isTyAtom_mvarTok n)
     | .ty, Ty.arrow a b => .node .arrow (a, b, PUnit.unit)
   parenOp | .tm => SSym.paren | .var => BSym.paren | .ty => TSym.paren
   lp _ := tkS "("
@@ -274,12 +287,17 @@ def sRules : Rules stlcGrammar CS where
     · rfl
     · cases x with
       | base =>
-          show (if isMvarTok (tkS "⋆") then Ty.mvar (tokMvar (tkS "⋆")) else Ty.base) = Ty.base
-          rw [if_neg (by decide)]
+          show (if (tkS "⋆").val == "_" then Ty.mvar 0 else if isMvarTok (tkS "⋆") then
+            Ty.mvar (tokMvar (tkS "⋆") + 1) else Ty.base) = Ty.base
+          rw [if_neg (by decide), if_neg (by decide)]
       | mvar n =>
-          show (if isMvarTok (mvarTok n) then Ty.mvar (tokMvar (mvarTok n)) else Ty.base)
-            = Ty.mvar n
-          rw [if_pos (isMvarTok_mvarTok n), tokMvar_mvarTok n]
+          cases n with
+          | zero => rfl
+          | succ n =>
+              show (if (mvarTok n).val == "_" then Ty.mvar 0 else if isMvarTok (mvarTok n) then
+                Ty.mvar (tokMvar (mvarTok n) + 1) else Ty.base) = Ty.mvar (n + 1)
+              rw [if_neg (by simpa using mvarTok_ne_holeTok n), if_pos (isMvarTok_mvarTok n),
+                tokMvar_mvarTok n]
       | arrow a b => rfl
   op_paren := by intro e y; cases e <;> rfl
   size {e} :=
@@ -299,7 +317,7 @@ def sRules : Rules stlcGrammar CS where
     · trivial
     · cases x with
       | base => trivial
-      | mvar n => trivial
+      | mvar n => cases n <;> trivial
       | arrow a b => exact ⟨by simp +arith [Ty.size], by simp +arith [Ty.size], trivial⟩
 
 /-! ## The language -/
@@ -379,6 +397,12 @@ of elaboration are theorems.
 
 /-- Variable names carry no type metavariables. Needed for `Ctx VName` to be substitutable. -/
 instance : HasVars Nat VName := HasVars.ofNoAtoms Nat VName
+
+/-- **STLC's front end, stage by stage**: source, tokens, program, the program with its `_`s
+numbered apart (`fillHoles`), elaborated program, evaluated program. -/
+def stlcChain :=
+  stlcLanguage.evalChainVia fillHoles fillHoles_idem (fun _ h => fillHoles_of_hasType h)
+    "numbered program"
 
 /-- Parse a source file and elaborate it, rendering the result. -/
 def elaborateSource (src : String) : Except Diag String :=

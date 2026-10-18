@@ -26,7 +26,7 @@
       }
     },
     {
-      "match": "\\?\\d+",
+      "match": "\\?\\d+|(?<![\\w])_(?![\\w])",
       "name": "variable.language.metavariable.stlc"
     },
     {

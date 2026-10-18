@@ -16,4 +16,4 @@ to take it.
 open LambdaLab.Pipeline LambdaLab.Languages.Stlc.Named
 
 def main (args : List String) : IO UInt32 :=
-  driver "stlc" "stlc" stlcLanguage.toLanguage stlcLanguage.evalChain args
+  driver "stlc" "stlc" stlcLanguage.toLanguage stlcChain args

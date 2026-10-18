@@ -176,4 +176,5 @@ import LambdaLab.Parser.Truncation
 import LambdaLab.Parser.Truncation.Mixfix
 import LambdaLab.Languages.Stlc.Named.Pipeline
 import LambdaLab.Languages.Stlc.Named.TypeSystem
+import LambdaLab.Languages.Stlc.Named.Holes
 import LambdaLab.Languages.Stlc.Named.Typing.JComplete

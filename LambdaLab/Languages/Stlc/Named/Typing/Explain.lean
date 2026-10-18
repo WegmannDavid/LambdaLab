@@ -27,10 +27,12 @@ variable {N : Type} [Atom N]
 
 /-! ## Printing, as the surface writes it -/
 
-/-- A type, as written: `⋆`, `?n`, `A → B`, arrows to the right. -/
+/-- A type, as written: `⋆`, `_`, `?k`, `A → B`, arrows to the right. The anonymous `_` is the
+metavariable `0`, and `?k` the metavariable `k + 1` (`Pipeline.lean`). -/
 def Ty.render : Ty → String
   | .base => "⋆"
-  | .mvar n => s!"?{n}"
+  | .mvar 0 => "_"
+  | .mvar (k + 1) => s!"?{k}"
   | .arrow l@(.arrow _ _) c => s!"({l.render}) → {c.render}"
   | .arrow a c => s!"{a.render} → {c.render}"
 
@@ -97,8 +99,8 @@ def appReason (showName : N → String) (e : Term N) (f a : Ty) : String :=
             `{e₂.render showName}` has type {a.render}"
       | .base => at_ ++ s!"`{e₁.render showName}` has type ⋆, so it cannot be applied"
       | .mvar m =>
-          at_ ++ s!"`{e₁.render showName}` would need a type ?{m} = {a.render} → … that \
-            contains itself"
+          at_ ++ s!"`{e₁.render showName}` would need a type {(Ty.mvar m).render} = \
+            {a.render} → … that contains itself"
   | _ => "a constraint of this declaration cannot be solved"
 
 /-- Why the body's type `b` cannot be the declared type `d`. -/
@@ -149,7 +151,7 @@ def Term.mvars : Term N → List Nat
 /-- **What elaboration left undetermined**, in a declaration it otherwise typed. -/
 def explainUnsolvedElab (showName : N → String) (t : Term N) (τ : Ty) : String :=
   let ms := (τ.mvars ++ t.mvars).eraseDups
-  let names := ", ".intercalate (ms.map fun m => s!"?{m}")
+  let names := ", ".intercalate (ms.map fun m => (Ty.mvar m).render)
   let where_ := if τ.mvars.isEmpty then s!"in the body `{t.render showName}`"
     else s!"in the type {τ.render}"
   s!"{names} {if ms.length = 1 then "is" else "are"} not determined by this declaration \

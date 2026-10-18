@@ -34,7 +34,8 @@ def grammar(lang, decls, binders, sorts, extra=()):
 FN, TY = "entity.name.function", "entity.name.type"
 LANGS = {
     "stlc": grammar("stlc", [("def", FN)], ["λ"], ["⋆"],
-                    [{"match": r"\?\d+", "name": "variable.language.metavariable.stlc"}]),
+                    [{"match": r"\?\d+|(?<![\w])_(?![\w])",
+                      "name": "variable.language.metavariable.stlc"}]),
     "systemf": grammar("systemf", [("def", FN), ("type", TY)], ["λ", "Λ", "∀"], [],
                        [{"match": r"\[|\]", "name": "punctuation.section.brackets.systemf"}]),
     "coc": grammar("coc", [("def", FN)], ["λ", "Π"], [r"\*", "□"]),
