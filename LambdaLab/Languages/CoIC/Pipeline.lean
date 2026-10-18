@@ -972,7 +972,7 @@ theorem elab_rb {sg : Sig} {tbl : List IndNames} (htbl : TblOk sg tbl) (gl : Lis
         List.nil_append] at this
       simp only [rb, rbL_eq]
       rw [this]
-      simp only [push, harity, List.length_cons, List.length_append, List.length_singleton,
+      simp only [push, harity, List.length_cons, List.length_append,
         List.length_nil, hlen, if_true, Glob.sat, List.dropLast_concat, List.getLastD_concat,
         Tm.ofList_toList hokbs.isList]
   | tnil => exact ⟨fun _ h => by simp [Ok] at h, fun _ _ _ a ha => by simp [Tm.toList] at ha⟩
