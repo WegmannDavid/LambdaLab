@@ -1,5 +1,5 @@
 import LambdaLab.Languages.Float.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `float` — decimal sums and products, as a command-line compiler
@@ -18,4 +18,4 @@ carried through the declarations — and `floatChain` is that walk after the par
 open LambdaLab.Pipeline LambdaLab.Languages.Float
 
 def main (args : List String) : IO UInt32 :=
-  cli "float" "float" (compile floatChain) args
+  driver "float" "float" floatLanguage floatChain args

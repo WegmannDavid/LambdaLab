@@ -1,5 +1,5 @@
 import LambdaLab.Languages.Stlc.Named.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `stlc` — the simply-typed lambda calculus, as a command-line compiler
@@ -16,4 +16,4 @@ to take it.
 open LambdaLab.Pipeline LambdaLab.Languages.Stlc.Named
 
 def main (args : List String) : IO UInt32 :=
-  cli "stlc" "stlc" (compile stlcLanguage.evalChain) args
+  driver "stlc" "stlc" stlcLanguage.toLanguage stlcLanguage.evalChain args

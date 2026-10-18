@@ -1,5 +1,5 @@
 import LambdaLab.Languages.CoIC.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `coic` — the Calculus of Constructions with inductive types, as a command-line compiler
@@ -14,4 +14,4 @@ definition to its normal form — total, by strong normalization — and writes 
 open LambdaLab.Pipeline LambdaLab.Languages.CoIC
 
 def main (args : List String) : IO UInt32 :=
-  cli "coic" "coic" (compile coicChain) args
+  driver "coic" "coic" coicLanguage coicChain args

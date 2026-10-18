@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "coic",
+  "scopeName": "source.coic",
+  "patterns": [
+    {
+      "match": "\\b(def)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.coic"
+        },
+        "2": {
+          "name": "entity.name.function.coic"
+        }
+      }
+    },
+    {
+      "match": "\\b(inductive)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.coic"
+        },
+        "2": {
+          "name": "entity.name.type.coic"
+        }
+      }
+    },
+    {
+      "match": "(λ|Π)\\s*([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.binder.coic"
+        },
+        "2": {
+          "name": "variable.parameter.coic"
+        }
+      }
+    },
+    {
+      "match": "\\b\\w+_rec\\b",
+      "name": "support.function.recursor.coic"
+    },
+    {
+      "match": "\\|",
+      "name": "punctuation.separator.constructor.coic"
+    },
+    {
+      "match": "\\*|□",
+      "name": "support.type.sort.coic"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.coic"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.coic"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.coic"
+    }
+  ]
+}

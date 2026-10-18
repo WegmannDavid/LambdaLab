@@ -151,6 +151,8 @@ import LambdaLab.Pipeline.Stages.Elaborate
 import LambdaLab.Pipeline.Stages.Evaluate
 import LambdaLab.Pipeline.Compose
 import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Json
+import LambdaLab.Pipeline.Lsp
 import LambdaLab.Languages.Trivial
 import LambdaLab.NEList
 import LambdaLab.Parser.IsoParser.Adapters

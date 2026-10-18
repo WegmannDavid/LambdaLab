@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "systemf",
+  "scopeName": "source.systemf",
+  "patterns": [
+    {
+      "match": "\\b(def)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.systemf"
+        },
+        "2": {
+          "name": "entity.name.function.systemf"
+        }
+      }
+    },
+    {
+      "match": "\\b(type)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.systemf"
+        },
+        "2": {
+          "name": "entity.name.type.systemf"
+        }
+      }
+    },
+    {
+      "match": "(λ|Λ|∀)\\s*([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.binder.systemf"
+        },
+        "2": {
+          "name": "variable.parameter.systemf"
+        }
+      }
+    },
+    {
+      "match": "\\[|\\]",
+      "name": "punctuation.section.brackets.systemf"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.systemf"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.systemf"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.systemf"
+    }
+  ]
+}

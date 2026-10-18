@@ -1,5 +1,5 @@
 import LambdaLab.Languages.CoC.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `coc` — the Calculus of Constructions, as a command-line compiler
@@ -15,4 +15,4 @@ and writes the result back out. Earlier definitions are transparent: a later one
 open LambdaLab.Pipeline LambdaLab.Languages.CoC
 
 def main (args : List String) : IO UInt32 :=
-  cli "coc" "coc" (compile cocChain) args
+  driver "coc" "coc" cocLanguage cocChain args

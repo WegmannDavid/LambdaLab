@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ecc",
+  "scopeName": "source.ecc",
+  "patterns": [
+    {
+      "match": "\\b(def)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.ecc"
+        },
+        "2": {
+          "name": "entity.name.function.ecc"
+        }
+      }
+    },
+    {
+      "match": "(λ|Π)\\s*([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.binder.ecc"
+        },
+        "2": {
+          "name": "variable.parameter.ecc"
+        }
+      }
+    },
+    {
+      "match": "(?<=\\bType)\\s+\\d+\\b",
+      "name": "constant.numeric.level.ecc"
+    },
+    {
+      "match": "\\bProp\\b|\\bType\\b",
+      "name": "support.type.sort.ecc"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.ecc"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.ecc"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.ecc"
+    }
+  ]
+}

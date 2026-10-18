@@ -80,13 +80,14 @@ def renderDiag (path : String) (src : String) (d : Diag) : String :=
 
 /-- Usage text, on the same shape every language's executable shares. -/
 def usage (name ext : String) : String :=
-  s!"usage: {name} [--stages] PATH...\n\
+  s!"usage: {name} [--stages] PATH...  |  {name} --lsp\n\
      \n\
      Each PATH is a source file, or a directory to search recursively for `.{ext}` files.\n\
      Writes the canonical rendering of each to stdout, diagnostics to stderr.\n\
      Exits non-zero if any path is missing, unreadable, or rejected.\n\
      \n\
-     --stages  show the input at every stage of the pipeline, not only the result."
+     --stages  show the input at every stage of the pipeline, not only the result.\n\
+     --lsp     run as a language server on stdin and stdout, for an editor."
 
 /-- Every `.ext` file at or under `p`, in a deterministic order.
 

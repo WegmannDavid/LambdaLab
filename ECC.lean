@@ -1,5 +1,5 @@
 import LambdaLab.Languages.ECC.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `ecc` — the Extended Calculus of Constructions, as a command-line compiler
@@ -16,4 +16,4 @@ returning on every well-typed program.
 open LambdaLab.Pipeline LambdaLab.Languages.ECC
 
 def main (args : List String) : IO UInt32 :=
-  cli "ecc" "ecc" (compile eccChain) args
+  driver "ecc" "ecc" eccLanguage eccChain args

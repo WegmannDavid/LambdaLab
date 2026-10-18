@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "float",
+  "scopeName": "source.float",
+  "patterns": [
+    {
+      "match": "\\b(float)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.float"
+        },
+        "2": {
+          "name": "variable.other.constant.float"
+        }
+      }
+    },
+    {
+      "match": "\\b\\d+(\\.\\d+)?\\b",
+      "name": "constant.numeric.float"
+    },
+    {
+      "match": "[+*]",
+      "name": "keyword.operator.arithmetic.float"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.float"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.float"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.float"
+    }
+  ]
+}

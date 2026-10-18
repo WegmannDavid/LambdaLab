@@ -1,5 +1,5 @@
 import LambdaLab.Languages.SystemF.Pipeline
-import LambdaLab.Pipeline.Cli
+import LambdaLab.Pipeline.Lsp
 
 /-!
 # `systemf` — System F, as a command-line compiler
@@ -15,4 +15,4 @@ printed with every abbreviation and earlier definition unfolded.
 open LambdaLab.Pipeline LambdaLab.Languages.SystemF
 
 def main (args : List String) : IO UInt32 :=
-  cli "systemf" "sf" (compile systemFChain) args
+  driver "systemf" "sf" systemFLanguage systemFChain args

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "coc",
+  "scopeName": "source.coc",
+  "patterns": [
+    {
+      "match": "\\b(def)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.coc"
+        },
+        "2": {
+          "name": "entity.name.function.coc"
+        }
+      }
+    },
+    {
+      "match": "(λ|Π)\\s*([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.binder.coc"
+        },
+        "2": {
+          "name": "variable.parameter.coc"
+        }
+      }
+    },
+    {
+      "match": "\\*|□",
+      "name": "support.type.sort.coc"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.coc"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.coc"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.coc"
+    }
+  ]
+}

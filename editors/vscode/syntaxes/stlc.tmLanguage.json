@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "stlc",
+  "scopeName": "source.stlc",
+  "patterns": [
+    {
+      "match": "\\b(def)\\s+([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.declaration.stlc"
+        },
+        "2": {
+          "name": "entity.name.function.stlc"
+        }
+      }
+    },
+    {
+      "match": "(λ)\\s*([^\\s()\\[\\].:λΛΠ∀→|*□⋆+]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.binder.stlc"
+        },
+        "2": {
+          "name": "variable.parameter.stlc"
+        }
+      }
+    },
+    {
+      "match": "\\?\\d+",
+      "name": "variable.language.metavariable.stlc"
+    },
+    {
+      "match": "⋆",
+      "name": "support.type.sort.stlc"
+    },
+    {
+      "match": ":=",
+      "name": "keyword.operator.assignment.stlc"
+    },
+    {
+      "match": "→",
+      "name": "keyword.operator.arrow.stlc"
+    },
+    {
+      "match": "[:.]",
+      "name": "punctuation.separator.stlc"
+    }
+  ]
+}
