@@ -2,35 +2,124 @@
   "name": "lambdalab",
   "displayName": "LambdaLab",
   "description": "Syntax highlighting and live checking for the LambdaLab calculi: STLC, System F, CoC, CoIC, ECC and Float.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "lambdalab",
   "license": "UNLICENSED",
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:stlc", "onLanguage:systemf", "onLanguage:coc",
-    "onLanguage:coic", "onLanguage:ecc", "onLanguage:float"
+    "onLanguage:stlc",
+    "onLanguage:systemf",
+    "onLanguage:coc",
+    "onLanguage:coic",
+    "onLanguage:ecc",
+    "onLanguage:float"
   ],
   "contributes": {
     "languages": [
-      { "id": "stlc", "aliases": ["STLC"], "extensions": [".stlc"], "configuration": "./language-configuration.json" },
-      { "id": "systemf", "aliases": ["System F"], "extensions": [".sf"], "configuration": "./language-configuration.json" },
-      { "id": "coc", "aliases": ["CoC"], "extensions": [".coc"], "configuration": "./language-configuration.json" },
-      { "id": "coic", "aliases": ["CoIC"], "extensions": [".coic"], "configuration": "./language-configuration.json" },
-      { "id": "ecc", "aliases": ["ECC"], "extensions": [".ecc"], "configuration": "./language-configuration.json" },
-      { "id": "float", "aliases": ["Float"], "extensions": [".float"], "configuration": "./language-configuration.json" }
+      {
+        "id": "stlc",
+        "aliases": [
+          "STLC"
+        ],
+        "extensions": [
+          ".stlc"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "systemf",
+        "aliases": [
+          "System F"
+        ],
+        "extensions": [
+          ".sf"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "coc",
+        "aliases": [
+          "CoC"
+        ],
+        "extensions": [
+          ".coc"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "coic",
+        "aliases": [
+          "CoIC"
+        ],
+        "extensions": [
+          ".coic"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "ecc",
+        "aliases": [
+          "ECC"
+        ],
+        "extensions": [
+          ".ecc"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "float",
+        "aliases": [
+          "Float"
+        ],
+        "extensions": [
+          ".float"
+        ],
+        "configuration": "./language-configuration.json"
+      }
     ],
     "grammars": [
-      { "language": "stlc", "scopeName": "source.stlc", "path": "./syntaxes/stlc.tmLanguage.json" },
-      { "language": "systemf", "scopeName": "source.systemf", "path": "./syntaxes/systemf.tmLanguage.json" },
-      { "language": "coc", "scopeName": "source.coc", "path": "./syntaxes/coc.tmLanguage.json" },
-      { "language": "coic", "scopeName": "source.coic", "path": "./syntaxes/coic.tmLanguage.json" },
-      { "language": "ecc", "scopeName": "source.ecc", "path": "./syntaxes/ecc.tmLanguage.json" },
-      { "language": "float", "scopeName": "source.float", "path": "./syntaxes/float.tmLanguage.json" }
+      {
+        "language": "stlc",
+        "scopeName": "source.stlc",
+        "path": "./syntaxes/stlc.tmLanguage.json"
+      },
+      {
+        "language": "systemf",
+        "scopeName": "source.systemf",
+        "path": "./syntaxes/systemf.tmLanguage.json"
+      },
+      {
+        "language": "coc",
+        "scopeName": "source.coc",
+        "path": "./syntaxes/coc.tmLanguage.json"
+      },
+      {
+        "language": "coic",
+        "scopeName": "source.coic",
+        "path": "./syntaxes/coic.tmLanguage.json"
+      },
+      {
+        "language": "ecc",
+        "scopeName": "source.ecc",
+        "path": "./syntaxes/ecc.tmLanguage.json"
+      },
+      {
+        "language": "float",
+        "scopeName": "source.float",
+        "path": "./syntaxes/float.tmLanguage.json"
+      }
     ],
     "commands": [
-      { "command": "lambdalab.restartServers", "title": "LambdaLab: Restart Language Servers" }
+      {
+        "command": "lambdalab.restartServers",
+        "title": "LambdaLab: Restart Language Servers"
+      }
     ],
     "configuration": {
       "title": "LambdaLab",
@@ -41,6 +130,17 @@
           "description": "Directory holding the compilers (stlc, systemf, coc, coic, ecc, float). Empty: the workspace's .lake/build/bin."
         }
       }
+    },
+    "configurationDefaults": {
+      "lean4.input.languages": [
+        "lean4",
+        "stlc",
+        "systemf",
+        "coc",
+        "coic",
+        "ecc",
+        "float"
+      ]
     }
   }
 }

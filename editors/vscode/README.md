@@ -16,6 +16,10 @@ What it gives you, in any of the six languages:
 * Format Document: the canonical layout, which by the parser's round-trip law cannot change what the
   file means;
 * colours, from a TextMate grammar per language (`syntaxes/generate.py` writes them).
+* Unicode input, Lean's: `\lam` → λ, `\Pi` → Π, `\to` → →, `\star` → ⋆, `\square` → □,
+  `\forall` → ∀, `\Lambda` → Λ, and every other abbreviation Lean knows. This is the Lean
+  extension's input mode, switched on for these languages (the `lean4.input.languages` setting) —
+  so it needs the Lean 4 extension installed.
 
 After rebuilding a compiler, run **LambdaLab: Restart Language Servers**.
 
@@ -24,4 +28,4 @@ After rebuilding a compiler, run **LambdaLab: Restart Language Servers**.
 No Node.js needed — the client has no dependencies, and packaging is a Python script:
 
     python3 package.py
-    code --install-extension lambdalab-0.1.0.vsix
+    code --install-extension lambdalab-*.vsix
