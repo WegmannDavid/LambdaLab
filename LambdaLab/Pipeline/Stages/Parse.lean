@@ -199,11 +199,59 @@ def Language.parseError (ts : List (Token L.lex)) : Diag :=
         | some (lo, hi) => { msg := "this declaration does not parse", loc := .tokens lo hi }
         | none => { msg := "syntax error" }
 
+/-- **Best effort**: every declaration that does not parse on its own, and the program made of those
+that do — declarations are delimited by their keywords, so one that does not parse hides none of
+the others. Tokens before the first keyword are reported once. -/
+def Language.recoverParse (ts : List (Token L.lex)) :
+    List Diag × Option (Program L × (Loc → Loc)) :=
+  match L.parser.wholeInput ts with
+  | some prog => ([], some (prog, L.declLocate ts))
+  | none =>
+      let starts := L.declStarts ts
+      let first := starts.head?.getD ts.length
+      let lead : List Diag :=
+        if first = 0 then []
+        else
+          match ts with
+          | t :: _ => [{ msg := s!"expected a declaration ({L.keywordList}), found `{t.val}`",
+                         loc := .tokens 0 first }]
+          | [] => []
+      let empty : List Diag :=
+        if ts.isEmpty then
+          [{ msg := s!"expected a declaration ({L.keywordList}), found nothing",
+             loc := .tokens 0 0 }]
+        else []
+      let parsed := (List.range starts.length).filterMap fun i =>
+        (L.declSpan ts i).map fun (lo, hi) =>
+          let d := match L.declIso.parse ((ts.drop lo).take (hi - lo)) with
+            | some (d, r) => if r.val.isEmpty then some d else none
+            | none => none
+          (d, lo, hi)
+      let bad := parsed.filterMap fun (d, lo, hi) =>
+        if d.isNone then
+          some ({ msg := "this declaration does not parse", loc := .tokens lo hi } : Diag)
+        else none
+      let kept := parsed.filterMap fun (d, lo, hi) => d.map fun d => (d, lo, hi)
+      let diags := empty ++ lead ++ bad
+      let diags := if diags.isEmpty then [L.parseError ts] else diags
+      match kept with
+      | [] => (diags, none)
+      | (d, _) :: rest =>
+          (diags, some ((d, rest.map (·.1)), fun l =>
+            match l with
+            | .decl j =>
+                match kept[j]? with
+                | some (_, lo, hi) => .tokens lo hi
+                | none => .unknown
+            | l => l))
+
 /-- **Every language is an `Abs` morphism** `List Token ⇝ Program`: the whole-file abstraction,
 whose annotation is every token list the program can be written as. Composes with the tokenizer
 (`Abstraction/Tokenizer.lean`) for the `List Char` pipeline. -/
 def Language.abstraction : Abstraction (List (Token L.lex)) (Program L) (Language.ParseAnn L) :=
-  { L.parser.toAbstraction L.parseError with locate := L.declLocate }
+  { L.parser.toAbstraction L.parseError with
+    locate := L.declLocate
+    recover := L.recoverParse }
 
 /-- **The parse stage forgets nothing** — a projection, not a theorem. What the structured family
 `Program.Ann` would have cost is `Exact` for `L.parser`, and through it exactness for every

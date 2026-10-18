@@ -27,6 +27,11 @@ stage rather than only the last — up to the stage that rejected it, if one did
 A rejection carries the rejecting stage's diagnostic, its location already pulled back through
 the earlier stages to a character span of the source (`Chain.run`). The driver turns that span into
 `file:line:col` and shows the source line with the span marked, the way compilers do.
+
+It reports **every** error it can find, in source order, not only the first: on a rejection the
+chain is run again with each stage getting past what it can (`Chain.runAll`) — a declaration that
+does not parse, or does not check, is reported and skipped, and the rest go on. Only the reports
+come from that run; a successful output always comes from the formal one.
 `Language.parseChain_run`, `DefLanguage.elabChain_run` and `DefLanguage.evalChain_run` prove that
 what is printed without the flag is what `parseFile`/`elaborateFile`/`evaluateFile` would have
 said, so the readable version and the composite version are not two different compilers.
@@ -44,8 +49,14 @@ namespace LambdaLab.Pipeline
 say so: the chain names the stage it did not reach. -/
 def compile {Y : Abstraction.Stage} (c : Abstraction.Chain sourceStage Y) (showStages : Bool)
     (src : String) :
-    Except (List Abstraction.Step × Abstraction.Failure) String :=
+    Except (List Abstraction.Step × List Abstraction.Failure) String :=
   c.report showStages src.toList
+
+/-- Where a diagnostic starts, for putting several in source order; nowhere goes last. -/
+def _root_.LambdaLab.Diag.start (d : Diag) : Nat :=
+  match d.loc with
+  | .chars lo _ => lo
+  | _ => 0xFFFFFFFF
 
 /-- The line and column, both counted from `1`, of a character offset. -/
 def lineCol (src : List Char) (off : Nat) : Nat × Nat :=
@@ -111,7 +122,7 @@ The read is guarded: a path can exist and still not be readable — a directory,
 permissions problem — and an unhandled `IO.Error` reaches the user as `uncaught exception`, which
 is not a diagnostic. -/
 def processFile (ext : String) (showStages : Bool)
-    (compile : String → Except (List Abstraction.Step × Abstraction.Failure) String)
+    (compile : String → Except (List Abstraction.Step × List Abstraction.Failure) String)
     (path : System.FilePath) : IO Bool := do
   match ← (IO.FS.readFile path).toBaseIO with
   | .error e =>
@@ -119,12 +130,14 @@ def processFile (ext : String) (showStages : Bool)
       return false
   | .ok src =>
       match compile src with
-      | .error (steps, f) =>
+      | .error (steps, fs) =>
           if showStages then
             for st in steps do
               IO.println s!"== {st.stage} ==\n{st.text}"
             (← IO.getStdout).flush
-          IO.eprintln (renderDiag path.toString src f.diag)
+          let ds := (fs.map (·.diag)).toArray.qsort (fun a b => a.start < b.start)
+          for d in ds do
+            IO.eprintln (renderDiag path.toString src d)
           -- Only on failure, and only when the suffix disagrees: pointing a language's compiler
           -- at another language's file fails for a reason the parse error never mentions, and
           -- that is a confusing way to spend ten minutes. Saying it unconditionally would nag at
@@ -140,7 +153,7 @@ def processFile (ext : String) (showStages : Bool)
 first failure — a compiler that reports one error per run is annoying to use. The exit code is 0
 only if all of them succeeded. -/
 def cli (name ext : String)
-    (compile : Bool → String → Except (List Abstraction.Step × Abstraction.Failure) String)
+    (compile : Bool → String → Except (List Abstraction.Step × List Abstraction.Failure) String)
     (args : List String) : IO UInt32 := do
   if args.contains "--help" || args.contains "-h" then
     IO.println (usage name ext)

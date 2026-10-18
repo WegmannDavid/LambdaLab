@@ -132,14 +132,39 @@ def run : {X Y : Stage} → Chain X Y → X.Carrier →
           | .error d => (steps, .error ⟨Z.name, { d with loc := back d.loc }⟩)
           | .ok z => (steps ++ [⟨Z.name, Z.render z⟩], .ok (z, back ∘ e.hom.locate y))
 
+/-- **Run every stage as far as it goes**, for diagnostics: each stage's `recover`, on whatever the
+stage before it could make of the input. Every stage's diagnostics are collected, pulled back into
+the input as `run` pulls back the one it reports, and the run continues as long as each stage
+hands on *something*. Informal, like `recover`: a driver reports these, but takes its output from
+`run`. -/
+def runAll : {X Y : Stage} → Chain X Y → X.Carrier →
+    List Step × List Failure × Option (Y.Carrier × (Loc → Loc))
+  | X, Y, .one e, x =>
+      let r := e.hom.recover x
+      match r.2 with
+      | none => ([⟨X.name, X.render x⟩], r.1.map (⟨Y.name, ·⟩), none)
+      | some (y, back) =>
+          ([⟨X.name, X.render x⟩, ⟨Y.name, Y.render y⟩], r.1.map (⟨Y.name, ·⟩), some (y, back))
+  | _, Z, .cons p e, x =>
+      match p.runAll x with
+      | (steps, fs, none) => (steps, fs, none)
+      | (steps, fs, some (y, back)) =>
+          let r := e.hom.recover y
+          let fs' := fs ++ r.1.map fun d => ⟨Z.name, { d with loc := back d.loc }⟩
+          match r.2 with
+          | none => (steps, fs', none)
+          | some (z, back') => (steps ++ [⟨Z.name, Z.render z⟩], fs', some (z, back ∘ back'))
+
 /-- **What a driver prints.** On success, with `showStages := false` the finished value rendered —
 the very string the collapsed pipeline would have produced, by `run_eq_abstract`; with `true`, every
-stage the input passed through, each under its own name. On rejection, the failure, and the stages
-reached before it. -/
+stage the input passed through, each under its own name. On rejection, **every** failure the stages
+can find (`runAll`), and the stages reached on the way. -/
 def report (c : Chain X Y) (showStages : Bool) (x : X.Carrier) :
-    Except (List Step × Failure) String :=
+    Except (List Step × List Failure) String :=
   match c.run x with
-  | (steps, .error f) => .error (steps, f)
+  | (steps, .error f) =>
+      let all := c.runAll x
+      if all.2.1.isEmpty then .error (steps, [f]) else .error (all.1, all.2.1)
   | (steps, .ok (y, _)) =>
       if showStages then
         .ok (String.intercalate "\n" (steps.map fun s => s!"== {s.stage} ==\n{s.text}"))

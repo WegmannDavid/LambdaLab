@@ -138,6 +138,15 @@ structure Abstraction (Concrete Abstract : Type) (Ann : Abstract → Type) where
   /-- **Where an output location came from** in the input `c`: how a later stage's diagnostic is
   pointed back at this stage's input. Informal, like the diagnostics; by default the identity. -/
   locate : Concrete → Loc → Loc := fun _ l => l
+  /-- **Best effort, for diagnostics**: everything wrong with `c`, and as much of an abstract value
+  as could be made of it — with where that value's locations came from in `c`. A stage that can
+  get past an error (skip a declaration that does not parse, or does not check) says so here, so a
+  driver can report every error rather than the first. Informal: no law mentions it, and a driver
+  takes its *output* from `abstract` alone. By default, `abstract`'s answer. -/
+  recover : Concrete → List Diag × Option (Abstract × (Loc → Loc)) := fun c =>
+    match abstract c with
+    | .ok a => ([], some (a, locate c))
+    | .error d => ([d], none)
 
 namespace Abstraction
 

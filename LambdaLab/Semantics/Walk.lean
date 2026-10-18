@@ -168,6 +168,49 @@ structure LawfulOn (P : NEList D → Prop) : Prop where
   /-- …and running the walk on it changes nothing. -/
   idem : ∀ p q, P p → w.run p = .ok q → w.run q = .ok q
 
+/-! ## Getting past a rejection
+
+For diagnostics only, and informal. A rejected declaration is reported and skipped — the state
+stays as it was, as though the declaration had not been written — and the rest are run as usual,
+so one bad declaration does not hide the others. What a later declaration says about the skipped
+one's name is then reported in its turn. -/
+
+/-- Run the walk past its rejections: the rejections, by position, and the positions of the
+declarations it accepted. -/
+def runSkip : w.State → List D → Nat → List (Nat × String) × List Nat
+  | _, [], _ => ([], [])
+  | s, d :: ds, i =>
+      match w.step s d with
+      | .error m =>
+          let r := runSkip s ds (i + 1)
+          ((i, m) :: r.1, r.2)
+      | .ok (_, s') =>
+          let r := runSkip s' ds (i + 1)
+          (r.1, i :: r.2)
+
+/-- Point the `j`-th declaration of a sub-program at the declaration it was, `kept[j]`. -/
+def declsFrom (kept : List Nat) : Loc → Loc
+  | .decl j => .decl ((kept[j]?).getD j)
+  | l => l
+
+/-- **Best effort**: every rejection, and — when some declaration was rejected — what `run` makes of
+the declarations that were not. -/
+def recoverWith {α : Type} (run : NEList D → Except Diag α) (p : NEList D) :
+    List Diag × Option (α × (Loc → Loc)) :=
+  let r := w.runSkip w.init p.toList 0
+  if r.1.isEmpty then
+    match run p with
+    | .ok q => ([], some (q, id))
+    | .error d => ([d], none)
+  else
+    let diags := r.1.map fun e => ({ msg := e.2, loc := .decl e.1 } : Diag)
+    match r.2.filterMap (p.toList[·]?) with
+    | [] => (diags, none)
+    | d :: ds =>
+        match run (d, ds) with
+        | .ok q => (diags, some (q, declsFrom r.2))
+        | .error d' => (diags ++ [d'], none)
+
 /-! ## The stage -/
 
 /-- **What the walk produces**: the programs it leaves unchanged. For an idempotent walk this is
@@ -199,7 +242,8 @@ every program the walk takes there, so the stage is complete by construction
 (`Abstraction.ofFibers`). -/
 def stage (h : w.Idempotent) :
     Abstraction (NEList D) w.Fixed (fun q => { p : NEList D // w.toFixed h p = .ok q }) :=
-  Abstraction.ofFibers (w.toFixed h) (fun q => ⟨q.val, (w.toFixed_eq_ok h).mpr q.property⟩)
+  { Abstraction.ofFibers (w.toFixed h) (fun q => ⟨q.val, (w.toFixed_eq_ok h).mpr q.property⟩) with
+    recover := w.recoverWith (w.toFixed h) }
 
 /-- What the walk produces from `P`-programs: those it leaves unchanged that still satisfy `P`. -/
 def FixedOn (P : NEList D → Prop) : Type := { q : NEList D // P q ∧ w.run q = .ok q }
@@ -229,8 +273,17 @@ makes of them. The same construction as `stage`. -/
 def stageOn {P : NEList D → Prop} (h : w.LawfulOn P) :
     Abstraction { p : NEList D // P p } (w.FixedOn P)
       (fun q => { p : { p : NEList D // P p } // w.toFixedOn h p = .ok q }) :=
-  Abstraction.ofFibers (w.toFixedOn h)
-    (fun q => ⟨⟨q.val, q.property.1⟩, (w.toFixedOn_eq_ok h).mpr q.property.2⟩)
+  { Abstraction.ofFibers (w.toFixedOn h)
+      (fun q => ⟨⟨q.val, q.property.1⟩, (w.toFixedOn_eq_ok h).mpr q.property.2⟩) with
+    -- A sub-program of a `P`-program need not satisfy `P`, so past a rejection there is no value
+    -- to hand on: every rejection is reported, and the chain stops here.
+    recover := fun p =>
+      let r := w.runSkip w.init p.val.toList 0
+      if r.1.isEmpty then
+        match w.toFixedOn h p with
+        | .ok q => ([], some (q, id))
+        | .error d => ([d], none)
+      else (r.1.map fun e => ({ msg := e.2, loc := .decl e.1 } : Diag), none) }
 
 end Walk
 
