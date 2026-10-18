@@ -1,0 +1,8 @@
+inductive Nat := zero | succ Nat
+
+def one : Nat := succ zero
+def two : Nat := succ one
+
+def plus : Nat → Nat → Nat := λ m : Nat . λ n : Nat . Nat_rec Nat n (λ p : Nat . λ r : Nat . succ r) m
+
+def six : Nat := plus two (plus two two)
