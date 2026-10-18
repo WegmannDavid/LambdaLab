@@ -386,6 +386,14 @@ class PrincipalElaborate (N Tm Ty : Type) [atom : Atom N] extends LawfulMVars N 
   tyGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Ty → Prop)
   /-- The same for terms. -/
   tmGroundDec : DecidablePred (HasVars.Ground (A := Nat) : Tm → Prop)
+  /-- **Why there is no typing**, for a diagnostic: consulted only once `elaborate` has said there
+  is none, and informal — no law mentions it. `showName` displays a name. -/
+  explain : (showName : N → String) → Context N Ty → Tm → Ty → String :=
+    fun _ _ _ _ => "this declaration does not have its declared type"
+  /-- **What is left undetermined**, for a diagnostic: consulted when elaboration succeeded but
+  left a metavariable in the declared type `τ` or the body `t`. Informal. -/
+  explainUnsolved : (showName : N → String) → Tm → Ty → String :=
+    fun _ _ _ => "this declaration's types are not all determined: a metavariable is left unsolved"
 
 /-! `reducible` besides `low`, so that a `Ground` check written against these is definitionally the
 language's own structural check rather than something merely propositionally equal to it. -/

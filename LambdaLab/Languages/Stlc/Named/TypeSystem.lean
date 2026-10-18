@@ -6,6 +6,7 @@ import LambdaLab.Languages.Stlc.Named.Typing.Preservation
 import LambdaLab.Languages.Stlc.Named.Typing.Normalization
 import LambdaLab.Languages.Stlc.Named.Typing.Unification
 import LambdaLab.Languages.Stlc.Named.Typing.JComplete
+import LambdaLab.Languages.Stlc.Named.Typing.Explain
 import LambdaLab.TypeSystem.Named.Vernacular.Elaborate
 
 /-!
@@ -150,6 +151,8 @@ instance instPrincipalElaborate : TypeSystem.Named.PrincipalElaborate N (Term N)
   elaborate := elabMGU
   tyGroundDec := inferInstance
   tmGroundDec := inferInstance
+  explain := explainElab
+  explainUnsolved := explainUnsolvedElab
 
 /-! ## Normalization, and the rest of the reduction classes
 

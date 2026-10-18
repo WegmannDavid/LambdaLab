@@ -108,6 +108,9 @@ abbrev Var (D : DefLanguage) : Type := { t : Token D.lex // D.isVarName t = true
 
 instance (D : DefLanguage) : Atom (Var D) := D.varAtom
 
+/-- A name, as written — for diagnostics. -/
+instance (D : DefLanguage) : ToString (Var D) := ⟨fun x => x.val.val⟩
+
 /-- A single declaration of `D`: `def NAME : TYPE := BODY`, named by `D`'s own variables. -/
 abbrev Command (D : DefLanguage) : Type := TypeSystem.Named.Vernacular.Command (Var D) D.Tm D.Ty
 

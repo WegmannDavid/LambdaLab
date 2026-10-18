@@ -78,6 +78,9 @@ structure ElabState (N Ty : Type) [Atom N] where
   /-- Every metavariable solved so far. -/
   solved : Subst Nat Ty
 
+/-! Names are displayed in a rejection's diagnostic. -/
+variable [ToString N]
+
 /-- **Elaborate one declaration**: apply what is already solved, elaborate against the context,
 and keep the answer only if it leaves nothing unsolved. -/
 def elabStep (s : ElabState N Ty) :
@@ -85,7 +88,9 @@ def elabStep (s : ElabState N Ty) :
   | .decl x τ t =>
       match PrincipalElaborate.elaborate s.ctx (HasSubst.pSubst t s.solved)
           (HasSubst.pSubst τ s.solved) with
-      | .impossible _ => .error "this declaration does not have its declared type"
+      | .impossible _ =>
+          .error (PrincipalElaborate.explain (fun y : N => toString y) s.ctx (HasSubst.pSubst t s.solved)
+            (HasSubst.pSubst τ s.solved))
       | .mgu σ _ _ =>
           if Ground (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ) ∧
               Ground (HasSubst.pSubst (HasSubst.pSubst t s.solved) σ) then
@@ -93,8 +98,9 @@ def elabStep (s : ElabState N Ty) :
                 (HasSubst.pSubst (HasSubst.pSubst t s.solved) σ),
               ⟨s.ctx.cons x (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ),
                 Subst.comp σ s.solved⟩)
-          else .error "this declaration's types are not all determined: a metavariable is left \
-            unsolved"
+          else .error (PrincipalElaborate.explainUnsolved (N := N) (fun y : N => toString y)
+            (HasSubst.pSubst (HasSubst.pSubst t s.solved) σ)
+            (HasSubst.pSubst (HasSubst.pSubst τ s.solved) σ))
 
 /-- **The program elaborator**: the walk from the empty context, nothing solved. -/
 def elabWalk : Walk (Command N Tm Ty) where

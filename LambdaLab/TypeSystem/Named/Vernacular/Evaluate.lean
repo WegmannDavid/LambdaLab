@@ -317,7 +317,7 @@ theorem evalWalk_run_ok {p : Program N Tm Ty} (h : HasType p) :
 /-- **The law, as the stage after elaboration**: on programs elaboration leaves unchanged, the
 evaluator produces programs elaboration leaves unchanged — they are well-typed — and is idempotent
 there, as it is everywhere. -/
-theorem evalWalk_lawfulOn :
+theorem evalWalk_lawfulOn [ToString N] :
     (evalWalk (N := N) (Tm := Tm) (Ty := Ty)).LawfulOn
       (fun p => (elabWalk (N := N) (Tm := Tm) (Ty := Ty)).run p = .ok p) where
   preserve _ _ _ h := elabWalk_self (evalWalk_sound h)
