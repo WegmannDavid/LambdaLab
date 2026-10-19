@@ -20,6 +20,9 @@ What it gives you, in any of the six languages:
   `\forall` → ∀, `\Lambda` → Λ, and every other abbreviation Lean knows. This is the Lean
   extension's input mode, switched on for these languages (the `lean4.input.languages` setting) —
   so it needs the Lean 4 extension installed.
+* no warning boxes around `α` and the other Greek letters: VS Code marks characters that look
+  like ASCII ones (`α` like `a`), and, as the Lean extension does for Lean, these languages switch
+  that off (`editor.unicodeHighlight.ambiguousCharacters`).
 
 After rebuilding a compiler, run **LambdaLab: Restart Language Servers**.
 

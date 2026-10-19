@@ -2,7 +2,7 @@
   "name": "lambdalab",
   "displayName": "LambdaLab",
   "description": "Syntax highlighting and live checking for the LambdaLab calculi: STLC, System F, CoC, CoIC, ECC and Float.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "lambdalab",
   "license": "UNLICENSED",
   "engines": {
@@ -140,7 +140,25 @@
         "coic",
         "ecc",
         "float"
-      ]
+      ],
+      "[stlc]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      },
+      "[systemf]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      },
+      "[coc]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      },
+      "[coic]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      },
+      "[ecc]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      },
+      "[float]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false
+      }
     }
   }
 }
