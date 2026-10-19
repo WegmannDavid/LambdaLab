@@ -1,6 +1,6 @@
 import LambdaLab.Nominal.Instances
 import LambdaLab.Languages.Stlc.Named.Translation
-import LambdaLab.Languages.Stlc.DeBruijn.Confluence
+import LambdaLab.Languages.Stlc.DeBruijn.Step.Confluence
 
 /-!
 # Confluence for the named-variable variant via translation

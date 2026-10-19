@@ -1,5 +1,5 @@
-import LambdaLab.Languages.Stlc.DeBruijn.Typing
-import LambdaLab.Languages.Stlc.DeBruijn.Step
+import LambdaLab.Languages.Stlc.DeBruijn.Typing.Basic
+import LambdaLab.Languages.Stlc.DeBruijn.Step.Basic
 
 /-!
 # Preservation

@@ -153,9 +153,9 @@ class HasType (N Tm Ty : Type) [atom : Atom N] where
 Precedence and spelling are the concrete judgements', so a generic statement reads exactly like
 the instance it will be applied to. `Languages/Stlc/Named/Typing/Basic.lean` dropped its own copy
 when this one arrived, and had to: both elaborate wherever the instance is in scope, and being defeq
-they make every use `Ambiguous term`. `Languages/Stlc/DeBruijn/Typing.lean` keeps a local one and
-may — its context is a `List Ty`, which cannot instantiate `HasType`, so there is no second reading
-to collide with and the elaborator tells the two apart by the type of `Γ`.
+they make every use `Ambiguous term`. `Languages/Stlc/DeBruijn/Typing/Basic.lean` keeps a local one
+and may — its context is a `List Ty`, which cannot instantiate `HasType`, so there is no second
+reading to collide with and the elaborator tells the two apart by the type of `Γ`.
 
 Argument levels are pinned at 41 so that `Γ ⊢ t : τ → P` splits at the arrow; unpinned, the
 trailing slot parses at level 0, swallows it, and the statement fails to elaborate. -/

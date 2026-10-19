@@ -7,7 +7,7 @@ import LambdaLab.Relation.Closure
 Reflexive-transitive closure of `Step`, with congruence rules for
 lambda and application — same shape as the de Bruijn `MStep`, and, like it,
 the shared `RTC` rather than a bespoke inductive. See
-`LambdaLab/Languages/Stlc/DeBruijn/MStep.lean` for the note on `head` vs `tail`.
+`LambdaLab/Languages/Stlc/DeBruijn/Step/MStep.lean` for the note on `head` vs `tail`.
 -/
 
 namespace LambdaLab.Languages.Stlc.Named

@@ -6,10 +6,10 @@ this inductive over their own `Step`, and `TypeSystem.Named.StronglyNormalizing`
 abstract `Tm`, so it belongs beside `RTC` rather than in any one of them — the same reasoning
 that put the closures in `Closure.lean`.
 
-`Languages/Stlc/Named/Typing/Normalization.lean` is on it: its `SN` is an `abbrev` for `LambdaLab.SN
-Step`, which is what lets `HasType.sn` discharge the class field with no conversion.
-`Languages/Stlc/DeBruijn/Reducibility.lean` still carries a local copy — nothing depends on it
-through the interface, so the migration has not been forced.
+`Languages/Stlc/Named/Typing/Normalization.lean` is on it: its `SN` is an `abbrev` for
+`LambdaLab.SN Step`, which is what lets `HasType.sn` discharge the class field with no conversion.
+`Languages/Stlc/DeBruijn/Typing/Reducibility.lean` still carries a local copy — nothing depends on
+it through the interface, so the migration has not been forced.
 
 ## Why an inductive and not `Acc`
 

@@ -1,4 +1,4 @@
-import LambdaLab.Languages.Stlc.DeBruijn.Typing
+import LambdaLab.Languages.Stlc.DeBruijn.Typing.Basic
 
 /-!
 # Properties of typing
