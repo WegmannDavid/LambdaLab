@@ -2,7 +2,7 @@
   "name": "lambdalab",
   "displayName": "LambdaLab",
   "description": "Syntax highlighting and live checking for the LambdaLab calculi: STLC, System F, CoC, CoIC, ECC and Float.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "lambdalab",
   "license": "UNLICENSED",
   "engines": {

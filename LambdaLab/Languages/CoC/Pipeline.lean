@@ -1,4 +1,5 @@
 import LambdaLab.Languages.CoC.Surface
+import LambdaLab.Languages.CoC.Holes
 import LambdaLab.Languages.CoC.DeBruijn.Check
 import LambdaLab.Languages.CoC.Named.Typing
 import LambdaLab.Semantics.Walk
@@ -16,6 +17,8 @@ Bruijn index, and a free name is an earlier definition, **replaced by its value*
 transparent — a later term may depend on what an earlier one *is*, not just on its type (`def T :
 * := Nat` makes `T` and `Nat` interchangeable) — and inlining is the simplest semantics with that
 property. Every definition's value is closed, so inlining it under binders needs no shifting.
+A hole (`_`, `?A` — `Holes.lean`) does not translate, so whatever translates has none left
+(`elabTm_noHole`).
 
 ## Readback
 
@@ -27,11 +30,12 @@ particular — which is what makes evaluation idempotent.
 
 ## Two walks
 
-* **checking** (`checkWalk`): each definition is translated and its term checked against its
-  declared type in the empty context — the earlier definitions having been inlined. It rewrites
-  nothing. A definition is accepted exactly when its translation is well typed
-  (`checkStep_iff`); with nothing declared before it, exactly when the *named* judgement holds of
-  what was parsed (`checkStep_named`).
+* **checking** (`checkWalk`): each definition's holes are filled (`fillHoles`, not verified), and
+  then it is translated and its term checked against its declared type in the empty context —
+  the earlier definitions having been inlined. It rewrites nothing but the holes. A definition
+  without holes is accepted exactly when its translation is well typed (`checkPlain_iff`); what
+  is accepted has no holes and is a fixed point (`checkStep_fixed`), and with nothing declared
+  before it, the *named* judgement holds of it (`checkStep_named`).
 * **evaluation** (`evalWalk`), after checking: each definition's term, with the earlier
   definitions' values inlined, is normalized — total, by strong normalization — and written back.
   The state carries each value with its typing and normality.
@@ -75,12 +79,14 @@ theorem lookupIdx_eq_some {n : SName} : ∀ {l : List SName} {i : Nat},
 
 /-! ## Translation -/
 
-/-- Translate a term: bound names to indices, earlier definitions to their values. -/
-def elabTm (bs : List SName) (gl : List (SName × Tm)) : STm → Option Tm
+/-- Translate a term: bound names to indices, earlier definitions to their values. A hole does not
+translate. -/
+def elabTm (bs : List SName) (gl : List Global) : STm → Option Tm
   | .var x =>
+      if isHoleName x then none else
       match lookupIdx x bs with
       | some i => some (.var i)
-      | none => (gl.find? (fun p => p.1 = x)).map (·.2)
+      | none => (gl.find? (fun p => p.name = x)).map (·.val)
   | .sort s => some (.sort s)
   | .pi x A B =>
       match elabTm bs gl A, elabTm (x :: bs) gl B with
@@ -102,10 +108,12 @@ theorem elab_eq_toDB : ∀ (t : STm) (bs : List SName) (t' : Tm),
   | .var x, bs, t', h => by
       simp only [elabTm] at h
       split at h
-      · rename_i i hi
-        cases h
-        simp only [Named.Tm.toDB, lookupIdx_eq_some hi]
-      · simp at h
+      · cases h
+      · split at h
+        · rename_i i hi
+          cases h
+          simp only [Named.Tm.toDB, lookupIdx_eq_some hi]
+        · simp at h
   | .sort _, _, _, h => by simp only [elabTm, Option.some.injEq] at h; subst h; rfl
   | .pi x A B, bs, t', h => by
       simp only [elabTm] at h
@@ -129,6 +137,35 @@ theorem elab_eq_toDB : ∀ (t : STm) (bs : List SName) (t' : Tm),
         simp only [Named.Tm.toDB, elab_eq_toDB f bs f' hf, elab_eq_toDB a bs a' ha]
       · cases h
 
+/-- **What translates has no holes.** -/
+theorem elabTm_noHole : ∀ {t : STm} {bs : List SName} {gl : List Global} {t' : Tm},
+    elabTm bs gl t = some t' → STm.hasHole t = false
+  | .var x, _, _, _, h => by
+      simp only [elabTm] at h
+      split at h
+      · cases h
+      · rename_i hx
+        simpa [STm.hasHole] using hx
+  | .sort _, _, _, _, _ => rfl
+  | .pi x A B, bs, gl, _, h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i A' B' hA hB
+        simp [STm.hasHole, elabTm_noHole hA, elabTm_noHole hB]
+      · cases h
+  | .lam x A b, bs, gl, _, h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i A' b' hA hb
+        simp [STm.hasHole, elabTm_noHole hA, elabTm_noHole hb]
+      · cases h
+  | .app f a, bs, gl, _, h => by
+      simp only [elabTm] at h
+      split at h
+      · rename_i f' a' hf ha
+        simp [STm.hasHole, elabTm_noHole hf, elabTm_noHole ha]
+      · cases h
+
 /-! ## Canonical names -/
 
 theorem coc_digit_word : ∀ c, isDigitChar c = true → cocLex.word c = true :=
@@ -145,6 +182,12 @@ def tmName (k : Nat) : SName :=
     have h2 := h1 _ hmem
     rw [LambdaLab.Parser.Numeral.isNatTok_natTok] at h2
     cases h2⟩
+
+/-- A canonical name is never a hole: it starts with `x`. -/
+theorem isHoleName_tmName (k : Nat) : isHoleName (tmName k) = false := by
+  simp only [isHoleName, tmName, LambdaLab.Parser.Numeral.natTok,
+    LambdaLab.Parser.IsoParser.Token.ofWord_toList]
+  split <;> simp_all
 
 theorem tmName_inj {j k : Nat} (h : tmName j = tmName k) : j = k := by
   have := congrArg (fun n : SName => natOfTok n.val) h
@@ -303,11 +346,12 @@ theorem rb_fv : ∀ (t : Tm) (bs : List SName), RbInv bs t →
 
 /-- **Reading a printed term back gives the term**, whatever definitions are in scope — none is
 ever consulted, because every name is bound. -/
-theorem elab_rb : ∀ (t : Tm) (bs : List SName) (gl : List (SName × Tm)), RbInv bs t →
+theorem elab_rb : ∀ (t : Tm) (bs : List SName) (gl : List Global), RbInv bs t →
     elabTm bs gl (rb bs t) = some t
   | .var i, bs, gl, hinv => by
-      obtain ⟨hlt, _, hne⟩ := hinv i (by simp [Tm.hasFree])
-      simp only [rb, elabTm, lookupIdx_nameAt hlt hne]
+      obtain ⟨hlt, hname, hne⟩ := hinv i (by simp [Tm.hasFree])
+      simp only [rb, elabTm, hname, isHoleName_tmName, Bool.false_eq_true, if_false]
+      rw [← hname, lookupIdx_nameAt hlt hne]
   | .sort _, _, _, _ => rfl
   | .pi A B, bs, gl, hinv => by
       have hA := elab_rb A bs gl (fun j hj => hinv j (by simp [Tm.hasFree, hj]))
@@ -376,14 +420,14 @@ theorem DeBruijn.Tm.hasFree_lt : ∀ {t : Tm} {n i : Nat}, t.Scoped n → t.hasF
       · exact DeBruijn.Tm.hasFree_lt hu hi
 
 /-- A closed term reads back and translates to itself. -/
-theorem elab_rb_closed {t : Tm} (h : t.Scoped 0) (gl : List (SName × Tm)) :
+theorem elab_rb_closed {t : Tm} (h : t.Scoped 0) (gl : List Global) :
     elabTm [] gl (rb [] t) = some t :=
   elab_rb t [] gl (fun _ hi => absurd (DeBruijn.Tm.hasFree_lt h hi) (Nat.not_lt_zero _))
 
 /-! ## Checking -/
 
-/-- What checking carries: each earlier definition's name and translated value. -/
-abbrev CState := List (SName × Tm)
+/-- What checking carries: each earlier definition's name, translated value and written type. -/
+abbrev CState := List Global
 
 /-- The diagnostic for a definition whose term does not have its type. -/
 def illTypedMsg : String := "this definition does not have its declared type"
@@ -394,14 +438,22 @@ def unknownNameMsg (inType : Bool) : String :=
   s!"{if inType then "the declared type" else "the term"} mentions a name that is neither \
     bound nor an earlier definition"
 
-/-- **Check one definition.** It rewrites nothing. -/
-def checkStep (s : CState) (d : CDecl) : Except String (CDecl × CState) :=
+/-- **Check one definition as written.** It rewrites nothing. -/
+def checkPlain (s : CState) (d : CDecl) : Except String (CDecl × CState) :=
   match elabTm [] s d.ty, elabTm [] s d.tm with
   | some T', some e' =>
       match decHasType [] Wf.nil e' T' with
-      | isTrue _ => .ok (d, (d.name, e') :: s)
+      | isTrue _ => .ok (d, ⟨d.name, e', d.ty⟩ :: s)
       | isFalse _ => .error illTypedMsg
   | T', _ => .error (unknownNameMsg T'.isNone)
+
+/-- **Check one definition**: fill its holes, if it has any, then check what that gives. -/
+def checkStep (s : CState) (d : CDecl) : Except String (CDecl × CState) :=
+  if CDecl.hasHole d then
+    match fillHoles s d with
+    | .ok d' => checkPlain s d'
+    | .error e => .error e
+  else checkPlain s d
 
 /-- **The checker**, as a walk. -/
 def checkWalk : Walk CDecl where
@@ -409,30 +461,58 @@ def checkWalk : Walk CDecl where
   init := []
   step := checkStep
 
-theorem checkStep_out {s : CState} {d d' : CDecl} {s' : CState}
-    (h : checkStep s d = .ok (d', s')) : d' = d := by
-  simp only [checkStep] at h
+theorem checkPlain_out {s : CState} {d d' : CDecl} {s' : CState}
+    (h : checkPlain s d = .ok (d', s')) : d' = d := by
+  simp only [checkPlain] at h
   split at h
   · split at h
     · cases h; rfl
     · cases h
   · cases h
 
-theorem checkWalk_stepIdempotent : checkWalk.StepIdempotent := by
-  intro s d d' s' h
-  have h' : checkStep s d = .ok (d', s') := h
-  have := checkStep_out h'
-  subst this
-  exact h
+/-- What the plain check accepts has no holes: it translated. -/
+theorem checkPlain_noHole {s : CState} {d d' : CDecl} {s' : CState}
+    (h : checkPlain s d = .ok (d', s')) : CDecl.hasHole d = false := by
+  simp only [checkPlain] at h
+  split at h
+  · rename_i T' e' hT he
+    simp [CDecl.hasHole, elabTm_noHole hT, elabTm_noHole he]
+  · cases h
+
+theorem checkStep_of_noHole {s : CState} {d : CDecl} (h : CDecl.hasHole d = false) :
+    checkStep s d = checkPlain s d := by
+  simp [checkStep, h]
+
+/-- **What checking accepts is a fixed point**: it has no holes, so checking it again is the plain
+check, which accepts it unchanged. -/
+theorem checkStep_fixed {s : CState} {d d' : CDecl} {s' : CState}
+    (h : checkStep s d = .ok (d', s')) :
+    checkPlain s d' = .ok (d', s') ∧ checkStep s d' = .ok (d', s') := by
+  have hp : checkPlain s d' = .ok (d', s') := by
+    unfold checkStep at h
+    split at h
+    · split at h
+      · rename_i d'' _
+        have := checkPlain_out h
+        subst this
+        exact h
+      · cases h
+    · have := checkPlain_out h
+      subst this
+      exact h
+  exact ⟨hp, (checkStep_of_noHole (checkPlain_noHole hp)).trans hp⟩
+
+theorem checkWalk_stepIdempotent : checkWalk.StepIdempotent :=
+  fun _ _ _ _ h => (checkStep_fixed h).2
 
 theorem checkWalk_idempotent : checkWalk.Idempotent :=
   checkWalk.idempotent_of_step checkWalk_stepIdempotent
 
-/-- **A definition is accepted exactly when its translation is well typed.** -/
-theorem checkStep_iff (s : CState) (d : CDecl) :
-    (∃ r, checkStep s d = .ok r) ↔
+/-- **A definition as written is accepted exactly when its translation is well typed.** -/
+theorem checkPlain_iff (s : CState) (d : CDecl) :
+    (∃ r, checkPlain s d = .ok r) ↔
       ∃ T' e', elabTm [] s d.ty = some T' ∧ elabTm [] s d.tm = some e' ∧ HasType [] e' T' := by
-  simp only [checkStep]
+  simp only [checkPlain]
   constructor
   · rintro ⟨r, h⟩
     split at h
@@ -448,13 +528,13 @@ theorem checkStep_iff (s : CState) (d : CDecl) :
     · exact ⟨_, rfl⟩
     · rename_i hn _; exact absurd hty hn
 
-/-- **With nothing declared before it, a definition the checker accepts is well typed in the named
-calculus** — the parsed term at the parsed type, no translation in sight. -/
-theorem checkStep_named {d : CDecl} (h : ∃ r, checkStep [] d = .ok r) :
-    Named.HasType [] d.tm d.ty := by
-  obtain ⟨T', e', hT, he, hty⟩ := (checkStep_iff [] d).mp h
-  have e₁ := elab_eq_toDB d.ty [] T' hT
-  have e₂ := elab_eq_toDB d.tm [] e' he
+/-- **With nothing declared before it, what the checker accepts is well typed in the named
+calculus** — the definition with its holes filled, no translation in sight. -/
+theorem checkStep_named {d d' : CDecl} {s' : CState} (h : checkStep [] d = .ok (d', s')) :
+    Named.HasType [] d'.tm d'.ty := by
+  obtain ⟨T', e', hT, he, hty⟩ := (checkPlain_iff [] d').mp ⟨_, (checkStep_fixed h).1⟩
+  have e₁ := elab_eq_toDB d'.ty [] T' hT
+  have e₂ := elab_eq_toDB d'.tm [] e' he
   subst e₁ e₂
   exact (Named.hasType_iff_toDB (Γ := []) trivial).mpr hty
 
@@ -465,21 +545,23 @@ structure EEntry where
   name : SName
   ty : Tm
   val : Tm
+  /-- The type as written. -/
+  sty : STm
   typed : HasType [] val ty
   normal : val.Normal
 
 theorem EEntry.ext {a b : EEntry} (hn : a.name = b.name) (ht : a.ty = b.ty)
-    (hv : a.val = b.val) : a = b := by
+    (hv : a.val = b.val) (hs : a.sty = b.sty) : a = b := by
   cases a; cases b
-  simp only at hn ht hv
-  subst hn ht hv
+  simp only at hn ht hv hs
+  subst hn ht hv hs
   rfl
 
 /-- What evaluation carries: the earlier definitions' values. -/
 abbrev EState := List EEntry
 
 /-- The values, as translation looks them up. -/
-def EState.vals (s : EState) : List (SName × Tm) := s.map (fun e => (e.name, e.val))
+def EState.vals (s : EState) : List Global := s.map (fun e => ⟨e.name, e.val, e.sty⟩)
 
 /-- **Evaluate one definition**: translate it with the earlier values inlined, check it, normalize
 it — total, the closed term being well typed — and write it back with generated names. -/
@@ -489,7 +571,7 @@ def evalStep (s : EState) (d : CDecl) : Except String (CDecl × EState) :=
       match decHasType [] Wf.nil e' T' with
       | isTrue h =>
           .ok (⟨d.name, d.ty, rb [] (h.eval Wf.nil)⟩,
-            ⟨d.name, T', h.eval Wf.nil, h.eval_typed Wf.nil,
+            ⟨d.name, T', h.eval Wf.nil, d.ty, h.eval_typed Wf.nil,
               (Tm.eval_spec (h.sn Wf.nil)).2⟩ :: s)
       | isFalse _ => .error illTypedMsg
   | T', _ => .error (unknownNameMsg T'.isNone)
@@ -504,29 +586,29 @@ def evalWalk : Walk CDecl where
 pushed with its typing. -/
 theorem evalStep_sound {s : EState} {d d' : CDecl} {s' : EState}
     (h : evalStep s d = .ok (d', s')) :
-    ∃ e : EEntry, d' = ⟨e.name, d.ty, rb [] e.val⟩ ∧ e.name = d.name ∧
+    ∃ e : EEntry, d' = ⟨e.name, d.ty, rb [] e.val⟩ ∧ e.name = d.name ∧ e.sty = d.ty ∧
       elabTm [] s.vals d.ty = some e.ty ∧ s' = e :: s := by
   simp only [evalStep] at h
   split at h
   · rename_i T' e' hT he
     split at h
     · cases h
-      exact ⟨_, rfl, rfl, hT, rfl⟩
+      exact ⟨_, rfl, rfl, rfl, hT, rfl⟩
     · cases h
   · cases h
 
 /-- **An evaluated definition evaluates to itself**, with the same entry: its readback reads back
 as its value, which is closed and normal. -/
 theorem evalStep_reduced (s : EState) (T : STm) (e : EEntry)
-    (hT : elabTm [] s.vals T = some e.ty) :
+    (hT : elabTm [] s.vals T = some e.ty) (hs : e.sty = T) :
     evalStep s ⟨e.name, T, rb [] e.val⟩ = .ok (⟨e.name, T, rb [] e.val⟩, e :: s) := by
   have hr : elabTm [] s.vals (rb [] e.val) = some e.val := elab_rb_closed e.typed.scoped _
   simp only [evalStep, hT, hr]
   split
   · rename_i h _
     have hv : h.eval Wf.nil = e.val := Tm.eval_of_normal _ e.normal
-    have he : (⟨e.name, e.ty, h.eval Wf.nil, h.eval_typed Wf.nil,
-        (Tm.eval_spec (h.sn Wf.nil)).2⟩ : EEntry) = e := EEntry.ext rfl rfl hv
+    have he : (⟨e.name, e.ty, h.eval Wf.nil, T, h.eval_typed Wf.nil,
+        (Tm.eval_spec (h.sn Wf.nil)).2⟩ : EEntry) = e := EEntry.ext rfl rfl hv hs.symm
     rw [he, hv]
   · rename_i hn _
     exact absurd e.typed hn
@@ -535,9 +617,9 @@ theorem evalStep_reduced (s : EState) (T : STm) (e : EEntry)
 theorem evalWalk_stepIdempotent : evalWalk.StepIdempotent := by
   intro s d d' s' h
   have h' : evalStep s d = .ok (d', s') := h
-  obtain ⟨e, rfl, hn, hT, rfl⟩ := evalStep_sound h'
+  obtain ⟨e, rfl, hn, hs, hT, rfl⟩ := evalStep_sound h'
   show evalStep s ⟨e.name, d.ty, rb [] e.val⟩ = .ok _
-  exact evalStep_reduced s d.ty e hT
+  exact evalStep_reduced s d.ty e hT hs
 
 /-- What checking would carry, read off what evaluation carries. -/
 def EState.proj (s : EState) : CState := s.vals
@@ -545,11 +627,12 @@ def EState.proj (s : EState) : CState := s.vals
 /-- **Evaluation's output checks**, a step at a time, in the corresponding state. -/
 theorem evalStep_check {s : EState} {d d' : CDecl} {s' : EState}
     (h : evalStep s d = .ok (d', s')) : checkStep s.proj d' = .ok (d', s'.proj) := by
-  obtain ⟨e, rfl, _, hT, rfl⟩ := evalStep_sound h
+  obtain ⟨e, rfl, _, hs, hT, rfl⟩ := evalStep_sound h
   have hr : elabTm [] s.vals (rb [] e.val) = some e.val := elab_rb_closed e.typed.scoped _
-  simp only [checkStep, EState.proj, hT, hr]
+  rw [checkStep_of_noHole (by simp [CDecl.hasHole, elabTm_noHole hT, elabTm_noHole hr])]
+  simp only [checkPlain, EState.proj, hT, hr]
   split
-  · rfl
+  · simp [EState.vals, hs]
   · rename_i hn _
     exact absurd e.typed hn
 

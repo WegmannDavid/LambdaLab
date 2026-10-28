@@ -26,6 +26,10 @@
       }
     },
     {
+      "match": "\\?\\w+|(?<![\\w])_(?![\\w])",
+      "name": "variable.language.metavariable.coc"
+    },
+    {
       "match": "\\*|□",
       "name": "support.type.sort.coc"
     },

@@ -63,6 +63,7 @@ import LambdaLab.Languages.CoC.Named.Typing
 import LambdaLab.Languages.CoC.Named.Alpha
 import LambdaLab.Languages.CoC.Named.Eval
 import LambdaLab.Languages.CoC.Surface
+import LambdaLab.Languages.CoC.Holes
 import LambdaLab.Languages.CoC.Pipeline
 import LambdaLab.Languages.CoIC.DeBruijn.Syntax
 import LambdaLab.Languages.CoIC.DeBruijn.Reduction
